@@ -2,12 +2,51 @@
 set -euo pipefail
 
 script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
-script_dir="$(dirname -- "$script_path")"
-script_name="$(basename -- "$script_path")"
-target_dir="${1:-${PI_AGENT_DIR:-$HOME/.pi/agent}}"
+repo_dir="$(dirname -- "$script_path")"
+source_dir="${PI_AGENT_SOURCE_DIR:-$repo_dir/agent}"
+force=false
+target_dir="${PI_AGENT_DIR:-$HOME/.pi/agent}"
 
-echo "Source: $script_dir"
+usage() {
+  echo "Usage: $0 [--force] [target-dir]" >&2
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --force)
+      force=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+    *)
+      if [[ "$target_dir" != "${PI_AGENT_DIR:-$HOME/.pi/agent}" ]]; then
+        echo "Target directory already provided: $target_dir" >&2
+        usage
+        exit 1
+      fi
+      target_dir="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ ! -d "$source_dir" ]]; then
+  echo "Source directory does not exist: $source_dir" >&2
+  exit 1
+fi
+
+echo "Repository: $repo_dir"
+echo "Source: $source_dir"
 echo "Target: $target_dir"
+echo "Force: $force"
 
 mkdir -p -- "$target_dir"
 
@@ -15,16 +54,24 @@ shopt -s dotglob nullglob
 
 linked_count=0
 skipped_count=0
+removed_count=0
 
-for item in "$script_dir"/*; do
-  item_name="$(basename -- "$item")"
+for destination in "$target_dir"/*; do
+  [[ -L "$destination" ]] || continue
 
-  if [[ "$item_name" == "$script_name" || "$item_name" == ".git" ]]; then
-    echo "Skipping excluded item: $item_name"
-    ((skipped_count+=1))
-    continue
+  item_name="$(basename -- "$destination")"
+  source_candidate="$source_dir/$item_name"
+  existing_target="$(readlink -f -- "$destination" || true)"
+
+  if [[ -n "$existing_target" && "$existing_target" == "$repo_dir"/* && ! -e "$source_candidate" ]]; then
+    rm -f -- "$destination"
+    echo "Removed stale link: $destination"
+    ((removed_count+=1))
   fi
+done
 
+for item in "$source_dir"/*; do
+  item_name="$(basename -- "$item")"
   destination="$target_dir/$item_name"
   source_path="$(readlink -f -- "$item")"
 
@@ -38,9 +85,15 @@ for item in "$script_dir"/*; do
 
     rm -f -- "$destination"
   elif [[ -e "$destination" ]]; then
-    echo "Skipping existing non-symlink: $destination" >&2
-    ((skipped_count+=1))
-    continue
+    if [[ "$force" == true ]]; then
+      rm -rf -- "$destination"
+      echo "Replaced existing path due to --force: $destination"
+      ((removed_count+=1))
+    else
+      echo "Skipping existing non-symlink: $destination (use --force to replace)" >&2
+      ((skipped_count+=1))
+      continue
+    fi
   fi
 
   ln -s -- "$source_path" "$destination"
@@ -48,4 +101,4 @@ for item in "$script_dir"/*; do
   ((linked_count+=1))
 done
 
-echo "Done. Linked $linked_count item(s); skipped $skipped_count item(s)."
+echo "Done. Linked $linked_count item(s); removed $removed_count stale/replaced item(s); skipped $skipped_count item(s)."

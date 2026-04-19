@@ -1,26 +1,28 @@
 ---
 name: subagent-delegation
-description: Splits work into bounded delegated tasks for subagents, choosing appropriate models and ensuring outputs are reviewed before integration.
+description: Use when work contains focused, low-coupling subtasks such as isolated analysis, code search, draft tests, or alternative approaches that can be done independently.
 ---
 
 # Subagent Delegation
 
-Use this skill when work can be split into focused tasks that benefit from delegation or parallel execution.
+Use this skill to decide what to delegate and how to bound it.
 
-## Goals
-- Use subagents for narrow, low-coupling tasks
-- Increase throughput without losing control
-- Keep integration quality high
+## Reach for This Skill When
+- focused, low-coupling subtasks exist
+- parallel analysis or search could speed the work up
+- you need a bounded deliverable from a subagent
 
-## Delegate Well-Scoped Tasks
-Good candidates:
+## Outcome
+- delegated work with clear task boundaries, expected deliverables, and post-integration re-validation
+
+## Good Delegation Targets
 - targeted code search
 - isolated analysis
 - draft test cases
 - alternative implementation ideas
 - documentation synthesis
 
-Avoid delegating when:
+## Avoid Delegating When
 - the task depends on a large amount of evolving local context
 - multiple tasks will heavily conflict in the same files
 - correctness depends on subtle coordination that is cheaper to keep local
