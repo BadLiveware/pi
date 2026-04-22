@@ -1,0 +1,33 @@
+{
+  "nextId": 29,
+  "tasks": [
+    {
+      "id": "27",
+      "subject": "Audit instruction files for redundancy and fluff",
+      "description": "Review the main global instruction files and skills for repeated guidance, overlapping sections, and unnecessary wording. Identify which guidance should stay in AGENTS.md versus live only in skills, find repeated rules across implementation-planning/execute-plan/subagent-delegation, and trim low-value or duplicative text while preserving behavior.",
+      "status": "completed",
+      "activeForm": "Auditing instruction files",
+      "metadata": {},
+      "blocks": [
+        "28"
+      ],
+      "blockedBy": [],
+      "createdAt": 1776872716238,
+      "updatedAt": 1776872790449
+    },
+    {
+      "id": "28",
+      "subject": "Trim redundant instruction text after audit",
+      "description": "Apply the audit findings to reduce repeated or fluffy wording in the instruction files. Keep AGENTS.md lean, preserve distinct roles for each skill, and remove duplicated guidance where a more central or narrower home is sufficient. Re-link and validate the resulting instruction set.",
+      "status": "completed",
+      "activeForm": "Trimming redundant instruction text",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [
+        "27"
+      ],
+      "createdAt": 1776872719925,
+      "updatedAt": 1776872930970
+    }
+  ]
+}

@@ -30,6 +30,8 @@ Prefer language-native or project-standard mechanisms for:
 
 ### Compatibility and safety
 - Consider compatibility expectations for APIs, protocols, CLI output, configuration, or data models.
+- When compatibility behavior, protocol quirks, or required-by-consumer constraints are not obvious from the code, add targeted comments explaining why the code exists and when it can be removed if the requirement disappears.
+- Do not add comments that merely narrate obvious code; document the non-obvious constraint, dependency, or removal trigger instead.
 - Plan for migrations, rollback, or destructive changes when relevant.
 - Validate inputs, respect authentication/authorization boundaries, and protect secrets and sensitive data.
 

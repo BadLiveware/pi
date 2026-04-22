@@ -13,7 +13,8 @@ Use this skill to decide what to delegate and how to bound it.
 - you need a bounded deliverable from a subagent
 
 ## Outcome
-- delegated work with clear task boundaries, expected deliverables, and post-integration re-validation
+- delegated work with clear scope, deliverables, and post-integration validation
+- task-based delegation when task tools are available
 
 ## Good Delegation Targets
 - targeted code search
@@ -28,11 +29,19 @@ Use this skill to decide what to delegate and how to bound it.
 - correctness depends on subtle coordination that is cheaper to keep local
 
 ## Workflow
-1. Define the exact subtask and expected output.
-2. Choose a model appropriate to complexity.
-3. Keep prompts concrete and bounded.
-4. Review the result before integrating.
-5. Re-validate with tests or other checks after integration.
+1. Define the exact subtask, expected output, and acceptance criteria.
+2. If task tools are available, create or update a task for the delegated work, set `agentType`, and use `TaskExecute` when available.
+3. Keep prompts concrete, bounded, and limited to the context the subagent actually needs.
+4. If model choice matters, inspect local pi config first. Prefer `gpt-5.3-codex` by default, `gpt-5.4` for difficult work, and `gpt-5.4-mini` or `gpt-5.2-codex` for easy work when available. Avoid local Gemma by default.
+5. Review the result before integrating.
+6. Re-validate after integration.
+
+## Task-Based Delegation Guidance
+- Prefer task-based delegation over one-off prompts when task tools are available.
+- Delegate only bounded subtasks from the current in-scope phase or plan document.
+- Reading a plan file for context is parent setup work, not a delegated task, unless plan analysis itself is the deliverable.
+- Delegate concrete leaf tasks with a clear done state, not vague parent/container, bookkeeping-only, or catch-all tasks.
+- Use dependencies to order delegated work safely and keep the parent agent responsible for integration, conflict resolution, and final validation.
 
 ## Delegation Template
 
