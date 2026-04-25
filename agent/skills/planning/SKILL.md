@@ -5,17 +5,30 @@ description: Use when work is large, risky, or multi-step enough that you should
 
 # Planning
 
-Use this skill to turn explicit requirements into an executable, validated plan before editing code. If the plan is already clear and the next job is execution, switch to `execute-plan`.
+Use this skill to turn explicit requirements into an executable, validated plan before editing code. Decide whether the work is bounded or unbounded, simple or split/long, then read the matching reference when more detail is needed. If the plan is already clear and the next job is execution, switch to `execute-plan`.
 
 ## When to Use
 Use when work is large, risky, multi-step, needs sequencing, separates refactors from behavior changes, needs validation design, depends on prior/external evidence, or would benefit from task tracking/delegation.
 
 If purpose, scope, or requirements are ambiguous, use `requirements-discovery` first.
 
+## Shape Decision
+Infer the work shape from the user's intent and success semantics; do not wait for the user to say "bounded" or "unbounded".
+
+- **Bounded**: the request has a finite desired end state, a checklist can be completed, and success means the planned change is done. Use a normal plan under `.pi/plans/`.
+- **Unbounded**: the request implies ongoing improvement, repeated attempts, replenishing from evidence, optimizing/tuning/hardening over time, avoiding local maxima, or continuing until the user stops. Read `unbounded-work.md` and create a compact project-owned loop file under `.pi/loops/<loop-name>/loop.md`.
+- **Simple vs split/long**: use a single plan for normal bounded work; use a split plan directory when the bounded plan is too large, spans many reviewable implementation areas, or would overload execution context.
+
+Common unbounded signals include: "keep improving", "iterate", "loop", "optimize", "tune", "try ideas", "measure and accept/reject", "continue until stopped", "don't stop at a finite backlog", or work where failed attempts should prevent retracing paths.
+
+If a prompt mixes continuous/open-ended intent with "quick" or "finite for now" convenience pressure, treat it as unbounded unless the user explicitly asks for a bounded pilot.
+
 ## Plan Location
-Write plans under `.pi/plans/`:
+For bounded plans, write under `.pi/plans/`:
 - simple plan: `.pi/plans/<short-hyphenated-name>.md`
 - deep plan: `.pi/plans/<short-hyphenated-name>/README.md` plus numbered files such as `01-evidence.md`, `02-implementation.md`
+
+For unbounded loop charters, write the canonical live context under `.pi/loops/<loop-name>/loop.md` and keep plan paths, if any, as pointers only.
 
 Names should describe the domain work, not generic labels like `simple_plan`, `phase2`, or `deep_plan`.
 
@@ -58,9 +71,10 @@ Detailed templates live in `output-templates.md`.
 5. If working from an existing plan, isolate the current referenced document and immediate prerequisites.
 6. Order independently validatable steps, separating preparatory refactors, behavior changes, validation, docs, migration, cleanup, and delegation points.
 7. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
-8. Decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
-9. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
-10. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks; keep the full backlog in the plan.
+8. Decide bounded/unbounded and simple/split shape. For unbounded work, read `unbounded-work.md` and write a loop charter instead of a finite plan.
+9. For bounded work, decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
+10. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
+11. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks for bounded work or 1-3 active attempts for unbounded work; keep the rest in the plan/loop file.
 
 ## Task and Handoff Guidance
 - Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` for meaningful multi-step work.
@@ -69,8 +83,8 @@ Detailed templates live in `output-templates.md`.
 - Treat the task list as execution scaffolding, not scope boundary. Add missing in-scope tasks when needed.
 - When context or plan focus changes, reconcile tasks immediately; remove obsolete pending tasks and old completed tasks from irrelevant prior context.
 - Delegate only bounded, low-coupling leaf tasks. For model choice and downshifting, use `subagent-delegation` and `list_pi_models`.
-- Use `execute-plan` when the plan is clear and execution should start.
-- Use `execute-long-plan` for split plans, very long plans, or many validation/checkpoint cycles.
+- Use `execute-plan` when the plan or loop charter is clear and execution should start.
+- For split/long bounded plans, `execute-plan` should read its long-plan guidance or compatibility skill before execution.
 - If the user asked for planning only, stop at the plan instead of silently implementing.
 
 ## Status and Completion

@@ -22,6 +22,8 @@ Stop and ask instead of editing when the next fix would materially change the sk
 ## Scenario Design
 Good tests make the agent want to do the wrong thing.
 
+Use natural user language. Do not leak the exact framework terms, file names, option labels, or section headings that the skill is supposed to infer unless recognition of those exact terms is the behavior under test. For example, when testing bounded-vs-unbounded inference, avoid saying "bounded", "unbounded", "shape decision", or the expected reference filename in the user scenario or final question. Ask what the agent would create/do next and judge whether it independently chooses the intended framework.
+
 Use pressure scenarios for discipline skills:
 - time pressure: deadline, deploy window, user impatience
 - sunk cost: work already done that should be discarded or redone
