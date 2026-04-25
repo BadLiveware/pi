@@ -22,7 +22,7 @@ Use the `alpha` CLI via bash for all paper research operations.
 
 ## Auth
 
-Run `alpha login` to authenticate with alphaXiv. Check status with `feynman alpha status`, or `alpha status` once your installed `alpha-hub` version includes it.
+Run `alpha login` to authenticate with alphaXiv when needed. Check availability with `command -v alpha`; if supported by the installed `alpha-hub` version, check status with `alpha status`.
 
 ## Examples
 

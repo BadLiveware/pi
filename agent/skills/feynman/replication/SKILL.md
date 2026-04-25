@@ -5,10 +5,10 @@ description: Plan or execute a replication of a paper, claim, or benchmark. Use 
 
 # Replication
 
-Run the `/replicate` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/replicate.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
-Agents used: `researcher`
+Agents used: `feynman-researcher`
 
-Asks the user to choose an execution environment (local, virtual env, cloud, or plan-only) before running any code.
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
 
 Output: replication plan, scripts, and results saved to disk.

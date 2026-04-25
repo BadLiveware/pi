@@ -5,8 +5,10 @@ description: Compare a paper's claims against its public codebase. Use when the 
 
 # Paper-Code Audit
 
-Run the `/audit` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/audit.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
-Agents used: `researcher`, `verifier`
+Agents used: `feynman-researcher`, `feynman-verifier`
 
-Output: audit report in `outputs/`.
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
+
+Output: audit report in `.pi/feynman/outputs/`.

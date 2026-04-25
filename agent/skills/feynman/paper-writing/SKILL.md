@@ -5,8 +5,10 @@ description: Turn research findings into a polished paper-style draft with secti
 
 # Paper Writing
 
-Run the `/draft` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/draft.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
-Agents used: `writer`, `verifier`
+Agents used: `feynman-writer`, `feynman-verifier`
 
-Output: paper draft in `papers/`.
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
+
+Output: paper draft in `.pi/feynman/papers/`.

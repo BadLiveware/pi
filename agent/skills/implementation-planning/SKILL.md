@@ -128,7 +128,7 @@ Splitting rules:
 - Avoid vague, catch-all, or bookkeeping-only tasks.
 - If future work must be tracked, create concrete deferred tasks in the appropriate later plan document or dependency chain.
 - If a step introduces non-obvious logic, compatibility behavior, or required-by-X code, include targeted comment/documentation work in its done state.
-- Delegate only bounded, low-coupling leaf tasks. When model choice matters, inspect local pi config first; prefer `gpt-5.3-codex` by default, `gpt-5.4` for difficult work, and `gpt-5.4-mini` or `gpt-5.2-codex` for easy work when available. Avoid local Gemma by default.
+- Delegate only bounded, low-coupling leaf tasks. For model choice and cheaper-model downshifting, use `subagent-delegation` and select only from the current enabled models in local Pi config.
 
 ## Status and Completion Guidance
 - For numbered plans or ordered plan documents, stay on the current referenced document until its mandatory work is complete or the user reprioritizes.

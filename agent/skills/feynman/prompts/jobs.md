@@ -1,7 +1,6 @@
 ---
 description: Inspect active background research work, including running processes and scheduled follow-ups.
 section: Project & Session
-topLevelCli: true
 ---
 Inspect active background work for this project.
 

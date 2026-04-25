@@ -5,6 +5,8 @@ description: Inspect active background research work including running processes
 
 # Jobs
 
-Run the `/jobs` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/jobs.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
-Shows active `pi-processes`, scheduled `pi-schedule-prompt` entries, and running subagent tasks.
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
+
+Output: active managed processes, scheduled prompts, and running subagent tasks.

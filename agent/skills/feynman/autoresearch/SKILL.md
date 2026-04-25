@@ -5,8 +5,10 @@ description: Autonomous experiment loop that tries ideas, measures results, keep
 
 # Autoresearch
 
-Run the `/autoresearch` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/autoresearch.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
 Tools used: `init_experiment`, `run_experiment`, `log_experiment` (from pi-autoresearch)
 
-Session files: `autoresearch.md`, `autoresearch.sh`, `autoresearch.jsonl`
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
+
+Output: session files such as `autoresearch.md`, `autoresearch.sh`, and `autoresearch.jsonl`.

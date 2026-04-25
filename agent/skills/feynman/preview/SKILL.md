@@ -5,23 +5,19 @@ description: Preview Markdown, LaTeX, PDF, or code artifacts in the browser or a
 
 # Preview
 
-Use the `/preview` command to render and open artifacts.
+Use available Pi preview/browser tools when present; do not assume Feynman CLI preview commands exist in this standalone integration.
 
-## Commands
+## Workflow
 
-| Command | Description |
-|---------|-------------|
-| `/preview` | Preview the most recent artifact in the browser |
-| `/preview --file <path>` | Preview a specific file |
-| `/preview-browser` | Force browser preview |
-| `/preview-pdf` | Export to PDF via pandoc + LaTeX |
-| `/preview-clear-cache` | Clear rendered preview cache |
+1. Identify the artifact path to preview.
+2. Prefer an available preview package or browser tool if one is loaded.
+3. If no preview tool is available, use local commands such as `xdg-open`, `open`, `pandoc`, or a simple temporary HTML render when they exist.
+4. If rendering is unavailable, report the missing capability and provide the artifact path for manual inspection.
 
-## Fallback
-
-If the preview commands are not available, use bash:
+## Fallback examples
 
 ```bash
-open <file.md>          # macOS — opens in default app
-open <file.pdf>         # macOS — opens in Preview
+xdg-open <file.md>      # Linux desktop, when available
+open <file.md>          # macOS
+pandoc <file.md> -o <file.pdf>
 ```

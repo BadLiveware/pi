@@ -5,8 +5,10 @@ description: Run a thorough, source-heavy investigation on any topic. Use when t
 
 # Deep Research
 
-Run the `/deepresearch` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/deepresearch.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
-Agents used: `researcher`, `verifier`, `reviewer`
+Agents used: `feynman-researcher`, `feynman-verifier`, `feynman-reviewer`
 
-Output: cited brief in `outputs/` with `.provenance.md` sidecar.
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
+
+Output: cited brief in `.pi/feynman/outputs/` with `.provenance.md` sidecar.

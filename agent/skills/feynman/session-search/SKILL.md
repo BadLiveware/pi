@@ -5,22 +5,17 @@ description: Search past Feynman session transcripts to recover prior work, conv
 
 # Session Search
 
-Use the `/search` command to search prior Feynman sessions interactively, or search session JSONL files directly via bash.
+Use this skill to recover prior Feynman CLI session context when that session store exists. This standalone Pi integration must not assume the Feynman CLI `/search` command is available.
 
-## Interactive search
+## Workflow
 
-```
-/search <query>
-```
+1. Check whether `~/.feynman/sessions/` exists.
+2. If it does not exist, report that no Feynman CLI session store is available and continue from current context.
+3. If it exists, search session JSONL files directly with `rg` or `grep` via bash.
+4. Treat recovered context as historical and verify current code, docs, or sources before relying on it.
 
-Opens the session search UI. Supports `resume <sessionPath>` to continue a found session.
-
-## Direct file search
-
-Session transcripts are stored as JSONL files in `~/.feynman/sessions/`. Each line is a JSON record with `type` (session, message, model_change) and `message.content` fields.
+Session transcripts are JSONL files with records such as `session`, `message`, and `model_change`; message text is usually under `message.content`.
 
 ```bash
-grep -ril "scaling laws" ~/.feynman/sessions/
+rg -i "scaling laws" ~/.feynman/sessions/
 ```
-
-For structured search across sessions, use the interactive `/search` command.

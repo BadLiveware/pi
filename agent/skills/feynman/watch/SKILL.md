@@ -5,8 +5,10 @@ description: Set up a recurring research watch on a topic, company, paper area, 
 
 # Watch
 
-Run the `/watch` workflow. The slash command expands the full workflow instructions in the active session; do not try to read a relative prompt-template path from the installed skill directory.
+Use the bundled prompt reference at `../prompts/watch.md` as the workflow instructions and execute it directly with the currently available Pi tools. Do not require the Feynman CLI.
 
-Agents used: `researcher`
+Agents used: `feynman-researcher`
 
-Output: baseline survey in `outputs/`, recurring checks via `pi-schedule-prompt`.
+Before starting, check that any named tools or subagents are available. If a capability is missing, continue in degraded mode when safe and record what was not run.
+
+Output: baseline survey in `.pi/feynman/outputs/`, recurring checks via `schedule_prompt`.

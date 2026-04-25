@@ -2,7 +2,6 @@
 description: Autonomous experiment loop — try ideas, measure results, keep what works, discard what doesn't, repeat.
 args: <idea>
 section: Research Workflows
-topLevelCli: true
 ---
 Start an autoresearch optimization loop for: $@
 
@@ -11,7 +10,7 @@ This command uses pi-autoresearch.
 ## Step 1: Gather
 
 If `autoresearch.md` and `autoresearch.jsonl` already exist, ask the user if they want to resume or start fresh.
-If `CHANGELOG.md` exists, read the most recent relevant entries before resuming.
+If the workspace already uses `CHANGELOG.md` as an explicit research lab notebook, read the most recent relevant entries before resuming.
 
 Otherwise, collect the following from the user before doing anything else:
 - What to optimize (test speed, bundle size, training loss, build time, etc.)
@@ -27,8 +26,6 @@ Ask the user where to run:
 - **New git branch** — create a branch so main stays clean
 - **Virtual environment** — create an isolated venv/conda env first
 - **Docker** — run experiment code inside an isolated Docker container
-- **Modal** — run on Modal's serverless GPU infrastructure. Write Modal-decorated scripts and execute with `modal run`. Best for GPU-heavy benchmarks with no persistent state between iterations. Requires `modal` CLI.
-- **RunPod** — provision a GPU pod via `runpodctl` and run iterations there over SSH. Best for experiments needing persistent state, large datasets, or SSH access between iterations. Requires `runpodctl` CLI.
 
 Do not proceed without a clear answer.
 
@@ -51,7 +48,7 @@ Ask the user to confirm. Do not start the loop without explicit approval.
 Initialize the session: create `autoresearch.md`, `autoresearch.sh`, run the baseline, and start looping.
 
 Each iteration: edit → commit → `run_experiment` → `log_experiment` → keep or revert → repeat. Do not stop unless interrupted or `maxIterations` is reached.
-After the baseline and after meaningful iteration milestones, append a concise entry to `CHANGELOG.md` summarizing what changed, what metric result was observed, what failed, and the next step.
+After the baseline and meaningful iteration milestones, append concise progress notes to `.pi/feynman/notes/<slug>-log.md`; use a workspace-root `CHANGELOG.md` only if the workspace already has that explicit research lab-notebook convention.
 
 ## Key tools
 
