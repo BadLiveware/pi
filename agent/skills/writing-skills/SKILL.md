@@ -26,6 +26,9 @@ Create or edit a skill when the behavior is reusable across projects, requires j
 Before editing any skill file, use this skill as the checklist for the change. Do not treat skill edits as ordinary documentation edits when they change future agent behavior.
 
 ## Skill Authoring Checklist
+- Prefer the cheapest decisive intervention: the smallest edit, inline rule, split, or test that materially reduces risk of incorrect future agent behavior.
+- Scale validation to stakes. Lightweight checks fit low-risk structural edits; use pressure, micro-action, or multi-model tests when the failure mode and downside justify them.
+- Do the highest-yield checks first, and stop iterating when further edits or tests are unlikely to change the deployment decision without changing intended semantics.
 - Name matches the directory and uses lowercase letters, numbers, and hyphens.
 - Description starts with “Use when…” and describes triggers only, not the workflow.
 - The body starts with the core principle and the outcome.

@@ -166,6 +166,9 @@ Record:
 - test tier used: choice, micro-action, or mini end-to-end,
 - prompt/scenario and fixture path when applicable,
 - whether the skill was available,
+- observed failure or behavior,
+- inferred cause or loophole,
+- wording fix or reason no fix was needed,
 - choice/action taken,
 - exact rationalizations or cited rules,
 - follow-up changes made.
@@ -180,7 +183,7 @@ Avoid splitting into many tiny files. Extra files can cost more tool trips, incr
 Record before/after approximate tokens when token cost was a goal, plus the behavior scenarios that still passed.
 
 ## What to Fix After a Failed Verification
-When an agent still violates the intended behavior, capture the reason verbatim, add a targeted counter, and re-run the failed scenario. Do not merely report the failure when the intended behavior is clear and the fix preserves the skill's semantics.
+When an agent still violates the intended behavior, separate observation, inference, and fix: record what the agent did, why you think the guidance allowed it, and the smallest wording change that should block it. Then add the targeted counter and re-run the failed scenario. Do not merely report the failure when the intended behavior is clear and the fix preserves the skill's semantics.
 
 Common counters:
 - explicit “no exceptions” list,
