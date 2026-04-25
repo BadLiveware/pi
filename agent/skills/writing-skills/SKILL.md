@@ -14,6 +14,9 @@ For discipline-enforcing skills, prefer a real RED-GREEN-REFACTOR loop:
 1. **RED:** run a baseline scenario without the new guidance and capture the failure/rationalization.
 2. **GREEN:** write the smallest skill change that addresses that observed failure.
 3. **REFACTOR:** pressure-test the new guidance, close loopholes, and re-test.
+4. **ITERATE:** when a verification test exposes another loophole, automatically update the skill with a targeted counter and re-test the same scenario. Keep doing this until the skill passes or the next edit would materially change the intended semantics of the skill.
+
+Do not stop at a failed or partial verification with only a report if the intended behavior is clear and a targeted wording fix would preserve the skill's semantics. Stop and ask before editing only when the needed change would materially redefine the skill's purpose, scope, policy, or tradeoffs rather than clarifying or enforcing the existing intent.
 
 For reference-only skills, use retrieval/application tests instead of pressure tests.
 
@@ -28,6 +31,7 @@ Create or edit a skill when the behavior is reusable across projects, requires j
 - Heavy references, examples, and scripts live in separate files.
 - The skill names concrete failure modes and common rationalizations when enforcing discipline.
 - Relative references resolve from the skill directory.
+- Validation failures lead to targeted edits and re-tests until passing, unless fixing them would materially change intended semantics.
 - Validation evidence or gaps are recorded before deployment.
 
 ## Description Guidance
@@ -59,9 +63,11 @@ Testing strategy by skill type:
 1. Inspect current guidance and identify the failure being prevented.
 2. Create or update the skill in the smallest coherent change.
 3. Run validation: markdown/frontmatter checks, link checks if relevant, and behavioral tests for non-trivial rules.
-4. Run `./link-into-pi-agent.sh` after changing global agent files.
-5. Verify symlinks in `~/.pi/agent` point into `agent/`.
-6. Summarize changed source files, live linked layout, and validation.
+4. If behavioral validation fails and the intended semantics are unchanged, edit the skill with the smallest targeted counter and re-run the failed test. Repeat until passing.
+5. If the necessary edit would materially change the skill's semantics, stop and ask for confirmation instead of silently changing the contract.
+6. Run `./link-into-pi-agent.sh` after changing global agent files.
+7. Verify symlinks in `~/.pi/agent` point into `agent/`.
+8. Summarize changed source files, live linked layout, validation, and any semantic-change questions.
 
 ## Attribution
 Adapted from the writing-skills and skill-testing framework in `pcvelz/superpowers` (MIT), especially the idea that skill authoring should use RED-GREEN-REFACTOR pressure tests.

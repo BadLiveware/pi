@@ -5,7 +5,7 @@ Use this reference when creating or editing skills that must change future agent
 ## Principle
 Testing skills is TDD for instructions. If you did not observe the old guidance fail, you do not know whether the new guidance fixes the right failure.
 
-## RED-GREEN-REFACTOR
+## RED-GREEN-REFACTOR-ITERATE
 
 | Phase | Skill test action | Evidence to capture |
 | --- | --- | --- |
@@ -13,6 +13,11 @@ Testing skills is TDD for instructions. If you did not observe the old guidance 
 | GREEN | Add the smallest targeted instruction | diff and intended behavior change |
 | Verify GREEN | Run the same scenario with the skill available | compliance and cited guidance |
 | REFACTOR | Add counters for new loopholes | updated rule and re-test result |
+| ITERATE | If verification still fails, edit the skill again and re-run the failed scenario | each targeted counter and the result that proves it worked |
+
+Default loop: test, inspect the failure, edit the skill, and re-test. Keep looping while the failure can be fixed by clarifying, tightening, adding examples, adding anti-rationalizations, or moving existing guidance earlier without changing what the skill is meant to do.
+
+Stop and ask instead of editing when the next fix would materially change the skill's semantics: changing its purpose, supported workflow, authority boundaries, safety policy, model/tool assumptions, or tradeoffs in a way the user did not already approve.
 
 ## Scenario Design
 Good tests make the agent want to do the wrong thing.
@@ -136,7 +141,7 @@ Record:
 - follow-up changes made.
 
 ## What to Fix After a Failed Verification
-When an agent still violates the intended behavior, capture the reason verbatim and add a targeted counter.
+When an agent still violates the intended behavior, capture the reason verbatim, add a targeted counter, and re-run the failed scenario. Do not merely report the failure when the intended behavior is clear and the fix preserves the skill's semantics.
 
 Common counters:
 - explicit “no exceptions” list,
@@ -146,12 +151,27 @@ Common counters:
 - clearer trigger terms in the description,
 - a concrete “do this instead” action.
 
-Do not add broad vague warnings like “be careful”. Add the specific sentence that would have blocked the observed failure.
+Do not add broad vague warnings like “be careful”. Add the specific sentence that would have blocked the observed failure. After the edit, re-test the same pressure scenario before moving on.
+
+Examples of semantics-preserving fixes:
+- make an existing trigger more explicit,
+- add a counter for an observed rationalization,
+- add a positive or negative example,
+- move a critical rule earlier,
+- clarify when to stop, ask, or avoid the skill.
+
+Examples that likely change semantics and require confirmation:
+- expanding the skill to a new domain or authority level,
+- changing a must/never rule into a preference or vice versa,
+- changing who owns safety, acceptance, or final decisions,
+- adding a new required tool/provider/model assumption,
+- changing the intended tradeoff between speed, cost, quality, or risk.
 
 ## Completion Checklist
 - [ ] Baseline behavior or reason for skipping baseline is recorded.
 - [ ] Skill change targets an observed failure or explicit requirement.
 - [ ] Verification scenario ran with the changed skill, or gap is documented.
+- [ ] Failed verification led to a targeted edit and same-scenario re-test, unless the needed fix would materially change semantics.
 - [ ] New rationalizations were plugged and re-tested when found.
 - [ ] Frontmatter remains valid and description is trigger-only.
 - [ ] `./link-into-pi-agent.sh` ran for global skill changes.
