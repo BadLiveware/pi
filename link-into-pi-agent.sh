@@ -102,11 +102,18 @@ for item in "$source_dir"/*; do
 done
 
 extensions_dir="$source_dir/extensions"
+extensions_target="$target_dir/extensions"
 if [[ -f "$extensions_dir/package.json" ]]; then
   if command -v pi >/dev/null 2>&1; then
     extensions_source="$(readlink -f -- "$extensions_dir")"
-    echo "Installing extensions from: $extensions_source"
-    pi install "$extensions_source"
+    target_extensions_path="$(readlink -f -- "$extensions_target" 2>/dev/null || true)"
+
+    if [[ -n "$target_extensions_path" && "$target_extensions_path" == "$extensions_source" ]]; then
+      echo "Skipping extension install: auto-discovered from $extensions_target"
+    else
+      echo "Installing extensions from: $extensions_source"
+      pi install "$extensions_source"
+    fi
   else
     echo "Skipping extension install: pi command not found in PATH." >&2
   fi
