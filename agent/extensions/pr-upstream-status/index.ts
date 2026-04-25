@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
@@ -35,6 +38,10 @@ interface BranchSnapshot {
 	error?: string;
 }
 
+interface PrUpstreamSettings {
+	autoSolveEnabled: boolean;
+}
+
 interface PrUpstreamStateEvent {
 	branch?: string;
 	error?: string;
@@ -65,6 +72,39 @@ interface CodeHostProvider {
 const REFRESH_INTERVAL_MS = 90_000;
 const REFRESH_MIN_GAP_MS = 15_000;
 const AUTO_SOLVE_MIN_GAP_MS = 120_000;
+const CONFIG_FILE_NAME = "pr-upstream-status.json";
+const DEFAULT_SETTINGS: PrUpstreamSettings = {
+	autoSolveEnabled: false,
+};
+
+function agentDir(): string {
+	return process.env.PI_CODING_AGENT_DIR ?? process.env.PI_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
+}
+
+function userConfigPath(): string {
+	return path.join(agentDir(), CONFIG_FILE_NAME);
+}
+
+function normalizeSettings(input: Partial<PrUpstreamSettings>): Partial<PrUpstreamSettings> {
+	const normalized: Partial<PrUpstreamSettings> = {};
+	if (typeof input.autoSolveEnabled === "boolean") normalized.autoSolveEnabled = input.autoSolveEnabled;
+	return normalized;
+}
+
+function readConfigFile(filePath: string): Partial<PrUpstreamSettings> | undefined {
+	try {
+		if (!fs.existsSync(filePath)) return undefined;
+		const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Partial<PrUpstreamSettings>;
+		return normalizeSettings(parsed);
+	} catch {
+		return undefined;
+	}
+}
+
+function writeConfigFile(filePath: string, settings: PrUpstreamSettings): void {
+	fs.mkdirSync(path.dirname(filePath), { recursive: true });
+	fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
+}
 
 function osc8(label: string, url: string): string {
 	return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
@@ -334,15 +374,33 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
 	let attemptedGhToken = false;
 
+	let settings: PrUpstreamSettings = { ...DEFAULT_SETTINGS };
 	let snapshot: BranchSnapshot = {};
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
 	let refreshInFlight = false;
-	let autoSolveEnabled = false;
+	let autoSolveEnabled = settings.autoSolveEnabled;
 	let autoSolvePromptInFlight = false;
 	let lastAutoSolveAt = 0;
 	let lastPromptedHeadSha: string | undefined;
 	let promptedFeedbackKeys = new Set<string>();
 	let lastRefreshAt = 0;
+
+	function loadSettings(): void {
+		settings = { ...DEFAULT_SETTINGS, ...readConfigFile(userConfigPath()) };
+		autoSolveEnabled = settings.autoSolveEnabled;
+	}
+
+	function persistSettings(): void {
+		writeConfigFile(userConfigPath(), settings);
+		pi.appendEntry("pr-upstream-status-state", settings);
+	}
+
+	function setAutoSolveEnabled(enabled: boolean): void {
+		autoSolveEnabled = enabled;
+		settings.autoSolveEnabled = enabled;
+		persistSettings();
+		emitPrimitives();
+	}
 
 	async function maybeLoadTokenFromGh(ctx: ExtensionContext): Promise<void> {
 		if (token || attemptedGhToken) return;
@@ -492,16 +550,14 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		description: "Control auto-solving new PR comments after checks complete (default: off)",
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
-			if (action === "on" || action === "enable") {
-				autoSolveEnabled = true;
-				emitPrimitives();
+			if (["on", "enable", "enabled", "true", "yes", "1", "start"].includes(action)) {
+				setAutoSolveEnabled(true);
 				ctx.ui.notify("PR auto-solve enabled.", "info");
 				await maybeAutoSolveComments(ctx, true);
 				return;
 			}
-			if (action === "off" || action === "disable") {
-				autoSolveEnabled = false;
-				emitPrimitives();
+			if (["off", "disable", "disabled", "false", "no", "0", "stop"].includes(action)) {
+				setAutoSolveEnabled(false);
 				ctx.ui.notify("PR auto-solve disabled.", "info");
 				return;
 			}
@@ -513,7 +569,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 				await maybeAutoSolveComments(ctx, true);
 				return;
 			}
-			ctx.ui.notify(`PR auto-solve: ${autoSolveEnabled ? "on" : "off"} (default off)`, "info");
+			ctx.ui.notify(`PR auto-solve: ${autoSolveEnabled ? "on" : "off"} (persisted in ${userConfigPath()})`, "info");
 		},
 	});
 
@@ -548,6 +604,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		loadSettings();
 		updateStatus(ctx);
 		emitPrimitives();
 		ensureTimer(ctx);

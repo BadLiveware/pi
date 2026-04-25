@@ -34,6 +34,13 @@ For private repos:
 
 ## Auto-solve PR comments (default: off)
 
+Auto-solve is disabled by default. Explicit `/pr-autosolve on` and
+`/pr-autosolve off` choices persist in:
+
+```text
+~/.pi/agent/pr-upstream-status.json
+```
+
 When enabled, the extension waits until:
 
 - the PR checks are complete (`pass` or `fail`), and
@@ -59,7 +66,7 @@ Payload fields include branch, PR metadata (number/url/comments/checks), and aut
 - `/pr-status refresh` – force refresh now
 - `/pr-status on` – enable periodic watcher
 - `/pr-status off` – disable periodic watcher
-- `/pr-autosolve` – show auto-solve status (default off)
-- `/pr-autosolve on` – enable auto-solve
-- `/pr-autosolve off` – disable auto-solve
+- `/pr-autosolve` – show auto-solve status and config path
+- `/pr-autosolve on` – enable and persist auto-solve
+- `/pr-autosolve off` – disable and persist auto-solve
 - `/pr-autosolve now` – force an immediate auto-solve pass (must be enabled)
