@@ -24,6 +24,7 @@ Approach software development work with understanding, correctness, testability,
 
 ### 3. Work in feedback loops
 - Prefer fast, focused inner-loop validation plus broader checkpoints matched to the risk and codebase.
+- Choose extra investigation, verification, tool use, delegation, or stopping by expected net value: likely improvement and risk reduction minus cost, latency, and user friction.
 - Prefer project-sanctioned commands over generic defaults.
 
 ### 4. Build testable, composable systems
@@ -101,6 +102,7 @@ Use the available skills when they fit:
 - `execute-plan`
 - `execute-long-plan`
 - `testability-feedback-loop`
+- `expected-value-decision-making`
 - `systematic-debugging`
 - `reliability-error-handling`
 - `performance-benchmarking`

@@ -51,8 +51,24 @@ C) <hybrid rationalization>
 Choose A, B, or C and explain briefly.
 ```
 
+## Realism Ladder
+Use the cheapest test that exercises the behavior under realistic pressure:
+
+1. **Choice pressure test:** scenario with tempting options. Good for quick branch-regression checks, but easier than real work because the right action is visible.
+2. **Micro-action test:** tiny disposable fixture plus a small tool/action budget. The agent must inspect evidence or take 1-3 realistic actions, then stop at the skill's key decision point. Prefer this after significant behavior changes, pruning, or splitting.
+3. **Mini end-to-end test:** disposable repo or fixture where the agent performs a tiny realistic workflow, such as reproduce -> fix -> validate. Use sparingly for high-risk skills because it costs more.
+
+Micro-action tests are the default realism upgrade. They should be bounded: create a `/tmp/skill-test-*` fixture, allow only the tools needed, set a tool/action budget, and ask the agent to stop once the target decision is reached instead of completing a large task.
+
+Examples:
+- `commit`: provide fake status/diff/validation files; ask what to stage/commit and what to leave untouched.
+- `verification-before-completion`: provide subagent report, test output, and diff; ask whether completion can be claimed from the evidence.
+- `requirements-discovery`: provide a tiny README/config plus an ambiguous request; ask for the next question or safe assumption.
+- `systematic-debugging`: provide a tiny failing test; ask the agent to reproduce, state a hypothesis, and stop or make one evidence-backed fix within a budget.
+- `execute-plan`: provide a three-item plan; ask the agent to create only the next small task window and decide whether to continue or summarize.
+
 ## Running Tests in Pi
-Use a fresh subagent for behavioral tests so the current conversation does not contaminate the result.
+Use a fresh subagent or external `pi -p` process for behavioral tests so the current conversation does not contaminate the result.
 
 ### Model Coverage
 For behavior-affecting skill changes, run verification on both:
@@ -74,8 +90,9 @@ Baseline options:
 Verification options:
 - Ask the subagent to read the changed skill file first.
 - For stronger isolation, run external `pi -p` with discovery disabled and load only the skill under test via `--skill`.
-- Use the same scenario as the baseline.
+- Use the same scenario or fixture as the baseline.
 - Require a concrete choice/action and a short rationale.
+- For micro-action tests, include fixture path, allowed tools/actions, budget, and stop condition.
 
 ### Hermetic External Pi Runs
 Use this when you need a cleaner RED/GREEN test than an in-session subagent can provide.
@@ -122,7 +139,7 @@ Notes:
 - `PI_CODING_AGENT_DIR` isolates Pi's agent config and session lookup from `~/.pi/agent`.
 - A blank isolated agent dir may not have credentials. Prefer explicit `--provider`, `--model`, and `--api-key` for reproducible tests; copying `auth.json`, `models.json`, and `settings.json` is a pragmatic local fallback.
 - If you copy settings/auth files, record that in the test evidence. The discovery-disabling flags still prevent skills/extensions/context files from loading, but settings can affect default provider/model choice.
-- `--no-tools` is appropriate for choice/output pressure tests. Omit it or pass `--tools ...` only when the skill behavior requires tool use.
+- `--no-tools` is appropriate for choice/output pressure tests. For micro-action tests, pass only the needed tools, such as `--tools read,ls,bash`, and state the action budget in the prompt.
 - `--no-skills` disables discovery; explicit `--skill` paths still load.
 - `--no-context-files` prevents local `AGENTS.md` / `CLAUDE.md` from adding unrelated guidance.
 - Use a temporary working directory when local project files could influence the answer.
@@ -146,7 +163,8 @@ Then handle this scenario as real work. Do not answer academically.
 
 Record:
 - model/agent used for each verification tier, or why a tier was unavailable,
-- prompt/scenario,
+- test tier used: choice, micro-action, or mini end-to-end,
+- prompt/scenario and fixture path when applicable,
 - whether the skill was available,
 - choice/action taken,
 - exact rationalizations or cited rules,
@@ -192,6 +210,7 @@ Examples that likely change semantics and require confirmation:
 - [ ] Baseline behavior or reason for skipping baseline is recorded.
 - [ ] Skill change targets an observed failure or explicit requirement.
 - [ ] Verification scenario ran with the changed skill, or gap is documented.
+- [ ] Significant behavior changes, pruning, or splitting used a micro-action test where practical, or the reason a choice test was sufficient is documented.
 - [ ] Behavior-affecting changes were checked on normal/default and cheap/small supported enabled models, or the missing tier was documented.
 - [ ] Failed verification led to a targeted edit and same-scenario re-test, unless the needed fix would materially change semantics.
 - [ ] New rationalizations were plugged and re-tested when found.
