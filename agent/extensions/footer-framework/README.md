@@ -86,3 +86,6 @@ The extension exposes tools so the agent can introspect and tune the footer with
 
 - The extension stores latest settings in session custom entries (`footer-framework-state`).
 - It listens to event bus topic `pr-upstream:state` for PR primitives.
+- Extension statuses with empty rendered text are ignored so transient or
+  intentionally-cleared status providers do not leave phantom separators in the
+  footer.

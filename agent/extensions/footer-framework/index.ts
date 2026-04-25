@@ -182,6 +182,13 @@ function osc8(label: string, url: string): string {
 	return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
 }
 
+function sanitizeStatusText(text: string): string {
+	return text
+		.replace(/[\r\n\t]/g, " ")
+		.replace(/ +/g, " ")
+		.trim();
+}
+
 function parseSettingsInput(settings: FooterFrameworkSettings, args: string): string | undefined {
 	const tokens = args
 		.trim()
@@ -618,12 +625,13 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 		const extStatuses = Array.from(footerData.getExtensionStatuses().entries())
 			.sort(([a], [b]) => a.localeCompare(b))
-			.filter(([key, value]) => {
-				if (key === "footer-framework" || key === "pr-upstream") return false;
-				if (settings.hideZeroMcp && /MCP:\s*0\/\d+\s+servers/.test(value)) return false;
-				return true;
+			.flatMap(([key, value]) => {
+				const text = sanitizeStatusText(value);
+				if (key === "footer-framework" || key === "pr-upstream") return [];
+				if (visibleWidth(text) === 0) return [];
+				if (settings.hideZeroMcp && /MCP:\s*0\/\d+\s+servers/.test(text)) return [];
+				return [text];
 			})
-			.map(([, value]) => value)
 			.join(" · ");
 		if (extStatuses) items.push({ id: "ext", text: extStatuses, placement: placementFor("ext", DEFAULT_ITEM_PLACEMENTS.ext) });
 
@@ -778,6 +786,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	pi.registerTool(
 		defineTool({
 			name: "footer_framework_state",
+			label: "Footer Framework State",
 			description: "Get footer framework settings and latest rendered footer snapshot for autonomous tuning",
 			parameters: Type.Object({}),
 			async execute() {
@@ -799,6 +808,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	pi.registerTool(
 		defineTool({
 			name: "footer_framework_config",
+			label: "Footer Framework Config",
 			description: "Adjust footer framework settings without user command loop",
 			parameters: Type.Object({
 				command: Type.String({
