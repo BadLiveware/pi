@@ -28,6 +28,12 @@ Do not summarize the commit by the source of the request unless the source is it
 ## Commit Boundaries
 Prefer commits that are coherent, reviewable, and revertible.
 
+A commit should be one complete semantic piece of work: a change that future readers can understand, review, test, and revert as a unit. Avoid both extremes:
+- **Dump commits:** unrelated fixes, refactors, docs, generated files, and behavior changes bundled only because they happened in the same session.
+- **Line-item commits:** tiny commits for individual lines, typo-by-typo edits, or mechanical fragments that are not independently meaningful.
+
+Before staging, group the diff by intent. Ask: "Would this commit still make sense if reviewed, reverted, or cherry-picked alone?" If not, split it differently or batch related fragments together.
+
 Batch together:
 - small related fixes in the same area
 - typo, comment, naming, formatting, and straightforward test updates
@@ -42,7 +48,9 @@ Separate commits for:
 - unrelated areas of the codebase
 - any change where review or rollback is clearer as its own commit
 
-If in doubt, prefer a separate commit over a mixed commit.
+Do not split a semantic unit just because it touches multiple files. Tests, docs, migrations, generated artifacts, and source changes belong together when they are required for the same behavior to be complete and reviewable. Do split preparatory refactors from behavior changes when each can stand alone.
+
+If in doubt, prefer the smallest semantic commit that is complete on its own, not the smallest textual diff.
 
 ## Message Structure
 Use this structure by default:
@@ -105,8 +113,9 @@ columns stay stable while the sweep report schema evolves.
 ## Workflow
 1. Check `git status --short` and identify unrelated local changes.
 2. Inspect the intended diff before staging or committing.
-3. Stage only the files for the current coherent commit group.
-4. Re-check the staged diff with `git diff --cached`.
-5. Write the commit message using the structure above.
-6. Commit.
-7. Check `git status --short` after committing and continue with the next commit group if needed.
+3. Partition the diff into semantic commit groups: each group should have one intent, be complete enough to validate/revert alone, and avoid unrelated changes.
+4. Stage only the files or hunks for the current coherent commit group.
+5. Re-check the staged diff with `git diff --cached`; if it reads like a dump commit or a line-item fragment, adjust staging before committing.
+6. Write the commit message using the structure above.
+7. Commit.
+8. Check `git status --short` after committing and continue with the next semantic group if needed.
