@@ -4,6 +4,8 @@ A configurable footer framework extension that intentionally owns/hijacks the fo
 
 This is designed to pair with primitive-emitting extensions (for example `pr-upstream-status` via `pr-upstream:state`).
 
+It ships with a bundled skill (`footer-framework-config`) and advertises it via package metadata + `resources_discover`, so Pi can apply footer tuning commands automatically when this extension is active.
+
 ## Behavior
 
 - Replaces the default footer when enabled.

@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
@@ -148,6 +150,8 @@ function settingsSummary(settings: FooterFrameworkSettings): string {
 	].join("\n");
 }
 
+const extensionDir = path.dirname(fileURLToPath(import.meta.url));
+
 export default function footerFramework(pi: ExtensionAPI): void {
 	const settings: FooterFrameworkSettings = { ...DEFAULT_SETTINGS };
 	let prState: PrState | undefined;
@@ -257,6 +261,10 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			};
 		});
 	}
+
+	pi.on("resources_discover", async () => {
+		return { skillPaths: [path.join(extensionDir, "skills")] };
+	});
 
 	pi.events.on("pr-upstream:state", (event) => {
 		prState = event as PrState;
