@@ -27,7 +27,9 @@ Returned columns include:
 - quota guidance tier
 - usage guidance in the details section
 
-The `cost` and `quota` columns are guidance tiers, not live billing or remaining-quota data. They are meant to help the agent choose between fast/cheap, default, and scarce/strong models.
+For model overrides, agents should choose rows with both `support: yes` and `enabled: yes` unless the user explicitly authorizes configuration changes. `auth: yes` only means credentials exist.
+
+The `cost` and `quota` columns are guidance tiers, not live billing or remaining-quota data. They are meant to help the agent choose between cheap/lower-scarcity, premium low-latency, default, and scarce/strong models. In particular, `-spark` models are treated as premium very-low-latency options, not cheap defaults.
 
 ## Locally unsupported models
 

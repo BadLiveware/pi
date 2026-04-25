@@ -192,6 +192,12 @@ Execute <plan/source> end-to-end without pausing for intermediate status reports
 - Stop policy: do not emit standalone progress summaries while unblocked in-scope work remains.
 ```
 
+## Delegation and Model Choice
+- For delegation details, use `subagent-delegation`.
+- Before assigning long-plan work to a non-current model, call `list_pi_models` and choose from supported enabled models based on capability, context, latency, cost, and quota guidance.
+- Do not rely on stale `enabledModels` entries or remembered model names for long-running work; treat models excluded or marked `support: no` by `list_pi_models` as unavailable unless the user explicitly authorizes diagnostics.
+- Keep parent responsibility for integration, acceptance, checkpoint commits, and final validation even when subagents perform focused leaf work.
+
 ## Task and Scope Rules
 - Keep checklist items concrete, independently verifiable, reviewable, and sized like plausible commit boundaries.
 - Keep the task list as a visible execution window, not the complete long-plan backlog; `.ralph` is the full checklist source of truth.

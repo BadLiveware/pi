@@ -115,4 +115,5 @@ Commit permission is active only when the user explicitly asked for commits or a
 
 ## Delegation
 - For delegation details, use `subagent-delegation`.
+- Before choosing a non-current model for delegated plan work, call `list_pi_models` and choose from supported enabled models; do not rely on stale config or models marked locally unsupported.
 - Delegate only focused, low-coupling leaf tasks with `agentType` and `TaskExecute` when available, while keeping parent responsibility for integration, conflict resolution, and final validation.

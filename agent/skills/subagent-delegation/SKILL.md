@@ -10,7 +10,7 @@ Use this skill to decide whether to delegate, how to bound delegated work, and h
 ## Outcome
 - delegate only work with a clear leaf scope and reviewable deliverable
 - use subagents when parallelism, independence, specialization, or model rightsizing improves the result, unless a concrete avoid condition applies
-- choose models from the current enabled set based on task needs, not stale model names
+- choose models from the current supported enabled set based on task needs, not stale or locally unsupported model names
 - keep the parent agent responsible for integration, acceptance, and final validation
 
 ## Reach for This Skill When
@@ -35,24 +35,26 @@ Default action: for non-trivial work with at least one bounded leaf task and che
 | Independent adversarial review of risky work | Yes when risk warrants | same-capability or stronger enabled model | Isolation and a second reasoning pass are the value; different model is optional. |
 | Broad work with evolving requirements or large implicit context | Usually no | current model; delegate only narrow scouts/reviews | Context transfer and integration cost dominate. |
 | Hard broad work where orchestration, safety, or validation is the hard part | Do not use leaf delegation as the main fix | stronger parent model, explicit user direction, or narrower scope | A subagent can help scout/review, but cannot own acceptance or compensate for unsafe orchestration. |
-| Parallel source/repo triage | Yes when coverage or latency matters | fast enabled model or multiple bounded agents | Bounded independent lookups are cheap to verify. |
+| Parallel source/repo triage | Yes when coverage or latency matters | cost-appropriate enabled model; use premium-speed models only when latency is worth the cost | Bounded independent lookups are easy to verify, but not always worth premium latency pricing. |
 
 ## Dynamic Model Selection
 
-When model choice matters, inspect the current Pi configuration first, especially `~/.pi/agent/settings.json` and its `enabledModels` list. Before passing a `model` override, downshifting, or upshifting, inspect the current enabled model list unless it was already inspected in this session. If you do not inspect, omit the override and state why the default is acceptable.
+When model choice matters, call `list_pi_models` before passing a `model` override, downshifting, or upshifting unless the current session already inspected it recently. Prefer the tool over reading raw config because it combines current registry data, auth availability, enabled status, context limits, capability flags, cost/quota guidance, and local unsupported-model hints. If the tool is unavailable, fall back to inspecting local configuration such as `~/.pi/agent/settings.json` and its `enabledModels` list; if you do not inspect either source, omit the override and state why the default is acceptable.
 
-When using the `subagent` tool, inspect available agents with `subagent {"action":"list"}` if names or capabilities are uncertain. Use only enabled models and configured agents unless the user explicitly authorizes changing configuration.
+Treat locally unsupported models as unavailable for delegation. `list_pi_models` excludes them by default; use `unsupported: "include"` or `unsupported: "only"` only for diagnostics, not as permission to select them. For model overrides, require both `support: yes` and `enabled: yes` in the catalog unless the user explicitly authorizes configuration changes. Do not choose a model just because it has `auth: yes`, and do not choose a model just because it appears in `enabledModels` if the catalog marks it unsupported.
 
-Do not hard-code a permanent model ladder in this skill. Providers, model names, pricing, quotas, speed, and quality change. Infer the choice from current config, explicit user guidance, available metadata, model names, and the task's actual risk. Do not rely on remembered provider/model rankings as authoritative; treat remembered reputation only as weak evidence when current metadata is absent. If the relative ordering is unclear and the choice materially affects cost, quota, or correctness, ask or choose the safer default and state the assumption.
+When using the `subagent` tool, inspect available agents with `subagent {"action":"list"}` if names or capabilities are uncertain. Use only supported enabled models and configured agents unless the user explicitly authorizes changing configuration.
+
+Do not hard-code a permanent model ladder in this skill. Providers, model names, pricing, quotas, speed, and quality change. Infer the choice from current catalog/config output, explicit user guidance, available metadata, model names, and the task's actual risk. Do not rely on remembered provider/model rankings as authoritative; treat remembered reputation only as weak evidence when current metadata is absent. If the relative ordering is unclear and the choice materially affects cost, quota, support, or correctness, ask or choose the safer default and state the assumption.
 
 Choose by these dimensions:
 
 - **Capability:** use a stronger enabled model for narrow work that needs deeper reasoning, higher implementation reliability, or adversarial review.
 - **Cost/quota/scarcity:** use a cheaper or less scarce enabled model for bounded routine work when the output is easy to verify.
 - **Latency:** use a faster enabled model when quick turnaround matters and the task is well-scoped.
-- **Quota partitioning:** treat names such as `spark`, `mini`, `flash`, `lite`, or provider-specific variants as signals to check speed/quota/cost tradeoffs, not proof of low intelligence.
+- **Quota partitioning:** treat names such as `mini`, `flash`, `lite`, or provider-specific variants as signals to check speed/quota/cost tradeoffs, not proof of low intelligence. Treat `spark` as a premium very-low-latency signal, not as a cheap-model signal.
 - **Context isolation:** use the same or similar capability class when the main benefit is independent review, fresh perspective, or parallelism rather than cheaper execution.
-- **Tool/context needs:** prefer a model/agent combination that exists, has the required tools, and has enough context budget for the bounded prompt.
+- **Tool/context needs:** prefer a model/agent combination that exists, is locally supported, has the required tools, and has enough context budget for the bounded prompt.
 
 Default downshift rule: if the current session is using a top, expensive, slow, or scarce model, actively look for bounded routine work that can run on a cheaper, faster, or less scarce enabled model while still being reliable enough.
 
@@ -67,6 +69,8 @@ Do not use these excuses to skip or misuse delegation:
 - “I can just do it myself.” If non-trivial work contains a bounded routine subtask and verification is cheap, delegate or downshift at least one useful leaf task unless an avoid condition applies.
 - “This is tiny.” For truly trivial work, keep it local; for a batch of tiny independent checks, delegate or parallelize when it saves scarce context or latency.
 - “The strongest model is safest.” Do not spend scarce top-model quota on mechanical search, obvious summaries, or easy-to-verify routine work.
+- “It is in `enabledModels`, so it is usable.” Enabled config is not enough; honor `list_pi_models` support status and do not select locally unsupported models.
+- “It has `auth: yes`, so I can override to it.” Auth availability is not enough for model overrides; require `enabled: yes` too unless the user authorizes changing configuration.
 - “The surrounding task is simple.” Upshift the narrow hard slice when that slice is correctness-sensitive or reasoning-heavy.
 - “The subagent can figure out the scope.” Do not delegate vague ownership of the whole problem. Delegate leaf work with explicit files, sources, deliverables, and acceptance criteria.
 - “A subagent result is enough.” The parent must review, integrate, and validate before treating the work as done.
@@ -100,7 +104,7 @@ For research-heavy planning or source-sensitive work, prefer configured namespac
 
 Treat these as possible agent names, not guaranteed names. Inspect available agents first when uncertain, and fall back to a configured general-purpose agent with a bounded research prompt when the Feynman agent is unavailable.
 
-Use model overrides from the currently enabled models when launching these agents. Quick source triage can use a fast enabled model when quota allows; difficult verification or review may justify a stronger enabled model.
+Use model overrides from models shown by `list_pi_models` as supported and enabled when launching these agents. Quick source triage can use a cheaper or less scarce supported model when cost matters, or a premium-speed model such as `-spark` only when latency is worth the higher cost; difficult verification or review may justify a stronger supported model.
 
 ## Workflow
 1. Decide whether there is a bounded leaf task with small, stable context.
@@ -108,7 +112,7 @@ Use model overrides from the currently enabled models when launching these agent
 3. Compare prompt/wait/review/integration cost against doing it locally.
 4. If delegation fits, define the exact subtask, expected output, acceptance criteria, and files or sources the subagent may inspect.
 5. Discover available agents/models when uncertain; do not copy example names blindly. If an example uses a placeholder agent name, replace it with a configured agent returned by the current environment.
-6. Choose the enabled model that best fits the task's capability, latency, cost, quota, context, and tool needs.
+6. Choose the supported enabled model from `list_pi_models` that best fits the task's capability, latency, cost, quota, context, and tool needs. If `list_pi_models` is unavailable, use current config as a fallback and avoid unsupported or unverified model names.
 7. If task tools are available, create or update a task for delegated work when tracking matters. Use `TaskExecute` when it fits; use the `subagent` tool directly when you need a custom agent, model override, output file, async run, or parallel fan-out.
 8. Keep prompts concrete, bounded, and limited to the context the subagent actually needs.
 9. Review the result before integrating.
@@ -120,7 +124,7 @@ Use model overrides from the currently enabled models when launching these agent
 - Reading a plan file for context is parent setup work, not a delegated task, unless plan analysis itself is the deliverable.
 - Delegate concrete leaf tasks with a clear done state, not vague parent/container, bookkeeping-only, or catch-all tasks.
 - Use dependencies to order delegated work safely and keep the parent agent responsible for integration, conflict resolution, and final validation.
-- If using task execution with a model override, pick from current enabled models rather than stale or unavailable model names.
+- If using task execution with a model override, pick from `list_pi_models` supported enabled models rather than stale, unsupported, or unavailable model names.
 
 ## Delegation Template
 
@@ -149,7 +153,7 @@ Downshift a routine bounded batch:
 {
   "agent": "<configured-agent-name-from-subagent-list>",
   "task": "Inspect docs/*.md and config/*.json for mentions of <key>. Do not edit files. Return matching files and one-line context for each match.",
-  "model": "<fast or less scarce enabled model; output is mechanical and easy to verify>"
+  "model": "<cheaper or less scarce supported enabled model; use premium-speed models only if latency matters>"
 }
 ```
 
@@ -191,4 +195,5 @@ When changing this skill, pressure-test at least these cases unless the gap is d
 - limited parent model plus hard narrow slice -> upshift or record a concrete reason not to
 - hard broad migration -> do not solve with leaf implementation delegation
 - example placeholders -> discover configured agent names instead of copying placeholders
-- stale model ladder temptation -> inspect enabled models before model override
+- stale model ladder temptation -> call `list_pi_models` before model override
+- unsupported-model temptation -> do not select a model that `list_pi_models` excludes or marks `support: no`

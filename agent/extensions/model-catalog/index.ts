@@ -93,7 +93,12 @@ function matchesModel(model: Model<Api>, query: string | undefined): boolean {
 	return `${model.provider} ${model.id} ${model.name}`.toLowerCase().includes(needle);
 }
 
+function isSparkModel(model: Model<Api>): boolean {
+	return /(?:^|[-_])spark(?:$|[-_])/.test(model.id.toLowerCase());
+}
+
 function classifyCost(model: Model<Api>): string {
+	if (isSparkModel(model)) return "premium-speed";
 	const cost = model.cost;
 	const output = cost?.output ?? 0;
 	const input = cost?.input ?? 0;
@@ -108,28 +113,36 @@ function classifyCost(model: Model<Api>): string {
 function classifyQuota(model: Model<Api>): string {
 	const id = model.id.toLowerCase();
 	const provider = String(model.provider).toLowerCase();
-	if (/spark|mini|flash|lite|haiku|small/.test(id)) return "fast/limited";
+	if (isSparkModel(model)) return "very-fast";
+	if (/mini|flash|lite|haiku|small/.test(id)) return "fast/limited";
 	if (/opus|pro|gpt-5\.5|o3|sonnet|grok-4/.test(id)) return "scarce";
 	if (provider.includes("codex") || provider.includes("copilot")) return "subscription";
 	return "standard";
 }
 
-function modelStrength(model: Model<Api>): "fast" | "standard" | "strong" {
+function modelProfile(model: Model<Api>): "latency" | "fast" | "standard" | "strong" {
 	const id = model.id.toLowerCase();
-	if (/spark|mini|flash|lite|haiku|small/.test(id)) return "fast";
+	if (isSparkModel(model)) return "latency";
+	if (/mini|flash|lite|haiku|small/.test(id)) return "fast";
 	if (/opus|pro|gpt-5\.5|gpt-5\.4(?!-mini)|o3|sonnet|grok-4/.test(id)) return "strong";
 	return "standard";
 }
 
 function usageGuidance(model: Model<Api>): Pick<ModelCatalogRow, "useFor" | "avoidFor"> {
-	const strength = modelStrength(model);
-	if (strength === "fast") {
+	const profile = modelProfile(model);
+	if (profile === "latency") {
 		return {
-			useFor: "routine edits, search, summaries, tests, bounded subagent tasks",
+			useFor: "latency-critical bounded tasks and quick scouts when very high speed is worth premium cost",
+			avoidFor: "cheap routine delegation, bulk mechanical work, cost-sensitive tasks, risky architecture, final review",
+		};
+	}
+	if (profile === "fast") {
+		return {
+			useFor: "routine edits, search, summaries, tests, bounded subagent tasks when low cost or lower scarcity matters",
 			avoidFor: "risky architecture, subtle debugging, final review of high-impact changes",
 		};
 	}
-	if (strength === "strong") {
+	if (profile === "strong") {
 		return {
 			useFor: "hard reasoning, risky refactors, architecture, adversarial review",
 			avoidFor: "mechanical searches or easy-to-verify chores when faster models suffice",
@@ -258,6 +271,7 @@ export default function modelCatalog(pi: ExtensionAPI): void {
 		promptSnippet: "List/query Pi models and model-selection guidance.",
 		promptGuidelines: [
 			"Use list_pi_models before choosing or recommending a model when current model availability, local support status, cost, quota, or capability matters.",
+			"For model overrides, choose rows with support yes and enabled yes unless the user explicitly authorizes configuration changes; auth yes alone only means credentials exist.",
 			"list_pi_models excludes locally unsupported models by default; use unsupported: 'include' or 'only' only for diagnostics.",
 			"list_pi_models cost/quota fields are guidance tiers, not live remaining quota.",
 		],
