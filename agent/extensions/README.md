@@ -8,6 +8,7 @@ This directory contains separate Pi extensions that can be used locally together
 - [`compaction-continue`](./compaction-continue) — sends a plain `continue` after context-overflow/active-loop compactions leave Pi idle.
 - [`pr-upstream-status`](./pr-upstream-status) — tracks upstream pull requests and emits PR primitives for status/footer composition.
 - [`footer-framework`](./footer-framework) — configurable footer framework that can own the footer and compose primitives.
+- [`model-catalog`](./model-catalog) — exposes Pi model listings and cost/quota guidance as an agent tool.
 
 ## Local auto-discovery
 
@@ -18,6 +19,7 @@ plan-mode/index.ts
 compaction-continue/index.ts
 pr-upstream-status/index.ts
 footer-framework/index.ts
+model-catalog/index.ts
 ```
 
 Run `/reload` after changing files.
@@ -50,6 +52,10 @@ npm publish
 cd ../footer-framework
 npm pack --dry-run
 npm publish
+
+cd ../model-catalog
+npm pack --dry-run
+npm publish
 ```
 
 After publishing, install them independently:
@@ -59,6 +65,7 @@ pi install npm:pi-plan-mode
 pi install npm:pi-compaction-continue
 pi install npm:pi-pr-upstream-status
 pi install npm:pi-footer-framework
+pi install npm:pi-model-catalog
 ```
 
 Before publishing, update each package name/scope, license, repository, and version as needed.

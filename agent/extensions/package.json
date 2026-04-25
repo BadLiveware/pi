@@ -8,7 +8,8 @@
     "plan-mode",
     "compaction-continue",
     "pr-upstream-status",
-    "footer-framework"
+    "footer-framework",
+    "model-catalog"
   ],
   "keywords": [
     "pi-package",
@@ -19,7 +20,8 @@
       "./plan-mode",
       "./compaction-continue",
       "./pr-upstream-status",
-      "./footer-framework"
+      "./footer-framework",
+      "./model-catalog"
     ]
   }
 }

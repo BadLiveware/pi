@@ -1,0 +1,27 @@
+{
+  "name": "pi-model-catalog",
+  "version": "0.1.0",
+  "description": "Expose Pi model listings and selection guidance as an agent tool.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "models"
+  ],
+  "license": "MIT",
+  "files": [
+    "README.md",
+    "index.ts",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}
