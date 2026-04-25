@@ -9,6 +9,7 @@ Use this skill whenever creating commits or deciding commit boundaries. The goal
 
 ## Safety Boundaries
 - Do not commit unless the user explicitly asked for a commit or the active skill/workflow explicitly includes committing.
+- When commit permission is active for multi-step work, commit at validated semantic checkpoints instead of waiting for one final dump commit.
 - Do not push unless the user explicitly asked for a push or the active skill/workflow explicitly pushes by default.
 - Do not force-push, rebase, reset, squash, amend, tag, or merge without explicit approval.
 - Preserve unrelated local changes. Stage only files that belong in the current commit.
@@ -51,6 +52,15 @@ Separate commits for:
 Do not split a semantic unit just because it touches multiple files. Tests, docs, migrations, generated artifacts, and source changes belong together when they are required for the same behavior to be complete and reviewable. Do split preparatory refactors from behavior changes when each can stand alone.
 
 If in doubt, prefer the smallest semantic commit that is complete on its own, not the smallest textual diff.
+
+## Checkpoint Commit Policy
+When commit permission is active, commit continuously at semantic checkpoints:
+- after a complete, validated behavior change
+- after an independently useful refactor
+- after a docs, config, migration, or test-only change that stands alone
+- after a plan slice or long-plan increment that leaves the repository coherent
+
+Do not commit incomplete scaffolding, unvalidated changes, unresolved merge/conflict states, unrelated changes bundled together, or fragments that only make sense as part of a later commit. If validation for a checkpoint is unavailable but committing is still useful, record the validation gap in the commit body.
 
 ## Message Structure
 Use this structure by default:
@@ -118,4 +128,4 @@ columns stay stable while the sweep report schema evolves.
 5. Re-check the staged diff with `git diff --cached`; if it reads like a dump commit or a line-item fragment, adjust staging before committing.
 6. Write the commit message using the structure above.
 7. Commit.
-8. Check `git status --short` after committing and continue with the next semantic group if needed.
+8. Check `git status --short` after committing and continue with the next semantic group if needed. For multi-step work with commit permission, repeat this workflow after each validated semantic checkpoint.

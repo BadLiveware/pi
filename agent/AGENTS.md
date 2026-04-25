@@ -49,6 +49,7 @@ Approach software development work with understanding, correctness, testability,
 - For ordered plan documents, finish the current referenced document before proposing the next unless the user explicitly reprioritizes.
 - Judge completion against the current document’s own scope, mandatory items, and exit criteria; do not call scaffolding, observability, or partial groundwork done when required implementation work remains.
 - Create concrete tasks with clear done states; use parent/container tasks only for coordination; avoid catch-all or bookkeeping tasks like `the rest`, `misc follow-up`, or progress-only tasks.
+- Keep the visible task list small enough to scan. The UI commonly shows about 10 rows total, including completed tasks; for broad or long work, keep a rolling window of roughly 5-8 active leaf tasks and store the full backlog in a plan, `.ralph`, or notes file.
 - Treat the task list as an execution tool, not the boundary of requested scope. If required in-scope work is missing, add or update concrete tasks and continue.
 - When context or scope changes, reconcile the task list immediately before continuing: keep completed tasks from the current execution round unless they were created in error or clearly replaced/subsumed, delete older completed tasks from irrelevant prior context when they no longer support the current execution scope, and delete or supersede obsolete pending tasks instead of carrying unrelated history forward.
 - Do not spend a turn deciding whether routine housekeeping is necessary. If task cleanup, diff inspection, or similar maintenance supports current execution, validation, or review, do it directly; otherwise skip it.
@@ -94,7 +95,7 @@ Approach software development work with understanding, correctness, testability,
 
 Use the available skills when they fit:
 - `requirements-discovery`
-- `implementation-planning`
+- `planning`
 - Feynman research skills when planning depends on prior work, external evidence, papers, or comparing approaches
 - `commit`
 - `execute-plan`

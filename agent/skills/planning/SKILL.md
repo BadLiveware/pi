@@ -1,9 +1,9 @@
 ---
-name: implementation-planning
+name: planning
 description: Use when work is large, risky, or multi-step enough that you should sequence changes, validation, and any preparatory refactors before editing code.
 ---
 
-# Implementation Planning
+# Planning
 
 Use this skill to turn explicit requirements into a validated plan before editing code. If the plan is already clear and the next job is to start executing it through tasks, switch to `execute-plan`.
 
@@ -91,13 +91,39 @@ Splitting rules:
 - If an existing umbrella plan exists, link to it from `README.md` and treat the split directory as the execution plan.
 - When execution is expected to be long-running, recommend `execute-long-plan` for the handoff.
 
+## Purpose Anchoring
+Do not invent an overarching product, architectural, or strategic purpose from a terse planning request.
+
+A short prompt such as "create a long plan", "make a deep plan", or "plan this out" controls planning format and depth; it is not enough by itself to establish the actual goal, desired end state, product intent, or implementation scope.
+
+Anchor the plan purpose only in:
+- explicit user instructions
+- files, issues, docs, or plans the user directly references
+- verified repository evidence that is clearly relevant
+- assumptions that are explicitly labeled as assumptions
+
+If the overarching purpose is ambiguous or multiple plausible purposes exist, ask a targeted clarification before writing a full implementation plan. Keep that clarification short: ask the highest-leverage question, or offer 2-3 one-line directions with a recommendation. If the user has asked you to proceed without clarification, write a discovery/intake plan whose first tasks establish purpose, scope, constraints, and success criteria instead of presenting guessed implementation work as settled.
+
+## Planning Alignment Style
+When planning needs user alignment, keep the narrowing step brief and decision-oriented:
+- lead with the one missing decision that most affects the plan
+- narrow in stages: use the answer to decide whether another question is needed instead of front-loading every possible question
+- offer at most 2-3 directions unless the user asks for a broader survey
+- keep each option to one or two lines plus the consequence that matters
+- include your recommendation and why in one short sentence
+- stop asking once the remaining assumptions are low-risk enough to state explicitly
+- avoid producing a long plan preview before the user has anchored the purpose
+
 ## Plan Quality Contract
 Every non-trivial plan should be executable by a future agent without guessing. Include:
+- purpose and desired end state anchored to explicit user input or verified evidence
+- clear separation between observed facts, user-stated requirements, and assumptions
 - goal, scope, non-goals, assumptions, and constraints
 - affected files or exact code/docs areas when knowable
 - task breakdown where each leaf task has a coherent outcome, acceptance criteria, and validation
 - risks, rollback points, side effects, and approval gates
 - explicit validation commands or inspection checks with expected signals; if unknown, add a discovery task
+- no acceptance criteria, milestones, or implementation tasks that depend on an unstated inferred purpose
 
 ## Task Granularity
 A leaf task is the right size when it:
@@ -126,23 +152,24 @@ For a moderately complicated or high-risk plan, optionally dispatch a reviewer u
 
 ## Workflow
 1. Capture requirements, non-goals, assumptions, constraints, and public contract concerns.
-2. Identify affected code, generated artifacts, local constraints, and project-sanctioned validation commands.
-3. For complicated or source-sensitive subjects, run a focused Feynman research preflight before freezing scope:
+2. For terse or format-only prompts, first determine whether the user has supplied the goal and scope. If not, either ask one concise question for the missing purpose/success criteria, offer 2-3 short directions with a recommendation, or make purpose discovery the first explicit plan task. Do not fill the gap with prior-session memory, nearby filenames, examples, or likely-sounding product intent unless the user referenced them or you verify and label them as assumptions.
+3. Identify affected code, generated artifacts, local constraints, and project-sanctioned validation commands.
+4. For complicated or source-sensitive subjects, run a focused Feynman research preflight before freezing scope:
    - use `session-search` when prior work or earlier decisions may matter
    - use `alpha-research` or `literature-review` for academic or paper-backed questions
    - use `source-comparison` when choosing between tools, approaches, claims, or frameworks
    - use `deep-research` when a sourced brief is needed before planning
-4. If working from an existing plan, isolate the current referenced phase/document and its immediate prerequisites.
-5. Break the work into independently validatable steps and order refactors, behavior changes, delegation, and cleanup.
-6. Call out risks, rollback points, side effects, and any code likely to need targeted comments.
-7. Choose domain-facing names early; do not carry plan labels into code.
-8. If writing a plan document, first decide whether it should be a normal single document or a split plan directory using Long Plan Splitting.
-9. For a single plan document, give each major phase/group concrete nested tasks rather than context-only prose.
-10. For a split plan directory, write `README.md` plus ordered numbered plan files, and make each numbered file concrete enough for direct execution.
-11. Run the Plan Self-Review; for moderately complicated plans, consider a reviewer subagent using `plan-quality-review.md`.
-12. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
-13. Keep the plan and task list aligned as work evolves.
-14. Judge completion against the current plan document's own scope and exit criteria.
+5. If working from an existing plan, isolate the current referenced phase/document and its immediate prerequisites.
+6. Break the work into independently validatable steps and order refactors, behavior changes, delegation, and cleanup.
+7. Call out risks, rollback points, side effects, and any code likely to need targeted comments.
+8. Choose domain-facing names early; do not carry plan labels into code.
+9. If writing a plan document, first decide whether it should be a normal single document or a split plan directory using Long Plan Splitting.
+10. For a single plan document, give each major phase/group concrete nested tasks rather than context-only prose.
+11. For a split plan directory, write `README.md` plus ordered numbered plan files, and make each numbered file concrete enough for direct execution.
+12. Run the Plan Self-Review; for moderately complicated plans, consider a reviewer subagent using `plan-quality-review.md`.
+13. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
+14. Keep the plan and task list aligned as work evolves.
+15. Judge completion against the current plan document's own scope and exit criteria.
 
 ## Handoff to Execute Plan
 - Use `execute-plan` when the plan is already clear, aligned with the user's request, and the next job is execution.
@@ -153,8 +180,9 @@ For a moderately complicated or high-risk plan, optionally dispatch a reviewer u
 
 ## Task Guidance
 - Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` proactively for meaningfully multi-step work.
+- Keep task lists UI-scannable: the task panel commonly shows about 10 rows total, including completed tasks. For large plans, create a rolling window of roughly 5-8 active leaf tasks and keep the complete backlog in the plan document.
 - Read plan files for context, but do not create bookkeeping tasks like `read the plan file` unless review itself is the deliverable.
-- Create tasks from concrete implementation steps in the current referenced plan document.
+- Create tasks from concrete implementation steps in the current referenced plan document, prioritizing the next visible work window over mirroring every future item at once.
 - Prefer task descriptions with `Goal`, `Files / areas`, `Acceptance criteria`, `Validation`, and `Risks / notes` sections.
 - Use parent/container tasks only for coordination; keep coding, validation, migration, and documentation work in leaf tasks.
 - Treat the task list as execution scaffolding, not as the boundary of requested scope; add missing in-scope tasks when needed.

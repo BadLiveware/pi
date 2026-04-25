@@ -19,6 +19,7 @@ If the plan is very long, split across a master `README.md` plus numbered files,
 - the first unblocked leaf task is `in_progress`
 - execution continues through remaining in-scope tasks until blocked or complete
 - intermediate progress is recorded in tasks, notes, or plan files instead of emitted as a standalone chat checkpoint
+- semantic checkpoint commits are created when the user has asked for commits or another active workflow grants commit permission
 
 ## Plan Execution Stop Policy
 When executing a plan, do not stop merely to report status. Treat checkpoint summaries as internal artifacts unless the user explicitly asked for a status-only response.
@@ -50,7 +51,7 @@ Before converting a moderately complicated plan into tasks, scan it for executio
 - validation without exact commands/inspection checks or expected signals where knowable
 - artifact hygiene risks, especially plan/stage/checklist language leaking into produced docs/code
 
-If the plan is moderately complicated or high-risk and these checks are non-obvious, use the reviewer prompt in `../implementation-planning/plan-quality-review.md` before executing.
+If the plan is moderately complicated or high-risk and these checks are non-obvious, use the reviewer prompt in `../planning/plan-quality-review.md` before executing.
 
 ## Structured Task Descriptions
 When creating tasks from a plan, put execution-critical detail in each leaf task description. Replace every `...` placeholder before creating the task; unresolved placeholders mean the task is not ready.
@@ -72,21 +73,30 @@ When creating tasks from a plan, put execution-critical detail in each leaf task
 **Risks / notes:** ...
 ```
 
+## Commit Checkpoints
+Use `commit` when commit permission is active. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not wait until the whole plan is done if that would create a dump commit, and do not commit tiny line-item fragments or incomplete scaffolding.
+
+Commit permission is active only when the user explicitly asked for commits or another active workflow includes committing. If commit permission is not active, leave changes uncommitted and summarize suggested commit boundaries at completion when useful.
+
 ## Workflow
 1. Treat the plan as the execution source; do not re-plan from scratch unless new evidence forces it.
 2. Verify that the plan still matches the user request, current scope, and constraints.
 3. Preserve the plan's recommended order in the task graph unless a safer dependency order is required.
 4. Run the Plan Readiness Review and resolve blockers before execution unless the user explicitly asks to proceed with known gaps.
 5. Create parent/container tasks only for major phases/groups; put real coding, validation, migration, and documentation work in child leaf tasks.
-6. Put references, target files, invariants, acceptance criteria, and validation details into the relevant task descriptions instead of separate bookkeeping tasks.
-7. Mark the first executable leaf task `in_progress` and begin execution in the same run.
-8. After each completed leaf task, call `TaskList`, pick the next unblocked in-scope leaf task, and continue.
-9. If the task list is exhausted but the plan scope is not complete, add the missing concrete tasks and continue.
-10. If the plan omits required in-scope work, add concrete tasks and continue.
-11. Stop only for the conditions in the Plan Execution Stop Policy.
+6. Keep the task list UI-scannable. The panel commonly shows about 10 rows total, including completed tasks; for larger plans, create only the next rolling window of roughly 5-8 active leaf tasks and keep future backlog in the plan until it is near execution.
+7. Put references, target files, invariants, acceptance criteria, and validation details into the relevant task descriptions instead of separate bookkeeping tasks.
+8. Mark the first executable leaf task `in_progress` and begin execution in the same run.
+9. After each completed leaf task, if commit permission is active and the completed work forms a validated semantic checkpoint, use `commit` before continuing.
+10. After each completed leaf task, call `TaskList`, pick the next unblocked in-scope leaf task, and continue.
+11. When the visible active window drops low and more plan work remains, add the next few concrete leaf tasks rather than materializing the whole remaining plan.
+12. If the task list is exhausted but the plan scope is not complete, add the missing concrete tasks and continue.
+13. If the plan omits required in-scope work, add concrete tasks and continue.
+14. Stop only for the conditions in the Plan Execution Stop Policy.
 
 ## Task Rules
 - Prefer one leaf task per independently completable, testable, reviewable unit of work that would make a plausible commit boundary.
+- Do not mirror every future plan item into tasks when that would push useful work out of the visible task panel; keep future items in the plan and add them just before execution.
 - Use parent/container tasks only for coordination.
 - Do not create vague executable tasks like `execute phase 2`, `continue slice C`, or `finish the rest`.
 - Treat `Continue` as instruction to resume from the task list.

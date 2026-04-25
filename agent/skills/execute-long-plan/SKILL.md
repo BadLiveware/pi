@@ -20,16 +20,17 @@ Before using this skill, read and follow `pi-ralph-wiggum` if that skill is avai
 ## Do Not Use This Skill When
 - the user asked for planning only or status only
 - the task is a quick fix, small edit, or short debugging pass
-- the plan is still too ambiguous to execute safely; use `implementation-planning` or `requirements-discovery` first
+- the plan is still too ambiguous to execute safely; use `planning` or `requirements-discovery` first
 - starting a Ralph loop would add more overhead than value
 
 ## Outcome
 - a `.ralph/<loop-name>.md` task file with goals, scope, checklist, validation evidence, and notes
 - automatic recognition of split plan directories with a master `README.md` and numbered plan files
 - a started Ralph loop for the long plan
-- optional task-list entries that mirror concrete executable work when useful
+- optional task-list entries that mirror the next visible window of concrete executable work when useful
 - execution proceeds through all unblocked in-scope work until the plan is complete or a stop condition is reached
 - progress summaries are recorded in `.ralph`, tasks, or plan files instead of sent as standalone chat updates
+- validated semantic checkpoint commits are created by default unless the user opts out or committing would violate safety boundaries
 
 ## Split Plan Detection
 Treat a referenced path as a split long plan when it is a directory containing:
@@ -71,6 +72,18 @@ Apply this to code, docs, generated files, examples, comments, migrations, confi
 - Keep plan provenance in `.ralph`, task descriptions, plan checklists, evidence logs, commit messages, and final chat summaries; do not put it in repository artifacts.
 - Before writing or reviewing docs from a plan, scan for plan-leak phrases like `stage`, `phase`, `plan`, `checklist`, `.agents`, `.ralph`, and the plan directory name; remove them unless the product domain genuinely uses them.
 
+## Commit Checkpoints
+Long-plan execution commits by default because the work is usually branch-based, substantial, and painful to reconstruct after a single dump commit. Use `commit` after each validated semantic unit or numbered plan file that leaves the repository coherent.
+
+Default commit behavior applies unless:
+- the user explicitly says not to commit
+- the repository is not in a safe branch/workspace state and committing would risk unrelated work
+- validation for the checkpoint failed and the change is not a useful, clearly marked WIP recovery point
+- the change is incomplete scaffolding or a line-item fragment that is not independently reviewable
+- committing would trigger a prohibited external side effect
+
+Do not push unless explicitly asked or another active workflow explicitly pushes by default. Preserve unrelated local changes and stage only the semantic checkpoint.
+
 ## Inner Loop Summaries
 Brief summaries at Ralph iteration boundaries are useful, but they are not stopping points.
 
@@ -85,13 +98,16 @@ Avoid user-facing standalone summaries after normal inner-loop progress. If more
 ## Plan Readiness Review
 Before starting a long execution loop, scan the active plan document for:
 - missing requirements coverage
+- unanchored overarching purpose, especially when a plan appears to have been generated from a terse or format-only user prompt
 - leaf tasks that are not independently testable/reviewable
 - placeholders such as `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
 - missing acceptance criteria or validation commands/inspection checks
 - validation without expected signals or explicit gaps
 - artifact hygiene risks, especially plan/stage/checklist language leaking into produced docs/code
 
-For a moderately complicated or high-risk plan, optionally dispatch a reviewer with `../implementation-planning/plan-quality-review.md`. Resolve blockers before starting unless the user explicitly accepts the gaps.
+Treat an unanchored or over-inferred purpose as a readiness blocker. Before executing, either clarify with the user or reduce the work to an explicit discovery/intake scope that validates purpose, constraints, and success criteria.
+
+For a moderately complicated or high-risk plan, optionally dispatch a reviewer with `../planning/plan-quality-review.md`. Resolve blockers before starting unless the user explicitly accepts the gaps.
 
 ## Structured Task Descriptions
 When mirroring plan work into tasks or `.ralph`, keep each active leaf item concrete:
@@ -105,7 +121,7 @@ When mirroring plan work into tasks or `.ralph`, keep each active leaf item conc
 ```
 
 ## Setup Workflow
-1. Confirm the referenced plan is clear enough to execute and still matches the user request and local constraints.
+1. Confirm the referenced plan is clear enough to execute, still matches the user request and local constraints, and has a purpose anchored in explicit user input or verified evidence rather than inferred from a short planning prompt.
 2. Detect whether the plan is a split plan directory using Split Plan Detection.
 3. Run the Plan Readiness Review for the master/current plan document and resolve blockers or record accepted gaps.
 4. Choose a short lowercase hyphenated loop name derived from the plan or feature, for example `sweep-workflow`.
@@ -118,7 +134,7 @@ When mirroring plan work into tasks or `.ralph`, keep each active leaf item conc
    - a verification section for commands, outputs, artifacts, and remaining gaps
    - notes for decisions, blockers, and scope changes
 6. Call `ralph_start` with the same loop name and the file content.
-7. If task tools are useful, create or reconcile concrete leaf tasks that mirror the same checklist. Do not create vague tasks like `finish the rest`.
+7. If task tools are useful, create or reconcile concrete leaf tasks for only the next rolling window of work. The task panel commonly shows about 10 rows total, including completed tasks; keep roughly 5-8 active leaf tasks visible and store the full backlog in `.ralph`.
 8. Mark the first executable item in progress and begin implementation in the same run.
 
 ## Execution Workflow
@@ -129,12 +145,14 @@ When mirroring plan work into tasks or `.ralph`, keep each active leaf item conc
    - update `.ralph/<loop-name>.md` checklist state
    - record verification evidence, command results, artifact paths, or explicit gaps
    - update task-list state if tasks are being used
+   - if the increment is a validated semantic checkpoint, use `commit` unless a commit opt-out or safety exception applies
 5. Call `ralph_done` after real iteration progress so the loop can continue.
 6. Continue immediately with the next unblocked in-scope item unless the Stop Policy applies.
-7. For split plans, when the active numbered file is complete, mark that top-level file item complete in `.ralph`, record handoff notes, read the next numbered file, add its concrete leaf items, and continue without a standalone user-facing checkpoint.
-8. If the checklist is exhausted but the original plan scope is not complete, add the missing concrete items to `.ralph` and continue.
-9. If new in-scope work is discovered, add concrete checklist items and continue. If out-of-scope work is discovered, record it under notes/deferred work without silently expanding scope.
-10. Output `<promise>COMPLETE</promise>` only after the requested scope and exit criteria are truly complete and validation evidence or gaps are recorded.
+7. For split plans, when the active numbered file is complete, mark that top-level file item complete in `.ralph`, record handoff notes, read the next numbered file, add its concrete leaf items to `.ralph`, refresh the visible task window, and continue without a standalone user-facing checkpoint.
+8. If the task list is running low but `.ralph` has more unblocked work, add only the next few concrete tasks instead of materializing the full backlog.
+9. If the checklist is exhausted but the original plan scope is not complete, add the missing concrete items to `.ralph` and continue.
+10. If new in-scope work is discovered, add concrete checklist items and continue. If out-of-scope work is discovered, record it under notes/deferred work without silently expanding scope.
+11. Output `<promise>COMPLETE</promise>` only after the requested scope and exit criteria are truly complete and validation evidence or gaps are recorded.
 
 ## Ralph File Template
 
@@ -176,6 +194,8 @@ Execute <plan/source> end-to-end without pausing for intermediate status reports
 
 ## Task and Scope Rules
 - Keep checklist items concrete, independently verifiable, reviewable, and sized like plausible commit boundaries.
+- Keep the task list as a visible execution window, not the complete long-plan backlog; `.ralph` is the full checklist source of truth.
+- Prefer completing and committing one semantic checkpoint at a time instead of accumulating a large uncommitted diff.
 - Use parent/container tasks only for coordination; use leaf tasks for actual implementation and validation.
 - TDD cycles happen inside implementation tasks; do not create separate bookkeeping tasks for red/green/refactor unless test infrastructure itself is the deliverable.
 - Keep task names domain-facing where practical, and keep code/docs/generated artifacts domain-facing always; do not put plan labels like `phase2`, `stage-05`, or a plan directory name into artifacts unless the product domain uses them.

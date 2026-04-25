@@ -16,6 +16,7 @@ Use this skill to align on the problem before implementation.
 ## Outcome
 - a compact statement of understanding, requirements, non-goals, assumptions, and risks
 - scope-appropriate alignment: no ceremony for obvious scoped changes, no skipped alignment for ambiguous or multi-path work
+- short alignment exchanges that narrow the decision without overwhelming the user
 - an evidence note when Feynman research is needed before assumptions are safe
 
 ## Scope Triage
@@ -30,15 +31,27 @@ Do not turn limited/scoped changes into a design ceremony. Do not skip alignment
 
 Urgency is not permission to guess. If the user says "just do it", "quick fix", or asks to avoid questions, proceed only when assumptions are low-risk; otherwise ask the smallest targeted question or state the risky assumption and get alignment before changing behavior, data safety, architecture, UX, or public contracts.
 
+## Concise Alignment
+The goal is to remove dangerous ambiguity, not to make the user choose from a wall of options.
+
+- Ask the smallest question that would unblock a safe next step.
+- Narrow in stages: ask the highest-leverage question first, then choose the next question based on the answer instead of sending a full questionnaire.
+- Prefer one question per turn. If several facts are missing, ask for the highest-leverage one first.
+- Keep options short: usually 2-3 choices, one line each, plus a recommendation when useful.
+- Use follow-up questions only when the previous answer leaves a material ambiguity; stop asking once assumptions are safe enough to proceed.
+- Avoid long menus, exhaustive tradeoff essays, and speculative directions unless the user asks for depth.
+- When possible, propose a default assumption and a quick confirmation instead of asking an open-ended question.
+- If the user picks an option too quickly from an under-explained list, restate the key consequence or risk before committing to a high-impact direction.
+
 ## Workflow
 1. Inspect relevant code and local project instructions first.
 2. Restate the task in plain language, distinguishing the user's requested mechanism from the underlying goal when they differ.
 3. Triage scope using the categories above.
 4. Identify gaps: missing inputs, unclear constraints, ambiguous behavior, codebase mismatches, contract concerns, evidence gaps, or environment constraints.
 5. When evidence gaps materially affect scope, use focused Feynman research before locking assumptions: `session-search` for prior work, `alpha-research` or `literature-review` for papers, `source-comparison` for competing approaches, and `deep-research` for a sourced brief.
-6. Ask targeted questions when assumptions would materially affect behavior, architecture, data safety, or user experience. Prefer one precise question at a time; use multiple-choice options when that reduces effort for the user.
+6. Ask targeted questions when assumptions would materially affect behavior, architecture, data safety, or user experience. Prefer one precise question at a time; use concise multiple-choice options when that reduces effort for the user.
 7. If low-risk assumptions are enough to proceed, state them explicitly and continue without asking for approval.
-8. For multi-path work, present 2-3 approaches with tradeoffs and a recommendation before planning or implementation.
+8. For multi-path work, present 2-3 concise approaches with the main tradeoff and a recommendation before planning or implementation.
 9. Produce a compact requirements list covering:
    - current behavior
    - desired behavior
@@ -68,5 +81,6 @@ Urgency is not permission to guess. If the user says "just do it", "quick fix", 
 
 ## Guidance
 - Prefer a small number of precise questions over a long questionnaire.
+- Keep alignment prompts brief enough that the user can answer without studying a mini design document.
 - Treat local conventions, generated-artifact flows, and public contracts as part of the requirements.
 - If the request conflicts with the codebase or local project instructions, say so clearly and ask for direction.
