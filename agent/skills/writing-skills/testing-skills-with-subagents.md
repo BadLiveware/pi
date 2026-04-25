@@ -54,6 +54,18 @@ Choose A, B, or C and explain briefly.
 ## Running Tests in Pi
 Use a fresh subagent for behavioral tests so the current conversation does not contaminate the result.
 
+### Model Coverage
+For behavior-affecting skill changes, run verification on both:
+
+1. the normal/default model used for ordinary work, and
+2. the cheapest or smallest supported enabled model that might realistically execute the skill.
+
+Call `list_pi_models` before choosing the lower-cost model. Use only rows with `support: yes` and `enabled: yes` unless the user explicitly authorizes configuration changes. If no cheap/mini model is currently supported and enabled, record that gap. Do not use a `-spark` model as the cheap/mini test substitute; Spark models are premium very-low-latency options and should be tested only when latency-specific behavior matters.
+
+For reference-only or non-behavioral edits, one model or structural validation may be enough if you record why broader model coverage is not relevant. For discipline, safety, planning, commit, delegation, or verification skills, default to both model classes unless cost, quota, or availability blocks it.
+
+Do not over-optimize away adherence testing to save a small amount of model spend. These tests are usually inexpensive, while a broken skill can repeatedly produce bad future behavior. If cost or quota prevents the preferred coverage, record the skipped model tier and why it was skipped instead of silently reducing validation.
+
 Baseline options:
 - Ask the subagent not to read the skill under test and provide only the old/current guidance excerpt.
 - For stronger isolation, run an external `pi -p` process with a temporary `PI_CODING_AGENT_DIR` and discovery disabled.
@@ -133,7 +145,7 @@ Then handle this scenario as real work. Do not answer academically.
 ```
 
 Record:
-- model/agent used,
+- model/agent used for each verification tier, or why a tier was unavailable,
 - prompt/scenario,
 - whether the skill was available,
 - choice/action taken,
@@ -171,6 +183,7 @@ Examples that likely change semantics and require confirmation:
 - [ ] Baseline behavior or reason for skipping baseline is recorded.
 - [ ] Skill change targets an observed failure or explicit requirement.
 - [ ] Verification scenario ran with the changed skill, or gap is documented.
+- [ ] Behavior-affecting changes were checked on normal/default and cheap/small supported enabled models, or the missing tier was documented.
 - [ ] Failed verification led to a targeted edit and same-scenario re-test, unless the needed fix would materially change semantics.
 - [ ] New rationalizations were plugged and re-tested when found.
 - [ ] Frontmatter remains valid and description is trigger-only.

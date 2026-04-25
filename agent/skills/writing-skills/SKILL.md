@@ -52,6 +52,10 @@ description: Use for flaky tests by adding retries, polling loops, and teardown 
 ## Testing Skills
 Use `testing-skills-with-subagents.md` when a skill change affects behavior, compliance, or when agents may rationalize around the rule.
 
+For behavior-affecting skill changes, verify with both the normal/default model and the cheapest or smallest supported enabled model that might realistically execute the skill. Use `list_pi_models` before choosing the lower-cost test model. Choose only supported enabled models; if no appropriate cheap/mini model is enabled, record the gap instead of substituting a premium low-latency `-spark` model. Do not treat `-spark` as a cheap mini substitute.
+
+Do not skip adherence tests just to save a small amount of model spend. Skill tests are usually cheap, and the cost of a broken skill shaping future agent behavior is usually higher than the cost of validating it now. If cost or quota truly blocks coverage, record the gap and the model tier that was skipped.
+
 Testing strategy by skill type:
 
 | Skill type | Test with | Passing means |
@@ -65,7 +69,7 @@ Testing strategy by skill type:
 1. Confirm this skill applies whenever creating or editing a skill, changing agent instructions, or changing guidance that future agents will follow.
 2. Inspect current guidance and identify the failure being prevented.
 3. Create or update the skill in the smallest coherent change.
-4. Run validation: markdown/frontmatter checks, link checks if relevant, and behavioral tests for any behavior-affecting change. For purely structural or non-behavioral edits, record why behavioral testing is not relevant.
+4. Run validation: markdown/frontmatter checks, link checks if relevant, and behavioral tests for any behavior-affecting change, including normal/default-model and cheap/small-model checks when applicable. For purely structural or non-behavioral edits, record why behavioral testing is not relevant.
 5. If behavioral validation fails and the intended semantics are unchanged, edit the skill with the smallest targeted counter and re-run the failed test. Repeat until passing.
 6. If the necessary edit would materially change the skill's semantics, stop and ask for confirmation instead of silently changing the contract.
 7. Run `./link-into-pi-agent.sh` after changing global agent files.
