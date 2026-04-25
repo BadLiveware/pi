@@ -8,7 +8,8 @@ description: Use when committing changes or deciding commit boundaries. Creates 
 Use this skill whenever creating commits or deciding commit boundaries. The goal is for future readers to understand what changed and why without needing the chat, PR review, or issue thread.
 
 ## Safety Boundaries
-- Do not commit unless the user explicitly asked for a commit or the active skill/workflow explicitly includes committing.
+- Do not commit unless the user explicitly asked for a commit, manually invoked this skill on its own, or the active skill/workflow explicitly includes committing.
+- Treat a standalone/manual invocation of this skill as a request to actually create the appropriate commit(s), not merely to explain how committing would work.
 - When commit permission is active for multi-step work, commit at validated semantic checkpoints instead of waiting for one final dump commit.
 - Do not push unless the user explicitly asked for a push or the active skill/workflow explicitly pushes by default.
 - Do not force-push, rebase, reset, squash, amend, tag, or merge without explicit approval.
