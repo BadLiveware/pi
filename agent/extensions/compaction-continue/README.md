@@ -17,6 +17,8 @@ It does this for:
 
 It checks `ctx.isIdle()` and `!ctx.hasPendingMessages()` before sending anything, so it should not interfere with running tool calls.
 
+The footer status shows `watchdog:on` or `watchdog:off`.
+
 ## Install
 
 From npm after publishing:

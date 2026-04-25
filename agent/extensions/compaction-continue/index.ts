@@ -92,7 +92,7 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 
 	function updateStatus(ctx: ExtensionContext): void {
 		const state = enabled ? ctx.ui.theme.fg("success", "on") : ctx.ui.theme.fg("error", "off");
-		ctx.ui.setStatus("compaction-continue", `${ctx.ui.theme.fg("muted", "hook:")}${state}`);
+		ctx.ui.setStatus("compaction-continue", `${ctx.ui.theme.fg("muted", "watchdog:")}${state}`);
 	}
 
 	function scheduleRecovery(compactionId: string, ctx: ExtensionContext): void {
