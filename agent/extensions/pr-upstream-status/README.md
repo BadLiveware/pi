@@ -4,11 +4,11 @@ Tracks the open upstream pull request for the current git branch (GitHub today, 
 
 ## What it shows
 
-- Branch line: adds an open PR indicator beside the branch in the footer.
-- PR link: PR number is rendered as an OSC-8 hyperlink (`#123`) when terminal support is available.
-- Status line: compact `pr:` summary with:
-  - `💬<count>` total of issue comments + review comments
+- Default footer status entry (`ctx.ui.setStatus`) with:
   - check result icon (`✅`, `❌`, `⏳`, or `•` unknown)
+  - optional `💬<count>` (issue + review comments)
+  - PR link (`#123`) as OSC-8 hyperlink when supported
+- Emits `pr-upstream:state` event bus primitives for custom footer extensions.
 
 ## Provider model
 
@@ -16,7 +16,7 @@ The extension uses a generalized `CodeHostProvider` interface and currently ship
 
 - `github` provider (GitHub REST API)
 
-Adding a new host means implementing `parseRepo()` and `findOpenPullRequest()`.
+Adding a new host means implementing `parseRepo()`, `findOpenPullRequest()`, and `fetchOpenFeedback()`.
 
 ## Auth
 
@@ -26,6 +26,11 @@ For private repositories or better rate limits, set one of:
 - `GITHUB_TOKEN`
 
 Without a token, public-repo lookups still work with anonymous API limits.
+
+For private repos:
+- the extension first tries REST auth from env tokens,
+- then optionally tries `gh auth token` as an auth source (if `gh` is installed/logged in),
+- and finally falls back to `git ls-remote refs/pull/*/head` to detect the PR number without requiring `gh`.
 
 ## Auto-solve PR comments (default: off)
 
@@ -39,6 +44,14 @@ then fetches new PR comments and sends a prompt that asks the agent to:
 1. verify each comment is true/relevant,
 2. ignore comments that are not true/relevant (with explanation),
 3. apply fixes for relevant comments.
+
+## Event primitive
+
+The extension emits:
+
+- `pr-upstream:state`
+
+Payload fields include branch, PR metadata (number/url/comments/checks), and auto-solve state.
 
 ## Commands
 

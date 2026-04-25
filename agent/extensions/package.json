@@ -7,7 +7,8 @@
   "workspaces": [
     "plan-mode",
     "compaction-continue",
-    "pr-upstream-status"
+    "pr-upstream-status",
+    "footer-framework"
   ],
   "keywords": [
     "pi-package",
@@ -17,7 +18,8 @@
     "extensions": [
       "./plan-mode",
       "./compaction-continue",
-      "./pr-upstream-status"
+      "./pr-upstream-status",
+      "./footer-framework"
     ]
   }
 }

@@ -1,0 +1,26 @@
+{
+  "name": "pi-footer-framework",
+  "version": "0.1.0",
+  "description": "Configurable footer framework extension for Pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "footer",
+    "ui"
+  ],
+  "license": "MIT",
+  "files": [
+    "README.md",
+    "index.ts",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}

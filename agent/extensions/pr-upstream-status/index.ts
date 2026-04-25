@@ -1,5 +1,4 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
 
@@ -36,6 +35,21 @@ interface BranchSnapshot {
 	error?: string;
 }
 
+interface PrUpstreamStateEvent {
+	branch?: string;
+	error?: string;
+	autoSolveEnabled: boolean;
+	pr?: {
+		number: number;
+		title: string;
+		url: string;
+		comments: number;
+		checks: ChecksState;
+		headSha?: string;
+		base: RepoRef;
+	};
+}
+
 interface CodeHostProvider {
 	id: string;
 	parseRepo(remoteUrl: string): RepoRef | undefined;
@@ -51,13 +65,6 @@ interface CodeHostProvider {
 const REFRESH_INTERVAL_MS = 90_000;
 const REFRESH_MIN_GAP_MS = 15_000;
 const AUTO_SOLVE_MIN_GAP_MS = 120_000;
-
-function formatTokens(count: number): string {
-	if (count < 1_000) return `${count}`;
-	if (count < 10_000) return `${(count / 1_000).toFixed(1)}k`;
-	if (count < 1_000_000) return `${Math.round(count / 1_000)}k`;
-	return `${(count / 1_000_000).toFixed(1)}M`;
-}
 
 function osc8(label: string, url: string): string {
 	return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
@@ -237,6 +244,47 @@ function dedupeRepos(repos: RepoRef[]): RepoRef[] {
 	return out;
 }
 
+async function findOpenPullRequestViaGitRefs(pi: ExtensionAPI, cwd: string, baseRepo: RepoRef): Promise<PullRequestInfo | undefined> {
+	const localHeadSha = await runGit(pi, cwd, "rev-parse", "HEAD");
+	if (!localHeadSha) return undefined;
+
+	const remotesOut = await runGit(pi, cwd, "remote");
+	if (!remotesOut) return undefined;
+	const remoteNames = remotesOut
+		.split(/\r?\n/)
+		.map((r) => r.trim())
+		.filter(Boolean);
+	const preferred = ["upstream", "origin"];
+	const orderedRemotes = [...preferred.filter((name) => remoteNames.includes(name)), ...remoteNames.filter((name) => !preferred.includes(name))];
+
+	for (const remoteName of orderedRemotes) {
+		const refs = await pi.exec("git", ["ls-remote", remoteName, "refs/pull/*/head"], { cwd, timeout: 12_000 });
+		if (refs.code !== 0 || !refs.stdout.trim()) continue;
+
+		for (const line of refs.stdout.split(/\r?\n/)) {
+			if (!line.trim()) continue;
+			const [sha, ref] = line.split(/\s+/);
+			if (!sha || !ref || sha !== localHeadSha) continue;
+			const match = ref.match(/^refs\/pull\/(\d+)\/head$/);
+			if (!match) continue;
+
+			const number = Number(match[1]);
+			if (!Number.isFinite(number)) continue;
+			return {
+				number,
+				title: `PR #${number}`,
+				url: `https://github.com/${baseRepo.owner}/${baseRepo.repo}/pull/${number}`,
+				comments: 0,
+				checks: "unknown",
+				headSha: localHeadSha,
+				base: baseRepo,
+			};
+		}
+	}
+
+	return undefined;
+}
+
 async function runGit(pi: ExtensionAPI, cwd: string, ...args: string[]): Promise<string | undefined> {
 	const result = await pi.exec("git", args, { cwd, timeout: 6_000 });
 	if (result.code !== 0) return undefined;
@@ -283,7 +331,8 @@ function renderCheck(theme: ExtensionContext["ui"]["theme"], checks: ChecksState
 
 export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	const provider = githubProvider;
-	const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+	let token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+	let attemptedGhToken = false;
 
 	let snapshot: BranchSnapshot = {};
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -294,68 +343,49 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let lastPromptedHeadSha: string | undefined;
 	let promptedFeedbackKeys = new Set<string>();
 	let lastRefreshAt = 0;
-	let requestRender: (() => void) | undefined;
+
+	async function maybeLoadTokenFromGh(ctx: ExtensionContext): Promise<void> {
+		if (token || attemptedGhToken) return;
+		attemptedGhToken = true;
+		const result = await pi.exec("gh", ["auth", "token"], { cwd: ctx.cwd, timeout: 4_000 });
+		if (result.code !== 0) return;
+		const discovered = result.stdout.trim();
+		if (!discovered) return;
+		token = discovered;
+	}
+
+	function emitPrimitives(): void {
+		const payload: PrUpstreamStateEvent = {
+			branch: snapshot.branch,
+			error: snapshot.error,
+			autoSolveEnabled,
+			pr: snapshot.pr
+				? {
+					number: snapshot.pr.number,
+					title: snapshot.pr.title,
+					url: snapshot.pr.url,
+					comments: snapshot.pr.comments,
+					checks: snapshot.pr.checks,
+					headSha: snapshot.pr.headSha,
+					base: snapshot.pr.base,
+				}
+				: undefined,
+		};
+		pi.events.emit("pr-upstream:state", payload);
+	}
 
 	function updateStatus(ctx: ExtensionContext): void {
 		if (!snapshot.pr) {
 			ctx.ui.setStatus("pr-upstream", undefined);
 			return;
 		}
-		const check = renderCheck(ctx.ui.theme, snapshot.pr.checks);
-		const comments = ctx.ui.theme.fg("muted", `💬${snapshot.pr.comments}`);
-		ctx.ui.setStatus("pr-upstream", `${ctx.ui.theme.fg("muted", "pr:")}${comments}${check}`);
-	}
-
-	function renderFooterBranch(theme: ExtensionContext["ui"]["theme"], gitBranch: string | null): string {
-		if (!gitBranch) return theme.fg("muted", "(no-git)");
-		if (!snapshot.pr || snapshot.branch !== gitBranch) return theme.fg("muted", `(${gitBranch})`);
-
-		const prLabel = osc8(theme.fg("accent", `#${snapshot.pr.number}`), snapshot.pr.url);
-		return `${theme.fg("muted", `(${gitBranch} `)}${prLabel}${theme.fg("muted", ")")}`;
-	}
-
-	function installFooter(ctx: ExtensionContext): void {
-		ctx.ui.setFooter((tui, theme, footerData) => {
-			requestRender = () => tui.requestRender();
-			const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
-
-			return {
-				dispose() {
-					requestRender = undefined;
-					unsubscribe();
-				},
-				invalidate() {},
-				render(width: number): string[] {
-					let input = 0;
-					let output = 0;
-					let cost = 0;
-					for (const entry of ctx.sessionManager.getEntries()) {
-						if (entry.type !== "message" || entry.message.role !== "assistant") continue;
-						input += entry.message.usage.input;
-						output += entry.message.usage.output;
-						cost += entry.message.usage.cost.total;
-					}
-
-					const cwdLine = truncateToWidth(theme.fg("dim", ctx.cwd), width, theme.fg("dim", "..."));
-
-					const leftStats = theme.fg("dim", `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`);
-					const model = ctx.model?.id ?? "no-model";
-					const rightStats = `${theme.fg("dim", model)} ${renderFooterBranch(theme, footerData.getGitBranch())}`;
-					const statsPadding = " ".repeat(Math.max(1, width - visibleWidth(leftStats) - visibleWidth(rightStats)));
-					const statsLine = truncateToWidth(leftStats + statsPadding + rightStats, width, theme.fg("dim", "..."));
-
-					const statuses = Array.from(footerData.getExtensionStatuses().entries())
-						.sort(([a], [b]) => a.localeCompare(b))
-						.map(([, value]) => value)
-						.join(" ");
-					if (!statuses) return [cwdLine, statsLine];
-
-					const statusPadding = " ".repeat(Math.max(0, width - visibleWidth(statuses)));
-					const statusLine = truncateToWidth(statusPadding + statuses, width, theme.fg("dim", "..."));
-					return [cwdLine, statsLine, statusLine];
-				},
-			};
-		});
+		const parts = [ctx.ui.theme.fg("muted", "PR"), renderCheck(ctx.ui.theme, snapshot.pr.checks)];
+		if (snapshot.pr.comments > 0) {
+			parts.push(ctx.ui.theme.fg("muted", `💬${snapshot.pr.comments}`));
+		}
+		const prLabel = osc8(ctx.ui.theme.fg("accent", `#${snapshot.pr.number}`), snapshot.pr.url);
+		parts.push(prLabel);
+		ctx.ui.setStatus("pr-upstream", parts.join(" "));
 	}
 
 	async function maybeAutoSolveComments(ctx: ExtensionContext, force = false): Promise<void> {
@@ -411,20 +441,24 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		lastRefreshAt = now;
 
 		try {
+			await maybeLoadTokenFromGh(ctx);
 			const repoCtx = await discoverRepoContext(pi, ctx.cwd, provider);
 			if (!repoCtx) {
 				snapshot = { branch: undefined, pr: undefined, updatedAt: Date.now(), error: "No supported git remote." };
 				updateStatus(ctx);
-				requestRender?.();
+				emitPrimitives();
 				return;
 			}
 
-			const pr = await provider.findOpenPullRequest({
+			let pr = await provider.findOpenPullRequest({
 				repos: repoCtx.repos,
 				headOwners: repoCtx.headOwners,
 				branch: repoCtx.branch,
 				token,
 			});
+			if (!pr) {
+				pr = await findOpenPullRequestViaGitRefs(pi, ctx.cwd, repoCtx.repos[0]);
+			}
 
 			snapshot = {
 				branch: repoCtx.branch,
@@ -433,7 +467,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 				error: undefined,
 			};
 			updateStatus(ctx);
-			requestRender?.();
+			emitPrimitives();
 			await maybeAutoSolveComments(ctx);
 		} catch (error) {
 			snapshot = {
@@ -441,7 +475,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 				error: error instanceof Error ? error.message : "Unknown PR status error",
 				updatedAt: Date.now(),
 			};
-			requestRender?.();
+			emitPrimitives();
 		} finally {
 			refreshInFlight = false;
 		}
@@ -460,12 +494,14 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			const action = args.trim().toLowerCase();
 			if (action === "on" || action === "enable") {
 				autoSolveEnabled = true;
+				emitPrimitives();
 				ctx.ui.notify("PR auto-solve enabled.", "info");
 				await maybeAutoSolveComments(ctx, true);
 				return;
 			}
 			if (action === "off" || action === "disable") {
 				autoSolveEnabled = false;
+				emitPrimitives();
 				ctx.ui.notify("PR auto-solve disabled.", "info");
 				return;
 			}
@@ -512,8 +548,8 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		installFooter(ctx);
 		updateStatus(ctx);
+		emitPrimitives();
 		ensureTimer(ctx);
 		await refresh(ctx, true);
 	});
@@ -525,6 +561,5 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", async () => {
 		if (refreshTimer) clearInterval(refreshTimer);
 		refreshTimer = undefined;
-		requestRender = undefined;
 	});
 }
