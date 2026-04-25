@@ -14,7 +14,7 @@ This repository contains the source for your global pi agent instructions and su
 
 - `agent/AGENTS.md` is the global always-loaded instruction file.
 - `agent/skills/` contains discoverable skills.
-- `agent/extensions/`, `agent/mcp.json`, and `agent/agents/` are linked into `~/.pi/agent`.
+- `agent/extensions/`, `agent/mcp.json`, `agent/agents/`, and `agent/keybindings.json` are linked into `~/.pi/agent`.
 - `link-into-pi-agent.sh` syncs the contents of `agent/` into `~/.pi/agent` via symlinks.
 
 ## Working on Global Instructions
