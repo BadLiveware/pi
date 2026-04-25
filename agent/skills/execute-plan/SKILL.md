@@ -5,115 +5,74 @@ description: Use when a concrete plan already exists and the next job is to conv
 
 # Execute Plan
 
-Use this skill when a concrete plan already exists and the next job is to turn it into tasks and start executing.
-
-If the plan is very long, split across a master `README.md` plus numbered files, or likely to require many checkpoint/validation cycles, switch to `execute-long-plan` instead of using this skill.
-
-## Reach for This Skill When
-- a generated or approved plan already exists
-- the plan is clear enough to execute without substantial re-planning
-- the user wants implementation, task creation, or progression through the recommended order
+Use this skill when a concrete plan already exists and the next job is to turn it into tasks and start executing. If the plan is split across a master `README.md` plus numbered files, very long, or checkpoint-heavy, switch to `execute-long-plan`.
 
 ## Outcome
-- an ordered task tree that mirrors the plan
-- the first unblocked leaf task is `in_progress`
-- execution continues through remaining in-scope tasks until blocked or complete
-- intermediate progress is recorded in tasks, notes, or plan files instead of emitted as a standalone chat checkpoint
-- semantic checkpoint commits are created when the user has asked for commits or another active workflow grants commit permission
+- ordered task window that mirrors the current plan scope
+- first unblocked leaf task marked `in_progress`, followed by immediate execution
+- execution continues through all unblocked in-scope tasks until blocked or complete
+- progress recorded in tasks, notes, or plan files instead of standalone status chat
+- semantic checkpoint commits when commit permission is active
 
-## Plan Execution Stop Policy
-When executing a plan, do not stop merely to report status. Treat checkpoint summaries as internal artifacts unless the user explicitly asked for a status-only response.
+## Stop Policy
+Do not stop merely to report status after task creation, validation, `git status`, a completed chunk, or an informational checkpoint.
 
-Stop only when one of these conditions is true:
-1. The full requested scope and current plan exit criteria are complete.
-2. A blocker requires user input, credentials, policy approval, or an architectural/product decision.
-3. A destructive, irreversible, or externally visible action needs explicit approval.
-4. Validation reveals a failure that cannot be safely resolved within the current scope.
-5. Context is nearly exhausted and a handoff summary is required.
+Stop only when:
+1. requested scope and current plan exit criteria are complete
+2. a blocker requires user input, credentials, policy approval, or architectural/product decision
+3. destructive, irreversible, or externally visible action needs approval
+4. validation reveals a failure that cannot be safely resolved in scope
+5. context is nearly exhausted and a handoff is required
 
-Before sending a user-facing summary during plan execution, ask: "Is there any unblocked in-scope work left?" If yes, do not summarize in chat; continue with the next task.
+Before summarizing, ask: "Is there any unblocked in-scope work left?" If yes, keep executing.
 
 ## Artifact Hygiene
-Execution plans are internal scaffolding. Produced artifacts must read as domain-facing repository work, not as outputs of a plan.
+Plans are internal scaffolding. Produced code, docs, generated files, examples, migrations, config, comments, and user-facing text must read as domain-facing repository work, not plan output.
 
-Apply this to code, docs, generated files, examples, comments, migrations, config, and user-facing text:
-- Do not mention the source plan, plan path, numbered plan file, stage, phase, checklist item, task bookkeeping, or execution process unless the artifact is itself an internal execution/progress artifact.
-- Translate plan requirements into product/repository concepts rather than phrases like “this stage”, “Stage 05”, or “the optimization plan”.
-- Keep plan provenance in task descriptions, plan checklists, local evidence logs, commit messages, and final chat summaries; do not put it in repository artifacts.
-- Before completing plan-derived docs or generated outputs, scan for plan-leak phrases like `stage`, `phase`, `plan`, `checklist`, `.agents`, and the plan directory name; remove them unless the product domain genuinely uses them.
+Do not mention source plan, path, numbered file, stage, phase, checklist item, task bookkeeping, or execution process unless the artifact is itself internal progress material. Translate plan requirements into product/repository concepts. Scan plan-derived artifacts for `stage`, `phase`, `plan`, `checklist`, `.agents`, and plan directory names unless those terms belong to the product domain.
 
-## Plan Readiness Review
-Before converting a moderately complicated plan into tasks, scan it for execution blockers:
-- missing requirements coverage
+## Readiness Review
+Before converting a non-trivial plan into tasks, scan for:
+- missing requirements, unclear scope, or user-request mismatch
 - leaf tasks that are not independently testable/reviewable
-- vague placeholders such as `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
-- missing acceptance criteria or validation
-- validation without exact commands/inspection checks or expected signals where knowable
-- artifact hygiene risks, especially plan/stage/checklist language leaking into produced docs/code
+- placeholders like `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
+- missing acceptance criteria, affected files, validation commands, or expected signals
+- artifact hygiene risks
 
-If the plan is moderately complicated or high-risk and these checks are non-obvious, use the reviewer prompt in `../planning/plan-quality-review.md` before executing.
+For high-risk plans, use `../planning/plan-quality-review.md` before executing. Resolve blockers unless the user explicitly accepts gaps.
 
-## Structured Task Descriptions
-When creating tasks from a plan, put execution-critical detail in each leaf task description. Replace every `...` placeholder before creating the task; unresolved placeholders mean the task is not ready.
-
-```md
-**Goal:** ...
-
-**Files / areas:**
-- Modify: `path` or affected area
-
-**Acceptance criteria:**
-- [ ] Concrete pass/fail criterion
-
-**Validation:**
-- Command or inspection: `...`
-- Expected signal: ...
-- Gaps: ...
-
-**Risks / notes:** ...
-```
+## Task Creation Rules
+- Create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks; keep future backlog in the plan.
+- Prefer one leaf task per independently completable, testable, reviewable unit that could be a semantic commit boundary.
+- Use parent/container tasks only for coordination.
+- Put execution-critical detail in each leaf task: goal, files/areas, acceptance criteria, validation, risks/notes.
+- Do not create vague tasks like `execute phase 2`, `continue slice C`, `finish the rest`, or separate red/green/refactor bookkeeping tasks.
 
 ## Commit Checkpoints
-Use `commit` when commit permission is active. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not wait until the whole plan is done if that would create a dump commit, and do not commit tiny line-item fragments or incomplete scaffolding.
+Use `commit` when commit permission is active. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not commit tiny fragments, incomplete scaffolding, or unvalidated changes unless the validation gap is explicit and committing is still useful.
 
-Commit permission is active only when the user explicitly asked for commits or another active workflow includes committing. If commit permission is not active, leave changes uncommitted and summarize suggested commit boundaries at completion when useful.
+Commit permission is active only when the user asked for commits or another active workflow includes committing. Otherwise leave changes uncommitted and summarize suggested boundaries at completion when useful.
 
 ## Workflow
-1. Treat the plan as the execution source; do not re-plan from scratch unless new evidence forces it.
-2. Verify that the plan still matches the user request, current scope, and constraints.
-3. Preserve the plan's recommended order in the task graph unless a safer dependency order is required.
-4. Run the Plan Readiness Review and resolve blockers before execution unless the user explicitly asks to proceed with known gaps.
-5. Create parent/container tasks only for major phases/groups; put real coding, validation, migration, and documentation work in child leaf tasks.
-6. Keep the task list UI-scannable. The panel commonly shows about 10 rows total, including completed tasks; for larger plans, create only the next rolling window of roughly 5-8 active leaf tasks and keep future backlog in the plan until it is near execution.
-7. Put references, target files, invariants, acceptance criteria, and validation details into the relevant task descriptions instead of separate bookkeeping tasks.
-8. Mark the first executable leaf task `in_progress` and begin execution in the same run.
-9. After each completed leaf task, if commit permission is active and the completed work forms a validated semantic checkpoint, use `commit` before continuing.
-10. After each completed leaf task, call `TaskList`, pick the next unblocked in-scope leaf task, and continue.
-11. When the visible active window drops low and more plan work remains, add the next few concrete leaf tasks rather than materializing the whole remaining plan.
-12. If the task list is exhausted but the plan scope is not complete, add the missing concrete tasks and continue.
-13. If the plan omits required in-scope work, add concrete tasks and continue.
-14. Stop only for the conditions in the Plan Execution Stop Policy.
-
-## Task Rules
-- Prefer one leaf task per independently completable, testable, reviewable unit of work that would make a plausible commit boundary.
-- Do not mirror every future plan item into tasks when that would push useful work out of the visible task panel; keep future items in the plan and add them just before execution.
-- Use parent/container tasks only for coordination.
-- Do not create vague executable tasks like `execute phase 2`, `continue slice C`, or `finish the rest`.
-- Treat `Continue` as instruction to resume from the task list.
-- Do not stop after task creation, successful validation, `git status`, completion of a phase/chunk, or an informational checkpoint if more unblocked work remains.
-- If progress needs to be captured mid-plan, update the task list, plan checklist, notes file, or local evidence log; do not emit a standalone progress report to the user.
-- If a leaf task introduces non-obvious logic or compatibility behavior, include targeted comment/documentation work in its done state.
-- TDD cycles happen inside implementation tasks; do not create separate bookkeeping tasks for red/green/refactor unless test infrastructure itself is the deliverable.
+1. Treat the plan as execution source; do not re-plan unless evidence forces it.
+2. Verify the plan still matches user request, current scope, and local constraints.
+3. Preserve recommended order unless a safer dependency order is required.
+4. Run readiness review and resolve blockers or accepted gaps.
+5. Create/reconcile the next concrete task window and mark the first executable leaf `in_progress`.
+6. Execute the task in the same run.
+7. After each leaf task: update task state, validate, commit if permission is active and the work is a semantic checkpoint, call `TaskList`, and continue with the next unblocked in-scope task.
+8. When the visible task window runs low, add the next few concrete tasks from the plan.
+9. If tasks are exhausted but plan scope is not complete, add missing concrete tasks and continue.
+10. If progress needs recording mid-plan, update tasks, plan checklist, notes, or local evidence log; do not emit standalone progress chat.
 
 ## Scope Control
 - Treat the plan and user request together as the source of in-scope work.
-- Do not stop merely because the initial task list is exhausted.
-- If the current referenced plan document is incomplete, keep working that document rather than proposing the next one.
-- When switching to a different plan, phase, or context, reconcile the task list immediately before carrying it forward: keep completed tasks from the current execution round unless they were created in error or clearly replaced/subsumed, delete older completed tasks from irrelevant prior context when they no longer support the current execution scope, and delete or supersede obsolete pending tasks.
-- Do not spend a turn deciding about routine housekeeping. If task cleanup, diff inspection, or similar maintenance helps current execution, validation, or review, perform it directly; otherwise keep executing.
-- Surface later-phase, optional, or materially broader work explicitly instead of silently expanding scope.
+- Do not stop because the initial task list is exhausted.
+- If the current referenced plan document is incomplete, keep working that document before proposing the next one.
+- Reconcile task lists immediately when switching plan, phase, or context; delete/supersede obsolete pending tasks and irrelevant old completed tasks when they no longer support current execution.
+- Surface optional or broader work explicitly instead of silently expanding scope.
 
 ## Delegation
 - For delegation details, use `subagent-delegation`.
-- Before choosing a non-current model for delegated plan work, call `list_pi_models` and choose from supported enabled models; do not rely on stale config or models marked locally unsupported.
-- Delegate only focused, low-coupling leaf tasks with `agentType` and `TaskExecute` when available, while keeping parent responsibility for integration, conflict resolution, and final validation.
+- Before choosing a non-current model for delegated plan work, call `list_pi_models` and choose supported enabled models.
+- Delegate only focused, low-coupling leaf tasks; parent owns integration, conflicts, acceptance, and final validation.

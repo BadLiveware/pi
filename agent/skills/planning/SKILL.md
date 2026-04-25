@@ -5,302 +5,78 @@ description: Use when work is large, risky, or multi-step enough that you should
 
 # Planning
 
-Use this skill to turn explicit requirements into a validated plan before editing code. If the plan is already clear and the next job is to start executing it through tasks, switch to `execute-plan`.
+Use this skill to turn explicit requirements into an executable, validated plan before editing code. If the plan is already clear and the next job is execution, switch to `execute-plan`.
 
-## Reach for This Skill When
-- work is large, risky, or multi-step
-- refactors should be separated from behavior changes
-- validation needs design before implementation starts
-- scope, sequencing, or dependencies are still unclear
-- planning depends on prior work, external evidence, papers, or comparing approaches
-- task tracking or bounded delegation would help
+## When to Use
+Use when work is large, risky, multi-step, needs sequencing, separates refactors from behavior changes, needs validation design, depends on prior/external evidence, or would benefit from task tracking/delegation.
 
-## Outcome
-- a clear plan with ordered phases/tasks, validation, and risks
-- plan sections that include both context and executable tasks
-- a split plan directory with a master overview when the plan would be very long
-- a task list that mirrors the plan when task tools are available
-- evidence-gathering preflight when the subject is complicated or source-sensitive
-- identified delegation points for bounded leaf work
-- planned comment/documentation work for non-obvious or compatibility-driven code
+If purpose, scope, or requirements are ambiguous, use `requirements-discovery` first.
 
-## Plan Location Convention
-All plans go under the current working directory's `.pi/plans/` directory.
+## Plan Location
+Write plans under `.pi/plans/`:
+- simple plan: `.pi/plans/<short-hyphenated-name>.md`
+- deep plan: `.pi/plans/<short-hyphenated-name>/README.md` plus numbered files such as `01-evidence.md`, `02-implementation.md`
 
-Use a single markdown file for a simple plan:
-
-```text
-.pi/plans/<plan_name>.md
-```
-
-Use a directory for a deep plan:
-
-```text
-.pi/plans/<plan_name>/
-├── README.md
-├── 01-<stage>.md
-├── 02-<stage>.md
-└── 03-<stage>.md
-```
-
-`<plan_name>` is a short, descriptive, hyphenated name; `simple_plan` and `deep_plan` are examples, not literal names.
-
-Examples:
-
-```text
-.pi/plans/sql-optimization.md
-.pi/plans/release-checklist.md
-.pi/plans/auth-refactor.md
-
-.pi/plans/post-cbe-optimization/
-├── README.md
-├── 01-evidence.md
-├── 02-ir.md
-└── 03-rollout.md
-```
-
-## Long Plan Splitting
-When a plan is likely to exceed about 800-1000 lines, spans many phases, or would overload execution context, write it as a deep plan directory instead of one huge file.
-
-Use the deep plan layout from Plan Location Convention by default.
-
-`README.md` is the master plan overview. It must include:
-- purpose and desired end state
-- execution order with links to numbered plan files
-- dependency graph or sequencing notes
-- hard constraints carried through all plan files
-- cross-cutting risks, compatibility concerns, and rollback notes
-- final acceptance criteria across the full split plan
-- validation strategy across the full split plan
-
-Each numbered plan file must be independently reviewable and implementation-sized. Aim for roughly 150-350 lines per file when possible. Each file must include:
-- local purpose and scope
-- prerequisites from earlier files
-- affected files or code areas
-- concrete implementation tasks
-- concrete validation tasks
-- compatibility, migration, docs, and cleanup tasks when relevant
-- file-local exit criteria
-- handoff notes for the next numbered file
-
-Splitting rules:
-- Preserve execution order in filenames with zero-padded numeric prefixes.
-- Keep each slice coherent: it should leave the repository in a useful state if work pauses after that file.
-- Do not split by arbitrary line count alone; split by reviewable implementation boundaries.
-- Keep global constraints in `README.md`, and repeat only the file-specific constraints needed to execute safely.
-- If an existing umbrella plan exists, link to it from `README.md` and treat the split directory as the execution plan.
-- When execution is expected to be long-running, recommend `execute-long-plan` for the handoff.
+Names should describe the domain work, not generic labels like `simple_plan`, `phase2`, or `deep_plan`.
 
 ## Purpose Anchoring
-Do not invent an overarching product, architectural, or strategic purpose from a terse planning request.
+Do not invent product or architectural purpose from terse prompts like "make a long plan". Those control format/depth, not goal or scope.
 
-A short prompt such as "create a long plan", "make a deep plan", or "plan this out" controls planning format and depth; it is not enough by itself to establish the actual goal, desired end state, product intent, or implementation scope.
-
-Anchor the plan purpose only in:
-- explicit user instructions
-- files, issues, docs, or plans the user directly references
-- verified repository evidence that is clearly relevant
-- assumptions that are explicitly labeled as assumptions
-
-If the overarching purpose is ambiguous or multiple plausible purposes exist, ask a targeted clarification before writing a full implementation plan. Keep that clarification short: ask the highest-leverage question, or offer 2-3 one-line directions with a recommendation. If the user has asked you to proceed without clarification, write a discovery/intake plan whose first tasks establish purpose, scope, constraints, and success criteria instead of presenting guessed implementation work as settled.
-
-## Planning Alignment Style
-When planning needs user alignment, keep the narrowing step brief and decision-oriented:
-- lead with the one missing decision that most affects the plan
-- narrow in stages: use the answer to decide whether another question is needed instead of front-loading every possible question
-- offer at most 2-3 directions unless the user asks for a broader survey
-- keep each option to one or two lines plus the consequence that matters
-- include your recommendation and why in one short sentence
-- stop asking once the remaining assumptions are low-risk enough to state explicitly
-- avoid producing a long plan preview before the user has anchored the purpose
+Anchor purpose only in explicit user instructions, referenced files/issues/docs/plans, verified relevant repository evidence, or clearly labeled assumptions. If multiple purposes are plausible, ask one concise high-leverage question or offer 2-3 one-line directions with a recommendation. If the user insists on proceeding without clarity, make purpose discovery the first plan task instead of presenting guessed implementation work as settled.
 
 ## Plan Quality Contract
-Every non-trivial plan should be executable by a future agent without guessing. Include:
-- purpose and desired end state anchored to explicit user input or verified evidence
-- clear separation between observed facts, user-stated requirements, and assumptions
-- goal, scope, non-goals, assumptions, and constraints
-- affected files or exact code/docs areas when knowable
-- task breakdown where each leaf task has a coherent outcome, acceptance criteria, and validation
-- risks, rollback points, side effects, and approval gates
-- explicit validation commands or inspection checks with expected signals; if unknown, add a discovery task
-- no acceptance criteria, milestones, or implementation tasks that depend on an unstated inferred purpose
+A non-trivial plan should be executable by a future agent without guessing. Include:
+- anchored purpose, desired end state, scope, non-goals, assumptions, and constraints
+- observed facts vs user-stated requirements vs assumptions
+- affected files/areas when knowable
+- ordered leaf tasks with coherent outcomes, acceptance criteria, and validation
+- risks, rollback points, side effects, approval gates, and compatibility/data-safety concerns
+- exact validation commands or inspection checks with expected signals; if unknown, add discovery work
+- targeted comment/docs work for non-obvious, compatibility-driven, or required-by-X code
+
+No hidden placeholders: `TODO`, `TBD`, `fill in later`, `similar to previous`, `add tests`, `handle edge cases`, `etc.`, or vague `document this` steps are not acceptable substitutes for required detail.
 
 ## Task Granularity
-A leaf task is the right size when it:
-1. can be verified independently,
-2. touches one concern or explains why files must change together,
-3. is a plausible commit boundary,
-4. has a clear done state,
-5. can be reviewed without reading the whole plan.
+A leaf task is ready when it can be verified independently, touches one concern or explains why files change together, is a plausible commit boundary, has a clear done state, and can be reviewed without reading the whole plan.
 
-TDD cycles happen inside implementation tasks. Do not split `write failing test`, `make it pass`, and `refactor` into separate plan tasks unless the test infrastructure itself is the deliverable.
+TDD cycles happen inside implementation tasks. Do not split `write failing test`, `make it pass`, and `refactor` into separate plan tasks unless test infrastructure itself is the deliverable.
 
-## No Placeholders
-Plans are not ready if they contain hidden work such as `TODO`, `TBD`, `fill in later`, `similar to previous`, `add tests`, `handle edge cases`, `etc.` as a substitute for required detail, or vague steps like `document this` without the actual documentation requirements.
+## Long Plan Splitting
+Use a deep plan directory when a plan would be very long, spans many phases, or would overload execution context.
 
-## Plan Self-Review
-Before handing off or executing a moderately complicated plan, review it for:
-- requirement coverage
-- task granularity
-- acceptance criteria
-- exact validation and expected signals
-- missing file paths or affected areas
-- placeholders and vague verbs
-- artifact hygiene, including no internal plan/stage names in produced artifacts
+`README.md` is the master overview: purpose, execution order, dependency graph, global constraints, cross-cutting risks/rollback, final acceptance criteria, and overall validation strategy.
 
-For a moderately complicated or high-risk plan, optionally dispatch a reviewer using `plan-quality-review.md`.
+Each numbered file should be independently reviewable and implementation-sized, with local purpose/scope, prerequisites, affected areas, concrete implementation and validation tasks, compatibility/docs/cleanup work, exit criteria, and handoff notes. Split by coherent reviewable implementation boundaries, not arbitrary line count. Recommend `execute-long-plan` for long-running execution.
+
+Detailed templates live in `output-templates.md`.
 
 ## Workflow
-1. Capture requirements, non-goals, assumptions, constraints, and public contract concerns.
-2. For terse or format-only prompts, first determine whether the user has supplied the goal and scope. If not, either ask one concise question for the missing purpose/success criteria, offer 2-3 short directions with a recommendation, or make purpose discovery the first explicit plan task. Do not fill the gap with prior-session memory, nearby filenames, examples, or likely-sounding product intent unless the user referenced them or you verify and label them as assumptions.
-3. Identify affected code, generated artifacts, local constraints, and project-sanctioned validation commands.
-4. For complicated or source-sensitive subjects, run a focused Feynman research preflight before freezing scope:
-   - use `session-search` when prior work or earlier decisions may matter
-   - use `alpha-research` or `literature-review` for academic or paper-backed questions
-   - use `source-comparison` when choosing between tools, approaches, claims, or frameworks
-   - use `deep-research` when a sourced brief is needed before planning
-5. If working from an existing plan, isolate the current referenced phase/document and its immediate prerequisites.
-6. Break the work into independently validatable steps and order refactors, behavior changes, delegation, and cleanup.
-7. Call out risks, rollback points, side effects, and any code likely to need targeted comments.
-8. Choose domain-facing names early; do not carry plan labels into code.
-9. If writing a plan document, first decide whether it should be a normal single document or a split plan directory using Long Plan Splitting.
-10. For a single plan document, give each major phase/group concrete nested tasks rather than context-only prose.
-11. For a split plan directory, write `README.md` plus ordered numbered plan files, and make each numbered file concrete enough for direct execution.
-12. Run the Plan Self-Review; for moderately complicated plans, consider a reviewer subagent using `plan-quality-review.md`.
-13. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
-14. Keep the plan and task list aligned as work evolves.
-15. Judge completion against the current plan document's own scope and exit criteria.
+1. Capture requirements, non-goals, assumptions, constraints, public contracts, and current/desired behavior.
+2. For terse or format-only prompts, anchor purpose or create discovery/intake tasks before implementation tasks.
+3. Inspect affected code, generated artifacts, local guidance, and project-sanctioned validation commands.
+4. For source-sensitive or evidence-heavy subjects, run focused Feynman research before freezing scope: `session-search`, `alpha-research`, `literature-review`, `source-comparison`, or `deep-research` as appropriate.
+5. If working from an existing plan, isolate the current referenced document and immediate prerequisites.
+6. Order independently validatable steps, separating preparatory refactors, behavior changes, validation, docs, migration, cleanup, and delegation points.
+7. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
+8. Decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
+9. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
+10. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks; keep the full backlog in the plan.
 
-## Handoff to Execute Plan
-- Use `execute-plan` when the plan is already clear, aligned with the user's request, and the next job is execution.
-- Use `execute-long-plan` when the generated or referenced plan is split across a master `README.md` plus numbered files, is very long, or is likely to require many validation/checkpoint cycles.
-- When handing off to execution, carry forward the stop policy: execute through all unblocked in-scope work and do not pause for standalone progress reports after checkpoints, completed phases, successful validation, or `git status`.
-- Stay in this skill when the plan still needs refinement, sequencing, validation design, risk reduction, or scope clarification.
-- If the user asked for planning only, stop at the plan instead of silently switching into implementation.
+## Task and Handoff Guidance
+- Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` for meaningful multi-step work.
+- Task descriptions should include `Goal`, `Files / areas`, `Acceptance criteria`, `Validation`, and `Risks / notes` when useful.
+- Use parent/container tasks only for coordination; leaf tasks hold coding, validation, migration, docs, and cleanup work.
+- Treat the task list as execution scaffolding, not scope boundary. Add missing in-scope tasks when needed.
+- When context or plan focus changes, reconcile tasks immediately; remove obsolete pending tasks and old completed tasks from irrelevant prior context.
+- Delegate only bounded, low-coupling leaf tasks. For model choice and downshifting, use `subagent-delegation` and `list_pi_models`.
+- Use `execute-plan` when the plan is clear and execution should start.
+- Use `execute-long-plan` for split plans, very long plans, or many validation/checkpoint cycles.
+- If the user asked for planning only, stop at the plan instead of silently implementing.
 
-## Task Guidance
-- Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` proactively for meaningfully multi-step work.
-- Keep task lists UI-scannable: the task panel commonly shows about 10 rows total, including completed tasks. For large plans, create a rolling window of roughly 5-8 active leaf tasks and keep the complete backlog in the plan document.
-- Read plan files for context, but do not create bookkeeping tasks like `read the plan file` unless review itself is the deliverable.
-- Create tasks from concrete implementation steps in the current referenced plan document, prioritizing the next visible work window over mirroring every future item at once.
-- Prefer task descriptions with `Goal`, `Files / areas`, `Acceptance criteria`, `Validation`, and `Risks / notes` sections.
-- Use parent/container tasks only for coordination; keep coding, validation, migration, and documentation work in leaf tasks.
-- Treat the task list as execution scaffolding, not as the boundary of requested scope; add missing in-scope tasks when needed.
-- When context or plan focus changes, reconcile the task list immediately before continuing: keep completed tasks from the current execution round unless they were created in error or clearly replaced/subsumed, delete older completed tasks from irrelevant prior context when they no longer help execute the current scope, and delete or supersede pending tasks that no longer help.
-- Do not spend a turn deciding about routine housekeeping. If task cleanup, diff inspection, or similar maintenance helps execute, validate, or review the current scope, do it directly; otherwise skip it.
-- Avoid vague, catch-all, or bookkeeping-only tasks.
-- If future work must be tracked, create concrete deferred tasks in the appropriate later plan document or dependency chain.
-- If a step introduces non-obvious logic, compatibility behavior, or required-by-X code, include targeted comment/documentation work in its done state.
-- Delegate only bounded, low-coupling leaf tasks. For model choice and cheaper-model downshifting, use `subagent-delegation` and select only from the current enabled models in local Pi config.
+## Status and Completion
+- For ordered plan documents, stay on the current referenced document until its mandatory work and exit criteria are complete unless the user reprioritizes.
+- Do not call scaffolding, observability, or partial groundwork done when required implementation remains.
+- During execution, progress belongs in tasks/plan notes unless the user asked for status only, execution is complete, or a blocker requires a decision.
 
-## Status and Completion Guidance
-- For numbered plans or ordered plan documents, stay on the current referenced document until its mandatory work is complete or the user reprioritizes.
-- Answer status questions against that document's own checklist, scope, and exit criteria.
-- Do not call scaffolding, observability, or partial groundwork `done` when required implementation work remains.
-- Do not report completion just because the initial task list is exhausted if required in-scope work is still missing.
-- During execution, treat progress summaries as internal notes unless the user asked for status only, execution is complete, or a blocker requires a decision.
-
-## Examples
-### Prefer
-- `Add planner support for scalar subqueries in SELECT`
-- `Phase 2: subquery planner support` as a parent/container task only
-
-### Avoid
-- `Implement phase 2`
-- code names like `phase2Planner` or `step3Fallback`
-
-## Split Plan Output Template
-
-Use this for very long plans. Replace every `...` placeholder before publishing or handing off the plan; unresolved placeholders mean the plan is not ready.
-
-`README.md`:
-
-````md
-# <Topic> implementation plan
-
-## Purpose
-...
-
-## Execution order
-1. [`01-...md`](01-...md)
-2. [`02-...md`](02-...md)
-
-## Dependency graph
-```text
-01 ... -> 02 ...
-```
-
-## Hard constraints
-- ...
-
-## Cross-cutting validation
-- ...
-
-## Final acceptance criteria
-- ...
-````
-
-Numbered file:
-
-```md
-# <Number>. <Slice Name>
-
-## Purpose and scope
-...
-
-## Prerequisites
-- ...
-
-## Affected areas
-- ...
-
-## Implementation tasks
-- [ ] ...
-
-## Validation tasks
-- [ ] ...
-
-## Exit criteria
-- [ ] ...
-
-## Handoff to next file
-- ...
-```
-
-## Single Plan Output Template
-
-Replace every `...` placeholder before publishing or handing off the plan; unresolved placeholders mean the plan is not ready.
-
-```md
-## Plan
-
-### Phase 1. <name>
-- Goal / scope: ...
-- Code areas: ...
-
-#### Task 1. <name>
-- Goal: ...
-- Files / areas: ...
-- Acceptance criteria:
-  - [ ] ...
-- Validation: `<command or inspection>` → expected signal
-- Risks / Notes: ...
-- Delegation: ...
-
-#### Task 2. <name>
-- Work: ...
-- Validation: ...
-- Risks / Notes: ...
-
-### Phase 2. <name>
-- Goal / scope: ...
-- Code areas: ...
-
-#### Task 1. <name>
-- Work: ...
-- Validation: ...
-- Risks / Notes: ...
-
-## Cross-cutting Notes
-- ...
-```
+## Editing This Skill
+When changing planning output formats or examples, update `output-templates.md` and behavior-test purpose anchoring, placeholder rejection, artifact hygiene, and split-plan handoff.

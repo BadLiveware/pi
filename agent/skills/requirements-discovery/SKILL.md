@@ -5,82 +5,57 @@ description: Use when a request is ambiguous, incomplete, contradictory, unusual
 
 # Requirements Discovery
 
-Use this skill to align on the problem before implementation.
+Use this skill to align on the real problem before implementation. Remove dangerous ambiguity without turning scoped work into ceremony.
 
-## Reach for This Skill When
-- the request is ambiguous, incomplete, contradictory, or broad
+## When to Use
+Use when:
+- the request is ambiguous, incomplete, contradictory, broad, or multi-path
 - codebase reality conflicts with the request
-- different assumptions would lead to different implementations
-- the right requirements depend on prior work, external evidence, papers, or comparing approaches
+- assumptions would materially change behavior, UX, contracts, data safety, architecture, or operations
+- requirements depend on prior work, external evidence, papers, or comparing approaches
 
-## Outcome
-- a compact statement of understanding, requirements, non-goals, assumptions, and risks
-- scope-appropriate alignment: no ceremony for obvious scoped changes, no skipped alignment for ambiguous or multi-path work
-- short alignment exchanges that narrow the decision without overwhelming the user
-- an evidence note when Feynman research is needed before assumptions are safe
+Do not use for trivial/scoped changes where the implementation path is obvious and assumptions are low-risk; state assumptions briefly and proceed.
 
 ## Scope Triage
-Before asking questions, classify the request:
+Classify before asking questions:
+- **Trivial/scoped:** low-risk path is obvious -> state assumptions and proceed.
+- **Ambiguous:** assumptions affect important behavior or risk -> ask the smallest targeted question.
+- **Multi-path:** viable approaches have meaningful tradeoffs -> offer 2-3 short options, recommend one, ask for alignment.
+- **Broad/product/design-heavy:** purpose, success criteria, non-goals, or boundaries are unstable -> align on desired outcome before planning.
 
-- **Trivial/scoped:** the implementation path is obvious, risk is low, and assumptions do not materially affect behavior. State assumptions briefly and proceed.
-- **Ambiguous:** assumptions would change behavior, UX, public contracts, data safety, architecture, or operational risk. Ask targeted questions one at a time.
-- **Multi-path:** several viable approaches have meaningful tradeoffs. Present 2-3 options, recommend one, and ask for alignment.
-- **Broad/product/design-heavy:** user goal, success criteria, non-goals, and boundaries are not stable. Align on purpose and desired outcome before implementation planning.
-
-Do not turn limited/scoped changes into a design ceremony. Do not skip alignment when the requested mechanism may not serve the user's actual goal.
-
-Urgency is not permission to guess. If the user says "just do it", "quick fix", or asks to avoid questions, proceed only when assumptions are low-risk; otherwise ask the smallest targeted question or state the risky assumption and get alignment before changing behavior, data safety, architecture, UX, or public contracts.
+Urgency is not permission to guess. If the user says "just do it" or "quick fix", proceed only when assumptions are low-risk; otherwise ask one high-leverage question or state the risky assumption and get alignment.
 
 ## Concise Alignment
-The goal is to remove dangerous ambiguity, not to make the user choose from a wall of options.
-
-- Ask the smallest question that would unblock a safe next step.
-- Narrow in stages: ask the highest-leverage question first, then choose the next question based on the answer instead of sending a full questionnaire.
-- Prefer one question per turn. If several facts are missing, ask for the highest-leverage one first.
-- Keep options short: usually 2-3 choices, one line each, plus a recommendation when useful.
-- Use follow-up questions only when the previous answer leaves a material ambiguity; stop asking once assumptions are safe enough to proceed.
-- Avoid long menus, exhaustive tradeoff essays, and speculative directions unless the user asks for depth.
-- When possible, propose a default assumption and a quick confirmation instead of asking an open-ended question.
-- If the user picks an option too quickly from an under-explained list, restate the key consequence or risk before committing to a high-impact direction.
+- Ask the highest-leverage missing question first; follow up only if the answer leaves material ambiguity.
+- Prefer one precise question per turn.
+- Keep options to 2-3 one-line choices plus a recommendation when useful.
+- Avoid long menus, exhaustive tradeoff essays, and speculative directions unless asked.
+- When possible, propose a default assumption and quick confirmation.
+- If the user chooses quickly from an under-explained list, restate the key consequence before committing to high-impact work.
 
 ## Workflow
 1. Inspect relevant code and local project instructions first.
-2. Restate the task in plain language, distinguishing the user's requested mechanism from the underlying goal when they differ.
-3. Triage scope using the categories above.
-4. Identify gaps: missing inputs, unclear constraints, ambiguous behavior, codebase mismatches, contract concerns, evidence gaps, or environment constraints.
-5. When evidence gaps materially affect scope, use focused Feynman research before locking assumptions: `session-search` for prior work, `alpha-research` or `literature-review` for papers, `source-comparison` for competing approaches, and `deep-research` for a sourced brief.
-6. Ask targeted questions when assumptions would materially affect behavior, architecture, data safety, or user experience. Prefer one precise question at a time; use concise multiple-choice options when that reduces effort for the user.
-7. If low-risk assumptions are enough to proceed, state them explicitly and continue without asking for approval.
-8. For multi-path work, present 2-3 concise approaches with the main tradeoff and a recommendation before planning or implementation.
-9. Produce a compact requirements list covering:
-   - current behavior
-   - desired behavior
-   - invariants / must-not-break behavior
-   - non-functional concerns
-   - non-goals / scope boundaries
-10. Confirm assumptions before substantial implementation when the scope is ambiguous, multi-path, broad, risky, or user-facing.
+2. Restate the task in plain language, separating requested mechanism from underlying goal when they differ.
+3. Triage scope and identify missing inputs, unclear constraints, codebase mismatches, contract concerns, evidence gaps, and environment constraints.
+4. When evidence gaps materially affect scope, use focused Feynman research before locking assumptions: `session-search`, `alpha-research`, `literature-review`, `source-comparison`, or `deep-research` as appropriate.
+5. Ask targeted questions only when assumptions materially affect behavior, architecture, data safety, or user experience.
+6. If low-risk assumptions are enough, state them and continue.
+7. For multi-path work, present 2-3 concise approaches with the main tradeoff and a recommendation.
+8. Produce compact requirements covering current behavior, desired behavior, invariants, non-functional concerns, non-goals, assumptions, risks, and validation implications.
 
-## Output Template
+## Output Shape
+Use only as much structure as the situation needs:
 
 ```md
-## Understanding
+Understanding: ...
+Requirements:
 - ...
-
-## Requirements
+Non-goals / boundaries:
 - ...
-
-## Non-goals
+Assumptions:
 - ...
-
-## Assumptions
-- ...
-
-## Risks / Unknowns
+Risks / unknowns:
 - ...
 ```
 
-## Guidance
-- Prefer a small number of precise questions over a long questionnaire.
-- Keep alignment prompts brief enough that the user can answer without studying a mini design document.
-- Treat local conventions, generated-artifact flows, and public contracts as part of the requirements.
-- If the request conflicts with the codebase or local project instructions, say so clearly and ask for direction.
+If local conventions, generated-artifact flows, or public contracts constrain the work, include them as requirements. If the request conflicts with codebase or local guidance, say so clearly and ask for direction.

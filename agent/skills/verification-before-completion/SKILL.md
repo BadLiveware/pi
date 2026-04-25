@@ -7,61 +7,42 @@ description: Use when about to claim work is done, fixed, passing, ready, or bef
 
 Evidence comes before completion claims. Do not say work is done, fixed, passing, or ready unless fresh verification supports that claim or you clearly disclose the gap.
 
-## Reach for This Skill When
-- about to report success or completion
-- about to commit, push, open a PR, or mark a task completed
-- a subagent reports success and you need to integrate or summarize it
-- validation was partial, skipped, unavailable, or run earlier in the session
-
-## Outcome
-- exact verification commands or inspections tied to the claim
-- fresh output or evidence checked before the claim
-- honest disclosure of failures, skipped checks, unavailable credentials, or remaining risk
+## When to Use
+Use before:
+- reporting success or completion
+- committing, pushing, opening a PR, or marking a task complete
+- summarizing or integrating subagent work
+- relying on validation that was partial, skipped, unavailable, or run earlier
 
 ## Verification Gate
-Before any success/completion claim:
+Before a success/completion claim:
+1. Identify the evidence needed for the claim: tests, build, lint, typecheck, manual/browser check, benchmark, diff inspection, or requirements checklist.
+2. Run or inspect the strongest fresh evidence available for the risk.
+3. Read the output: exit code, failures, warnings, skipped tests, and changed files.
+4. Inspect final diff or changed-file set when files were edited, even if tests pass.
+5. Compare evidence to the actual requirement, not just to "tests pass".
+6. Report accurately: what passed, what failed, what was skipped/unavailable, and remaining risk.
 
-1. **Identify** what would prove the claim: test, build, lint, typecheck, manual check, diff inspection, browser check, benchmark, or requirement checklist.
-2. **Run or inspect** the strongest relevant fresh evidence available for the risk.
-3. **Read the output** and check exit codes, failure counts, warnings, and changed files.
-4. **Inspect the final diff or changed-file set** when files were edited, even if tests pass, so unintended edits, generated artifacts, and unrelated changes are caught before completion claims.
-5. **Compare** evidence to the actual requirement, not just to "tests pass".
-6. **Report accurately:**
-   - if it passed, cite what ran or what was inspected;
-   - if it failed, state the failure and next needed action;
-   - if it was skipped or unavailable, say why and what remains unverified.
-
-## Claims and Required Evidence
-
-| Claim | Evidence needed |
+## Evidence by Claim
+| Claim | Required evidence |
 | --- | --- |
-| Tests pass | fresh test command output for the relevant suite |
-| Build/typecheck passes | fresh build/typecheck output and exit code |
+| Tests/build/typecheck pass | fresh command output and exit code |
 | Bug fixed | original symptom reproduced or covered, then verified fixed |
-| Regression test works | test fails for the old behavior or equivalent evidence, then passes with the fix |
-| Requirements met | checklist against requirements, plan, or user request |
-| Subagent completed work | parent inspected output/diff and ran or selected relevant validation |
+| Regression test works | old behavior fails or equivalent evidence exists, then new behavior passes |
+| Requirements met | checklist against user request, plan, and invariants |
+| Subagent completed work | parent inspected output/diff and selected or ran relevant validation |
 | Ready to commit | relevant validation plus staged diff review |
 
 ## Red Flags
-Stop and verify before writing success language if you catch yourself saying:
-- "should work"
-- "probably"
-- "looks good"
-- "done" without evidence
-- "the agent said it passed"
-- "only a small change"
-- "I'll skip validation just this once"
+Stop and verify before saying: "should work", "probably", "looks good", "done", "the agent said it passed", "only a small change", or "I'll skip validation just this once".
 
 ## Practical Guidance
-- Match validation depth to risk. A typo may need diff inspection; parser changes likely need focused tests plus broader checks.
-- Prefer project-sanctioned commands. If unknown, inspect README, package scripts, CI, or existing docs.
-- Do not claim broad success from narrow checks. Say "typecheck passed; tests not run" when that is true.
-- For delegated work, verify independently before integrating or marking tasks complete.
-- If validation is impossible because of missing credentials, services, time, or tooling, disclose the blocker and do not overstate confidence.
+- Match validation depth to risk: typo -> diff inspection may suffice; parser or contract change -> focused tests plus broader checks.
+- Prefer project-sanctioned commands from README, scripts, CI, or local docs.
+- Do not claim broad success from narrow checks; say "typecheck passed; tests not run" when true.
+- If validation is impossible because credentials, services, time, or tooling are unavailable, disclose the blocker and do not overstate confidence.
 
-## Report Template
-
+## Report Shape
 ```md
 Validation:
 - Ran: `<command>` -> <result>
