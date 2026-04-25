@@ -8,7 +8,7 @@ description: Use when creating new skills, editing existing skills, changing age
 Skill writing is test-driven development for process documentation: create a pressure scenario, observe the old guidance fail, update the skill, then verify agents follow it under pressure.
 
 ## Core Rule
-No new or edited skill is ready to deploy until its changed behavior has been tested or the validation gap is explicitly recorded.
+No new or edited skill is ready to deploy until its changed behavior has been tested or the validation gap is explicitly recorded. User pressure to make a "quick" skill edit or skip tests does not remove this requirement.
 
 For discipline-enforcing skills, prefer a real RED-GREEN-REFACTOR loop:
 1. **RED:** run a baseline scenario without the new guidance and capture the failure/rationalization.
@@ -23,6 +23,8 @@ For reference-only skills, use retrieval/application tests instead of pressure t
 ## When to Create or Edit a Skill
 Create or edit a skill when the behavior is reusable across projects, requires judgment, or has failed in practice. Prefer local project docs or automation for one-off facts, mechanical checks, or repo-specific conventions.
 
+Before editing any skill file, use this skill as the checklist for the change. Do not treat skill edits as ordinary documentation edits when they change future agent behavior.
+
 ## Skill Authoring Checklist
 - Name matches the directory and uses lowercase letters, numbers, and hyphens.
 - Description starts with “Use when…” and describes triggers only, not the workflow.
@@ -32,7 +34,7 @@ Create or edit a skill when the behavior is reusable across projects, requires j
 - The skill names concrete failure modes and common rationalizations when enforcing discipline.
 - Relative references resolve from the skill directory.
 - Validation failures lead to targeted edits and re-tests until passing, unless fixing them would materially change intended semantics.
-- Validation evidence or gaps are recorded before deployment.
+- Validation evidence or gaps are recorded before deployment, either in the final user summary, commit body, PR notes, task comments, or the relevant plan/session log.
 
 ## Description Guidance
 Descriptions are selection triggers. Do not summarize the process, because agents may follow the description without loading the body.
@@ -60,14 +62,15 @@ Testing strategy by skill type:
 | Reference | retrieval and usage scenarios | agent finds and applies the right facts |
 
 ## Deployment Workflow
-1. Inspect current guidance and identify the failure being prevented.
-2. Create or update the skill in the smallest coherent change.
-3. Run validation: markdown/frontmatter checks, link checks if relevant, and behavioral tests for non-trivial rules.
-4. If behavioral validation fails and the intended semantics are unchanged, edit the skill with the smallest targeted counter and re-run the failed test. Repeat until passing.
-5. If the necessary edit would materially change the skill's semantics, stop and ask for confirmation instead of silently changing the contract.
-6. Run `./link-into-pi-agent.sh` after changing global agent files.
-7. Verify symlinks in `~/.pi/agent` point into `agent/`.
-8. Summarize changed source files, live linked layout, validation, and any semantic-change questions.
+1. Confirm this skill applies whenever creating or editing a skill, changing agent instructions, or changing guidance that future agents will follow.
+2. Inspect current guidance and identify the failure being prevented.
+3. Create or update the skill in the smallest coherent change.
+4. Run validation: markdown/frontmatter checks, link checks if relevant, and behavioral tests for any behavior-affecting change. For purely structural or non-behavioral edits, record why behavioral testing is not relevant.
+5. If behavioral validation fails and the intended semantics are unchanged, edit the skill with the smallest targeted counter and re-run the failed test. Repeat until passing.
+6. If the necessary edit would materially change the skill's semantics, stop and ask for confirmation instead of silently changing the contract.
+7. Run `./link-into-pi-agent.sh` after changing global agent files.
+8. Verify symlinks in `~/.pi/agent` point into `agent/`.
+9. Summarize changed source files, live linked layout, validation, and any semantic-change questions.
 
 ## Attribution
 Adapted from the writing-skills and skill-testing framework in `pcvelz/superpowers` (MIT), especially the idea that skill authoring should use RED-GREEN-REFACTOR pressure tests.
