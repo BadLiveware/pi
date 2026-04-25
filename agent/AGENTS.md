@@ -72,6 +72,7 @@ Approach software development work with understanding, correctness, testability,
 ## Validation
 
 - Use tests when they fit, but also use integration, e2e, manual, browser, benchmark, fuzz, mutation, or infrastructure validation when those better match the risk.
+- Before claiming work is done, fixed, passing, or ready, have fresh evidence or clearly disclose the validation gap.
 - Say explicitly when validation depends on missing credentials, tooling, infrastructure, or external services.
 - Report exactly what ran, what passed, what failed, what was skipped, and what remains unverified.
 
@@ -99,10 +100,12 @@ Use the available skills when they fit:
 - `execute-plan`
 - `execute-long-plan`
 - `testability-feedback-loop`
+- `systematic-debugging`
 - `reliability-error-handling`
 - `performance-benchmarking`
 - `git-and-pr-review`
 - `address-pr-feedback`
+- `verification-before-completion`
 - `subagent-delegation`
 - `writing-skills`
 
