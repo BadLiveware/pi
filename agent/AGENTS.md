@@ -18,32 +18,21 @@ Approach software development work with understanding, correctness, testability,
 - State low-risk assumptions explicitly when you can proceed without asking.
 
 ### 2. Make requirements explicit
-- Capture current behavior.
-- Capture desired behavior.
-- Capture invariants that must not regress.
-- Capture non-functional concerns.
-- Capture compatibility, migration, and public contract concerns when relevant.
+- Capture current and desired behavior, invariants, non-functional concerns, and relevant compatibility, migration, or public contract concerns.
 - Capture non-goals and scope boundaries.
-- For non-trivial work, present the requirements or plan before major edits.
+- For non-trivial work, present the requirements or a short plan before major edits.
 
 ### 3. Work in feedback loops
-- Prefer fast, focused validation in the inner loop and broader validation at checkpoints.
-- Match validation to the risk and codebase.
+- Prefer fast, focused inner-loop validation plus broader checkpoints matched to the risk and codebase.
 - Prefer project-sanctioned commands over generic defaults.
 
 ### 4. Build testable, composable systems
 - Keep domain logic separate from infrastructure details.
-- Introduce abstractions only when they improve clarity, testability, or meaningful reuse.
-- Avoid speculative generalization.
-- Prefer names, structure, and small functions first, then add comments where they materially improve reviewability.
-- Name code for its domain behavior, role, or invariant, not for the plan phase, step, bucket, or workstream that introduced it.
-- Do not ship plan-internal labels like `Phase2`, `Step3`, or `BucketA` in function names, type names, variable names, file names, flags, or public APIs unless the product itself truly uses that terminology.
-- Keep plan-oriented labels in tasks, commits, comments, or docs when useful for coordination, but translate them into domain language in the code.
-- Comment why code exists when the intent, constraint, invariant, or tradeoff is not obvious from the code itself.
-- If a reasonable maintainer would struggle to understand a particularly cryptic, order-dependent, performance-sensitive, or constraint-driven implementation from the code alone, add a short comment explaining how it works and what must remain true.
-- Explicitly mark compatibility shims, protocol quirks, workarounds, and `required by X` behavior when that dependency is not obvious, including what requires it and when it can be removed if the requiring constraint disappears.
-- Do not add comments for straightforward code, obvious control flow, or line-by-line narration of what the code already makes clear.
-- Avoid comments that only restate what the code already says.
+- Introduce abstractions only when they improve clarity, testability, or meaningful reuse, and avoid speculative generalization.
+- Prefer names, structure, and small functions first.
+- Name code for its domain behavior, role, or invariants, not for plan labels like phases, steps, buckets, or workstreams; keep plan-oriented labels in tasks, commits, comments, or docs unless the product itself truly uses them.
+- Add comments only when they materially improve reviewability: explain why code exists; for cryptic or constraint-driven code explain how it works and what must remain true; mark compatibility shims, protocol quirks, workarounds, and `required by X` behavior, including removal conditions, when not obvious.
+- Do not add comments for straightforward code or restate what the code already says.
 
 ### 5. Model state and failures explicitly
 - Represent absence, failure, and distinct states explicitly using project-idiomatic mechanisms.
@@ -54,30 +43,19 @@ Approach software development work with understanding, correctness, testability,
 - Benchmark hot paths and architectural changes before and after instead of guessing.
 
 ### 7. Control scope deliberately
-- Prefer the smallest sufficient change.
-- Avoid unrelated cleanup unless it materially reduces risk.
+- Prefer the smallest sufficient change and avoid unrelated cleanup unless it materially reduces risk.
 - Keep refactors separate from behavior changes when that improves validation and review.
-- When a user references an existing multi-phase plan and asks for one phase, scope execution and task creation to that phase's concrete steps.
-- Treat reading the plan as context gathering, not a standalone task, unless the user explicitly asks for plan review or plan updates.
-- Do not silently pull in later phases; surface prerequisite or scope issues instead.
-- When working from an ordered plan or numbered plan documents, finish the current referenced plan document before proposing the next one unless the user explicitly reprioritizes.
-- When asked whether a plan document or phase is done, assess completion against that document's own explicit scope, mandatory items, and exit criteria — not against scaffolding progress or work from adjacent phases.
-- Do not describe a plan document or phase as done when only scaffolding, observability, or partial groundwork is complete but mandatory implementation work remains.
-- Do not create implicit backlog or deferred catch-all tasks like `the rest` or `misc follow-up`.
-- When deferred work should be tracked, create concrete deferred tasks for the specific items and place them in the appropriate later plan group or dependency chain.
-- When creating tasks, prefer concrete, completable units with a clear done state over vague phase-wide, progress-tracking, or `the rest`-style tasks.
-- Treat the task list as an execution tool, not the boundary of requested scope.
-- If you discover missing in-scope work needed to satisfy the user request or the current referenced plan document, create or update concrete tasks for that work and continue.
-- When writing plans or plan documents, pair contextual sections like difficulty groups, buckets, phases, or workstreams with explicit executable task breakdowns rather than context-only writeups.
-- If you use nested tasks, use parent/container tasks only for coordination and keep the actual executable work in clear leaf tasks.
-- If there are still unblocked in-scope tasks, continue working instead of stopping to ask a generic `what next?` question.
-- Do not emit standalone intermediate progress messages while unblocked in-scope tasks remain.
-- Do not yield the turn after an informational checkpoint if more unblocked in-scope tasks still remain; resume execution in the same run.
-- Only stop to ask the user when you are blocked, the scope is ambiguous, validation reveals a meaningful decision point, or a real strategy choice is needed.
-- If newly discovered work would materially expand beyond the user-requested scope, belongs to later plan documents, or is optional follow-up rather than required completion work, surface it explicitly instead of silently broadening scope.
-- Do not volunteer effort estimates, budgets, or time-duration guesses unless the user explicitly asks for them.
-- Prefer describing scope in terms of concrete tasks, dependency chains, risk, and uncertainty rather than days or weeks.
-- If the user explicitly asks for an estimate, keep it rough, assumption-based, repo-specific, and clearly low-confidence rather than presenting schedule-like promises.
+- For referenced multi-phase plans, scope execution and task creation to the requested phase or document, treat plan reading as context gathering, and do not silently pull in later phases.
+- For ordered plan documents, finish the current referenced document before proposing the next unless the user explicitly reprioritizes.
+- Judge completion against the current document’s own scope, mandatory items, and exit criteria; do not call scaffolding, observability, or partial groundwork done when required implementation work remains.
+- Create concrete tasks with clear done states; use parent/container tasks only for coordination; avoid catch-all or bookkeeping tasks like `the rest`, `misc follow-up`, or progress-only tasks.
+- Treat the task list as an execution tool, not the boundary of requested scope. If required in-scope work is missing, add or update concrete tasks and continue.
+- When context or scope changes, reconcile the task list immediately before continuing: keep completed tasks from the current execution round unless they were created in error or clearly replaced/subsumed, delete older completed tasks from irrelevant prior context when they no longer support the current execution scope, and delete or supersede obsolete pending tasks instead of carrying unrelated history forward.
+- Do not spend a turn deciding whether routine housekeeping is necessary. If task cleanup, diff inspection, or similar maintenance supports current execution, validation, or review, do it directly; otherwise skip it.
+- When writing plans, pair contextual sections with explicit executable task breakdowns.
+- Continue through unblocked in-scope tasks; do not stop for generic `what next?`, standalone progress updates, or informational checkpoints when more work remains.
+- Only stop for blockers, ambiguity, meaningful strategy decisions, or scoped completion.
+- Do not volunteer effort estimates or time-duration guesses; prefer tasks, dependencies, risk, and uncertainty. If the user explicitly asks for an estimate, keep it rough, repo-specific, assumption-based, and low-confidence.
 
 ## Default Workflow for Non-Trivial Work
 
@@ -87,13 +65,9 @@ Approach software development work with understanding, correctness, testability,
 4. Produce requirements and a short plan.
 5. Add or update validation for preserved behavior, new behavior, invariants, and public contracts.
 6. Implement in small, reviewable steps.
-7. When delegating to subagents and model choice matters, inspect local pi config to discover available models instead of guessing. Prefer `gpt-5.3-codex` for normal delegated work, `gpt-5.4` for difficult work, and `gpt-5.4-mini` or `gpt-5.2-codex` for easy work when available. Avoid local Gemma models unless the user explicitly asks for them.
-8. If tasks are being used, keep the task list reconciled to the user-requested scope and the current referenced plan document. If you discover missing required in-scope work, add or update concrete tasks for it before continuing.
-9. Complete the current task, then call `TaskList` and continue with the next unblocked in-scope task instead of pausing for confirmation. Treat `Continue` as an instruction to resume execution from the task list.
-10. Do not stop after a completed task if another unblocked in-scope task is ready; continue unless a blocker or decision point requires user input.
-11. When executing work from a plan, re-check the current referenced plan document's explicit checklist or exit criteria before moving on. If it is incomplete, keep working that document instead of proposing the next plan document.
-12. Validate with local project commands.
-13. Summarize what changed, what you validated, what you did not validate, and the remaining risks only when you are blocked or when the scoped work is complete.
+7. If tasks are being used, keep them reconciled to the user-requested scope and current referenced plan document; on context changes, reconcile first, preserve current-round completions unless obsolete, and trim older stale or superseded tasks before continuing. After each completed task call `TaskList` and continue with the next unblocked in-scope task. Treat `Continue` as instruction to resume from the task list.
+8. When executing from a plan, keep working the current referenced plan document until its own checklist or exit criteria are met.
+9. Validate with local project commands and summarize only when you are blocked or the scoped work is complete.
 
 ## Validation
 
@@ -108,22 +82,26 @@ Approach software development work with understanding, correctness, testability,
 
 ## Git and Review
 
-- Work on a branch unless you are already on an appropriate one.
-- Use `feat/`, `fix/`, or `refactor/`.
-- Commit coherent units of work with messages that preserve why.
-- Verify PR state before describing it.
-- Prefer stacked PRs when refactors need to land before features.
+- Work on an appropriate branch.
+- Use the `commit` skill when creating commits or deciding commit boundaries.
+- Keep commits coherent and preserve the why.
+- Commit headers should briefly summarize the actual change, stay under 72 characters, and avoid source-only messages like `fix: address PR feedback` unless the source is itself relevant.
+- Non-trivial commits should include a short body explaining what changed and why, including relevant constraints, trade-offs, compatibility notes, or validation context.
+- Verify PR state before describing it; prefer stacked PRs when refactors should land before features.
 
 ## Skills
 
 Use the available skills when they fit:
 - `requirements-discovery`
 - `implementation-planning`
+- `commit`
 - `execute-plan`
+- `execute-long-plan`
 - `testability-feedback-loop`
 - `reliability-error-handling`
 - `performance-benchmarking`
 - `git-and-pr-review`
+- `address-pr-feedback`
 - `subagent-delegation`
 
 ## Definition of Done

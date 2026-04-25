@@ -101,4 +101,15 @@ for item in "$source_dir"/*; do
   ((linked_count+=1))
 done
 
+extensions_dir="$source_dir/extensions"
+if [[ -f "$extensions_dir/package.json" ]]; then
+  if command -v pi >/dev/null 2>&1; then
+    extensions_source="$(readlink -f -- "$extensions_dir")"
+    echo "Installing extensions from: $extensions_source"
+    pi install "$extensions_source"
+  else
+    echo "Skipping extension install: pi command not found in PATH." >&2
+  fi
+fi
+
 echo "Done. Linked $linked_count item(s); removed $removed_count stale/replaced item(s); skipped $skipped_count item(s)."
