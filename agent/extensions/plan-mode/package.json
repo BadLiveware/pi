@@ -1,0 +1,29 @@
+{
+  "name": "pi-plan-mode",
+  "version": "0.1.0",
+  "description": "Read-only planning mode extension for Pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "planning"
+  ],
+  "license": "MIT",
+  "files": [
+    "README.md",
+    "index.ts",
+    "utils.ts",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  }
+}

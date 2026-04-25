@@ -1,0 +1,21 @@
+{
+  "name": "pi-personal-workflow-extensions",
+  "version": "0.1.0",
+  "description": "Local workspace for personal Pi workflow extensions.",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "plan-mode",
+    "compaction-continue"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi-extension"
+  ],
+  "pi": {
+    "extensions": [
+      "./plan-mode",
+      "./compaction-continue"
+    ]
+  }
+}
