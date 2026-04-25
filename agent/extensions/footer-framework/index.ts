@@ -389,6 +389,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: number; width: number }>;
 				extensionStatuses: Array<{ key: string; value: string }>;
 				model: string;
+				thinkingLevel: string;
 				cwd: string;
 			}
 		| undefined;
@@ -529,6 +530,11 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return tokens.join(" ");
 	}
 
+	function renderModelLabel(): string {
+		const model = currentCtx?.model?.id ?? "no-model";
+		return `${model}:${pi.getThinkingLevel()}`;
+	}
+
 	function placementFor(id: string, fallback: FooterItemPlacement, external?: Partial<FooterItemPlacement>): FooterItemPlacement {
 		return {
 			...fallback,
@@ -608,7 +614,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	): FooterItem[] {
 		const items: FooterItem[] = [];
 		items.push({ id: "cwd", text: theme.fg("dim", currentCtx?.cwd ?? ""), placement: placementFor("cwd", DEFAULT_ITEM_PLACEMENTS.cwd) });
-		items.push({ id: "model", text: theme.fg("dim", currentCtx?.model?.id ?? "no-model"), placement: placementFor("model", DEFAULT_ITEM_PLACEMENTS.model) });
+		items.push({ id: "model", text: theme.fg("dim", renderModelLabel()), placement: placementFor("model", DEFAULT_ITEM_PLACEMENTS.model) });
 		items.push({ id: "stats", text: statsText, placement: placementFor("stats", DEFAULT_ITEM_PLACEMENTS.stats) });
 
 		const gitBranch = footerData.getGitBranch();
@@ -730,6 +736,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 						})),
 						extensionStatuses: Array.from(footerData.getExtensionStatuses().entries()).map(([key, value]) => ({ key, value })),
 						model: ctx.model?.id ?? "no-model",
+						thinkingLevel: pi.getThinkingLevel(),
 						cwd: ctx.cwd,
 					};
 					return [line1Result.line, line2Result.line];

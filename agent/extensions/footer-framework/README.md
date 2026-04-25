@@ -12,6 +12,7 @@ It ships with a bundled skill (`footer-framework-config`) and advertises it via 
 - Keeps a stable 2-line footer layout.
 - Composes built-in footer items:
   - `cwd`, `model`, `branch`, `stats`, `pr`, `ext`
+  - the `model` item includes the active thinking level as `<model-id>:<thinking-level>`
 - Supports extension-provided dynamic items via the event bus.
 - Lets users position each item independently by line, left/right zone, relative order, or absolute column.
 
