@@ -94,6 +94,7 @@ Approach software development work with understanding, correctness, testability,
 Use the available skills when they fit:
 - `requirements-discovery`
 - `implementation-planning`
+- Feynman research skills when planning depends on prior work, external evidence, papers, or comparing approaches
 - `commit`
 - `execute-plan`
 - `execute-long-plan`

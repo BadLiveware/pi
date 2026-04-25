@@ -19,6 +19,7 @@ Use this skill to decide what to delegate and how to bound it.
 ## Good Delegation Targets
 - targeted code search
 - isolated analysis
+- Feynman research triage, such as prior-session recovery, paper lookup, or source comparison
 - draft test cases
 - alternative implementation ideas
 - documentation synthesis
@@ -32,9 +33,10 @@ Use this skill to decide what to delegate and how to bound it.
 1. Define the exact subtask, expected output, and acceptance criteria.
 2. If task tools are available, create or update a task for the delegated work, set `agentType`, and use `TaskExecute` when available.
 3. Keep prompts concrete, bounded, and limited to the context the subagent actually needs.
-4. If model choice matters, inspect local pi config first. Prefer `gpt-5.3-codex` by default, `gpt-5.4` for difficult work, and `gpt-5.4-mini` or `gpt-5.2-codex` for easy work when available. Avoid local Gemma by default.
-5. Review the result before integrating.
-6. Re-validate after integration.
+4. For planning research, ask for a small evidence brief with sources, confidence, and open questions rather than a broad report.
+5. If model choice matters, inspect local pi config first. Prefer `gpt-5.3-codex` by default, `gpt-5.4` for difficult work, and `gpt-5.4-mini` or `gpt-5.2-codex` for easy work when available. Avoid local Gemma by default.
+6. Review the result before integrating.
+7. Re-validate after integration.
 
 ## Task-Based Delegation Guidance
 - Prefer task-based delegation over one-off prompts when task tools are available.

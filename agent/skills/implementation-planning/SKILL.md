@@ -12,6 +12,7 @@ Use this skill to turn explicit requirements into a validated plan before editin
 - refactors should be separated from behavior changes
 - validation needs design before implementation starts
 - scope, sequencing, or dependencies are still unclear
+- planning depends on prior work, external evidence, papers, or comparing approaches
 - task tracking or bounded delegation would help
 
 ## Outcome
@@ -19,21 +20,49 @@ Use this skill to turn explicit requirements into a validated plan before editin
 - plan sections that include both context and executable tasks
 - a split plan directory with a master overview when the plan would be very long
 - a task list that mirrors the plan when task tools are available
+- evidence-gathering preflight when the subject is complicated or source-sensitive
 - identified delegation points for bounded leaf work
 - planned comment/documentation work for non-obvious or compatibility-driven code
 
-## Long Plan Splitting
-When a plan is likely to exceed about 800-1000 lines, spans many phases, or would overload execution context, write it as a split plan directory instead of one huge file.
+## Plan Location Convention
+All plans go under the current working directory's `.pi/plans/` directory.
 
-Use this layout by default:
+Use a single markdown file for a simple plan:
 
 ```text
-.pi/<topic>-plan/
-├── README.md
-├── 01-<reviewable-slice>.md
-├── 02-<reviewable-slice>.md
-└── 03-<reviewable-slice>.md
+.pi/plans/<plan_name>.md
 ```
+
+Use a directory for a deep plan:
+
+```text
+.pi/plans/<plan_name>/
+├── README.md
+├── 01-<stage>.md
+├── 02-<stage>.md
+└── 03-<stage>.md
+```
+
+`<plan_name>` is a short, descriptive, hyphenated name; `simple_plan` and `deep_plan` are examples, not literal names.
+
+Examples:
+
+```text
+.pi/plans/sql-optimization.md
+.pi/plans/release-checklist.md
+.pi/plans/auth-refactor.md
+
+.pi/plans/post-cbe-optimization/
+├── README.md
+├── 01-evidence.md
+├── 02-ir.md
+└── 03-rollout.md
+```
+
+## Long Plan Splitting
+When a plan is likely to exceed about 800-1000 lines, spans many phases, or would overload execution context, write it as a deep plan directory instead of one huge file.
+
+Use the deep plan layout from Plan Location Convention by default.
 
 `README.md` is the master plan overview. It must include:
 - purpose and desired end state
@@ -65,16 +94,21 @@ Splitting rules:
 ## Workflow
 1. Capture requirements, non-goals, assumptions, constraints, and public contract concerns.
 2. Identify affected code, generated artifacts, local constraints, and project-sanctioned validation commands.
-3. If working from an existing plan, isolate the current referenced phase/document and its immediate prerequisites.
-4. Break the work into independently validatable steps and order refactors, behavior changes, delegation, and cleanup.
-5. Call out risks, rollback points, side effects, and any code likely to need targeted comments.
-6. Choose domain-facing names early; do not carry plan labels into code.
-7. If writing a plan document, first decide whether it should be a normal single document or a split plan directory using Long Plan Splitting.
-8. For a single plan document, give each major phase/group concrete nested tasks rather than context-only prose.
-9. For a split plan directory, write `README.md` plus ordered numbered plan files, and make each numbered file concrete enough for direct execution.
-10. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
-11. Keep the plan and task list aligned as work evolves.
-12. Judge completion against the current plan document's own scope and exit criteria.
+3. For complicated or source-sensitive subjects, run a focused Feynman research preflight before freezing scope:
+   - use `session-search` when prior work or earlier decisions may matter
+   - use `alpha-research` or `literature-review` for academic or paper-backed questions
+   - use `source-comparison` when choosing between tools, approaches, claims, or frameworks
+   - use `deep-research` when a sourced brief is needed before planning
+4. If working from an existing plan, isolate the current referenced phase/document and its immediate prerequisites.
+5. Break the work into independently validatable steps and order refactors, behavior changes, delegation, and cleanup.
+6. Call out risks, rollback points, side effects, and any code likely to need targeted comments.
+7. Choose domain-facing names early; do not carry plan labels into code.
+8. If writing a plan document, first decide whether it should be a normal single document or a split plan directory using Long Plan Splitting.
+9. For a single plan document, give each major phase/group concrete nested tasks rather than context-only prose.
+10. For a split plan directory, write `README.md` plus ordered numbered plan files, and make each numbered file concrete enough for direct execution.
+11. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
+12. Keep the plan and task list aligned as work evolves.
+13. Judge completion against the current plan document's own scope and exit criteria.
 
 ## Handoff to Execute Plan
 - Use `execute-plan` when the plan is already clear, aligned with the user's request, and the next job is execution.
