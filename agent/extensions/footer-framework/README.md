@@ -23,9 +23,19 @@ It ships with a bundled skill (`footer-framework-config`) and advertises it via 
 - `/footerfx off` — disable and restore default footer
 - `/footerfx reset` — restore defaults
 - `/footerfx section <cwd|stats|model|branch|pr|ext> <on|off>`
-- `/footerfx gap <min> <max>` — spacing controls
+- `/footerfx anchor <line1|line2|all> <gap|left|center|right|spread>` — anchor right-side elements
+- `/footerfx gap <min> <max>` — spacing controls used by `gap`/`center`/`left` modes
 - `/footerfx branch-width <n>` — max branch label width
 - `/footerfx mcp-zero <hide|show>` — hide/show `MCP: 0/x servers`
+- `/footerfx-debug` — dump latest footer snapshot and settings
+  - includes per-line layout telemetry: left/right widths, pad width, right start/end columns, truncation
+
+## Agent automation primitives
+
+The extension exposes tools so the agent can introspect and tune the footer without asking the user to run commands:
+
+- `footer_framework_state` — returns settings + latest rendered footer snapshot + layout telemetry
+- `footer_framework_config` — applies the same syntax as `/footerfx ...`
 
 ## Notes
 

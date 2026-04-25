@@ -19,6 +19,7 @@ Use this skill when a user wants footer layout changes without editing extension
 - `/footerfx off` — restore default footer
 - `/footerfx reset` — reset to defaults
 - `/footerfx section <cwd|stats|model|branch|pr|ext> <on|off>`
+- `/footerfx anchor <line1|line2|all> <gap|left|center|right|spread>`
 - `/footerfx gap <min> <max>`
 - `/footerfx branch-width <n>`
 - `/footerfx mcp-zero <hide|show>`
@@ -34,11 +35,14 @@ Use this skill when a user wants footer layout changes without editing extension
 
 ## Presets
 ### Compact
+- `/footerfx anchor all left`
 - `/footerfx gap 1 8`
 - `/footerfx branch-width 18`
 - `/footerfx section ext off`
 
 ### Balanced
+- `/footerfx anchor line1 right`
+- `/footerfx anchor line2 right`
 - `/footerfx gap 2 16`
 - `/footerfx branch-width 22`
 - `/footerfx section ext on`

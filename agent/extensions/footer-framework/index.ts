@@ -1,9 +1,11 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Type } from "@mariozechner/pi-ai";
+import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
+type FooterAnchorMode = "gap" | "left" | "center" | "right" | "spread";
 
 interface PrState {
 	branch?: string;
@@ -27,6 +29,8 @@ interface FooterFrameworkSettings {
 	showPr: boolean;
 	showExtensionStatuses: boolean;
 	hideZeroMcp: boolean;
+	line1Anchor: FooterAnchorMode;
+	line2Anchor: FooterAnchorMode;
 	branchMaxLength: number;
 	minGap: number;
 	maxGap: number;
@@ -41,6 +45,8 @@ const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 	showPr: true,
 	showExtensionStatuses: true,
 	hideZeroMcp: true,
+	line1Anchor: "center",
+	line2Anchor: "center",
 	branchMaxLength: 22,
 	minGap: 2,
 	maxGap: 20,
@@ -124,6 +130,22 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		settings.maxGap = clamp(Math.round(max), settings.minGap, 40);
 		return `Gap updated (min=${settings.minGap}, max=${settings.maxGap}).`;
 	}
+	if (command === "anchor") {
+		if (!key || !value) return "Usage: /footerfx anchor <line1|line2|all> <gap|left|center|right|spread>";
+		if (!["gap", "left", "center", "right", "spread"].includes(value)) {
+			return "Anchor must be one of: gap, left, center, right, spread.";
+		}
+		const mode = value as FooterAnchorMode;
+		if (key === "line1") settings.line1Anchor = mode;
+		else if (key === "line2") settings.line2Anchor = mode;
+		else if (key === "all") {
+			settings.line1Anchor = mode;
+			settings.line2Anchor = mode;
+		} else {
+			return "Anchor target must be one of: line1, line2, all.";
+		}
+		return `Anchor ${key} set to ${mode}.`;
+	}
 	if (command === "branch-width") {
 		if (!key) return "Usage: /footerfx branch-width <n>";
 		const maxLength = Number(key);
@@ -144,6 +166,7 @@ function settingsSummary(settings: FooterFrameworkSettings): string {
 	return [
 		`enabled=${settings.enabled}`,
 		`sections: cwd=${settings.showCwd}, stats=${settings.showStats}, model=${settings.showModel}, branch=${settings.showBranch}, pr=${settings.showPr}, ext=${settings.showExtensionStatuses}`,
+		`anchor: line1=${settings.line1Anchor}, line2=${settings.line2Anchor}`,
 		`gap: min=${settings.minGap}, max=${settings.maxGap}`,
 		`branchMaxLength=${settings.branchMaxLength}`,
 		`hideZeroMcp=${settings.hideZeroMcp}`,
@@ -155,7 +178,39 @@ const extensionDir = path.dirname(fileURLToPath(import.meta.url));
 export default function footerFramework(pi: ExtensionAPI): void {
 	const settings: FooterFrameworkSettings = { ...DEFAULT_SETTINGS };
 	let prState: PrState | undefined;
+	let currentCtx: ExtensionContext | undefined;
 	let requestRender: (() => void) | undefined;
+	let lastFooterSnapshot:
+		| {
+				width: number;
+				line1: string;
+				line2: string;
+				line1Layout: {
+					anchor: FooterAnchorMode;
+					leftWidth: number;
+					rightWidthOriginal: number;
+					rightWidthFinal: number;
+					padCount: number;
+					rightStartCol: number;
+					rightEndCol: number;
+					truncated: boolean;
+				};
+				line2Layout: {
+					anchor: FooterAnchorMode;
+					leftWidth: number;
+					rightWidthOriginal: number;
+					rightWidthFinal: number;
+					padCount: number;
+					rightStartCol: number;
+					rightEndCol: number;
+					truncated: boolean;
+				};
+				gitBranch: string | null;
+				extensionStatuses: Array<{ key: string; value: string }>;
+				model: string;
+				cwd: string;
+			}
+		| undefined;
 
 	function persistSettings(): void {
 		pi.appendEntry("footer-framework-state", settings);
@@ -168,20 +223,74 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return theme.fg("muted", "•");
 	}
 
-	function composeLine(theme: ExtensionContext["ui"]["theme"], width: number, left: string, right?: string): string {
-		if (!right || visibleWidth(right) === 0) return truncateToWidth(left, width, theme.fg("dim", "..."));
+	function composeLine(
+		theme: ExtensionContext["ui"]["theme"],
+		width: number,
+		left: string,
+		right: string | undefined,
+		anchor: FooterAnchorMode,
+	): {
+		line: string;
+		layout: {
+			anchor: FooterAnchorMode;
+			leftWidth: number;
+			rightWidthOriginal: number;
+			rightWidthFinal: number;
+			padCount: number;
+			rightStartCol: number;
+			rightEndCol: number;
+			truncated: boolean;
+		};
+	} {
 		const leftWidth = visibleWidth(left);
-		const rightWidth = visibleWidth(right);
-		let padCount = width - leftWidth - rightWidth;
-		if (padCount < settings.minGap) {
-			const availableForRight = Math.max(0, width - leftWidth - settings.minGap);
-			const compactRight = truncateToWidth(right, availableForRight, theme.fg("dim", "..."));
-			return truncateToWidth(`${left}${" ".repeat(settings.minGap)}${compactRight}`, width, theme.fg("dim", "..."));
+		if (!right || visibleWidth(right) === 0) {
+			return {
+				line: truncateToWidth(left, width, theme.fg("dim", "...")),
+				layout: {
+					anchor,
+					leftWidth,
+					rightWidthOriginal: 0,
+					rightWidthFinal: 0,
+					padCount: 0,
+					rightStartCol: leftWidth,
+					rightEndCol: leftWidth,
+					truncated: false,
+				},
+			};
 		}
-		padCount = Math.min(padCount, settings.maxGap);
+		const rightWidthOriginal = visibleWidth(right);
+		const naturalPad = width - leftWidth - rightWidthOriginal;
+		let padCount = settings.minGap;
+		if (anchor === "right" || anchor === "spread") {
+			padCount = Math.max(settings.minGap, naturalPad);
+		} else if (anchor === "center") {
+			padCount = Math.max(settings.minGap, Math.floor(naturalPad / 2));
+			padCount = Math.min(padCount, settings.maxGap);
+		} else if (anchor === "gap") {
+			padCount = Math.max(settings.minGap, Math.min(naturalPad, settings.maxGap));
+		} else if (anchor === "left") {
+			padCount = settings.minGap;
+		}
+
 		const availableForRight = Math.max(0, width - leftWidth - padCount);
 		const compactRight = truncateToWidth(right, availableForRight, theme.fg("dim", "..."));
-		return truncateToWidth(`${left}${" ".repeat(padCount)}${compactRight}`, width, theme.fg("dim", "..."));
+		const rightWidthFinal = visibleWidth(compactRight);
+		const line = truncateToWidth(`${left}${" ".repeat(padCount)}${compactRight}`, width, theme.fg("dim", "..."));
+		const rightStartCol = leftWidth + padCount;
+		const rightEndCol = Math.max(rightStartCol, rightStartCol + rightWidthFinal - 1);
+		return {
+			line,
+			layout: {
+				anchor,
+				leftWidth,
+				rightWidthOriginal,
+				rightWidthFinal,
+				padCount,
+				rightStartCol,
+				rightEndCol,
+				truncated: rightWidthFinal < rightWidthOriginal,
+			},
+		};
 	}
 
 	function renderBranch(theme: ExtensionContext["ui"]["theme"], gitBranch: string | null): string | undefined {
@@ -199,6 +308,16 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		const tokens = [theme.fg("muted", "PR"), renderCheck(theme, prState.pr.checks)];
 		if (prState.pr.comments > 0) tokens.push(theme.fg("muted", `💬${prState.pr.comments}`));
 		return tokens.join(" ");
+	}
+
+	function applyFooterConfig(input: string, ctx?: ExtensionContext): string {
+		const message = parseSettingsInput(settings, input) ?? settingsSummary(settings);
+		persistSettings();
+		if (ctx) {
+			installFooter(ctx);
+			ctx.ui.setStatus("footer-framework", settings.enabled ? ctx.ui.theme.fg("muted", "footerfx:on") : undefined);
+		}
+		return message;
 	}
 
 	function installFooter(ctx: ExtensionContext): void {
@@ -233,7 +352,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 					if (settings.showModel) right1Parts.push(theme.fg("dim", ctx.model?.id ?? "no-model"));
 					const branchPart = renderBranch(theme, footerData.getGitBranch());
 					if (branchPart) right1Parts.push(branchPart);
-					const line1 = composeLine(theme, width, left1 || " ", right1Parts.join(" · "));
+					const line1Result = composeLine(theme, width, left1 || " ", right1Parts.join(" · "), settings.line1Anchor);
 
 					const left2 = settings.showStats
 						? theme.fg("dim", `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`)
@@ -254,9 +373,20 @@ export default function footerFramework(pi: ExtensionAPI): void {
 							.join(" · ");
 						if (extStatuses) right2Parts.push(extStatuses);
 					}
-					const line2 = composeLine(theme, width, left2 || " ", right2Parts.join(" · "));
+					const line2Result = composeLine(theme, width, left2 || " ", right2Parts.join(" · "), settings.line2Anchor);
 
-					return [line1, line2];
+					lastFooterSnapshot = {
+						width,
+						line1: line1Result.line,
+						line2: line2Result.line,
+						line1Layout: line1Result.layout,
+						line2Layout: line2Result.layout,
+						gitBranch: footerData.getGitBranch(),
+						extensionStatuses: Array.from(footerData.getExtensionStatuses().entries()).map(([key, value]) => ({ key, value })),
+						model: ctx.model?.id ?? "no-model",
+						cwd: ctx.cwd,
+					};
+					return [line1Result.line, line2Result.line];
 				},
 			};
 		});
@@ -279,20 +409,71 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				ctx.ui.notify(settingsSummary(settings), "info");
 				return;
 			}
-			const message = parseSettingsInput(settings, trimmed);
-			if (message) ctx.ui.notify(message, "info");
-			persistSettings();
-			installFooter(ctx);
+			ctx.ui.notify(applyFooterConfig(trimmed, ctx), "info");
 		},
 	});
 
+	pi.registerCommand("footerfx-debug", {
+		description: "Show latest footer render snapshot and framework state",
+		handler: async (_args, ctx) => {
+			const payload = {
+				settings,
+				prState,
+				lastFooterSnapshot,
+			};
+			ctx.ui.notify(JSON.stringify(payload, null, 2), "info");
+		},
+	});
+
+	pi.registerTool(
+		defineTool({
+			name: "footer_framework_state",
+			description: "Get footer framework settings and latest rendered footer snapshot for autonomous tuning",
+			parameters: Type.Object({}),
+			async execute() {
+				const payload = {
+					settings,
+					prState,
+					lastFooterSnapshot,
+				};
+				return {
+					content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+					details: payload,
+				};
+			},
+		}),
+	);
+
+	pi.registerTool(
+		defineTool({
+			name: "footer_framework_config",
+			description: "Adjust footer framework settings without user command loop",
+			parameters: Type.Object({
+				command: Type.String({
+					description:
+						"Same syntax as /footerfx, e.g. 'section ext off', 'gap 1 10', 'branch-width 18', 'on', 'off', 'reset'",
+				}),
+			}),
+			async execute(_toolCallId, params) {
+				const message = applyFooterConfig(params.command, currentCtx);
+				return {
+					content: [{ type: "text", text: message }],
+					details: { message, settings },
+				};
+			},
+		}),
+	);
+
 	pi.on("session_start", async (_event, ctx) => {
+		currentCtx = ctx;
 		const persisted = ctx.sessionManager
 			.getEntries()
 			.filter((entry) => entry.type === "custom" && entry.customType === "footer-framework-state")
 			.pop() as { data?: Partial<FooterFrameworkSettings> } | undefined;
 		if (persisted?.data) {
 			Object.assign(settings, persisted.data);
+			if (!["gap", "left", "center", "right", "spread"].includes(settings.line1Anchor)) settings.line1Anchor = DEFAULT_SETTINGS.line1Anchor;
+			if (!["gap", "left", "center", "right", "spread"].includes(settings.line2Anchor)) settings.line2Anchor = DEFAULT_SETTINGS.line2Anchor;
 			settings.minGap = clamp(settings.minGap, 1, 12);
 			settings.maxGap = clamp(settings.maxGap, settings.minGap, 40);
 			settings.branchMaxLength = clamp(settings.branchMaxLength, 10, 64);
@@ -304,5 +485,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async () => {
 		requestRender = undefined;
+		currentCtx = undefined;
 	});
 }
