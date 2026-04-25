@@ -5,6 +5,19 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
 
+interface GitHubCombinedStatus {
+	state?: string;
+	total_count?: number;
+}
+
+interface GitHubCheckRuns {
+	total_count?: number;
+	check_runs?: Array<{
+		status?: string;
+		conclusion?: string | null;
+	}>;
+}
+
 interface RepoRef {
 	host: "github";
 	owner: string;
@@ -158,6 +171,40 @@ function checksAreComplete(checks: ChecksState): boolean {
 	return checks === "pass" || checks === "fail";
 }
 
+function resolveGitHubChecks(status: GitHubCombinedStatus | undefined, checkRuns: GitHubCheckRuns | undefined): ChecksState {
+	let hasPassingSignal = false;
+	let hasRunningSignal = false;
+	let hasFailingSignal = false;
+
+	// GitHub's combined status reports "pending" when there are zero legacy statuses;
+	// ignore that placeholder and let check-runs determine the PR state.
+	if ((status?.total_count ?? 0) > 0) {
+		if (status?.state === "failure" || status?.state === "error") hasFailingSignal = true;
+		else if (status?.state === "pending") hasRunningSignal = true;
+		else if (status?.state === "success") hasPassingSignal = true;
+	}
+
+	for (const run of checkRuns?.check_runs ?? []) {
+		if (run.status && run.status !== "completed") {
+			hasRunningSignal = true;
+			continue;
+		}
+
+		if (["failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"].includes(run.conclusion ?? "")) {
+			hasFailingSignal = true;
+		} else if (["success", "neutral", "skipped"].includes(run.conclusion ?? "")) {
+			hasPassingSignal = true;
+		} else {
+			hasRunningSignal = true;
+		}
+	}
+
+	if (hasFailingSignal) return "fail";
+	if (hasRunningSignal) return "running";
+	if (hasPassingSignal) return "pass";
+	return "unknown";
+}
+
 function feedbackKey(item: PullRequestFeedback): string {
 	return `${item.kind}:${item.id}:${item.updatedAt ?? ""}`;
 }
@@ -196,19 +243,32 @@ const githubProvider: CodeHostProvider = {
 				const pr = pulls?.[0];
 				if (!pr) continue;
 
-				const checks = await fetchGitHubJson<{ state?: string }>(
-					`/repos/${baseRepo.owner}/${baseRepo.repo}/commits/${pr.head?.sha ?? ""}/status`,
-					token,
-				);
-				const checkState = checks?.state === "success" ? "pass" : checks?.state === "failure" ? "fail" : checks?.state === "pending" ? "running" : "unknown";
+				// GitHub's list endpoint omits comment counts; the PR detail endpoint includes them.
+				const details = await fetchGitHubJson<{
+					number: number;
+					title?: string;
+					html_url?: string;
+					comments?: number;
+					review_comments?: number;
+					head?: { sha?: string };
+				}>(`/repos/${baseRepo.owner}/${baseRepo.repo}/pulls/${pr.number}`, token);
+				const headSha = details?.head?.sha ?? pr.head?.sha;
+
+				const [status, checkRuns] = headSha
+					? await Promise.all([
+						fetchGitHubJson<GitHubCombinedStatus>(`/repos/${baseRepo.owner}/${baseRepo.repo}/commits/${headSha}/status`, token),
+						fetchGitHubJson<GitHubCheckRuns>(`/repos/${baseRepo.owner}/${baseRepo.repo}/commits/${headSha}/check-runs?per_page=100&filter=latest`, token),
+					])
+					: [undefined, undefined];
+				const checkState = resolveGitHubChecks(status, checkRuns);
 
 				return {
 					number: pr.number,
-					title: pr.title,
-					url: pr.html_url,
-					comments: (pr.comments ?? 0) + (pr.review_comments ?? 0),
+					title: details?.title ?? pr.title,
+					url: details?.html_url ?? pr.html_url,
+					comments: (details?.comments ?? pr.comments ?? 0) + (details?.review_comments ?? pr.review_comments ?? 0),
 					checks: checkState,
-					headSha: pr.head?.sha,
+					headSha,
 					base: baseRepo,
 				};
 			}
