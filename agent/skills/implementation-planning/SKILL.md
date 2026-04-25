@@ -91,6 +91,39 @@ Splitting rules:
 - If an existing umbrella plan exists, link to it from `README.md` and treat the split directory as the execution plan.
 - When execution is expected to be long-running, recommend `execute-long-plan` for the handoff.
 
+## Plan Quality Contract
+Every non-trivial plan should be executable by a future agent without guessing. Include:
+- goal, scope, non-goals, assumptions, and constraints
+- affected files or exact code/docs areas when knowable
+- task breakdown where each leaf task has a coherent outcome, acceptance criteria, and validation
+- risks, rollback points, side effects, and approval gates
+- explicit validation commands or inspection checks with expected signals; if unknown, add a discovery task
+
+## Task Granularity
+A leaf task is the right size when it:
+1. can be verified independently,
+2. touches one concern or explains why files must change together,
+3. is a plausible commit boundary,
+4. has a clear done state,
+5. can be reviewed without reading the whole plan.
+
+TDD cycles happen inside implementation tasks. Do not split `write failing test`, `make it pass`, and `refactor` into separate plan tasks unless the test infrastructure itself is the deliverable.
+
+## No Placeholders
+Plans are not ready if they contain hidden work such as `TODO`, `TBD`, `fill in later`, `similar to previous`, `add tests`, `handle edge cases`, `etc.` as a substitute for required detail, or vague steps like `document this` without the actual documentation requirements.
+
+## Plan Self-Review
+Before handing off or executing a moderately complicated plan, review it for:
+- requirement coverage
+- task granularity
+- acceptance criteria
+- exact validation and expected signals
+- missing file paths or affected areas
+- placeholders and vague verbs
+- artifact hygiene, including no internal plan/stage names in produced artifacts
+
+For a moderately complicated or high-risk plan, optionally dispatch a reviewer using `plan-quality-review.md`.
+
 ## Workflow
 1. Capture requirements, non-goals, assumptions, constraints, and public contract concerns.
 2. Identify affected code, generated artifacts, local constraints, and project-sanctioned validation commands.
@@ -106,9 +139,10 @@ Splitting rules:
 8. If writing a plan document, first decide whether it should be a normal single document or a split plan directory using Long Plan Splitting.
 9. For a single plan document, give each major phase/group concrete nested tasks rather than context-only prose.
 10. For a split plan directory, write `README.md` plus ordered numbered plan files, and make each numbered file concrete enough for direct execution.
-11. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
-12. Keep the plan and task list aligned as work evolves.
-13. Judge completion against the current plan document's own scope and exit criteria.
+11. Run the Plan Self-Review; for moderately complicated plans, consider a reviewer subagent using `plan-quality-review.md`.
+12. If task tools are available, create tasks that mirror the plan and add dependencies that match the intended order.
+13. Keep the plan and task list aligned as work evolves.
+14. Judge completion against the current plan document's own scope and exit criteria.
 
 ## Handoff to Execute Plan
 - Use `execute-plan` when the plan is already clear, aligned with the user's request, and the next job is execution.
@@ -121,6 +155,7 @@ Splitting rules:
 - Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` proactively for meaningfully multi-step work.
 - Read plan files for context, but do not create bookkeeping tasks like `read the plan file` unless review itself is the deliverable.
 - Create tasks from concrete implementation steps in the current referenced plan document.
+- Prefer task descriptions with `Goal`, `Files / areas`, `Acceptance criteria`, `Validation`, and `Risks / notes` sections.
 - Use parent/container tasks only for coordination; keep coding, validation, migration, and documentation work in leaf tasks.
 - Treat the task list as execution scaffolding, not as the boundary of requested scope; add missing in-scope tasks when needed.
 - When context or plan focus changes, reconcile the task list immediately before continuing: keep completed tasks from the current execution round unless they were created in error or clearly replaced/subsumed, delete older completed tasks from irrelevant prior context when they no longer help execute the current scope, and delete or supersede pending tasks that no longer help.
@@ -148,7 +183,7 @@ Splitting rules:
 
 ## Split Plan Output Template
 
-Use this for very long plans.
+Use this for very long plans. Replace every `...` placeholder before publishing or handing off the plan; unresolved placeholders mean the plan is not ready.
 
 `README.md`:
 
@@ -206,6 +241,8 @@ Numbered file:
 
 ## Single Plan Output Template
 
+Replace every `...` placeholder before publishing or handing off the plan; unresolved placeholders mean the plan is not ready.
+
 ```md
 ## Plan
 
@@ -214,8 +251,11 @@ Numbered file:
 - Code areas: ...
 
 #### Task 1. <name>
-- Work: ...
-- Validation: ...
+- Goal: ...
+- Files / areas: ...
+- Acceptance criteria:
+  - [ ] ...
+- Validation: `<command or inspection>` → expected signal
 - Risks / Notes: ...
 - Delegation: ...
 

@@ -32,26 +32,68 @@ Stop only when one of these conditions is true:
 
 Before sending a user-facing summary during plan execution, ask: "Is there any unblocked in-scope work left?" If yes, do not summarize in chat; continue with the next task.
 
+## Artifact Hygiene
+Execution plans are internal scaffolding. Produced artifacts must read as domain-facing repository work, not as outputs of a plan.
+
+Apply this to code, docs, generated files, examples, comments, migrations, config, and user-facing text:
+- Do not mention the source plan, plan path, numbered plan file, stage, phase, checklist item, task bookkeeping, or execution process unless the artifact is itself an internal execution/progress artifact.
+- Translate plan requirements into product/repository concepts rather than phrases like “this stage”, “Stage 05”, or “the optimization plan”.
+- Keep plan provenance in task descriptions, plan checklists, local evidence logs, commit messages, and final chat summaries; do not put it in repository artifacts.
+- Before completing plan-derived docs or generated outputs, scan for plan-leak phrases like `stage`, `phase`, `plan`, `checklist`, `.agents`, and the plan directory name; remove them unless the product domain genuinely uses them.
+
+## Plan Readiness Review
+Before converting a moderately complicated plan into tasks, scan it for execution blockers:
+- missing requirements coverage
+- leaf tasks that are not independently testable/reviewable
+- vague placeholders such as `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
+- missing acceptance criteria or validation
+- validation without exact commands/inspection checks or expected signals where knowable
+- artifact hygiene risks, especially plan/stage/checklist language leaking into produced docs/code
+
+If the plan is moderately complicated or high-risk and these checks are non-obvious, use the reviewer prompt in `../implementation-planning/plan-quality-review.md` before executing.
+
+## Structured Task Descriptions
+When creating tasks from a plan, put execution-critical detail in each leaf task description. Replace every `...` placeholder before creating the task; unresolved placeholders mean the task is not ready.
+
+```md
+**Goal:** ...
+
+**Files / areas:**
+- Modify: `path` or affected area
+
+**Acceptance criteria:**
+- [ ] Concrete pass/fail criterion
+
+**Validation:**
+- Command or inspection: `...`
+- Expected signal: ...
+- Gaps: ...
+
+**Risks / notes:** ...
+```
+
 ## Workflow
 1. Treat the plan as the execution source; do not re-plan from scratch unless new evidence forces it.
 2. Verify that the plan still matches the user request, current scope, and constraints.
 3. Preserve the plan's recommended order in the task graph unless a safer dependency order is required.
-4. Create parent/container tasks only for major phases/groups; put real coding, validation, migration, and documentation work in child leaf tasks.
-5. Put references, target files, invariants, and acceptance details into the relevant task descriptions instead of separate bookkeeping tasks.
-6. Mark the first executable leaf task `in_progress` and begin execution in the same run.
-7. After each completed leaf task, call `TaskList`, pick the next unblocked in-scope leaf task, and continue.
-8. If the task list is exhausted but the plan scope is not complete, add the missing concrete tasks and continue.
-9. If the plan omits required in-scope work, add concrete tasks and continue.
-10. Stop only for the conditions in the Plan Execution Stop Policy.
+4. Run the Plan Readiness Review and resolve blockers before execution unless the user explicitly asks to proceed with known gaps.
+5. Create parent/container tasks only for major phases/groups; put real coding, validation, migration, and documentation work in child leaf tasks.
+6. Put references, target files, invariants, acceptance criteria, and validation details into the relevant task descriptions instead of separate bookkeeping tasks.
+7. Mark the first executable leaf task `in_progress` and begin execution in the same run.
+8. After each completed leaf task, call `TaskList`, pick the next unblocked in-scope leaf task, and continue.
+9. If the task list is exhausted but the plan scope is not complete, add the missing concrete tasks and continue.
+10. If the plan omits required in-scope work, add concrete tasks and continue.
+11. Stop only for the conditions in the Plan Execution Stop Policy.
 
 ## Task Rules
-- Prefer one leaf task per independently completable unit of work.
+- Prefer one leaf task per independently completable, testable, reviewable unit of work that would make a plausible commit boundary.
 - Use parent/container tasks only for coordination.
 - Do not create vague executable tasks like `execute phase 2`, `continue slice C`, or `finish the rest`.
 - Treat `Continue` as instruction to resume from the task list.
 - Do not stop after task creation, successful validation, `git status`, completion of a phase/chunk, or an informational checkpoint if more unblocked work remains.
 - If progress needs to be captured mid-plan, update the task list, plan checklist, notes file, or local evidence log; do not emit a standalone progress report to the user.
 - If a leaf task introduces non-obvious logic or compatibility behavior, include targeted comment/documentation work in its done state.
+- TDD cycles happen inside implementation tasks; do not create separate bookkeeping tasks for red/green/refactor unless test infrastructure itself is the deliverable.
 
 ## Scope Control
 - Treat the plan and user request together as the source of in-scope work.

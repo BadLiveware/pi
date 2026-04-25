@@ -1,13 +1,13 @@
 ---
 name: execute-long-plan
-description: Use when a concrete implementation plan is long-running, multi-phase, checkpoint-prone, or explicitly meant to be executed end-to-end without intermediate status pauses. Sets up a Ralph loop, records progress in .ralph, and continues through unblocked in-scope work until complete or blocked.
+description: Use when a concrete implementation plan is long-running, multi-phase, checkpoint-prone, or explicitly meant to be executed end-to-end without intermediate status pauses.
 ---
 
 # Execute Long Plan
 
 Use this skill when a concrete plan already exists and the work is substantial enough that ordinary task execution is likely to create premature status checkpoints. This skill combines plan execution discipline with a Ralph loop so progress has a durable place to go without stopping in chat.
 
-Before using this skill, read and follow `pi-ralph-wiggum` if available.
+Before using this skill, read and follow `pi-ralph-wiggum` if that skill is available in the current session. If it is not available, use the Ralph tools directly and follow this file's setup, stop, and validation rules.
 
 ## Reach for This Skill When
 - a generated or approved implementation plan already exists
@@ -62,6 +62,15 @@ Stop only when one of these is true:
 
 Before sending any user-facing summary during execution, ask: "Is there any unblocked in-scope work left?" If yes, do not summarize in chat; update `.ralph` and continue.
 
+## Artifact Hygiene
+Execution plans are internal scaffolding. Produced artifacts must read as if they were designed directly for the repository and its users, not as if they are outputs of a plan.
+
+Apply this to code, docs, generated files, examples, comments, migrations, config, and user-facing text:
+- Do not mention the source plan, plan path, numbered plan file, stage, phase, checklist item, Ralph loop, or task bookkeeping unless the artifact is itself an internal execution/progress artifact.
+- Translate plan requirements into domain-facing language such as “ClickHouse deployment profile”, “operator settings”, or “benchmark assumptions” rather than “Stage 05” or “post-CBE optimization plan”.
+- Keep plan provenance in `.ralph`, task descriptions, plan checklists, evidence logs, commit messages, and final chat summaries; do not put it in repository artifacts.
+- Before writing or reviewing docs from a plan, scan for plan-leak phrases like `stage`, `phase`, `plan`, `checklist`, `.agents`, `.ralph`, and the plan directory name; remove them unless the product domain genuinely uses them.
+
 ## Inner Loop Summaries
 Brief summaries at Ralph iteration boundaries are useful, but they are not stopping points.
 
@@ -73,21 +82,44 @@ Allowed inner-loop summaries:
 
 Avoid user-facing standalone summaries after normal inner-loop progress. If more unblocked in-scope work remains, the summary belongs in `.ralph`; then call `ralph_done` and continue.
 
+## Plan Readiness Review
+Before starting a long execution loop, scan the active plan document for:
+- missing requirements coverage
+- leaf tasks that are not independently testable/reviewable
+- placeholders such as `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
+- missing acceptance criteria or validation commands/inspection checks
+- validation without expected signals or explicit gaps
+- artifact hygiene risks, especially plan/stage/checklist language leaking into produced docs/code
+
+For a moderately complicated or high-risk plan, optionally dispatch a reviewer with `../implementation-planning/plan-quality-review.md`. Resolve blockers before starting unless the user explicitly accepts the gaps.
+
+## Structured Task Descriptions
+When mirroring plan work into tasks or `.ralph`, keep each active leaf item concrete:
+
+```md
+**Goal:** ...
+**Files / areas:** ...
+**Acceptance criteria:** ...
+**Validation:** `<command or inspection>` → expected signal; gaps: ...
+**Risks / notes:** ...
+```
+
 ## Setup Workflow
 1. Confirm the referenced plan is clear enough to execute and still matches the user request and local constraints.
 2. Detect whether the plan is a split plan directory using Split Plan Detection.
-3. Choose a short lowercase hyphenated loop name derived from the plan or feature, for example `sweep-workflow`.
-4. Create `.ralph/<loop-name>.md` before calling `ralph_start`. Include:
+3. Run the Plan Readiness Review for the master/current plan document and resolve blockers or record accepted gaps.
+4. Choose a short lowercase hyphenated loop name derived from the plan or feature, for example `sweep-workflow`.
+5. Create `.ralph/<loop-name>.md` before calling `ralph_start`. Include:
    - goals and non-goals
    - source plan references, including the master overview and numbered files for split plans
    - current scope and exit criteria
-   - an ordered checklist of concrete implementation, validation, docs, and cleanup items
+   - an ordered checklist of concrete implementation, validation, docs, and cleanup items with acceptance criteria where useful
    - for split plans, top-level checklist items for each numbered file and active-file leaf tasks under the current file
    - a verification section for commands, outputs, artifacts, and remaining gaps
    - notes for decisions, blockers, and scope changes
-5. Call `ralph_start` with the same loop name and the file content.
-6. If task tools are useful, create or reconcile concrete leaf tasks that mirror the same checklist. Do not create vague tasks like `finish the rest`.
-7. Mark the first executable item in progress and begin implementation in the same run.
+6. Call `ralph_start` with the same loop name and the file content.
+7. If task tools are useful, create or reconcile concrete leaf tasks that mirror the same checklist. Do not create vague tasks like `finish the rest`.
+8. Mark the first executable item in progress and begin implementation in the same run.
 
 ## Execution Workflow
 1. Treat the plan plus `.ralph/<loop-name>.md` as the execution source of truth.
@@ -105,6 +137,8 @@ Avoid user-facing standalone summaries after normal inner-loop progress. If more
 10. Output `<promise>COMPLETE</promise>` only after the requested scope and exit criteria are truly complete and validation evidence or gaps are recorded.
 
 ## Ralph File Template
+
+Replace every `...` placeholder before starting the loop; unresolved placeholders mean the checklist is not ready to execute.
 
 ```markdown
 # <Plan Name>
@@ -141,9 +175,10 @@ Execute <plan/source> end-to-end without pausing for intermediate status reports
 ```
 
 ## Task and Scope Rules
-- Keep checklist items concrete and independently verifiable.
+- Keep checklist items concrete, independently verifiable, reviewable, and sized like plausible commit boundaries.
 - Use parent/container tasks only for coordination; use leaf tasks for actual implementation and validation.
-- Keep task names and code names domain-facing; do not put plan labels like `phase2` into code unless the product domain uses them.
+- TDD cycles happen inside implementation tasks; do not create separate bookkeeping tasks for red/green/refactor unless test infrastructure itself is the deliverable.
+- Keep task names domain-facing where practical, and keep code/docs/generated artifacts domain-facing always; do not put plan labels like `phase2`, `stage-05`, or a plan directory name into artifacts unless the product domain uses them.
 - Treat `Continue` as an instruction to resume from `.ralph` and the task list.
 - Do not stop after task creation, successful validation, `git status`, phase completion, or an informational checkpoint if more unblocked work remains.
 - If progress needs to be captured mid-plan, update `.ralph`, the task list, the plan checklist, or a local evidence log.
@@ -152,8 +187,10 @@ Execute <plan/source> end-to-end without pausing for intermediate status reports
 
 ## Validation Rules
 - Prefer project-sanctioned commands over generic defaults.
+- Record exact commands or inspection checks and expected signals; if validation cannot be exact yet, add a discovery item or explicit gap.
 - Use fast focused checks during implementation and broader validation at meaningful milestones.
 - Record exactly what ran, what passed, what failed, what was skipped, and what remains unverified in `.ralph`.
+- For docs or generated artifacts derived from a plan, include an artifact-hygiene check for internal plan/stage/checklist wording when relevant.
 - If validation cannot run because credentials, services, hardware, or external systems are unavailable, record the dependency and continue only when safe.
 
 ## Completion Response

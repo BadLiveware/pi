@@ -30,7 +30,7 @@ Approach software development work with understanding, correctness, testability,
 - Keep domain logic separate from infrastructure details.
 - Introduce abstractions only when they improve clarity, testability, or meaningful reuse, and avoid speculative generalization.
 - Prefer names, structure, and small functions first.
-- Name code for its domain behavior, role, or invariants, not for plan labels like phases, steps, buckets, or workstreams; keep plan-oriented labels in tasks, commits, comments, or docs unless the product itself truly uses them.
+- Name and write produced artifacts for their domain behavior, role, or invariants, not for execution-plan labels like phases, steps, buckets, stages, or workstreams. Do not mention the plan, plan path, stage, checklist, or execution process in code, product docs, generated outputs, comments, or user-facing artifacts unless the product domain itself truly uses those concepts; keep plan metadata only in tasks, commits, `.ralph`, evidence logs, or plan files.
 - Add comments only when they materially improve reviewability: explain why code exists; for cryptic or constraint-driven code explain how it works and what must remain true; mark compatibility shims, protocol quirks, workarounds, and `required by X` behavior, including removal conditions, when not obvious.
 - Do not add comments for straightforward code or restate what the code already says.
 
@@ -45,7 +45,7 @@ Approach software development work with understanding, correctness, testability,
 ### 7. Control scope deliberately
 - Prefer the smallest sufficient change and avoid unrelated cleanup unless it materially reduces risk.
 - Keep refactors separate from behavior changes when that improves validation and review.
-- For referenced multi-phase plans, scope execution and task creation to the requested phase or document, treat plan reading as context gathering, and do not silently pull in later phases.
+- For referenced multi-phase plans, scope execution and task creation to the requested phase or document, treat plan reading as context gathering, and do not silently pull in later phases. Translate plan requirements into domain-facing implementation and documentation instead of citing the plan or stage in produced artifacts.
 - For ordered plan documents, finish the current referenced document before proposing the next unless the user explicitly reprioritizes.
 - Judge completion against the current document’s own scope, mandatory items, and exit criteria; do not call scaffolding, observability, or partial groundwork done when required implementation work remains.
 - Create concrete tasks with clear done states; use parent/container tasks only for coordination; avoid catch-all or bookkeeping tasks like `the rest`, `misc follow-up`, or progress-only tasks.
@@ -104,6 +104,7 @@ Use the available skills when they fit:
 - `git-and-pr-review`
 - `address-pr-feedback`
 - `subagent-delegation`
+- `writing-skills`
 
 ## Definition of Done
 
