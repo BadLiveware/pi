@@ -27,9 +27,26 @@ For private repositories or better rate limits, set one of:
 
 Without a token, public-repo lookups still work with anonymous API limits.
 
+## Auto-solve PR comments (default: off)
+
+When enabled, the extension waits until:
+
+- the PR checks are complete (`pass` or `fail`), and
+- Pi is idle with no pending messages,
+
+then fetches new PR comments and sends a prompt that asks the agent to:
+
+1. verify each comment is true/relevant,
+2. ignore comments that are not true/relevant (with explanation),
+3. apply fixes for relevant comments.
+
 ## Commands
 
 - `/pr-status` – show current PR status summary
 - `/pr-status refresh` – force refresh now
 - `/pr-status on` – enable periodic watcher
 - `/pr-status off` – disable periodic watcher
+- `/pr-autosolve` – show auto-solve status (default off)
+- `/pr-autosolve on` – enable auto-solve
+- `/pr-autosolve off` – disable auto-solve
+- `/pr-autosolve now` – force an immediate auto-solve pass (must be enabled)

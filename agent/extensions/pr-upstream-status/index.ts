@@ -19,6 +19,16 @@ interface PullRequestInfo {
 	base: RepoRef;
 }
 
+interface PullRequestFeedback {
+	id: string;
+	kind: "issue" | "review";
+	author: string;
+	body: string;
+	url?: string;
+	path?: string;
+	updatedAt?: string;
+}
+
 interface BranchSnapshot {
 	branch?: string;
 	pr?: PullRequestInfo;
@@ -35,10 +45,12 @@ interface CodeHostProvider {
 		branch: string;
 		token?: string;
 	}): Promise<PullRequestInfo | undefined>;
+	fetchOpenFeedback(params: { pr: PullRequestInfo; token?: string; maxItems?: number }): Promise<PullRequestFeedback[]>;
 }
 
 const REFRESH_INTERVAL_MS = 90_000;
 const REFRESH_MIN_GAP_MS = 15_000;
+const AUTO_SOLVE_MIN_GAP_MS = 120_000;
 
 function formatTokens(count: number): string {
 	if (count < 1_000) return `${count}`;
@@ -95,6 +107,24 @@ async function fetchGitHubJson<T>(path: string, token?: string, timeoutMs = 8_00
 	}
 }
 
+function checksAreComplete(checks: ChecksState): boolean {
+	return checks === "pass" || checks === "fail";
+}
+
+function feedbackKey(item: PullRequestFeedback): string {
+	return `${item.kind}:${item.id}:${item.updatedAt ?? ""}`;
+}
+
+function summarizeFeedback(items: PullRequestFeedback[]): string {
+	return items
+		.map((item, index) => {
+			const loc = item.path ? ` (${item.path})` : "";
+			const link = item.url ? `\nURL: ${item.url}` : "";
+			return `${index + 1}. [${item.kind}] @${item.author}${loc}\n${item.body}${link}`;
+		})
+		.join("\n\n");
+}
+
 const githubProvider: CodeHostProvider = {
 	id: "github",
 	parseRepo: parseGitHubRepo,
@@ -137,6 +167,61 @@ const githubProvider: CodeHostProvider = {
 			}
 		}
 		return undefined;
+	},
+	async fetchOpenFeedback({ pr, token, maxItems = 20 }) {
+		const [issueComments, reviewComments] = await Promise.all([
+			fetchGitHubJson<
+				Array<{
+					id: number;
+					body?: string;
+					updated_at?: string;
+					html_url?: string;
+					user?: { login?: string };
+				}>
+			>(`/repos/${pr.base.owner}/${pr.base.repo}/issues/${pr.number}/comments?per_page=100`, token),
+			fetchGitHubJson<
+				Array<{
+					id: number;
+					body?: string;
+					updated_at?: string;
+					html_url?: string;
+					path?: string;
+					in_reply_to_id?: number;
+					user?: { login?: string };
+				}>
+			>(`/repos/${pr.base.owner}/${pr.base.repo}/pulls/${pr.number}/comments?per_page=100`, token),
+		]);
+
+		const merged: PullRequestFeedback[] = [];
+		for (const comment of issueComments ?? []) {
+			const body = comment.body?.trim();
+			if (!body) continue;
+			merged.push({
+				id: `issue-${comment.id}`,
+				kind: "issue",
+				author: comment.user?.login ?? "unknown",
+				body,
+				url: comment.html_url,
+				updatedAt: comment.updated_at,
+			});
+		}
+		for (const comment of reviewComments ?? []) {
+			if (comment.in_reply_to_id) continue;
+			const body = comment.body?.trim();
+			if (!body) continue;
+			merged.push({
+				id: `review-${comment.id}`,
+				kind: "review",
+				author: comment.user?.login ?? "unknown",
+				body,
+				url: comment.html_url,
+				path: comment.path,
+				updatedAt: comment.updated_at,
+			});
+		}
+
+		merged.sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""));
+		return merged.slice(-maxItems);
 	},
 };
 
@@ -203,6 +288,11 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let snapshot: BranchSnapshot = {};
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
 	let refreshInFlight = false;
+	let autoSolveEnabled = false;
+	let autoSolvePromptInFlight = false;
+	let lastAutoSolveAt = 0;
+	let lastPromptedHeadSha: string | undefined;
+	let promptedFeedbackKeys = new Set<string>();
 	let lastRefreshAt = 0;
 	let requestRender: (() => void) | undefined;
 
@@ -268,6 +358,51 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		});
 	}
 
+	async function maybeAutoSolveComments(ctx: ExtensionContext, force = false): Promise<void> {
+		const pr = snapshot.pr;
+		if (!autoSolveEnabled || !pr) return;
+		if (!checksAreComplete(pr.checks)) return;
+		if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
+		if (autoSolvePromptInFlight) return;
+
+		if (lastPromptedHeadSha && pr.headSha && pr.headSha !== lastPromptedHeadSha) {
+			promptedFeedbackKeys = new Set<string>();
+		}
+		lastPromptedHeadSha = pr.headSha;
+
+		const now = Date.now();
+		if (!force && now - lastAutoSolveAt < AUTO_SOLVE_MIN_GAP_MS) return;
+
+		autoSolvePromptInFlight = true;
+		try {
+			const feedback = await provider.fetchOpenFeedback({ pr, token, maxItems: 30 });
+			const unseen = feedback.filter((item) => !promptedFeedbackKeys.has(feedbackKey(item)));
+			if (unseen.length === 0) return;
+
+			const keys = unseen.map(feedbackKey);
+			for (const key of keys) promptedFeedbackKeys.add(key);
+			lastAutoSolveAt = now;
+
+			const prompt = [
+				`Review feedback needs triage for PR #${pr.number} (${pr.url}).`,
+				"Checks have completed and Pi is idle.",
+				"For each comment below:",
+				"1) Verify whether the feedback is factually true and relevant to this PR.",
+				"2) If not true/relevant, explain briefly why and do not change code for that comment.",
+				"3) If true and relevant, implement the fix with minimal, reviewable changes.",
+				"4) Summarize which comments were addressed vs dismissed.",
+				"",
+				"Comments:",
+				summarizeFeedback(unseen),
+			].join("\n");
+
+			ctx.ui.notify(`Auto-solve queued for ${unseen.length} new PR comment(s).`, "info");
+			pi.sendUserMessage(prompt);
+		} finally {
+			autoSolvePromptInFlight = false;
+		}
+	}
+
 	async function refresh(ctx: ExtensionContext, force = false): Promise<void> {
 		const now = Date.now();
 		if (!force && now - lastRefreshAt < REFRESH_MIN_GAP_MS) return;
@@ -299,6 +434,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			};
 			updateStatus(ctx);
 			requestRender?.();
+			await maybeAutoSolveComments(ctx);
 		} catch (error) {
 			snapshot = {
 				...snapshot,
@@ -317,6 +453,33 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			void refresh(ctx);
 		}, REFRESH_INTERVAL_MS);
 	}
+
+	pi.registerCommand("pr-autosolve", {
+		description: "Control auto-solving new PR comments after checks complete (default: off)",
+		handler: async (args, ctx) => {
+			const action = args.trim().toLowerCase();
+			if (action === "on" || action === "enable") {
+				autoSolveEnabled = true;
+				ctx.ui.notify("PR auto-solve enabled.", "info");
+				await maybeAutoSolveComments(ctx, true);
+				return;
+			}
+			if (action === "off" || action === "disable") {
+				autoSolveEnabled = false;
+				ctx.ui.notify("PR auto-solve disabled.", "info");
+				return;
+			}
+			if (action === "now" || action === "run" || action === "refresh") {
+				if (!autoSolveEnabled) {
+					ctx.ui.notify("PR auto-solve is off. Enable it with /pr-autosolve on.", "warning");
+					return;
+				}
+				await maybeAutoSolveComments(ctx, true);
+				return;
+			}
+			ctx.ui.notify(`PR auto-solve: ${autoSolveEnabled ? "on" : "off"} (default off)`, "info");
+		},
+	});
 
 	pi.registerCommand("pr-status", {
 		description: "Show or refresh upstream PR status for current branch",
@@ -339,7 +502,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			if (snapshot.pr) {
 				const check = snapshot.pr.checks;
 				ctx.ui.notify(
-					`Open PR #${snapshot.pr.number} (${check}, 💬${snapshot.pr.comments})\n${snapshot.pr.url}`,
+					`Open PR #${snapshot.pr.number} (${check}, 💬${snapshot.pr.comments})\n${snapshot.pr.url}\nAuto-solve: ${autoSolveEnabled ? "on" : "off"}`,
 					"info",
 				);
 			} else {
