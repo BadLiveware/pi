@@ -152,6 +152,15 @@ Record:
 - exact rationalizations or cited rules,
 - follow-up changes made.
 
+## Testing After Pruning or Splitting
+When reducing token cost, test the behavior the main file must still preserve. Good splits keep normal-use decisions in `SKILL.md` and move rare material such as examples, validation scenarios, long checklists, and background rationale into reference files.
+
+Do not assume a smaller skill still works because the removed text was "only examples." Run pressure scenarios for the core branches and failure modes. If the agent now skips a required tool, misses a safety boundary, or over/under-applies the skill, move the missing decision-critical rule back into `SKILL.md` or add a concise inline counter.
+
+Avoid splitting into many tiny files. Extra files can cost more tool trips, increase latency, and create retrieval failures. Cached tokens may reduce repeated-read cost, but they do not remove first-use cost or attention/context cost.
+
+Record before/after approximate tokens when token cost was a goal, plus the behavior scenarios that still passed.
+
 ## What to Fix After a Failed Verification
 When an agent still violates the intended behavior, capture the reason verbatim, add a targeted counter, and re-run the failed scenario. Do not merely report the failure when the intended behavior is clear and the fix preserves the skill's semantics.
 
@@ -187,6 +196,7 @@ Examples that likely change semantics and require confirmation:
 - [ ] Failed verification led to a targeted edit and same-scenario re-test, unless the needed fix would materially change semantics.
 - [ ] New rationalizations were plugged and re-tested when found.
 - [ ] Frontmatter remains valid and description is trigger-only.
+- [ ] If the change pruned or split a skill, before/after token counts and core-branch behavior results are recorded.
 - [ ] `./link-into-pi-agent.sh` ran for global skill changes.
 
 ## Attribution

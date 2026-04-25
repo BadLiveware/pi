@@ -30,10 +30,11 @@ Before editing any skill file, use this skill as the checklist for the change. D
 - Description starts with “Use when…” and describes triggers only, not the workflow.
 - The body starts with the core principle and the outcome.
 - Instructions are short, imperative, and scan-friendly.
-- Heavy references, examples, and scripts live in separate files.
+- Heavy references, examples, validation scenarios, and scripts live in separate files when normal use does not require them.
 - The skill names concrete failure modes and common rationalizations when enforcing discipline.
 - Relative references resolve from the skill directory.
 - Validation failures lead to targeted edits and re-tests until passing, unless fixing them would materially change intended semantics.
+- Token-cost structure is considered for large or frequently used skills without moving decision-critical rules out of the main file.
 - Validation evidence or gaps are recorded before deployment, either in the final user summary, commit body, PR notes, task comments, or the relevant plan/session log.
 
 ## Description Guidance
@@ -48,6 +49,19 @@ Bad:
 ```yaml
 description: Use for flaky tests by adding retries, polling loops, and teardown checks
 ```
+
+## Skill Cost Structure
+When a skill grows, consider expected token cost:
+
+```text
+expected cost ~= skill body tokens × expected use frequency
+```
+
+For high-frequency or large skills, keep `SKILL.md` focused on normal-use decision-making. Inline the rules required for correct behavior: triggers, safety boundaries, decision trees, required tool checks, and common failure modes that cause non-adherence.
+
+Move rare material to separate reference files: validation scenarios, long examples, detailed checklists, extended prompts, and background rationale. Do not over-split. Each extra file can require another read/tool trip and creates another chance the agent skips needed guidance. Cached tokens can reduce repeated-read cost, but they do not remove first-use cost, context/attention cost, or retrieval failure risk.
+
+After pruning or splitting a skill, rerun behavior tests for the core branches the skill must preserve.
 
 ## Testing Skills
 Use `testing-skills-with-subagents.md` when a skill change affects behavior, compliance, or when agents may rationalize around the rule.
