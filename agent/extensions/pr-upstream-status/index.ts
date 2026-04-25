@@ -85,9 +85,11 @@ interface CodeHostProvider {
 const REFRESH_INTERVAL_MS = 90_000;
 const REFRESH_MIN_GAP_MS = 15_000;
 const AUTO_SOLVE_MIN_GAP_MS = 120_000;
+const FRESH_SESSION_AUTO_SOLVE_GRACE_MS = 300_000;
+const SUPPRESSION_NOTICE_GAP_MS = 300_000;
 const CONFIG_FILE_NAME = "pr-upstream-status.json";
 const DEFAULT_SETTINGS: PrUpstreamSettings = {
-	autoSolveEnabled: false,
+	autoSolveEnabled: true,
 };
 
 function agentDir(): string {
@@ -117,6 +119,52 @@ function readConfigFile(filePath: string): Partial<PrUpstreamSettings> | undefin
 function writeConfigFile(filePath: string, settings: PrUpstreamSettings): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
+}
+
+function safeRealpath(targetPath: string): string {
+	try {
+		return fs.realpathSync.native(targetPath);
+	} catch {
+		return path.resolve(targetPath);
+	}
+}
+
+function readProcFile(filePath: string): string | undefined {
+	try {
+		return fs.readFileSync(filePath, "utf-8");
+	} catch {
+		return undefined;
+	}
+}
+
+function isPiProcessCmdline(cmdline: string | undefined): boolean {
+	if (!cmdline) return false;
+	const firstArg = cmdline.split("\0").find(Boolean);
+	if (!firstArg) return false;
+	return path.basename(firstArg) === "pi";
+}
+
+function countOlderPiProcessesInWorkspace(cwd: string): number {
+	if (process.platform !== "linux") return 0;
+	const workspace = safeRealpath(cwd);
+	let count = 0;
+	for (const entry of fs.readdirSync("/proc", { withFileTypes: true })) {
+		if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
+		const pid = Number(entry.name);
+		if (!Number.isFinite(pid) || pid >= process.pid) continue;
+
+		const procDir = path.join("/proc", entry.name);
+		if (!isPiProcessCmdline(readProcFile(path.join(procDir, "cmdline")))) continue;
+
+		let procCwd: string;
+		try {
+			procCwd = fs.realpathSync.native(path.join(procDir, "cwd"));
+		} catch {
+			continue;
+		}
+		if (procCwd === workspace) count += 1;
+	}
+	return count;
 }
 
 function osc8(label: string, url: string): string {
@@ -441,6 +489,9 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let autoSolveEnabled = settings.autoSolveEnabled;
 	let autoSolvePromptInFlight = false;
 	let lastAutoSolveAt = 0;
+	let lastFreshSessionSuppressionNoticeAt = 0;
+	let lastWorkspaceSuppressionNoticeAt = 0;
+	let sessionStartedAt = Date.now();
 	let lastPromptedHeadSha: string | undefined;
 	let promptedFeedbackKeys = new Set<string>();
 	let lastRefreshAt = 0;
@@ -506,12 +557,60 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		ctx.ui.setStatus("pr-upstream", parts.join(" "));
 	}
 
-	async function maybeAutoSolveComments(ctx: ExtensionContext, force = false): Promise<void> {
+	function autoSolveStatusText(ctx?: ExtensionContext): string {
+		if (!autoSolveEnabled) return "off";
+		const olderCount = ctx ? countOlderPiProcessesInWorkspace(ctx.cwd) : 0;
+		if (olderCount > 0) return `on (paused: ${olderCount} older Pi session${olderCount === 1 ? "" : "s"} in this workspace)`;
+
+		const freshRemainingMs = Math.max(0, FRESH_SESSION_AUTO_SOLVE_GRACE_MS - (Date.now() - sessionStartedAt));
+		if (freshRemainingMs > 0) return `on (paused: fresh session, ${Math.ceil(freshRemainingMs / 1000)}s remaining)`;
+		return "on";
+	}
+
+	function shouldSuppressAutoSolveForFreshSession(ctx: ExtensionContext, allowFreshSession: boolean): boolean {
+		if (allowFreshSession) return false;
+		const freshRemainingMs = FRESH_SESSION_AUTO_SOLVE_GRACE_MS - (Date.now() - sessionStartedAt);
+		if (freshRemainingMs <= 0) return false;
+
+		const now = Date.now();
+		if (now - lastFreshSessionSuppressionNoticeAt >= SUPPRESSION_NOTICE_GAP_MS) {
+			lastFreshSessionSuppressionNoticeAt = now;
+			ctx.ui.notify(
+				`PR auto-solve would have run, but this Pi session is fresh. It will be allowed in ${Math.ceil(freshRemainingMs / 1000)}s or with /pr-autosolve now.`,
+				"info",
+			);
+		}
+		return true;
+	}
+
+	function shouldSuppressAutoSolveForWorkspace(ctx: ExtensionContext, allowConcurrentWorkspace: boolean): boolean {
+		if (allowConcurrentWorkspace) return false;
+		const olderCount = countOlderPiProcessesInWorkspace(ctx.cwd);
+		if (olderCount === 0) return false;
+
+		const now = Date.now();
+		if (now - lastWorkspaceSuppressionNoticeAt >= SUPPRESSION_NOTICE_GAP_MS) {
+			lastWorkspaceSuppressionNoticeAt = now;
+			ctx.ui.notify(
+				`PR auto-solve would have run, but ${olderCount} older Pi session${olderCount === 1 ? " is" : "s are"} already running in this workspace. Use /pr-autosolve now to force this session.`,
+				"info",
+			);
+		}
+		return true;
+	}
+
+	async function maybeAutoSolveComments(
+		ctx: ExtensionContext,
+		options: { force?: boolean; allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean } = {},
+	): Promise<void> {
+		const { force = false, allowConcurrentWorkspace = false, allowFreshSession = false } = options;
 		const pr = snapshot.pr;
 		if (!autoSolveEnabled || !pr) return;
 		if (!checksAreComplete(pr.checks)) return;
 		if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
 		if (autoSolvePromptInFlight) return;
+		if (shouldSuppressAutoSolveForWorkspace(ctx, allowConcurrentWorkspace)) return;
+		if (shouldSuppressAutoSolveForFreshSession(ctx, allowFreshSession)) return;
 
 		if (lastPromptedHeadSha && pr.headSha && pr.headSha !== lastPromptedHeadSha) {
 			promptedFeedbackKeys = new Set<string>();
@@ -607,13 +706,13 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("pr-autosolve", {
-		description: "Control auto-solving new PR comments after checks complete (default: off)",
+		description: "Control auto-solving new PR comments after checks complete (default: on)",
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
 			if (["on", "enable", "enabled", "true", "yes", "1", "start"].includes(action)) {
 				setAutoSolveEnabled(true);
 				ctx.ui.notify("PR auto-solve enabled.", "info");
-				await maybeAutoSolveComments(ctx, true);
+				await maybeAutoSolveComments(ctx, { force: true });
 				return;
 			}
 			if (["off", "disable", "disabled", "false", "no", "0", "stop"].includes(action)) {
@@ -626,10 +725,10 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 					ctx.ui.notify("PR auto-solve is off. Enable it with /pr-autosolve on.", "warning");
 					return;
 				}
-				await maybeAutoSolveComments(ctx, true);
+				await maybeAutoSolveComments(ctx, { force: true, allowConcurrentWorkspace: true, allowFreshSession: true });
 				return;
 			}
-			ctx.ui.notify(`PR auto-solve: ${autoSolveEnabled ? "on" : "off"} (persisted in ${userConfigPath()})`, "info");
+			ctx.ui.notify(`PR auto-solve: ${autoSolveStatusText(ctx)} (persisted in ${userConfigPath()})`, "info");
 		},
 	});
 
@@ -654,7 +753,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			if (snapshot.pr) {
 				const check = snapshot.pr.checks;
 				ctx.ui.notify(
-					`Open PR #${snapshot.pr.number} (${check}, 💬${snapshot.pr.comments})\n${snapshot.pr.url}\nAuto-solve: ${autoSolveEnabled ? "on" : "off"}`,
+					`Open PR #${snapshot.pr.number} (${check}, 💬${snapshot.pr.comments})\n${snapshot.pr.url}\nAuto-solve: ${autoSolveStatusText(ctx)}`,
 					"info",
 				);
 			} else {
@@ -664,6 +763,9 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		sessionStartedAt = Date.now();
+		lastFreshSessionSuppressionNoticeAt = 0;
+		lastWorkspaceSuppressionNoticeAt = 0;
 		loadSettings();
 		updateStatus(ctx);
 		emitPrimitives();

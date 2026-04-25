@@ -32,9 +32,9 @@ For private repos:
 - then optionally tries `gh auth token` as an auth source (if `gh` is installed/logged in),
 - and finally falls back to `git ls-remote refs/pull/*/head` to detect the PR number without requiring `gh`.
 
-## Auto-solve PR comments (default: off)
+## Auto-solve PR comments (default: on)
 
-Auto-solve is disabled by default. Explicit `/pr-autosolve on` and
+Auto-solve is enabled by default. Explicit `/pr-autosolve on` and
 `/pr-autosolve off` choices persist in:
 
 ```text
@@ -45,12 +45,16 @@ When enabled, the extension waits until:
 
 - the PR checks are complete (`pass` or `fail`), and
 - Pi is idle with no pending messages,
+- the session is no longer fresh, and
+- no older Pi session is running in the same workspace,
 
 then fetches new PR comments and sends a prompt that asks the agent to:
 
 1. verify each comment is true/relevant,
 2. ignore comments that are not true/relevant (with explanation),
 3. apply fixes for relevant comments.
+
+The fresh-session and older-session guards keep ad-hoc extra Pi instances from immediately starting code work in a repository where another Pi is already active. When a guard suppresses auto-solve, Pi shows a notification that auto-solve would have run. `/pr-autosolve now` intentionally bypasses these guards for the current session.
 
 ## Event primitive
 
