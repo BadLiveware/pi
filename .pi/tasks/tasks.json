@@ -1,41 +1,4 @@
 {
   "nextId": 40,
-  "tasks": [
-    {
-      "id": "37",
-      "subject": "Update link script to install extensions automatically",
-      "description": "Modify link-into-pi-agent.sh so running it also installs local extensions from agent/extensions (when available), with safe behavior when pi CLI is missing or install fails. Keep existing symlink behavior intact.",
-      "status": "completed",
-      "activeForm": "Updating link script",
-      "metadata": {},
-      "blocks": [],
-      "blockedBy": [],
-      "createdAt": 1777115630211,
-      "updatedAt": 1777115669266
-    },
-    {
-      "id": "38",
-      "subject": "Validate link script changes",
-      "description": "Run shell syntax check and execute the script to ensure symlinking still works and extension auto-install path behaves as expected without breaking existing flows.",
-      "status": "completed",
-      "activeForm": "Validating script changes",
-      "metadata": {},
-      "blocks": [],
-      "blockedBy": [],
-      "createdAt": 1777115632400,
-      "updatedAt": 1777115680722
-    },
-    {
-      "id": "39",
-      "subject": "Commit repository changes",
-      "description": "Stage and commit the script fix along with all other current repo changes, using a clear commit message and body that describe the scope.",
-      "status": "in_progress",
-      "activeForm": "Committing repository changes",
-      "metadata": {},
-      "blocks": [],
-      "blockedBy": [],
-      "createdAt": 1777115634635,
-      "updatedAt": 1777115682503
-    }
-  ]
+  "tasks": []
 }
