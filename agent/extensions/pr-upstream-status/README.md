@@ -6,7 +6,7 @@ Tracks the open upstream pull request for the current git branch (GitHub today, 
 
 - Default footer status entry (`ctx.ui.setStatus`) with:
   - check result icon (`✅`, `❌`, `⏳`, or `•` unknown)
-  - optional `💬<count>` (issue + review comments)
+  - optional `💬<count>` (issue comments plus unresolved review threads)
   - PR link (`#123`) as OSC-8 hyperlink when supported
 - Emits `pr-upstream:state` event bus primitives for custom footer extensions.
 
@@ -14,7 +14,7 @@ Tracks the open upstream pull request for the current git branch (GitHub today, 
 
 The extension uses a generalized `CodeHostProvider` interface and currently ships one implementation:
 
-- `github` provider (GitHub REST API)
+- `github` provider (GitHub REST API plus GraphQL for unresolved review threads)
 
 Adding a new host means implementing `parseRepo()`, `findOpenPullRequest()`, and `fetchOpenFeedback()`.
 
@@ -25,7 +25,7 @@ For private repositories or better rate limits, set one of:
 - `GH_TOKEN`
 - `GITHUB_TOKEN`
 
-Without a token, public-repo lookups still work with anonymous API limits.
+Without a token, public-repo lookups still work with anonymous API limits, but unresolved review-thread filtering requires GraphQL auth; unauthenticated fallback reports issue comments only.
 
 For private repos:
 - the extension first tries REST auth from env tokens,
@@ -48,7 +48,7 @@ When enabled, the extension waits until:
 - the session is no longer fresh, and
 - no older Pi session is running in the same workspace,
 
-then fetches new PR comments and sends a prompt that asks the agent to:
+then fetches new issue comments and unresolved review-thread comments and sends a prompt that asks the agent to:
 
 1. verify each comment is true/relevant,
 2. ignore comments that are not true/relevant (with explanation),

@@ -44,6 +44,11 @@ interface PullRequestFeedback {
 	updatedAt?: string;
 }
 
+interface PullRequestOpenFeedbackResult {
+	items: PullRequestFeedback[];
+	openCount: number;
+}
+
 interface BranchSnapshot {
 	branch?: string;
 	pr?: PullRequestInfo;
@@ -215,6 +220,35 @@ async function fetchGitHubJson<T>(path: string, token?: string, timeoutMs = 8_00
 	}
 }
 
+async function fetchGitHubGraphQL<T>(query: string, variables: Record<string, unknown>, token?: string, timeoutMs = 8_000): Promise<T | undefined> {
+	if (!token) return undefined;
+	const headers: Record<string, string> = {
+		Accept: "application/vnd.github+json",
+		"Content-Type": "application/json",
+		"User-Agent": "pi-pr-upstream-status",
+		Authorization: `Bearer ${token}`,
+	};
+
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		const response = await fetch("https://api.github.com/graphql", {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ query, variables }),
+			signal: controller.signal,
+		});
+		if (!response.ok) return undefined;
+		const payload = (await response.json()) as { data?: T; errors?: unknown[] };
+		if (payload.errors?.length) return undefined;
+		return payload.data;
+	} catch {
+		return undefined;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 function checksAreComplete(checks: ChecksState): boolean {
 	return checks === "pass" || checks === "fail";
 }
@@ -267,6 +301,108 @@ function summarizeFeedback(items: PullRequestFeedback[]): string {
 		.join("\n\n");
 }
 
+async function fetchGitHubOpenFeedback(params: {
+	owner: string;
+	repo: string;
+	number: number;
+	token?: string;
+	maxItems?: number;
+}): Promise<PullRequestOpenFeedbackResult | undefined> {
+	const maxItems = params.maxItems ?? 20;
+	const data = await fetchGitHubGraphQL<{
+		repository?: {
+			pullRequest?: {
+				comments?: {
+					totalCount?: number;
+					nodes?: Array<{
+						id: string;
+						body?: string;
+						url?: string;
+						updatedAt?: string;
+						author?: { login?: string } | null;
+					}>;
+				};
+				reviewThreads?: {
+					nodes?: Array<{
+						id: string;
+						isResolved?: boolean;
+						path?: string;
+						comments?: {
+							nodes?: Array<{
+								id: string;
+								body?: string;
+								url?: string;
+								updatedAt?: string;
+								path?: string;
+								author?: { login?: string } | null;
+							}>;
+						};
+					}>;
+				};
+			};
+		};
+	}>(
+		`query($owner: String!, $repo: String!, $number: Int!) {
+			repository(owner: $owner, name: $repo) {
+				pullRequest(number: $number) {
+					comments(first: 100) {
+						totalCount
+						nodes { id body url updatedAt author { login } }
+					}
+					reviewThreads(first: 100) {
+						nodes {
+							id
+							isResolved
+							path
+							comments(first: 20) { nodes { id body url updatedAt path author { login } } }
+						}
+					}
+				}
+			}
+		}`,
+		{ owner: params.owner, repo: params.repo, number: params.number },
+		params.token,
+	);
+	const pr = data?.repository?.pullRequest;
+	if (!pr) return undefined;
+
+	const items: PullRequestFeedback[] = [];
+	for (const comment of pr.comments?.nodes ?? []) {
+		const body = comment.body?.trim();
+		if (!body) continue;
+		items.push({
+			id: `issue-${comment.id}`,
+			kind: "issue",
+			author: comment.author?.login ?? "unknown",
+			body,
+			url: comment.url,
+			updatedAt: comment.updatedAt,
+		});
+	}
+
+	for (const thread of pr.reviewThreads?.nodes ?? []) {
+		if (thread.isResolved) continue;
+		const firstComment = thread.comments?.nodes?.[0];
+		const body = firstComment?.body?.trim();
+		if (!body) continue;
+		items.push({
+			id: `review-thread-${thread.id}`,
+			kind: "review",
+			author: firstComment?.author?.login ?? "unknown",
+			body,
+			url: firstComment?.url,
+			path: firstComment?.path ?? thread.path,
+			updatedAt: firstComment?.updatedAt,
+		});
+	}
+
+	items.sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""));
+	return {
+		items: maxItems > 0 ? items.slice(-maxItems) : [],
+		openCount: (pr.comments?.totalCount ?? 0) + (pr.reviewThreads?.nodes ?? []).filter((thread) => !thread.isResolved).length,
+	};
+}
+
 const githubProvider: CodeHostProvider = {
 	id: "github",
 	parseRepo: parseGitHubRepo,
@@ -309,12 +445,19 @@ const githubProvider: CodeHostProvider = {
 					])
 					: [undefined, undefined];
 				const checkState = resolveGitHubChecks(status, checkRuns);
+				const openFeedback = await fetchGitHubOpenFeedback({
+					owner: baseRepo.owner,
+					repo: baseRepo.repo,
+					number: pr.number,
+					token,
+					maxItems: 0,
+				});
 
 				return {
 					number: pr.number,
 					title: details?.title ?? pr.title,
 					url: details?.html_url ?? pr.html_url,
-					comments: (details?.comments ?? pr.comments ?? 0) + (details?.review_comments ?? pr.review_comments ?? 0),
+					comments: openFeedback?.openCount ?? (details?.comments ?? pr.comments ?? 0),
 					checks: checkState,
 					headSha,
 					base: baseRepo,
@@ -324,34 +467,30 @@ const githubProvider: CodeHostProvider = {
 		return undefined;
 	},
 	async fetchOpenFeedback({ pr, token, maxItems = 20 }) {
-		const [issueComments, reviewComments] = await Promise.all([
-			fetchGitHubJson<
-				Array<{
-					id: number;
-					body?: string;
-					updated_at?: string;
-					html_url?: string;
-					user?: { login?: string };
-				}>
-			>(`/repos/${pr.base.owner}/${pr.base.repo}/issues/${pr.number}/comments?per_page=100`, token),
-			fetchGitHubJson<
-				Array<{
-					id: number;
-					body?: string;
-					updated_at?: string;
-					html_url?: string;
-					path?: string;
-					in_reply_to_id?: number;
-					user?: { login?: string };
-				}>
-			>(`/repos/${pr.base.owner}/${pr.base.repo}/pulls/${pr.number}/comments?per_page=100`, token),
-		]);
+		const openFeedback = await fetchGitHubOpenFeedback({
+			owner: pr.base.owner,
+			repo: pr.base.repo,
+			number: pr.number,
+			token,
+			maxItems,
+		});
+		if (openFeedback) return openFeedback.items;
 
-		const merged: PullRequestFeedback[] = [];
+		const issueComments = await fetchGitHubJson<
+			Array<{
+				id: number;
+				body?: string;
+				updated_at?: string;
+				html_url?: string;
+				user?: { login?: string };
+			}>
+		>(`/repos/${pr.base.owner}/${pr.base.repo}/issues/${pr.number}/comments?per_page=100`, token);
+
+		const fallbackItems: PullRequestFeedback[] = [];
 		for (const comment of issueComments ?? []) {
 			const body = comment.body?.trim();
 			if (!body) continue;
-			merged.push({
+			fallbackItems.push({
 				id: `issue-${comment.id}`,
 				kind: "issue",
 				author: comment.user?.login ?? "unknown",
@@ -360,23 +499,9 @@ const githubProvider: CodeHostProvider = {
 				updatedAt: comment.updated_at,
 			});
 		}
-		for (const comment of reviewComments ?? []) {
-			if (comment.in_reply_to_id) continue;
-			const body = comment.body?.trim();
-			if (!body) continue;
-			merged.push({
-				id: `review-${comment.id}`,
-				kind: "review",
-				author: comment.user?.login ?? "unknown",
-				body,
-				url: comment.html_url,
-				path: comment.path,
-				updatedAt: comment.updated_at,
-			});
-		}
-
-		merged.sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""));
-		return merged.slice(-maxItems);
+		return fallbackItems
+			.sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""))
+			.slice(-maxItems);
 	},
 };
 
