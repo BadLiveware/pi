@@ -1,0 +1,26 @@
+{
+  "name": "pi-pr-upstream-status",
+  "version": "0.1.0",
+  "description": "Show upstream pull request status for the current branch in Pi footer.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "github",
+    "pull-request"
+  ],
+  "license": "MIT",
+  "files": [
+    "README.md",
+    "index.ts",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}

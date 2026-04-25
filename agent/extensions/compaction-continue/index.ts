@@ -91,7 +91,8 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 	let lastRecoveredCompactionId: string | undefined;
 
 	function updateStatus(ctx: ExtensionContext): void {
-		ctx.ui.setStatus("compaction-continue", enabled ? ctx.ui.theme.fg("dim", "↻ compact-continue") : undefined);
+		const state = enabled ? ctx.ui.theme.fg("success", "on") : ctx.ui.theme.fg("error", "off");
+		ctx.ui.setStatus("compaction-continue", `${ctx.ui.theme.fg("muted", "hook:")}${state}`);
 	}
 
 	function scheduleRecovery(compactionId: string, ctx: ExtensionContext): void {
