@@ -17,6 +17,23 @@ Skills with explicit attribution include:
 - [`agent/skills/systematic-debugging/SKILL.md`](./agent/skills/systematic-debugging/SKILL.md)
 - [`agent/skills/verification-before-completion/SKILL.md`](./agent/skills/verification-before-completion/SKILL.md)
 
+## Feynman
+
+The Feynman skills and research workflow prompts adapt selected workflows from Feynman CLI for this standalone Pi setup.
+
+- Source: https://github.com/getcompanion-ai/feynman
+- License: MIT
+- Copyright: Companion, Inc.
+- Local notice: [`agent/skills/feynman/FEYNMAN-LICENSE.md`](./agent/skills/feynman/FEYNMAN-LICENSE.md)
+
+The adapted integration lives under:
+
+- [`agent/skills/feynman/`](./agent/skills/feynman/)
+- [`agent/agents/feynman-researcher.md`](./agent/agents/feynman-researcher.md)
+- [`agent/agents/feynman-reviewer.md`](./agent/agents/feynman-reviewer.md)
+- [`agent/agents/feynman-writer.md`](./agent/agents/feynman-writer.md)
+- [`agent/agents/feynman-verifier.md`](./agent/agents/feynman-verifier.md)
+
 ## Pi
 
 The extensions in this repository are built for [Pi](https://pi.dev) and use Pi's extension APIs from packages such as `@mariozechner/pi-coding-agent`, `@mariozechner/pi-ai`, and `@mariozechner/pi-tui`.
