@@ -16,12 +16,43 @@ Publishing is intentionally manual and tag-triggered. Pushing to `main` does **n
 ## Prerequisites
 
 - npm account with publish rights to the `@badliveware` scope.
-- GitHub repository secret `NPM_TOKEN` with npm publish permission.
-- GitHub Actions enabled for the repository.
+- GitHub Actions enabled for this public repository.
+- npm trusted publisher configured for each package.
 - repository visibility/metadata ready for public users.
 - secrets rotated and `gitleaks` checks passing.
 
-The publish workflow uses npm provenance (`npm publish --provenance`), so it requests GitHub OIDC `id-token: write` permission.
+The publish workflow uses npm trusted publishing through GitHub Actions OIDC. It requests `id-token: write`, uses npm 11+, and does not need `NPM_TOKEN`.
+
+## Bootstrap a brand-new package
+
+npm trusted publisher configuration currently requires the package to already exist on the npm registry. For a brand-new package, do a one-time manual publish first:
+
+```bash
+cd agent/extensions/public/model-catalog
+npm publish --access public --otp <one-time-password>
+```
+
+Repeat for each new package that does not exist yet. After the package exists, configure trusted publishing before using tag-triggered releases.
+
+## Configure npm trusted publishing
+
+For each package on npmjs.com, open package settings and add a trusted publisher:
+
+- Provider: GitHub Actions
+- Organization or user: `BadLiveware`
+- Repository: `pi`
+- Workflow filename: `publish-pi-extension.yml`
+- Environment name: leave blank unless the workflow is later changed to use a GitHub environment
+
+Equivalent npm CLI form, after installing npm 11.10+ and authenticating interactively:
+
+```bash
+npm trust github @badliveware/pi-model-catalog --repo BadLiveware/pi --file publish-pi-extension.yml
+```
+
+Repeat for each package. The package must already exist.
+
+After trusted publishing works, prefer npm's package setting "Require two-factor authentication and disallow tokens" and remove unused publish tokens.
 
 ## Before tagging
 
@@ -30,7 +61,7 @@ The publish workflow uses npm provenance (`npm publish --provenance`), so it req
 3. Run local validation from `agent/extensions`:
 
 ```bash
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run typecheck
 npm run pack:public
 ```
@@ -41,7 +72,7 @@ To dry-run one package:
 ./scripts/pack-public.sh model-catalog
 ```
 
-## Publish one package
+## Publish one package with a tag
 
 Create and push a tag with this format:
 
@@ -72,8 +103,10 @@ The GitHub Actions workflow verifies that:
 Then it publishes only that package with:
 
 ```bash
-npm publish --access public --provenance
+npm publish --access public
 ```
+
+Provenance is generated automatically by npm trusted publishing for public packages from this public GitHub repository.
 
 ## Versioning
 

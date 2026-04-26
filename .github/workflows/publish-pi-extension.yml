@@ -65,8 +65,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@^11.10.0
+          node --version
+          npm --version
 
       - name: Install validation dependencies
         working-directory: agent/extensions
@@ -94,6 +100,4 @@ jobs:
 
       - name: Publish package
         working-directory: ${{ steps.tag.outputs.package_dir }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish --access public
