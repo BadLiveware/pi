@@ -1,0 +1,41 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--executable-path=/usr/bin/chromium"
+      ],
+      "env": {
+        "PUPPETEER_EXECUTABLE_PATH": "/usr/bin/chromium",
+        "CHROME_PATH": "/usr/bin/chromium"
+      },
+      "directTools": [
+        "list_pages",
+        "new_page"
+      ]
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp",
+      "bearerTokenEnv": "CONTEXT7_TOKEN",
+      "directTools": true
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      },
+      "directTools": [
+        "create_pull_request",
+        "list_pull_requests",
+        "pull_request_read",
+        "update_pull_request"
+      ]
+    }
+  }
+}
