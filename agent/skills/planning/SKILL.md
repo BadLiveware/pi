@@ -59,7 +59,7 @@ Use a deep plan directory when a plan would be very long, spans many phases, or 
 
 `README.md` is the master overview: purpose, execution order, dependency graph, global constraints, cross-cutting risks/rollback, final acceptance criteria, and overall validation strategy.
 
-Each numbered file should be independently reviewable and implementation-sized, with local purpose/scope, prerequisites, affected areas, concrete implementation and validation tasks, compatibility/docs/cleanup work, exit criteria, and handoff notes. Split by coherent reviewable implementation boundaries, not arbitrary line count. Recommend `execute-long-plan` for long-running execution.
+Each numbered file should be independently reviewable and implementation-sized, with local purpose/scope, prerequisites, affected areas, concrete implementation and validation tasks, compatibility/docs/cleanup work, exit criteria, and handoff notes. Split by coherent reviewable implementation boundaries, not arbitrary line count. Recommend `execute-plan`; it reads `../execute-plan/long-plan.md` for split/long bounded execution.
 
 Detailed templates live in `output-templates.md`.
 
@@ -84,7 +84,7 @@ Detailed templates live in `output-templates.md`.
 - When context or plan focus changes, reconcile tasks immediately; remove obsolete pending tasks and old completed tasks from irrelevant prior context.
 - Delegate only bounded, low-coupling leaf tasks. For model choice and downshifting, use `subagent-delegation` and `list_pi_models`.
 - Use `execute-plan` when the plan or loop charter is clear and execution should start.
-- For split/long bounded plans, `execute-plan` should read its long-plan guidance or compatibility skill before execution.
+- For split/long bounded plans, `execute-plan` should read `long-plan.md` before execution.
 - If the user asked for planning only, stop at the plan instead of silently implementing.
 
 ## Status and Completion

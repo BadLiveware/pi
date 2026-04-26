@@ -101,7 +101,6 @@ Use the available skills when they fit:
 - Feynman research skills when planning depends on prior work, external evidence, papers, or comparing approaches
 - `commit`
 - `execute-plan`
-- `execute-long-plan`
 - `testability-feedback-loop`
 - `expected-value-decision-making`
 - `systematic-debugging`

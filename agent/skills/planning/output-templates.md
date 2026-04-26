@@ -123,7 +123,7 @@ Numbered file:
 - Gaps / unavailable dependencies: ...
 
 ## Handoff / execution notes
-- Use `execute-plan` or `execute-long-plan`: ...
+- Use `execute-plan`: for split/long bounded plans, read `execute-plan/long-plan.md`; for open-ended loops, read `execute-plan/unbounded-work.md`.
 ```
 
 ## Artifact Hygiene Examples
