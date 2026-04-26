@@ -11,8 +11,9 @@ It ships with a bundled skill (`footer-framework-config`) and advertises it via 
 - Replaces the default footer when enabled.
 - Keeps a stable 2-line footer layout.
 - Composes built-in footer items:
-  - `cwd`, `model`, `branch`, `stats`, `pr`, `ext`
+  - `cwd`, `model`, `branch`, `stats`, `context`, `pr`, `ext`
   - the `model` item includes the active thinking level as `<model-id>:<thinking-level>`
+  - the `context` item shows current context-window usage as percent plus humanized `tokens/max` counts, for example `ctx 52.2% 142K/272K`
 - Supports extension-provided dynamic items via the event bus.
 - Lets users position each item independently by line, left/right zone, relative order, or absolute column.
 
@@ -42,7 +43,7 @@ Use `/footerfx save project` to intentionally create/update the project config.
 - `/footerfx on` — enable framework footer
 - `/footerfx off` — disable and restore default footer
 - `/footerfx reset` — restore defaults and persist to user config
-- `/footerfx section <cwd|stats|model|branch|pr|ext> <on|off>` — legacy section toggles
+- `/footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>` — legacy section toggles
 - `/footerfx item <id> <show|hide|reset>`
 - `/footerfx item <id> line <1|2>`
 - `/footerfx item <id> zone <left|right>`

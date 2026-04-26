@@ -22,7 +22,7 @@ Use this skill when a user wants footer layout changes without editing extension
 - `/footerfx load` — reload user/project config files
 - `/footerfx save user` — save current settings as user default
 - `/footerfx save project` — save current settings for the current project
-- `/footerfx section <cwd|stats|model|branch|pr|ext> <on|off>`
+- `/footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>`
 - `/footerfx item <id> <show|hide|reset>`
 - `/footerfx item <id> line <1|2>`
 - `/footerfx item <id> zone <left|right>`
@@ -39,7 +39,7 @@ Use this skill when a user wants footer layout changes without editing extension
 2. Apply one focused change at a time (item placement, section, anchor, gap, branch width).
 3. Changes persist automatically to the user config; use `/footerfx save project` only when the user explicitly wants project-specific layout.
 4. Prefer minimal-density defaults:
-   - keep `cwd`, `stats`, `model`, `branch` on
+   - keep `cwd`, `stats`, `context`, `model`, `branch` on
    - show `pr` when relevant
    - hide noisy zero-state indicators (`mcp-zero hide`)
 5. If the user dislikes custom-footer behavior, run `/footerfx off`.

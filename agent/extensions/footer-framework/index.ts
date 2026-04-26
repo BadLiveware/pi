@@ -52,6 +52,7 @@ interface FooterFrameworkSettings {
 	enabled: boolean;
 	showCwd: boolean;
 	showStats: boolean;
+	showContext: boolean;
 	showModel: boolean;
 	showBranch: boolean;
 	showPr: boolean;
@@ -69,6 +70,7 @@ const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 	enabled: true,
 	showCwd: true,
 	showStats: true,
+	showContext: true,
 	showModel: true,
 	showBranch: true,
 	showPr: true,
@@ -89,6 +91,7 @@ const DEFAULT_ITEM_PLACEMENTS: Record<string, FooterItemPlacement> = {
 	model: { visible: true, line: 1, zone: "right", order: 10 },
 	branch: { visible: true, line: 1, zone: "right", order: 20 },
 	stats: { visible: true, line: 2, zone: "left", order: 10 },
+	context: { visible: true, line: 2, zone: "left", order: 20 },
 	pr: { visible: true, line: 2, zone: "right", order: 10 },
 	ext: { visible: true, line: 2, zone: "right", order: 20 },
 };
@@ -98,6 +101,12 @@ function formatTokens(count: number): string {
 	if (count < 10_000) return `${(count / 1_000).toFixed(1)}k`;
 	if (count < 1_000_000) return `${Math.round(count / 1_000)}k`;
 	return `${(count / 1_000_000).toFixed(1)}M`;
+}
+
+function formatContextTokens(count: number): string {
+	if (count < 1_000) return `${Math.round(count)}`;
+	if (count < 1_000_000) return `${Math.round(count / 1_000)}K`;
+	return `${Math.round(count / 1_000_000)}M`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -134,6 +143,7 @@ function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<Foo
 		"enabled",
 		"showCwd",
 		"showStats",
+		"showContext",
 		"showModel",
 		"showBranch",
 		"showPr",
@@ -210,7 +220,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		return "Footer framework reset to defaults.";
 	}
 	if (command === "section") {
-		if (!key || !value) return "Usage: /footerfx section <cwd|stats|model|branch|pr|ext> <on|off>";
+		if (!key || !value) return "Usage: /footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>";
 		const enabled = value === "on" || value === "enable" || value === "true";
 		if (!["on", "off", "enable", "disable", "true", "false"].includes(value)) {
 			return "Section value must be on/off.";
@@ -222,6 +232,9 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 			case "stats":
 				settings.showStats = enabled;
 				return `Section stats ${enabled ? "enabled" : "disabled"}.`;
+			case "context":
+				settings.showContext = enabled;
+				return `Section context ${enabled ? "enabled" : "disabled"}.`;
 			case "model":
 				settings.showModel = enabled;
 				return `Section model ${enabled ? "enabled" : "disabled"}.`;
@@ -235,7 +248,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 				settings.showExtensionStatuses = enabled;
 				return `Section ext ${enabled ? "enabled" : "disabled"}.`;
 			default:
-				return "Unknown section. Use: cwd|stats|model|branch|pr|ext";
+				return "Unknown section. Use: cwd|stats|context|model|branch|pr|ext";
 		}
 	}
 	if (command === "gap") {
@@ -340,7 +353,7 @@ function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: strin
 	return [
 		loadedConfig ? `loaded=${loadedConfig}` : undefined,
 		`enabled=${settings.enabled}`,
-		`sections: cwd=${settings.showCwd}, stats=${settings.showStats}, model=${settings.showModel}, branch=${settings.showBranch}, pr=${settings.showPr}, ext=${settings.showExtensionStatuses}`,
+		`sections: cwd=${settings.showCwd}, stats=${settings.showStats}, context=${settings.showContext}, model=${settings.showModel}, branch=${settings.showBranch}, pr=${settings.showPr}, ext=${settings.showExtensionStatuses}`,
 		`anchor: line1=${settings.line1Anchor}, line2=${settings.line2Anchor}`,
 		`gap: min=${settings.minGap}, max=${settings.maxGap}`,
 		`branchMaxLength=${settings.branchMaxLength}`,
@@ -389,6 +402,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: number; width: number }>;
 				extensionStatuses: Array<{ key: string; value: string }>;
 				model: string;
+				contextUsage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
 				thinkingLevel: string;
 				cwd: string;
 			}
@@ -535,6 +549,22 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return `${model}:${pi.getThinkingLevel()}`;
 	}
 
+	function renderContextUsage(theme: ExtensionContext["ui"]["theme"]): string | undefined {
+		const usage = currentCtx?.getContextUsage();
+		const contextWindow = usage?.contextWindow ?? currentCtx?.model?.contextWindow;
+		if (!contextWindow) return undefined;
+
+		const tokens = usage?.tokens ?? null;
+		const percent = usage?.percent ?? null;
+		const percentText = percent === null ? "?%" : `${percent.toFixed(1)}%`;
+		const tokenText = tokens === null ? `?/${formatContextTokens(contextWindow)}` : `${formatContextTokens(tokens)}/${formatContextTokens(contextWindow)}`;
+		const text = `ctx ${percentText} ${tokenText}`;
+
+		if (percent !== null && percent > 90) return theme.fg("error", text);
+		if (percent !== null && percent > 70) return theme.fg("warning", text);
+		return theme.fg("dim", text);
+	}
+
 	function placementFor(id: string, fallback: FooterItemPlacement, external?: Partial<FooterItemPlacement>): FooterItemPlacement {
 		return {
 			...fallback,
@@ -547,6 +577,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		const legacy: Record<string, boolean> = {
 			cwd: settings.showCwd,
 			stats: settings.showStats,
+			context: settings.showContext,
 			model: settings.showModel,
 			branch: settings.showBranch,
 			pr: settings.showPr,
@@ -616,6 +647,8 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		items.push({ id: "cwd", text: theme.fg("dim", currentCtx?.cwd ?? ""), placement: placementFor("cwd", DEFAULT_ITEM_PLACEMENTS.cwd) });
 		items.push({ id: "model", text: theme.fg("dim", renderModelLabel()), placement: placementFor("model", DEFAULT_ITEM_PLACEMENTS.model) });
 		items.push({ id: "stats", text: statsText, placement: placementFor("stats", DEFAULT_ITEM_PLACEMENTS.stats) });
+		const contextUsageText = renderContextUsage(theme);
+		if (contextUsageText) items.push({ id: "context", text: contextUsageText, placement: placementFor("context", DEFAULT_ITEM_PLACEMENTS.context) });
 
 		const gitBranch = footerData.getGitBranch();
 		if (gitBranch) {
@@ -736,6 +769,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 						})),
 						extensionStatuses: Array.from(footerData.getExtensionStatuses().entries()).map(([key, value]) => ({ key, value })),
 						model: ctx.model?.id ?? "no-model",
+						contextUsage: ctx.getContextUsage() ?? null,
 						thinkingLevel: pi.getThinkingLevel(),
 						cwd: ctx.cwd,
 					};
@@ -820,7 +854,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			parameters: Type.Object({
 				command: Type.String({
 					description:
-						"Same syntax as /footerfx, e.g. 'section ext off', 'anchor all right', 'gap 1 10', 'save project', 'load', 'on', 'off', 'reset'",
+						"Same syntax as /footerfx, e.g. 'section context on', 'item context after stats', 'anchor all right', 'gap 1 10', 'save project', 'load', 'on', 'off', 'reset'",
 				}),
 			}),
 			async execute(_toolCallId, params) {
