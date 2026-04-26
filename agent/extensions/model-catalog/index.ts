@@ -12,6 +12,8 @@ interface ListPiModelsParams {
 	query?: string;
 	includeUnavailable?: boolean;
 	includeDetails?: boolean;
+	includePricing?: boolean;
+	relativeTo?: string;
 	unsupported?: UnsupportedMode;
 }
 
@@ -27,6 +29,19 @@ interface UnsupportedModelInfo {
 	reason: string;
 }
 
+interface ModelPricing {
+	inputPerMillion: number;
+	outputPerMillion: number;
+	cacheReadPerMillion: number;
+	cacheWritePerMillion: number;
+	known: boolean;
+	relativeTo?: string;
+	relativeInput?: number;
+	relativeOutput?: number;
+	relativeCacheRead?: number;
+	relativeBlended?: number;
+}
+
 interface ModelCatalogRow {
 	provider: string;
 	model: string;
@@ -40,6 +55,7 @@ interface ModelCatalogRow {
 	images: string;
 	cost: string;
 	quota: string;
+	pricing: ModelPricing;
 	supported: boolean;
 	unsupportedReason?: string;
 	useFor: string;
@@ -49,6 +65,8 @@ interface ModelCatalogRow {
 interface ModelCatalogResult {
 	rows: ModelCatalogRow[];
 	excludedUnsupportedRows: ModelCatalogRow[];
+	pricingBaseline?: string;
+	pricingBaselineMissing?: string;
 }
 
 function agentDir(): string {
@@ -87,6 +105,90 @@ function formatTokenCount(count: number): string {
 	return count.toString();
 }
 
+function formatPricePerMillion(value: number, known: boolean): string {
+	if (!known) return "—";
+	if (value === 0) return "$0";
+	return `$${value < 1 ? value.toFixed(3) : value.toFixed(2)}`;
+}
+
+function formatRatio(value: number | undefined): string {
+	if (value === undefined || !Number.isFinite(value)) return "—";
+	return `${value.toFixed(2)}×`;
+}
+
+function formatCapabilities(row: ModelCatalogRow): string {
+	const caps: string[] = [];
+	if (row.thinking === "yes") caps.push("think");
+	if (row.images === "yes") caps.push("img");
+	return caps.length > 0 ? caps.join("+") : "text";
+}
+
+function shellWords(input: string): string[] {
+	const words: string[] = [];
+	let current = "";
+	let quote: '"' | "'" | undefined;
+	let escaping = false;
+	for (const char of input) {
+		if (escaping) {
+			current += char;
+			escaping = false;
+			continue;
+		}
+		if (char === "\\" && quote !== "'") {
+			escaping = true;
+			continue;
+		}
+		if ((char === '"' || char === "'") && (!quote || quote === char)) {
+			quote = quote ? undefined : char;
+			continue;
+		}
+		if (!quote && /\s/.test(char)) {
+			if (current) words.push(current);
+			current = "";
+			continue;
+		}
+		current += char;
+	}
+	if (current) words.push(current);
+	return words;
+}
+
+function parseModelsGuideArgs(args: string): Pick<ListPiModelsParams, "query" | "includeDetails" | "includePricing" | "relativeTo"> {
+	const queryParts: string[] = [];
+	let includeDetails = false;
+	let includePricing = false;
+	let relativeTo: string | undefined;
+	const words = shellWords(args);
+	for (let index = 0; index < words.length; index += 1) {
+		const word = words[index];
+		if (word === "--verbose" || word === "--details" || word === "-v") {
+			includeDetails = true;
+			continue;
+		}
+		if (word === "--pricing" || word === "--prices" || word === "-p") {
+			includePricing = true;
+			continue;
+		}
+		if (word === "--relative-to" || word === "--relative" || word === "--baseline") {
+			relativeTo = words[index + 1];
+			index += 1;
+			continue;
+		}
+		const relativeMatch = word.match(/^--(?:relative-to|relative|baseline)=(.+)$/);
+		if (relativeMatch) {
+			relativeTo = relativeMatch[1];
+			continue;
+		}
+		queryParts.push(word);
+	}
+	return {
+		query: queryParts.join(" ") || undefined,
+		includeDetails,
+		includePricing,
+		relativeTo,
+	};
+}
+
 function matchesModel(model: Model<Api>, query: string | undefined): boolean {
 	if (!query?.trim()) return true;
 	const needle = query.trim().toLowerCase();
@@ -97,7 +199,13 @@ function isSparkModel(model: Model<Api>): boolean {
 	return /(?:^|[-_])spark(?:$|[-_])/.test(model.id.toLowerCase());
 }
 
+function isLocalModel(model: Model<Api>): boolean {
+	const provider = String(model.provider).toLowerCase();
+	return provider.startsWith("local-") || provider.includes("llamaswap");
+}
+
 function classifyCost(model: Model<Api>): string {
+	if (isLocalModel(model)) return "free/local";
 	if (isSparkModel(model)) return "premium-speed";
 	const cost = model.cost;
 	const output = cost?.output ?? 0;
@@ -113,6 +221,7 @@ function classifyCost(model: Model<Api>): string {
 function classifyQuota(model: Model<Api>): string {
 	const id = model.id.toLowerCase();
 	const provider = String(model.provider).toLowerCase();
+	if (isLocalModel(model)) return "local-serial";
 	if (isSparkModel(model)) return "very-fast";
 	if (/mini|flash|lite|haiku|small/.test(id)) return "fast/limited";
 	if (/opus|pro|gpt-5\.5|o3|sonnet|grok-4/.test(id)) return "scarce";
@@ -120,8 +229,9 @@ function classifyQuota(model: Model<Api>): string {
 	return "standard";
 }
 
-function modelProfile(model: Model<Api>): "latency" | "fast" | "standard" | "strong" {
+function modelProfile(model: Model<Api>): "local" | "latency" | "fast" | "standard" | "strong" {
 	const id = model.id.toLowerCase();
+	if (isLocalModel(model)) return "local";
 	if (isSparkModel(model)) return "latency";
 	if (/mini|flash|lite|haiku|small/.test(id)) return "fast";
 	if (/opus|pro|gpt-5\.5|gpt-5\.4(?!-mini)|o3|sonnet|grok-4/.test(id)) return "strong";
@@ -130,6 +240,12 @@ function modelProfile(model: Model<Api>): "latency" | "fast" | "standard" | "str
 
 function usageGuidance(model: Model<Api>): Pick<ModelCatalogRow, "useFor" | "avoidFor"> {
 	const profile = modelProfile(model);
+	if (profile === "local") {
+		return {
+			useFor: "free local background work when latency does not matter, concurrency is low, and roughly gpt-5.4-mini-level capability is enough",
+			avoidFor: "interactive work, latency-sensitive tasks, broad reasoning above mini-level capability, final review, or parallel/concurrent local-model tasks unless explicitly chosen",
+		};
+	}
 	if (profile === "latency") {
 		return {
 			useFor: "latency-critical bounded tasks and quick scouts when very high speed is worth premium cost",
@@ -173,11 +289,50 @@ function unsupportedModels(): Map<string, UnsupportedModelInfo> {
 	return unsupported;
 }
 
-function toRows(ctx: ExtensionContext, includeUnavailable: boolean, unsupportedMode: UnsupportedMode, query?: string): ModelCatalogResult {
+function findModelById(ctx: ExtensionContext, id: string | undefined): Model<Api> | undefined {
+	const needle = id?.trim();
+	if (!needle) return undefined;
+	for (const model of ctx.modelRegistry.getAll()) {
+		const fullId = `${model.provider}/${model.id}`;
+		if (fullId === needle || model.id === needle) return model;
+	}
+	return undefined;
+}
+
+function hasKnownPricing(model: Model<Api>): boolean {
+	return isLocalModel(model) || model.cost.input > 0 || model.cost.output > 0 || model.cost.cacheRead > 0 || model.cost.cacheWrite > 0;
+}
+
+function pricingForModel(model: Model<Api>, baseline: Model<Api> | undefined): ModelPricing {
+	const known = hasKnownPricing(model);
+	const baselineKnown = baseline ? hasKnownPricing(baseline) : false;
+	const baselineCost = baselineKnown ? baseline?.cost : undefined;
+	const modelBlend = model.cost.input + model.cost.output;
+	const baselineBlend = baselineCost ? baselineCost.input + baselineCost.output : 0;
+	return {
+		inputPerMillion: model.cost.input,
+		outputPerMillion: model.cost.output,
+		cacheReadPerMillion: model.cost.cacheRead,
+		cacheWritePerMillion: model.cost.cacheWrite,
+		known,
+		relativeTo: baseline && baselineKnown ? `${baseline.provider}/${baseline.id}` : undefined,
+		relativeInput: known && baselineCost && baselineCost.input > 0 ? model.cost.input / baselineCost.input : undefined,
+		relativeOutput: known && baselineCost && baselineCost.output > 0 ? model.cost.output / baselineCost.output : undefined,
+		relativeCacheRead: known && baselineCost && baselineCost.cacheRead > 0 ? model.cost.cacheRead / baselineCost.cacheRead : undefined,
+		relativeBlended: known && baselineCost && baselineBlend > 0 ? modelBlend / baselineBlend : undefined,
+	};
+}
+
+function toRows(ctx: ExtensionContext, includeUnavailable: boolean, unsupportedMode: UnsupportedMode, query?: string, relativeTo?: string): ModelCatalogResult {
 	const availableIds = new Set(ctx.modelRegistry.getAvailable().map((model) => `${model.provider}/${model.id}`));
 	const enabledIds = new Set(readSettings().enabledModels ?? []);
 	const unsupportedById = unsupportedModels();
 	const models = includeUnavailable ? ctx.modelRegistry.getAll() : ctx.modelRegistry.getAvailable();
+	const requestedBaselineId = relativeTo?.trim();
+	const requestedBaseline = findModelById(ctx, requestedBaselineId);
+	const baseline = requestedBaselineId ? requestedBaseline : ctx.model;
+	const pricingBaseline = baseline && hasKnownPricing(baseline) ? `${baseline.provider}/${baseline.id}` : undefined;
+	const pricingBaselineMissing = requestedBaselineId && !pricingBaseline ? requestedBaselineId : undefined;
 	const allRows = models
 		.filter((model) => matchesModel(model, query))
 		.sort((a, b) => {
@@ -201,6 +356,7 @@ function toRows(ctx: ExtensionContext, includeUnavailable: boolean, unsupportedM
 				images: model.input.includes("image") ? "yes" : "no",
 				cost: classifyCost(model),
 				quota: classifyQuota(model),
+				pricing: pricingForModel(model, baseline),
 				supported: unsupported === undefined,
 				unsupportedReason: unsupported?.reason,
 				useFor: guidance.useFor,
@@ -213,49 +369,78 @@ function toRows(ctx: ExtensionContext, includeUnavailable: boolean, unsupportedM
 		: unsupportedMode === "include"
 			? allRows
 			: allRows.filter((row) => row.supported);
-	return { rows, excludedUnsupportedRows };
+	return { rows, excludedUnsupportedRows, pricingBaseline, pricingBaselineMissing };
 }
 
-function table(result: ModelCatalogResult, includeDetails: boolean, unsupportedMode: UnsupportedMode): string {
+function table(result: ModelCatalogResult, includeDetails: boolean, unsupportedMode: UnsupportedMode, includePricing: boolean): string {
 	const rows = result.rows;
 	if (rows.length === 0) return result.excludedUnsupportedRows.length > 0 ? "No matching supported models. Call with unsupported: 'include' to show locally unsupported matches." : "No matching models.";
-	const headers = ["provider", "model", "auth", "support", "context", "max-out", "thinking", "images", "cost", "quota", "enabled"];
-	const body = rows.map((row) => [
-		row.provider,
-		`${row.current ? "*" : ""}${row.model}`,
-		row.available ? "yes" : "no",
-		row.supported ? "yes" : "no",
-		row.context,
-		row.maxOut,
-		row.thinking,
-		row.images,
-		row.cost,
-		row.quota,
-		row.cycleEnabled ? "yes" : "no",
-	]);
+	const headers = includePricing
+		? ["model", "auth", "support", "enabled", "ctx", "out", "caps", "price-tier", "quota", "in$/M", "out$/M", "rel-in", "rel-out", "rel-blend"]
+		: ["model", "auth", "support", "enabled", "ctx", "out", "caps", "price-tier", "rel-cost", "quota"];
+	const body = rows.map((row) => {
+		const cells = [
+			`${row.current ? "*" : ""}${row.fullId}`,
+			row.available ? "yes" : "no",
+			row.supported ? "yes" : "no",
+			row.cycleEnabled ? "yes" : "no",
+			row.context,
+			row.maxOut,
+			formatCapabilities(row),
+			row.cost,
+		];
+		if (!includePricing) {
+			cells.push(formatRatio(row.pricing.relativeBlended));
+		}
+		cells.push(row.quota);
+		if (includePricing) {
+			cells.push(
+				formatPricePerMillion(row.pricing.inputPerMillion, row.pricing.known),
+				formatPricePerMillion(row.pricing.outputPerMillion, row.pricing.known),
+				formatRatio(row.pricing.relativeInput),
+				formatRatio(row.pricing.relativeOutput),
+				formatRatio(row.pricing.relativeBlended),
+			);
+		}
+		return cells;
+	});
 	const widths = headers.map((header, index) => Math.max(header.length, ...body.map((cells) => cells[index].length)));
 	const lines = [headers.map((header, index) => header.padEnd(widths[index])).join("  ")];
 	for (const cells of body) {
 		lines.push(cells.map((cell, index) => cell.padEnd(widths[index])).join("  "));
 	}
+	if (result.pricingBaseline) {
+		lines.push("", includePricing
+			? `Pricing: $/million tokens. Relative columns compare against ${result.pricingBaseline}; rel-blend uses input+output rates as a rough 1:1 token-mix weight.`
+			: `rel-cost compares input+output rates against ${result.pricingBaseline}; pass relativeTo/--relative-to to choose a different baseline.`);
+	} else if (result.pricingBaselineMissing) {
+		lines.push("", `Pricing: relative baseline '${result.pricingBaselineMissing}' was not found or has no numeric pricing.`);
+	} else if (includePricing) {
+		lines.push("", "Pricing: $/million tokens. Pass relativeTo: 'provider/model-id' to include relative cost ratios.");
+	}
 	if (includeDetails) {
 		lines.push("", "Usage guidance:");
 		for (const row of rows) {
 			const support = row.supported ? "" : ` Unsupported locally: ${row.unsupportedReason}.`;
-			lines.push(`- ${row.fullId}: use for ${row.useFor}; avoid for ${row.avoidFor}.${support}`);
+			const pricing = includePricing
+				? ` Pricing: input ${formatPricePerMillion(row.pricing.inputPerMillion, row.pricing.known)}/M, output ${formatPricePerMillion(row.pricing.outputPerMillion, row.pricing.known)}/M${row.pricing.relativeTo ? `, relative to ${row.pricing.relativeTo}: input ${formatRatio(row.pricing.relativeInput)}, output ${formatRatio(row.pricing.relativeOutput)}, blended ${formatRatio(row.pricing.relativeBlended)}` : ""}.`
+				: "";
+			lines.push(`- ${row.fullId}: use for ${row.useFor}; avoid for ${row.avoidFor}.${pricing}${support}`);
 		}
 	}
 	if (unsupportedMode === "exclude" && result.excludedUnsupportedRows.length > 0) {
 		lines.push("", `Excluded ${result.excludedUnsupportedRows.length} locally unsupported model(s). Call with unsupported: 'include' to show them.`);
 	}
-	lines.push("", "Notes: cost/quota are guidance tiers, not live billing or remaining quota. Support is a local compatibility hint, not provider live availability.");
+	lines.push("", "Notes: price-tier uses input+output $/million-token rates from Pi's local model registry: low ≤ $1, medium ≤ $8, high ≤ $30, premium > $30; local models are free/local and spark models are premium-speed. Local models are free but very slow, roughly around gpt-5.4-mini capability, and effectively serial/concurrency-constrained: avoid using multiple local models or many same-local-model tasks at once. Numeric prices may be nominal weights for subscription-backed providers. Zero/blank pricing outside free/local can mean unknown, bundled, or non-metered rather than free. Quota is guidance, not live remaining quota. Support is a local compatibility hint, not provider live availability.");
 	return lines.join("\n");
 }
 
 const listPiModelsParameters = Type.Object({
 	query: Type.Optional(Type.String({ description: "Optional substring filter, e.g. 'mini', 'codex', 'sonnet'." })),
 	includeUnavailable: Type.Optional(Type.Boolean({ description: "Include models without configured auth. Default false." })),
-	includeDetails: Type.Optional(Type.Boolean({ description: "Include use/avoid guidance for each returned model. Default true." })),
+	includeDetails: Type.Optional(Type.Boolean({ description: "Include verbose use/avoid guidance for each returned model. Default false." })),
+	includePricing: Type.Optional(Type.Boolean({ description: "Include numeric pricing columns from Pi's model registry. Prices are $/million tokens. Default false." })),
+	relativeTo: Type.Optional(Type.String({ description: "Optional baseline model for relative pricing, e.g. 'openai-codex/gpt-5.4'. Use with includePricing." })),
 	unsupported: Type.Optional(Type.Union([
 		Type.Literal("exclude"),
 		Type.Literal("include"),
@@ -267,22 +452,25 @@ export default function modelCatalog(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "list_pi_models",
 		label: "List Pi Models",
-		description: "List available Pi models with context, output, thinking/images, enabled status, support status, and cost/quota guidance.",
-		promptSnippet: "List/query Pi models and model-selection guidance.",
+		description: "List available Pi models with concise decision fields by default, plus optional verbose guidance and numeric pricing.",
+		promptSnippet: "List/query Pi models, model-selection guidance, and optional pricing.",
 		promptGuidelines: [
 			"Use list_pi_models before choosing or recommending a model when current model availability, local support status, cost, quota, or capability matters.",
 			"For model overrides, choose rows with support yes and enabled yes unless the user explicitly authorizes configuration changes; auth yes alone only means credentials exist.",
 			"list_pi_models excludes locally unsupported models by default; use unsupported: 'include' or 'only' only for diagnostics.",
-			"list_pi_models cost/quota fields are guidance tiers, not live remaining quota.",
+			"list_pi_models price-tier/quota fields are guidance tiers, not live remaining quota.",
+			"Default output is intentionally concise; request includeDetails: true only when use/avoid prose would materially help selection.",
+			"When precise cost comparisons matter, pass includePricing: true and relativeTo: 'provider/model-id'. Treat numeric prices as local registry data, not guaranteed live billing for subscription-backed providers.",
 		],
 		parameters: listPiModelsParameters,
 		async execute(_toolCallId: string, params: ListPiModelsParams, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const includeUnavailable = params.includeUnavailable === true;
-			const includeDetails = params.includeDetails !== false;
+			const includeDetails = params.includeDetails === true;
 			const unsupportedMode = params.unsupported ?? "exclude";
-			const result = toRows(ctx, includeUnavailable, unsupportedMode, params.query);
+			const includePricing = params.includePricing === true;
+			const result = toRows(ctx, includeUnavailable, unsupportedMode, params.query, params.relativeTo);
 			return {
-				content: [{ type: "text", text: table(result, includeDetails, unsupportedMode) }],
+				content: [{ type: "text", text: table(result, includeDetails, unsupportedMode, includePricing) }],
 				details: {
 					models: result.rows,
 					excludedUnsupportedModels: result.excludedUnsupportedRows,
@@ -292,10 +480,11 @@ export default function modelCatalog(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("models-guide", {
-		description: "Show available Pi models with cost/quota guidance",
+		description: "Show available Pi models with concise defaults. Use --verbose for details, or --pricing and --relative-to provider/model-id for numeric ratios.",
 		handler: async (args: string, ctx: ExtensionContext) => {
-			const result = toRows(ctx, false, "exclude", args.trim() || undefined);
-			ctx.ui.notify(table(result, false, "exclude"), "info");
+			const parsed = parseModelsGuideArgs(args);
+			const result = toRows(ctx, false, "exclude", parsed.query, parsed.relativeTo);
+			ctx.ui.notify(table(result, parsed.includeDetails === true, "exclude", parsed.includePricing === true), "info");
 		},
 	});
 }
