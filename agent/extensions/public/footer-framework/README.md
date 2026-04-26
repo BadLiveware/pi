@@ -1,10 +1,8 @@
 # pi-footer-framework
 
-A configurable footer framework extension that intentionally owns/hijacks the footer and lets users control layout sections.
+Configurable footer replacement for Pi. It gives you a stable two-line footer and lets you choose which status items appear where.
 
-This is designed to pair with primitive-emitting extensions (for example `pr-upstream-status` via `pr-upstream:state`).
-
-It ships with a bundled skill (`footer-framework-config`) and advertises it via package metadata + `resources_discover`, so Pi can apply footer tuning commands automatically when this extension is active.
+Use it when the default footer is too cramped, when you want context/model/branch/PR state in predictable places, or when other extensions need a shared place to publish compact status items.
 
 ## Install
 
@@ -12,66 +10,85 @@ It ships with a bundled skill (`footer-framework-config`) and advertises it via 
 pi install npm:@badliveware/pi-footer-framework
 ```
 
-For local testing from this repository:
+No external services or credentials are required.
 
-```bash
-pi -e /path/to/pi/agent/extensions/public/footer-framework
+## Quick use
+
+```text
+/footerfx on
+/footerfx item context line 1
+/footerfx item context after model
+/footerfx gap 1 10
+/footerfx save user
 ```
 
-## Behavior
+The extension replaces the default footer only while enabled. Disable it with:
 
-- Replaces the default footer when enabled.
-- Keeps a stable 2-line footer layout.
-- Composes built-in footer items:
-  - `cwd`, `model`, `branch`, `stats`, `context`, `pr`, `ext`
-  - the `model` item includes the active thinking level as `<model-id>:<thinking-level>`
-  - the `context` item shows current context-window usage as percent plus humanized `tokens/max` counts, for example `ctx 52.2% 142K/272K`
-- Supports extension-provided dynamic items via the event bus.
-- Lets users position each item independently by line, left/right zone, relative order, or absolute column.
+```text
+/footerfx off
+```
 
-## Persistence
+## What it shows
 
-Footer settings automatically persist to the user config file by default:
+Built-in items include:
+
+- `cwd`
+- `model` with thinking level
+- `branch`
+- `stats`
+- `context` usage, such as `ctx 52.2% 142K/272K`
+- `pr` state from compatible PR extensions
+- `ext` status text from other extensions
+
+Items can be shown/hidden and positioned by line, left/right zone, relative order, or fixed column.
+
+## Configuration
+
+User settings persist to:
 
 ```text
 ~/.pi/agent/footer-framework.json
 ```
 
-If a project config exists, it overrides user settings for that project:
+Project settings can override them:
 
 ```text
 <project>/.pi/footer-framework.json
 ```
 
-Use `/footerfx save project` to intentionally create/update the project config.
+Use `/footerfx save project` only when you intentionally want a project-specific footer layout.
 
 ## Commands
 
-- `/footerfx` — show current config and source
-- `/footerfx config` — show user/project config paths and loaded source
-- `/footerfx load` — reload user/project config files
-- `/footerfx save user` — save current settings to user config
-- `/footerfx save project` — save current settings to project config
-- `/footerfx on` — enable framework footer
-- `/footerfx off` — disable and restore default footer
-- `/footerfx reset` — restore defaults and persist to user config
-- `/footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>` — legacy section toggles
-- `/footerfx item <id> <show|hide|reset>`
-- `/footerfx item <id> line <1|2>`
-- `/footerfx item <id> zone <left|right>`
-- `/footerfx item <id> order <n>`
-- `/footerfx item <id> before <other-id>` / `/footerfx item <id> after <other-id>`
-- `/footerfx item <id> column <n|off>` — absolute column placement
-- `/footerfx anchor <line1|line2|all> <gap|left|center|right|spread>` — line-level right-zone anchoring
-- `/footerfx gap <min> <max>` — spacing controls used by `gap`/`center`/`left` modes
-- `/footerfx branch-width <n>` — max branch label width
-- `/footerfx mcp-zero <hide|show>` — hide/show `MCP: 0/x servers`
-- `/footerfx-debug` — dump latest footer snapshot and settings
-  - includes per-line layout telemetry: left/right widths, pad width, right start/end columns, truncation
+| Command | What it does |
+| --- | --- |
+| `/footerfx` | Show current config and source. |
+| `/footerfx on` / `/footerfx off` | Enable or disable the replacement footer. |
+| `/footerfx load` | Reload user/project config files. |
+| `/footerfx save user` | Save current settings as the user default. |
+| `/footerfx save project` | Save current settings for the current project. |
+| `/footerfx reset` | Restore defaults and persist them to user config. |
+| `/footerfx item <id> <show|hide|reset>` | Control item visibility. |
+| `/footerfx item <id> line <1|2>` | Move an item to a footer line. |
+| `/footerfx item <id> zone <left|right>` | Move an item between left/right zones. |
+| `/footerfx item <id> before <other-id>` | Place an item before another item. |
+| `/footerfx item <id> after <other-id>` | Place an item after another item. |
+| `/footerfx item <id> column <n|off>` | Pin or unpin an item column. |
+| `/footerfx anchor <line1|line2|all> <gap|left|center|right|spread>` | Control line alignment. |
+| `/footerfx gap <min> <max>` | Set spacing bounds. |
+| `/footerfx branch-width <n>` | Set max branch label width. |
+| `/footerfx-debug` | Show render snapshot, settings, and layout telemetry. |
+
+## Agent tools
+
+The extension exposes two tools so agents can inspect and adjust the footer without asking you to run commands:
+
+- `footer_framework_state`
+- `footer_framework_config`
 
 ## Extension item API
 
-Other extensions can contribute footer items by emitting:
+Other extensions can publish footer items through Pi's event bus:
 
 ```ts
 pi.events.emit("footer-framework:item", {
@@ -81,25 +98,8 @@ pi.events.emit("footer-framework:item", {
 });
 ```
 
-Remove an item:
+Remove an item with:
 
 ```ts
 pi.events.emit("footer-framework:item", { id: "my-extension:status", remove: true });
 ```
-
-Users can then reposition the item with `/footerfx item my-extension:status ...` and those overrides persist automatically.
-
-## Agent automation primitives
-
-The extension exposes tools so the agent can introspect and tune the footer without asking the user to run commands:
-
-- `footer_framework_state` — returns settings + latest rendered footer snapshot + layout telemetry
-- `footer_framework_config` — applies the same syntax as `/footerfx ...`
-
-## Notes
-
-- The extension stores latest settings in session custom entries (`footer-framework-state`).
-- It listens to event bus topic `pr-upstream:state` for PR primitives.
-- Extension statuses with empty rendered text are ignored so transient or
-  intentionally-cleared status providers do not leave phantom separators in the
-  footer.

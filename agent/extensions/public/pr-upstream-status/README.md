@@ -1,6 +1,8 @@
 # pi-pr-upstream-status
 
-Tracks the open upstream pull request for the current git branch (GitHub today, host abstraction ready for more providers).
+Shows the open GitHub pull request for the current branch in Pi and can prompt the agent when new PR feedback or failing CI needs attention.
+
+Use it when you work on branches with upstream PRs and want review comments, check status, and CI failures visible without leaving Pi.
 
 ## Install
 
@@ -8,90 +10,71 @@ Tracks the open upstream pull request for the current git branch (GitHub today, 
 pi install npm:@badliveware/pi-pr-upstream-status
 ```
 
-For local testing from this repository:
+## Requirements
 
-```bash
-pi -e /path/to/pi/agent/extensions/public/pr-upstream-status
-```
+- A Git checkout with a GitHub remote.
+- Optional: `GH_TOKEN` or `GITHUB_TOKEN` for private repositories, higher rate limits, unresolved review-thread filtering, and richer CI details.
+- Optional: GitHub CLI (`gh`) as an additional private-repo auth fallback.
+
+Without a token, public-repo lookups still work with anonymous GitHub API limits. Some review-thread and CI-log details may be unavailable.
 
 ## What it shows
 
-- Default footer status entry (`ctx.ui.setStatus`) with:
-  - check result icon (`✅`, `❌`, `⏳`, or `•` unknown)
-  - optional `💬<count>` (issue comments plus unresolved review threads)
-  - PR link (`#123`) as OSC-8 hyperlink when supported
-- Emits `pr-upstream:state` event bus primitives for custom footer extensions.
+The extension adds a compact footer status with:
 
-## Provider model
+- check result: `✅`, `❌`, `⏳`, or `•`
+- comment count such as `💬3`
+- PR link such as `#123` when supported by the terminal
 
-The extension uses a generalized `CodeHostProvider` interface and currently ships one implementation:
+It also emits `pr-upstream:state` for footer frameworks or other extensions that want structured PR status.
 
-- `github` provider (GitHub REST API plus GraphQL for unresolved review threads)
+## Quick use
 
-Adding a new host means implementing `parseRepo()`, `findOpenPullRequest()`, and `fetchOpenFeedback()`.
+```text
+/pr-status
+/pr-status refresh
+/pr-autosolve off
+```
 
-## Auth
+Auto-solve is on by default. Turn it off if you only want passive status:
 
-For private repositories or better rate limits, set one of:
+```text
+/pr-autosolve off
+```
 
-- `GH_TOKEN`
-- `GITHUB_TOKEN`
+## How it works
 
-Without a token, public-repo lookups still work with anonymous API limits, but unresolved review-thread filtering requires GraphQL auth; unauthenticated fallback reports issue comments only.
+The extension detects the current branch, finds the matching open GitHub PR, refreshes status periodically, and updates Pi's footer/status primitives.
 
-For private repos:
-- the extension first tries REST auth from env tokens,
-- then optionally tries `gh auth token` as an auth source (if `gh` is installed/logged in),
-- and finally falls back to `git ls-remote refs/pull/*/head` to detect the PR number without requiring `gh`.
+When auto-solve is enabled and Pi is idle, it can fetch new issue comments, unresolved review-thread comments, and failing CI context. It then sends the agent a prompt to verify the feedback, fix relevant issues, run validation, and summarize what happened.
 
-## Auto-solve PR comments and CI failures (default: on)
+Guardrails prevent auto-solve from starting immediately in fresh sessions or when an older Pi process is already active in the same workspace. `/pr-autosolve now` bypasses those guards intentionally.
 
-Auto-solve is enabled by default. Explicit `/pr-autosolve on` and
-`/pr-autosolve off` choices persist in:
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `/pr-status` | Show current PR status. |
+| `/pr-status refresh` | Refresh now. |
+| `/pr-status on` | Enable the periodic watcher. |
+| `/pr-status off` | Disable the periodic watcher. |
+| `/pr-autosolve` | Show auto-solve status and config path. |
+| `/pr-autosolve on` | Enable auto-solve and persist the choice. |
+| `/pr-autosolve off` | Disable auto-solve and persist the choice. |
+| `/pr-autosolve now` | Run auto-solve now for current feedback and CI failures. |
+
+Auto-solve settings persist to:
 
 ```text
 ~/.pi/agent/pr-upstream-status.json
 ```
 
-When enabled, the extension waits until:
-
-- the PR checks are complete (`pass` or `fail`), and
-- Pi is idle with no pending messages,
-- the session is no longer fresh, and
-- no older Pi session is running in the same workspace,
-
-then fetches:
-
-- new issue comments and unresolved review-thread comments, and
-- failed CI check context when checks are failing.
-
-For GitHub Actions failures, the extension tries to find the failing check run, workflow job, failed step metadata, annotations, and a focused log excerpt around error lines. Legacy status failures are included with their target URL/description when check-run logs are not available.
-
-It sends a prompt that asks the agent to:
-
-1. verify each comment is true/relevant,
-2. ignore comments that are not true/relevant (with explanation),
-3. identify the failing CI job/step and root cause,
-4. apply minimal fixes for relevant comments or CI failures,
-5. run relevant validation and summarize outcomes.
-
-The fresh-session and older-session guards keep ad-hoc extra Pi instances from immediately starting code work in a repository where another Pi is already active. When a guard suppresses auto-solve, Pi shows a notification that auto-solve would have run. `/pr-autosolve now` intentionally bypasses these guards for the current session.
-
-## Event primitive
+## Event payload
 
 The extension emits:
 
-- `pr-upstream:state`
+```text
+pr-upstream:state
+```
 
-Payload fields include branch, PR metadata (number/url/comments/checks), and auto-solve state.
-
-## Commands
-
-- `/pr-status` – show current PR status summary
-- `/pr-status refresh` – force refresh now
-- `/pr-status on` – enable periodic watcher
-- `/pr-status off` – disable periodic watcher
-- `/pr-autosolve` – show auto-solve status and config path
-- `/pr-autosolve on` – enable and persist auto-solve
-- `/pr-autosolve off` – disable and persist auto-solve
-- `/pr-autosolve now` – force an immediate auto-solve pass for new comments and current CI failures (must be enabled)
+Payload includes the current branch, PR number/title/url, comment count, check state, head SHA, base repo, and auto-solve state.

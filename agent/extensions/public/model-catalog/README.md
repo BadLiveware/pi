@@ -1,6 +1,8 @@
 # pi-model-catalog
 
-Exposes Pi's model registry to the agent as a tool so model choice can be based on the same data behind `pi --list-models`.
+Adds a `list_pi_models` tool that lets agents inspect Pi's current model registry before choosing or recommending a model.
+
+Use it when model choice should depend on what is actually available in your Pi setup: auth status, local support notes, enabled/cycling preferences, context size, capabilities, quota guidance, and optional price data.
 
 ## Install
 
@@ -8,77 +10,68 @@ Exposes Pi's model registry to the agent as a tool so model choice can be based 
 pi install npm:@badliveware/pi-model-catalog
 ```
 
-For local testing from this repository:
+No external services or credentials are required beyond the model credentials already configured in Pi.
 
-```bash
-pi -e /path/to/pi/agent/extensions/public/model-catalog
+## Quick use
+
+Ask the agent to call `list_pi_models` before choosing a model, or use the UI command:
+
+```text
+/models-guide mini
+/models-guide --pricing --relative-to openai-codex/gpt-5.4-mini codex
 ```
 
-## Tool
-
-Registers:
-
-- `list_pi_models`
-
-Parameters:
-
-- `query` — optional substring filter such as `mini`, `codex`, or `sonnet`
-- `includeUnavailable` — include models without configured auth; defaults to `false`
-- `includeDetails` — include verbose use/avoid guidance; defaults to `false`
-- `includePricing` — include numeric registry prices in $/million tokens; defaults to `false`
-- `relativeTo` — optional baseline model id such as `openai-codex/gpt-5.4`; with `includePricing`, adds relative input/output/blended ratios
-- `unsupported` — how to handle locally unsupported models: `exclude` (default), `include`, or `only`
-
-Default returned columns are intentionally concise:
-
-- full model id (`provider/model`, with `*` marking the current model)
-- `auth`, `support`, and `enabled` status
-- context and max output tokens
-- compact capability marker (`text`, `think`, `img`, or `think+img`)
-- price guidance tier (`price-tier`)
-- combined relative cost ratio (`rel-cost`) against the current model by default, or against `relativeTo` / `--relative-to` when supplied
-- quota guidance tier
-
-Optional columns/details include:
-
-- numeric pricing columns (`in$/M`, `out$/M`) and detailed relative ratios (`rel-in`, `rel-out`, `rel-blend`) with `includePricing`
-- verbose use/avoid guidance with `includeDetails`
-
-For model overrides, agents should choose rows with both `support: yes` and `enabled: yes` unless the user explicitly authorizes configuration changes. `auth: yes` only means credentials exist.
-
-The `price-tier` and `quota` columns are guidance tiers, not live billing or remaining-quota data. They are meant to help the agent choose between cheap/lower-scarcity, premium low-latency, default, and scarce/strong models. `price-tier` is computed from local registry rates as `input $/M + output $/M`:
-
-| Tier | Rule |
-| --- | ---: |
-| `free/local` | locally run model; no metered API cost |
-| `unknown/sub` | no numeric input/output price |
-| `low` | `<= $1/M` blended |
-| `medium` | `<= $8/M` blended |
-| `high` | `<= $30/M` blended |
-| `premium` | `> $30/M` blended |
-| `premium-speed` | `-spark` models, special-cased |
-
-Local models are usually free from API billing but can be much slower than hosted models. Treat local-model capability as installation-specific, use them mainly for non-interactive/background work when latency is acceptable, and avoid assuming high concurrency on a single local backend. `-spark` models are treated as premium very-low-latency options, not cheap defaults.
-
-Numeric pricing comes from Pi's local model registry (`model.cost`) and is expressed in dollars per million tokens. For direct API providers this usually mirrors provider pricing; for subscription-backed providers such as Codex or Copilot, treat it as nominal cost-weight data rather than a guarantee of live billing or quota burn. A zero/blank price outside the `free/local` tier can mean unknown, bundled, or non-metered rather than free.
-
-Example:
+Tool example:
 
 ```json
 {
-  "query": "openai-codex gpt-5.4",
+  "query": "sonnet",
   "includePricing": true,
-  "relativeTo": "openai-codex/gpt-5.4"
+  "relativeTo": "openai-codex/gpt-5.4-mini"
 }
 ```
 
-## Locally unsupported models
+## What it returns
 
-Some models can appear in Pi's registry and pass auth checks but still fail for a specific account/provider pairing. Public package defaults do not mark any account-specific model as unsupported; add local entries when your provider/account has known incompatibilities.
+Default output is intentionally compact:
 
-Locally unsupported models are excluded by default so agents do not choose them accidentally. Call `list_pi_models` with `unsupported: "include"` to show them with a `support: no` column and reason, or `unsupported: "only"` to inspect only unsupported entries.
+- full model id, with `*` on the current model
+- `auth`, `support`, and `enabled` status
+- context and max output tokens
+- capability marker: `text`, `think`, `img`, or `think+img`
+- price tier and rough relative cost
+- quota/scarcity guidance
 
-You can add local unsupported entries in `~/.pi/agent/model-catalog.json`:
+Pass `includeDetails: true` for verbose use/avoid guidance. Pass `includePricing: true` for numeric input/output prices and relative ratios.
+
+## Tool parameters
+
+| Parameter | What it does |
+| --- | --- |
+| `query` | Optional substring filter such as `mini`, `codex`, or `sonnet`. |
+| `includeUnavailable` | Include models without configured auth. Default: `false`. |
+| `includeDetails` | Include verbose use/avoid guidance. Default: `false`. |
+| `includePricing` | Include numeric registry prices in $/million tokens. Default: `false`. |
+| `relativeTo` | Baseline model id for relative price ratios. |
+| `unsupported` | `exclude`, `include`, or `only` locally unsupported models. Default: `exclude`. |
+
+## Command
+
+| Command | What it does |
+| --- | --- |
+| `/models-guide [query]` | Show the concise available-model table. |
+| `/models-guide --verbose [query]` | Include verbose use/avoid guidance. |
+| `/models-guide --pricing --relative-to <model> [query]` | Include numeric pricing and ratios. |
+
+## Local support notes
+
+Some providers report a model as authenticated even when a specific account cannot use it. Add local unsupported-model notes in:
+
+```text
+~/.pi/agent/model-catalog.json
+```
+
+Example:
 
 ```json
 {
@@ -91,12 +84,8 @@ You can add local unsupported entries in `~/.pi/agent/model-catalog.json`:
 }
 ```
 
-## Command
+Unsupported models are excluded by default so agents do not choose them accidentally.
 
-- `/models-guide [query]` — show the concise available-model table in the UI
-- `/models-guide --verbose [query]` — include verbose use/avoid guidance
-- `/models-guide --pricing --relative-to openai-codex/gpt-5.4 openai-codex gpt-5` — include numeric pricing and ratios in the UI table
+## Price and quota caveats
 
-## Intended use
-
-Agents should call `list_pi_models` before choosing or recommending a model when availability, cost, quota, or capability matters. This is especially useful for subagent delegation and deciding whether to downshift routine work or upshift difficult bounded work.
+`price-tier`, numeric prices, and quota labels are guidance from Pi's local model registry, not live billing or remaining quota. For subscription-backed providers, numeric prices may be nominal weights rather than direct billing.

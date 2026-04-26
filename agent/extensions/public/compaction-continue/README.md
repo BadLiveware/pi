@@ -1,47 +1,32 @@
 # pi-compaction-continue
 
-Auto-continue extension for [Pi](https://pi.dev) after compaction leaves the agent idle.
+Auto-sends `continue` when Pi compacts context and then stops while there is still obvious work to resume.
 
-## Features
-
-When Pi compacts context and then becomes idle with no queued messages, this extension sends a plain:
-
-```text
-continue
-```
-
-It does this for:
-
-- provider `context_length_exceeded` overflow compactions, and
-- active loop state under `.ralph/*.state.json`.
-
-It checks `ctx.isIdle()` and `!ctx.hasPendingMessages()` before sending anything, so it should not interfere with running tool calls.
-
-The footer status shows `watchdog:on` or `watchdog:off`.
+Use it for long sessions, especially active iterative loops, where a compaction can leave Pi idle even though the next useful action is simply to continue.
 
 ## Install
-
-From npm after publishing:
 
 ```bash
 pi install npm:@badliveware/pi-compaction-continue
 ```
 
-From a local checkout:
+No external services, credentials, or extra CLIs are required.
 
-```bash
-pi install /path/to/pi-compaction-continue
+## How it works
+
+After a compaction, the extension waits briefly and checks that Pi is idle and has no queued messages. If the compaction was caused by a context overflow, or if an active Ralph loop is recorded under `.ralph/*.state.json`, it sends:
+
+```text
+continue
 ```
 
-For one-off testing:
-
-```bash
-pi -e /path/to/pi-compaction-continue
-```
+It does nothing while tools are running or messages are already queued. The footer status shows `watchdog:on` or `watchdog:off`.
 
 ## Commands
 
-- `/compaction-continue` — show status.
-- `/compaction-continue on` — enable auto-continue.
-- `/compaction-continue off` — disable auto-continue.
-- `/ralph-compact-watchdog` — compatibility alias.
+| Command | What it does |
+| --- | --- |
+| `/compaction-continue` | Show status and active loop detection. |
+| `/compaction-continue on` | Enable auto-continue. |
+| `/compaction-continue off` | Disable auto-continue. |
+| `/ralph-compact-watchdog` | Compatibility alias for older local setups. |
