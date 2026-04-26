@@ -11,7 +11,7 @@ Use this skill when a concrete plan or loop charter already exists and the next 
 Infer execution shape from the source and user intent; do not wait for the user to say "bounded" or "unbounded".
 
 - **Bounded plan**: finite scope and exit criteria; execute through all unblocked in-scope tasks until complete or blocked.
-- **Unbounded loop**: open-ended work that replenishes attempts from evidence; read `unbounded-work.md`, use a rolling 1-3 attempt window, and do not stop just because the current queue is empty.
+- **Unbounded loop**: open-ended work that replenishes attempts from evidence; read `unbounded-work.md` before creating attempts or editing code, use a rolling 1-3 attempt window, and do not stop just because the current queue is empty.
 - **Split/long bounded plan**: master `README.md` plus numbered files, very large bounded scope, or many checkpoints; read `long-plan.md` before proceeding.
 
 Common unbounded signals include: loop/iteration language, optimize/tune/harden/improve continuously, measure/check→change→evaluate→accept/reject cycles, replenishing hypotheses from evidence, stop only when the user stops, or durable negative-result memory to avoid retracing paths.
@@ -68,7 +68,7 @@ Commit permission is active only when the user asked for commits or another acti
 ## Workflow
 1. Treat the plan or loop charter as execution source; do not re-plan unless evidence forces it.
 2. Verify the source still matches user request, current scope, and local constraints.
-3. Classify bounded vs unbounded and simple vs split/long. For unbounded work, read `unbounded-work.md` before creating attempts.
+3. Classify bounded vs unbounded and simple vs split/long. For unbounded work, read `unbounded-work.md` before creating attempts, starting background work, or editing code; do not substitute a one-off task list for the loop runner.
 4. Preserve recommended order unless a safer dependency order is required.
 5. Run readiness review and resolve blockers or accepted gaps.
 6. Create/reconcile the next concrete task/attempt window and mark the first executable leaf `in_progress`.
