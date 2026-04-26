@@ -3,7 +3,7 @@ name: Publish Pi extension
 on:
   push:
     tags:
-      - "pi-ext/*/v*"
+      - "pi-ext/**/*"
 
 permissions:
   contents: read
