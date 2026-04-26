@@ -1,0 +1,99 @@
+name: Publish Pi extension
+
+on:
+  push:
+    tags:
+      - "pi-ext/*/v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish tagged extension package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Parse publish tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ref_name="${GITHUB_REF_NAME}"
+          if [[ ! "$ref_name" =~ ^pi-ext/([^/]+)/v(.+)$ ]]; then
+            echo "Tag must match pi-ext/<extension-name>/v<package-version>; got: $ref_name" >&2
+            exit 1
+          fi
+
+          extension="${BASH_REMATCH[1]}"
+          version="${BASH_REMATCH[2]}"
+          package_dir="agent/extensions/public/$extension"
+          package_json="$package_dir/package.json"
+
+          case "$extension" in
+            compaction-continue|pr-upstream-status|footer-framework|model-catalog) ;;
+            *)
+              echo "Unknown publishable extension: $extension" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ ! -f "$package_json" ]]; then
+            echo "Missing package manifest: $package_json" >&2
+            exit 1
+          fi
+
+          package_name="$(node -p "require('./${package_json}').name")"
+          package_version="$(node -p "require('./${package_json}').version")"
+
+          if [[ "$package_version" != "$version" ]]; then
+            echo "Tag version v$version does not match $package_name package.json version $package_version" >&2
+            exit 1
+          fi
+
+          echo "extension=$extension" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "package_dir=$package_dir" >> "$GITHUB_OUTPUT"
+          echo "package_name=$package_name" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install validation dependencies
+        working-directory: agent/extensions
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check public extensions
+        working-directory: agent/extensions
+        run: npm run typecheck
+
+      - name: Verify package contents
+        working-directory: agent/extensions
+        run: ./scripts/pack-public.sh "${{ steps.tag.outputs.extension }}"
+
+      - name: Fail if package version already exists on npm
+        env:
+          PACKAGE_NAME: ${{ steps.tag.outputs.package_name }}
+          PACKAGE_VERSION: ${{ steps.tag.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published. Bump the package version and push a new tag." >&2
+            exit 1
+          fi
+
+      - name: Publish package
+        working-directory: ${{ steps.tag.outputs.package_dir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance

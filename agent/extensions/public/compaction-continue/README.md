@@ -24,7 +24,7 @@ The footer status shows `watchdog:on` or `watchdog:off`.
 From npm after publishing:
 
 ```bash
-pi install npm:pi-compaction-continue
+pi install npm:@badliveware/pi-compaction-continue
 ```
 
 From a local checkout:

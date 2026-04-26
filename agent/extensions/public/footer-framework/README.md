@@ -6,6 +6,18 @@ This is designed to pair with primitive-emitting extensions (for example `pr-ups
 
 It ships with a bundled skill (`footer-framework-config`) and advertises it via package metadata + `resources_discover`, so Pi can apply footer tuning commands automatically when this extension is active.
 
+## Install
+
+```bash
+pi install npm:@badliveware/pi-footer-framework
+```
+
+For local testing from this repository:
+
+```bash
+pi -e /path/to/pi/agent/extensions/public/footer-framework
+```
+
 ## Behavior
 
 - Replaces the default footer when enabled.

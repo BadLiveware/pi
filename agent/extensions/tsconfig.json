@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "noEmit": true
+  },
+  "files": [
+    "public/compaction-continue/index.ts",
+    "public/pr-upstream-status/index.ts",
+    "public/footer-framework/index.ts",
+    "public/model-catalog/index.ts"
+  ]
+}

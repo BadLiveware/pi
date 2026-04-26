@@ -1,0 +1,44 @@
+{
+  "name": "@badliveware/pi-pr-upstream-status",
+  "version": "0.1.0",
+  "description": "Show upstream pull request status for the current branch in Pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "github",
+    "pull-request",
+    "ci"
+  ],
+  "license": "MIT",
+  "author": "BadLiveware",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BadLiveware/pi.git",
+    "directory": "agent/extensions/public/pr-upstream-status"
+  },
+  "bugs": {
+    "url": "https://github.com/BadLiveware/pi/issues"
+  },
+  "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/public/pr-upstream-status#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "README.md",
+    "LICENSE",
+    "index.ts",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -2,6 +2,18 @@
 
 Exposes Pi's model registry to the agent as a tool so model choice can be based on the same data behind `pi --list-models`.
 
+## Install
+
+```bash
+pi install npm:@badliveware/pi-model-catalog
+```
+
+For local testing from this repository:
+
+```bash
+pi -e /path/to/pi/agent/extensions/public/model-catalog
+```
+
 ## Tool
 
 Registers:
@@ -46,7 +58,7 @@ The `price-tier` and `quota` columns are guidance tiers, not live billing or rem
 | `premium` | `> $30/M` blended |
 | `premium-speed` | `-spark` models, special-cased |
 
-Local models are free but very slow; treat them as roughly around `gpt-5.4-mini` capability, maybe slightly above, and use them mainly for non-interactive/background work where latency is acceptable. They are also effectively serial/concurrency-constrained: do not plan to use multiple local models at the same time, and avoid many concurrent tasks on the same local model. In particular, `-spark` models are treated as premium very-low-latency options, not cheap defaults.
+Local models are usually free from API billing but can be much slower than hosted models. Treat local-model capability as installation-specific, use them mainly for non-interactive/background work when latency is acceptable, and avoid assuming high concurrency on a single local backend. `-spark` models are treated as premium very-low-latency options, not cheap defaults.
 
 Numeric pricing comes from Pi's local model registry (`model.cost`) and is expressed in dollars per million tokens. For direct API providers this usually mirrors provider pricing; for subscription-backed providers such as Codex or Copilot, treat it as nominal cost-weight data rather than a guarantee of live billing or quota burn. A zero/blank price outside the `free/local` tier can mean unknown, bundled, or non-metered rather than free.
 
@@ -62,9 +74,9 @@ Example:
 
 ## Locally unsupported models
 
-Some models can appear in Pi's registry and pass auth checks but still fail for a specific account/provider pairing. For example, `openai-codex/gpt-5.1-codex-mini` is currently marked unsupported for the configured Codex ChatGPT account.
+Some models can appear in Pi's registry and pass auth checks but still fail for a specific account/provider pairing. Public package defaults do not mark any account-specific model as unsupported; add local entries when your provider/account has known incompatibilities.
 
-Unsupported models are excluded by default so agents do not choose them accidentally. Call `list_pi_models` with `unsupported: "include"` to show them with a `support: no` column and reason, or `unsupported: "only"` to inspect only unsupported entries.
+Locally unsupported models are excluded by default so agents do not choose them accidentally. Call `list_pi_models` with `unsupported: "include"` to show them with a `support: no` column and reason, or `unsupported: "only"` to inspect only unsupported entries.
 
 You can add local unsupported entries in `~/.pi/agent/model-catalog.json`:
 

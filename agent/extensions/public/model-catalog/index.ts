@@ -242,8 +242,8 @@ function usageGuidance(model: Model<Api>): Pick<ModelCatalogRow, "useFor" | "avo
 	const profile = modelProfile(model);
 	if (profile === "local") {
 		return {
-			useFor: "free local background work when latency does not matter, concurrency is low, and roughly gpt-5.4-mini-level capability is enough",
-			avoidFor: "interactive work, latency-sensitive tasks, broad reasoning above mini-level capability, final review, or parallel/concurrent local-model tasks unless explicitly chosen",
+			useFor: "local background work when latency is acceptable, concurrency is low, and the configured model's capability is sufficient",
+			avoidFor: "interactive work, latency-sensitive tasks, tasks above the configured local model's capability, final review, or parallel/concurrent local-model tasks unless explicitly chosen",
 		};
 	}
 	if (profile === "latency") {
@@ -271,12 +271,7 @@ function usageGuidance(model: Model<Api>): Pick<ModelCatalogRow, "useFor" | "avo
 }
 
 function unsupportedModels(): Map<string, UnsupportedModelInfo> {
-	const unsupported = new Map<string, UnsupportedModelInfo>([
-		[
-			"openai-codex/gpt-5.1-codex-mini",
-			{ reason: "not supported by Codex with the configured ChatGPT account" },
-		],
-	]);
+	const unsupported = new Map<string, UnsupportedModelInfo>();
 	for (const entry of readModelCatalogConfig().unsupportedModels ?? []) {
 		if (typeof entry === "string") {
 			unsupported.set(entry, { reason: "marked unsupported in model-catalog.json" });
@@ -431,7 +426,7 @@ function table(result: ModelCatalogResult, includeDetails: boolean, unsupportedM
 	if (unsupportedMode === "exclude" && result.excludedUnsupportedRows.length > 0) {
 		lines.push("", `Excluded ${result.excludedUnsupportedRows.length} locally unsupported model(s). Call with unsupported: 'include' to show them.`);
 	}
-	lines.push("", "Notes: price-tier uses input+output $/million-token rates from Pi's local model registry: low ≤ $1, medium ≤ $8, high ≤ $30, premium > $30; local models are free/local and spark models are premium-speed. Local models are free but very slow, roughly around gpt-5.4-mini capability, and effectively serial/concurrency-constrained: avoid using multiple local models or many same-local-model tasks at once. Numeric prices may be nominal weights for subscription-backed providers. Zero/blank pricing outside free/local can mean unknown, bundled, or non-metered rather than free. Quota is guidance, not live remaining quota. Support is a local compatibility hint, not provider live availability.");
+	lines.push("", "Notes: price-tier uses input+output $/million-token rates from Pi's local model registry: low ≤ $1, medium ≤ $8, high ≤ $30, premium > $30; local models are free/local and spark models are premium-speed. Local models are usually free from API billing but can be slow and effectively serial/concurrency-constrained: avoid using multiple local models or many same-local-model tasks at once unless your local backend supports it. Numeric prices may be nominal weights for subscription-backed providers. Zero/blank pricing outside free/local can mean unknown, bundled, or non-metered rather than free. Quota is guidance, not live remaining quota. Support is a local compatibility hint, not provider live availability.");
 	return lines.join("\n");
 }
 

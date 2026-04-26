@@ -2,6 +2,18 @@
 
 Tracks the open upstream pull request for the current git branch (GitHub today, host abstraction ready for more providers).
 
+## Install
+
+```bash
+pi install npm:@badliveware/pi-pr-upstream-status
+```
+
+For local testing from this repository:
+
+```bash
+pi -e /path/to/pi/agent/extensions/public/pr-upstream-status
+```
+
 ## What it shows
 
 - Default footer status entry (`ctx.ui.setStatus`) with:

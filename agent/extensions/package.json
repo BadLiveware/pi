@@ -1,15 +1,12 @@
 {
   "name": "pi-personal-workflow-extensions",
   "version": "0.1.0",
-  "description": "Local workspace for personal Pi workflow extensions.",
+  "description": "Local workspace for public and private Pi workflow extensions.",
   "private": true,
   "type": "module",
   "workspaces": [
-    "plan-mode",
-    "compaction-continue",
-    "pr-upstream-status",
-    "footer-framework",
-    "model-catalog"
+    "public/*",
+    "private/*"
   ],
   "keywords": [
     "pi-package",
@@ -17,11 +14,24 @@
   ],
   "pi": {
     "extensions": [
-      "./plan-mode",
-      "./compaction-continue",
-      "./pr-upstream-status",
-      "./footer-framework",
-      "./model-catalog"
+      "./public/compaction-continue/index.ts",
+      "./public/pr-upstream-status/index.ts",
+      "./public/footer-framework/index.ts",
+      "./public/model-catalog/index.ts"
     ]
-  }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "pack:public": "./scripts/pack-public.sh"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-ai": "^0.70.2",
+    "@mariozechner/pi-agent-core": "^0.70.2",
+    "@mariozechner/pi-coding-agent": "^0.70.2",
+    "@mariozechner/pi-tui": "^0.70.2",
+    "@types/node": "^22.0.0",
+    "typebox": "^1.1.33",
+    "typescript": "^5.9.0"
+  },
+  "packageManager": "npm@10"
 }
