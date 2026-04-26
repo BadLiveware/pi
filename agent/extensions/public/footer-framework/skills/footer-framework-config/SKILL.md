@@ -12,6 +12,7 @@ Use this skill when a user wants footer layout changes without editing extension
 - the user wants specific footer sections on/off
 - the user wants model/branch/PR placement tuned
 - the user wants the agent to decide a footer layout
+- the user wants to show data from an extension that does not emit footer-framework items
 - the user wants default Pi footer restored quickly
 
 ## Commands Reference
@@ -32,6 +33,11 @@ Use this skill when a user wants footer layout changes without editing extension
 - `/footerfx item <id> before <other-id>` / `/footerfx item <id> after <other-id>`
 - `/footerfx item <id> column <n|off>`
 - `/footerfx anchor <line|all> <gap|left|center|right|spread>`
+- `/footerfx adapter` — list configured adapters
+- `/footerfx adapter <id> pi <source-key> [label]`
+- `/footerfx adapter <id> status <status-key> [label]`
+- `/footerfx adapter <id> custom <custom-type> <path> [label]`
+- `/footerfx adapter <id> remove`
 - `/footerfx gap <min> <max>`
 - `/footerfx branch-width <n>`
 - `/footerfx mcp-zero <hide|show>`
@@ -39,19 +45,24 @@ Use this skill when a user wants footer layout changes without editing extension
 ## Layout Principles
 - The framework owns layout and formatting.
 - Compatible extensions should emit structured data/status plus optional hints; hints are advisory only.
-- User/project config and explicit agent changes override extension hints.
+- Built-in footer items use the same adapter path as external integrations.
+- Existing extensions can be adapted from Pi status entries or custom session entries without changing their source.
+- Built-in Pi/session data can be adapted from `pi` sources such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, `tools`, `commands`, and `extensionStatuses`.
+- User/project config and explicit agent changes override built-in adapter defaults, extension hints, and adapter defaults.
 - The default layout uses two lines, but items can be placed on any positive footer line.
 - Do not invent arbitrary hard limits for layout line numbers or columns; terminal width is the real rendering constraint.
 
 ## Workflow
 1. Read current state with `/footerfx` or `footer_framework_state`.
-2. Apply one focused change at a time (item placement, section, anchor, gap, branch width).
-3. Changes persist automatically to the user config; use `/footerfx save project` only when the user explicitly wants project-specific layout.
-4. Prefer minimal-density defaults:
+2. When adapting built-in or extension data, call `footer_framework_sources` first. Prefer `piSources` for Pi data, existing `extensionStatuses` for extension status text, and recent `customEntries` when status text is insufficient.
+3. Add adapters with `footer_framework_adapter_config` for precise JSON config, or `/footerfx adapter ...` for simple status/custom-entry mappings.
+4. Apply one focused change at a time (adapter, item placement, section, anchor, gap, branch width).
+5. Changes persist automatically to the user config; use `/footerfx save project` only when the user explicitly wants project-specific layout.
+6. Prefer minimal-density defaults:
    - keep `cwd`, `stats`, `context`, `model`, `branch` on
    - show `pr` when relevant
    - hide noisy zero-state indicators (`mcp-zero hide`)
-5. If the user dislikes custom-footer behavior, run `/footerfx off`.
+7. If the user dislikes custom-footer behavior, run `/footerfx off`.
 
 ## Presets
 ### Compact

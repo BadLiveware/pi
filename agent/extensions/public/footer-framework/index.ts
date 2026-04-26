@@ -13,6 +13,7 @@ type FooterZone = "left" | "right";
 type ConfigScope = "user" | "project";
 type ExternalFooterItemTone = "muted" | "info" | "success" | "warning" | "error" | "accent";
 type ExternalFooterItemFormat = "auto" | "value" | "label-value" | "status";
+type FooterAdapterSource = "pi" | "extensionStatus" | "sessionEntry";
 
 interface FooterItemPlacement {
 	visible: boolean;
@@ -93,6 +94,34 @@ interface FooterSnapshot {
 	cwd: string;
 }
 
+interface FooterAdapterConfig {
+	enabled?: boolean;
+	source: FooterAdapterSource;
+	/** Built-in Pi source key, extension status key, or custom entry type for sessionEntry adapters. */
+	key: string;
+	itemId?: string;
+	label?: string;
+	path?: string;
+	match?: string;
+	group?: string | number;
+	urlPath?: string;
+	tone?: ExternalFooterItemTone;
+	format?: ExternalFooterItemFormat;
+	icon?: string;
+	placement?: Partial<FooterItemPlacement>;
+	hideWhenEmpty?: boolean;
+}
+
+interface FooterAdapterSourceValue {
+	label?: string;
+	value?: unknown;
+	status?: unknown;
+	data?: unknown;
+	url?: string;
+	tone?: ExternalFooterItemTone;
+	hint?: FooterItemDisplayHint;
+}
+
 interface PrState {
 	branch?: string;
 	error?: string;
@@ -124,6 +153,7 @@ interface FooterFrameworkSettings {
 	minGap: number;
 	maxGap: number;
 	items: Record<string, Partial<FooterItemPlacement>>;
+	adapters: Record<string, FooterAdapterConfig>;
 }
 
 const MIN_FOOTER_LINE = 1;
@@ -145,6 +175,7 @@ const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 	minGap: 2,
 	maxGap: 20,
 	items: {},
+	adapters: {},
 };
 
 const ANCHOR_MODES: FooterAnchorMode[] = ["gap", "left", "center", "right", "spread"];
@@ -157,6 +188,15 @@ const DEFAULT_ITEM_PLACEMENTS: Record<string, FooterItemPlacement> = {
 	context: { visible: true, line: 2, zone: "left", order: 20 },
 	pr: { visible: true, line: 2, zone: "right", order: 10 },
 	ext: { visible: true, line: 2, zone: "right", order: 20 },
+};
+
+const DEFAULT_BUILT_IN_ADAPTERS: Record<string, FooterAdapterConfig> = {
+	cwd: { source: "pi", key: "cwd", itemId: "cwd", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.cwd },
+	model: { source: "pi", key: "model", itemId: "model", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.model },
+	branch: { source: "pi", key: "branch", itemId: "branch", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.branch },
+	stats: { source: "pi", key: "stats", itemId: "stats", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.stats },
+	context: { source: "pi", key: "context", itemId: "context", format: "value", placement: DEFAULT_ITEM_PLACEMENTS.context },
+	pr: { source: "pi", key: "pr", itemId: "pr", label: "PR", format: "status", placement: DEFAULT_ITEM_PLACEMENTS.pr },
 };
 
 function formatTokens(count: number): string {
@@ -181,6 +221,7 @@ function cloneDefaultSettings(): FooterFrameworkSettings {
 		...DEFAULT_SETTINGS,
 		lineAnchors: { ...DEFAULT_SETTINGS.lineAnchors },
 		items: { ...DEFAULT_SETTINGS.items },
+		adapters: { ...DEFAULT_SETTINGS.adapters },
 	};
 }
 
@@ -256,6 +297,32 @@ function normalizePlacement(input: Partial<FooterItemPlacement>): Partial<Footer
 	return placement;
 }
 
+function normalizeAdapter(input: unknown): FooterAdapterConfig | undefined {
+	if (!input || typeof input !== "object") return undefined;
+	const raw = input as Partial<FooterAdapterConfig>;
+	if (raw.source !== "pi" && raw.source !== "extensionStatus" && raw.source !== "sessionEntry") return undefined;
+	if (typeof raw.key !== "string" || !raw.key.trim()) return undefined;
+	const adapter: FooterAdapterConfig = {
+		source: raw.source,
+		key: raw.key.trim(),
+	};
+	if (typeof raw.enabled === "boolean") adapter.enabled = raw.enabled;
+	if (typeof raw.itemId === "string" && raw.itemId.trim()) adapter.itemId = raw.itemId.trim();
+	if (typeof raw.label === "string" && raw.label.trim()) adapter.label = sanitizeStatusText(raw.label);
+	if (typeof raw.path === "string" && raw.path.trim()) adapter.path = raw.path.trim();
+	if (typeof raw.match === "string" && raw.match.trim()) adapter.match = raw.match;
+	if (typeof raw.group === "string" || typeof raw.group === "number") adapter.group = raw.group;
+	if (typeof raw.urlPath === "string" && raw.urlPath.trim()) adapter.urlPath = raw.urlPath.trim();
+	const tone = normalizeTone(raw.tone);
+	if (tone) adapter.tone = tone;
+	const format = normalizeFormat(raw.format);
+	if (format) adapter.format = format;
+	if (typeof raw.icon === "string" && raw.icon.trim()) adapter.icon = sanitizeStatusText(raw.icon);
+	if (raw.placement && typeof raw.placement === "object") adapter.placement = normalizePlacement(raw.placement);
+	if (typeof raw.hideWhenEmpty === "boolean") adapter.hideWhenEmpty = raw.hideWhenEmpty;
+	return adapter;
+}
+
 function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<FooterFrameworkSettings> {
 	const normalized: Partial<FooterFrameworkSettings> = {};
 	for (const key of [
@@ -295,6 +362,14 @@ function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<Foo
 		for (const [id, placement] of Object.entries(input.items)) {
 			if (!id.trim() || !placement || typeof placement !== "object") continue;
 			normalized.items[id] = normalizePlacement(placement as Partial<FooterItemPlacement>);
+		}
+	}
+	if (input.adapters && typeof input.adapters === "object") {
+		normalized.adapters = {};
+		for (const [id, adapterInput] of Object.entries(input.adapters)) {
+			if (!id.trim()) continue;
+			const adapter = normalizeAdapter(adapterInput);
+			if (adapter) normalized.adapters[id] = adapter;
 		}
 	}
 	return normalized;
@@ -396,11 +471,101 @@ function renderExternalItem(theme: ExtensionContext["ui"]["theme"], item: Extern
 	const prefix = hint.icon ? `${hint.icon} ` : "";
 	let text: string | undefined;
 	if (format === "value") text = renderedValue ? `${prefix}${renderedValue}` : undefined;
+	else if (format === "status" && label && renderedValue) text = `${prefix}${theme.fg("muted", label)} ${renderedValue}`;
 	else if (label && renderedValue) text = `${prefix}${theme.fg("muted", label)}: ${renderedValue}`;
 	else if (renderedValue) text = `${prefix}${renderedValue}`;
 	else if (label) text = `${prefix}${theme.fg("muted", label)}`;
 	if (!text) return undefined;
 	return item.url ? osc8(text, item.url) : text;
+}
+
+function parsePath(pathExpression: string): string[] {
+	return pathExpression
+		.replace(/^\$\.?/, "")
+		.replace(/\[(\d+)\]/g, ".$1")
+		.split(".")
+		.map((part) => part.trim())
+		.filter(Boolean);
+}
+
+function selectPath(value: unknown, pathExpression?: string): unknown {
+	if (!pathExpression?.trim()) return value;
+	let current = value;
+	for (const part of parsePath(pathExpression)) {
+		if (current === undefined || current === null) return undefined;
+		if (Array.isArray(current)) {
+			const index = Number(part);
+			current = Number.isInteger(index) ? current[index] : undefined;
+		} else if (typeof current === "object") {
+			current = (current as Record<string, unknown>)[part];
+		} else {
+			return undefined;
+		}
+	}
+	return current;
+}
+
+function extractMatchedValue(text: string, adapter: FooterAdapterConfig): string | undefined {
+	if (!adapter.match) return text;
+	let match: RegExpMatchArray | null;
+	try {
+		match = text.match(new RegExp(adapter.match));
+	} catch {
+		return undefined;
+	}
+	if (!match) return undefined;
+	if (typeof adapter.group === "number") return match[adapter.group];
+	if (typeof adapter.group === "string" && adapter.group) {
+		if (/^\d+$/.test(adapter.group)) return match[Number(adapter.group)];
+		return match.groups?.[adapter.group];
+	}
+	return match[1] ?? match[0];
+}
+
+function sourceValueObject(sourceValue: unknown): FooterAdapterSourceValue {
+	return sourceValue && typeof sourceValue === "object" && !Array.isArray(sourceValue) ? (sourceValue as FooterAdapterSourceValue) : { value: sourceValue };
+}
+
+function adapterItemFromSource(adapterId: string, adapter: FooterAdapterConfig, sourceValue: unknown): ExternalFooterItem | undefined {
+	if (adapter.enabled === false) return undefined;
+	const sourceObject = sourceValueObject(sourceValue);
+	const defaultPath = adapter.source === "sessionEntry" ? "data" : "value";
+	const selected = selectPath(sourceValue, adapter.path ?? defaultPath);
+	const selectedText = valueToText(selected);
+	if (!selectedText && adapter.hideWhenEmpty !== false) return undefined;
+	const matched = selectedText ? extractMatchedValue(selectedText, adapter) : undefined;
+	if (!matched && adapter.hideWhenEmpty !== false) return undefined;
+	const url = valueToText(selectPath(sourceValue, adapter.urlPath)) ?? sourceObject.url;
+	return {
+		id: adapter.itemId ?? adapterId,
+		label: adapter.label ?? sourceObject.label ?? adapterId,
+		value: matched ?? selectedText ?? "",
+		url,
+		tone: adapter.tone ?? sourceObject.tone,
+		hint: {
+			...sourceObject.hint,
+			format: adapter.format ?? sourceObject.hint?.format ?? "label-value",
+			icon: adapter.icon ?? sourceObject.hint?.icon,
+			placement: normalizePlacement({ ...(sourceObject.hint?.placement ?? {}), ...(adapter.placement ?? {}) }),
+		},
+	};
+}
+
+function redactSensitive(value: unknown, depth = 0): unknown {
+	if (depth > 4) return "…";
+	if (Array.isArray(value)) return value.slice(0, 8).map((entry) => redactSensitive(entry, depth + 1));
+	if (!value || typeof value !== "object") return value;
+	const out: Record<string, unknown> = {};
+	for (const [key, entry] of Object.entries(value as Record<string, unknown>).slice(0, 30)) {
+		out[key] = /(token|secret|password|credential|authorization|api[_-]?key)/i.test(key) ? "[redacted]" : redactSensitive(entry, depth + 1);
+	}
+	return out;
+}
+
+function previewValue(value: unknown, maxLength = 1200): unknown {
+	const redacted = redactSensitive(value);
+	const text = valueToText(redacted) ?? "";
+	return text.length > maxLength ? `${text.slice(0, maxLength)}…` : redacted;
 }
 
 function parseSettingsInput(settings: FooterFrameworkSettings, args: string): string | undefined {
@@ -547,12 +712,66 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		}
 		return "Unknown item action. Use show|hide|line|row|zone|order|column|before|after|reset.";
 	}
+	if (command === "adapter") {
+		const [id, action, sourceKey, label] = tokens.slice(1);
+		if (!id) {
+			const ids = Object.keys(settings.adapters).sort();
+			return ids.length ? `Adapters: ${ids.join(", ")}` : "No footer adapters configured.";
+		}
+		if (action === "remove" || action === "delete") {
+			if (DEFAULT_BUILT_IN_ADAPTERS[id]) {
+				settings.adapters[id] = { ...DEFAULT_BUILT_IN_ADAPTERS[id], enabled: false };
+				return `Built-in adapter ${id} disabled.`;
+			}
+			delete settings.adapters[id];
+			return `Adapter ${id} removed.`;
+		}
+		if (action === "pi") {
+			if (!sourceKey) return `Usage: /footerfx adapter ${id} pi <source-key> [label]`;
+			settings.adapters[id] = {
+				source: "pi",
+				key: sourceKey,
+				label: label ?? id,
+				format: "label-value",
+				placement: { visible: true, line: 2, zone: "right", order: 100 },
+			};
+			return `Adapter ${id} maps Pi source ${sourceKey}.`;
+		}
+		if (action === "status") {
+			if (!sourceKey) return `Usage: /footerfx adapter ${id} status <status-key> [label]`;
+			settings.adapters[id] = {
+				source: "extensionStatus",
+				key: sourceKey,
+				label: label ?? id,
+				format: "label-value",
+				placement: { visible: true, line: 2, zone: "right", order: 100 },
+			};
+			return `Adapter ${id} maps extension status ${sourceKey}.`;
+		}
+		if (action === "custom") {
+			const pathExpression = tokens[4];
+			const customLabel = tokens[5];
+			if (!sourceKey || !pathExpression) return `Usage: /footerfx adapter ${id} custom <custom-type> <path> [label]`;
+			const dataPath = pathExpression.startsWith("data.") || pathExpression.startsWith("$.data.") ? pathExpression : `data.${pathExpression.replace(/^\$\.?/, "")}`;
+			settings.adapters[id] = {
+				source: "sessionEntry",
+				key: sourceKey,
+				path: dataPath,
+				label: customLabel ?? id,
+				format: "label-value",
+				placement: { visible: true, line: 2, zone: "right", order: 100 },
+			};
+			return `Adapter ${id} maps latest custom entry ${sourceKey}.${pathExpression}.`;
+		}
+		return "Usage: /footerfx adapter [id] <pi|status|custom|remove> ...";
+	}
 
 	return `Unknown command: ${command}`;
 }
 
 function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: string): string {
 	const customizedItems = Object.keys(settings.items).sort();
+	const adapters = Object.keys(settings.adapters).sort();
 	return [
 		loadedConfig ? `loaded=${loadedConfig}` : undefined,
 		`enabled=${settings.enabled}`,
@@ -562,6 +781,7 @@ function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: strin
 		`branchMaxLength=${settings.branchMaxLength}`,
 		`hideZeroMcp=${settings.hideZeroMcp}`,
 		customizedItems.length ? `customizedItems=${customizedItems.join(",")}` : undefined,
+		adapters.length ? `adapters=${adapters.join(",")}` : undefined,
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -577,6 +797,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	const externalItems = new Map<string, ExternalFooterItem>();
 	let lastLoadedConfig = "defaults";
 	let lastFooterSnapshot: FooterSnapshot | undefined;
+	let lastPiSources: Record<string, FooterAdapterSourceValue> = {};
 
 	function applyValidatedSettings(input: Partial<FooterFrameworkSettings>): void {
 		Object.assign(settings, normalizeSettings(input));
@@ -621,11 +842,18 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return lastLoadedConfig;
 	}
 
-	function renderCheck(theme: ExtensionContext["ui"]["theme"], checks: ChecksState): string {
-		if (checks === "pass") return theme.fg("success", "✅");
-		if (checks === "fail") return theme.fg("error", "❌");
-		if (checks === "running") return theme.fg("warning", "⏳");
-		return theme.fg("muted", "•");
+	function checkGlyph(checks: ChecksState): string {
+		if (checks === "pass") return "✅";
+		if (checks === "fail") return "❌";
+		if (checks === "running") return "⏳";
+		return "•";
+	}
+
+	function checkTone(checks: ChecksState): ExternalFooterItemTone {
+		if (checks === "pass") return "success";
+		if (checks === "fail") return "error";
+		if (checks === "running") return "warning";
+		return "muted";
 	}
 
 	function composeLine(
@@ -698,29 +926,12 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		};
 	}
 
-	function renderBranch(theme: ExtensionContext["ui"]["theme"], gitBranch: string | null): string | undefined {
-		if (!settings.showBranch || !gitBranch) return undefined;
-		const compact = compactBranchName(gitBranch, settings.branchMaxLength);
-		if (!settings.showPr || !prState?.pr || prState.branch !== gitBranch) {
-			return theme.fg("muted", `(${compact})`);
-		}
-		const prLabel = osc8(theme.fg("accent", `#${prState.pr.number}`), prState.pr.url);
-		return `${theme.fg("muted", `(${compact} `)}${prLabel}${theme.fg("muted", ")")}`;
-	}
-
-	function renderPrStatus(theme: ExtensionContext["ui"]["theme"]): string | undefined {
-		if (!settings.showPr || !prState?.pr) return undefined;
-		const tokens = [theme.fg("muted", "PR"), renderCheck(theme, prState.pr.checks)];
-		if (prState.pr.comments > 0) tokens.push(theme.fg("muted", `💬${prState.pr.comments}`));
-		return tokens.join(" ");
-	}
-
 	function renderModelLabel(): string {
 		const model = currentCtx?.model?.id ?? "no-model";
 		return `${model}:${pi.getThinkingLevel()}`;
 	}
 
-	function renderContextUsage(theme: ExtensionContext["ui"]["theme"]): string | undefined {
+	function contextUsageSource(): FooterAdapterSourceValue | undefined {
 		const usage = currentCtx?.getContextUsage();
 		const contextWindow = usage?.contextWindow ?? currentCtx?.model?.contextWindow;
 		if (!contextWindow) return undefined;
@@ -729,11 +940,13 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		const percent = usage?.percent ?? null;
 		const percentText = percent === null ? "?%" : `${percent.toFixed(1)}%`;
 		const tokenText = tokens === null ? `?/${formatContextTokens(contextWindow)}` : `${formatContextTokens(tokens)}/${formatContextTokens(contextWindow)}`;
-		const text = `ctx ${percentText} ${tokenText}`;
-
-		if (percent !== null && percent > 90) return theme.fg("error", text);
-		if (percent !== null && percent > 70) return theme.fg("warning", text);
-		return theme.fg("dim", text);
+		const tone: ExternalFooterItemTone = percent !== null && percent > 90 ? "error" : percent !== null && percent > 70 ? "warning" : "muted";
+		return {
+			label: "ctx",
+			value: `ctx ${percentText} ${tokenText}`,
+			tone,
+			data: { tokens, contextWindow, percent },
+		};
 	}
 
 	function placementFor(id: string, fallback: FooterItemPlacement, external?: Partial<FooterItemPlacement>): FooterItemPlacement {
@@ -809,41 +1022,110 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return { ...result, line: overlayAbsoluteItems(theme, width, result.line, lineItems) };
 	}
 
+	function latestCustomEntry(customType: string): unknown {
+		const entries = currentCtx?.sessionManager.getEntries() ?? [];
+		for (let index = entries.length - 1; index >= 0; index--) {
+			const entry = entries[index] as { type?: string; customType?: string };
+			if (entry.type === "custom" && entry.customType === customType) return entry;
+		}
+		return undefined;
+	}
+
+	function adaptedExtensionStatusKeys(): Set<string> {
+		return new Set(
+			Object.values(allAdapters())
+				.filter((adapter) => adapter.enabled !== false && adapter.source === "extensionStatus")
+				.map((adapter) => adapter.key),
+		);
+	}
+
+	function allAdapters(): Record<string, FooterAdapterConfig> {
+		return { ...DEFAULT_BUILT_IN_ADAPTERS, ...settings.adapters };
+	}
+
+	function buildPiSources(
+		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
+		statsText: string,
+	): Record<string, FooterAdapterSourceValue> {
+		const sources: Record<string, FooterAdapterSourceValue> = {
+			cwd: { label: "cwd", value: currentCtx?.cwd ?? "", tone: "muted" },
+			model: { label: "model", value: renderModelLabel(), tone: "muted", data: currentCtx?.model ?? null },
+			stats: { label: "stats", value: statsText, tone: "muted" },
+			extensionStatuses: { label: "ext", value: footerData.getExtensionStatuses().size, data: Object.fromEntries(footerData.getExtensionStatuses()) },
+			tools: { label: "tools", value: pi.getActiveTools().length, data: pi.getActiveTools() },
+			commands: { label: "commands", value: pi.getCommands().length, data: pi.getCommands().map((command) => command.name) },
+		};
+		const context = contextUsageSource();
+		if (context) sources.context = context;
+		const gitBranch = footerData.getGitBranch();
+		if (gitBranch) {
+			const compact = compactBranchName(gitBranch, settings.branchMaxLength);
+			if (settings.showPr && prState?.pr && prState.branch === gitBranch) {
+				sources.branch = { label: "branch", value: `(${compact} #${prState.pr.number})`, url: prState.pr.url, tone: "muted", data: { branch: gitBranch, pr: prState.pr } };
+			} else {
+				sources.branch = { label: "branch", value: `(${compact})`, tone: "muted", data: { branch: gitBranch } };
+			}
+		}
+		if (prState?.pr) {
+			const parts = [checkGlyph(prState.pr.checks)];
+			if (prState.pr.comments > 0) parts.push(`💬${prState.pr.comments}`);
+			sources.pr = { label: "PR", value: parts.join(" "), url: prState.pr.url, tone: checkTone(prState.pr.checks), data: prState };
+		}
+		return sources;
+	}
+
+	function collectAdapterItems(theme: ExtensionContext["ui"]["theme"], footerData: { getExtensionStatuses(): ReadonlyMap<string, string> }, piSources: Record<string, FooterAdapterSourceValue>): FooterItem[] {
+		const items: FooterItem[] = [];
+		const extensionStatuses = footerData.getExtensionStatuses();
+		for (const [adapterId, adapter] of Object.entries(allAdapters())) {
+			let sourceValue: unknown;
+			if (adapter.source === "pi") {
+				sourceValue = piSources[adapter.key];
+				if (sourceValue === undefined) continue;
+			} else if (adapter.source === "extensionStatus") {
+				const value = extensionStatuses.get(adapter.key);
+				if (value === undefined) continue;
+				sourceValue = { key: adapter.key, value };
+			} else if (adapter.source === "sessionEntry") {
+				sourceValue = latestCustomEntry(adapter.key);
+				if (sourceValue === undefined) continue;
+			}
+			const external = adapterItemFromSource(adapterId, adapter, sourceValue);
+			if (!external) continue;
+			const text = renderExternalItem(theme, external);
+			if (!text) continue;
+			items.push({
+				id: external.id,
+				text,
+				placement: placementFor(external.id, { visible: true, line: 2, zone: "right", order: 90 }, external.hint.placement),
+			});
+		}
+		return items;
+	}
+
 	function collectItems(
 		theme: ExtensionContext["ui"]["theme"],
 		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
 		statsText: string,
 	): FooterItem[] {
 		const items: FooterItem[] = [];
-		items.push({ id: "cwd", text: theme.fg("dim", currentCtx?.cwd ?? ""), placement: placementFor("cwd", DEFAULT_ITEM_PLACEMENTS.cwd) });
-		items.push({ id: "model", text: theme.fg("dim", renderModelLabel()), placement: placementFor("model", DEFAULT_ITEM_PLACEMENTS.model) });
-		items.push({ id: "stats", text: statsText, placement: placementFor("stats", DEFAULT_ITEM_PLACEMENTS.stats) });
-		const contextUsageText = renderContextUsage(theme);
-		if (contextUsageText) items.push({ id: "context", text: contextUsageText, placement: placementFor("context", DEFAULT_ITEM_PLACEMENTS.context) });
+		const piSources = buildPiSources(footerData, statsText);
+		lastPiSources = piSources;
 
-		const gitBranch = footerData.getGitBranch();
-		if (gitBranch) {
-			const compact = compactBranchName(gitBranch, settings.branchMaxLength);
-			const branchText = settings.showPr && prState?.pr && prState.branch === gitBranch
-				? `${theme.fg("muted", `(${compact} `)}${osc8(theme.fg("accent", `#${prState.pr.number}`), prState.pr.url)}${theme.fg("muted", ")")}`
-				: theme.fg("muted", `(${compact})`);
-			items.push({ id: "branch", text: branchText, placement: placementFor("branch", DEFAULT_ITEM_PLACEMENTS.branch) });
-		}
-
-		const prStatus = renderPrStatus(theme);
-		if (prStatus) items.push({ id: "pr", text: prStatus, placement: placementFor("pr", DEFAULT_ITEM_PLACEMENTS.pr) });
-
+		const adaptedStatusKeys = adaptedExtensionStatusKeys();
 		const extStatuses = Array.from(footerData.getExtensionStatuses().entries())
 			.sort(([a], [b]) => a.localeCompare(b))
 			.flatMap(([key, value]) => {
 				const text = sanitizeStatusText(value);
-				if (key === "footer-framework" || key === "pr-upstream") return [];
+				if (key === "footer-framework" || key === "pr-upstream" || adaptedStatusKeys.has(key)) return [];
 				if (visibleWidth(text) === 0) return [];
 				if (settings.hideZeroMcp && /MCP:\s*0\/\d+\s+servers/.test(text)) return [];
 				return [text];
 			})
 			.join(" · ");
 		if (extStatuses) items.push({ id: "ext", text: extStatuses, placement: placementFor("ext", DEFAULT_ITEM_PLACEMENTS.ext) });
+
+		items.push(...collectAdapterItems(theme, footerData, piSources));
 
 		for (const [id, external] of externalItems) {
 			const text = renderExternalItem(theme, external);
@@ -857,6 +1139,38 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 		applyLegacySectionVisibility(items);
 		return resolveRelativeOrders(items).filter((item) => item.placement.visible && item.text.length > 0);
+	}
+
+	function footerSourceInventory() {
+		const entries = currentCtx?.sessionManager.getEntries() ?? [];
+		const customEntries = new Map<string, { customType: string; count: number; latest: unknown }>();
+		for (const entry of entries as Array<{ type?: string; customType?: string; data?: unknown }>) {
+			if (entry.type !== "custom" || !entry.customType) continue;
+			const current = customEntries.get(entry.customType) ?? { customType: entry.customType, count: 0, latest: undefined };
+			current.count += 1;
+			current.latest = previewValue(entry.data);
+			customEntries.set(entry.customType, current);
+		}
+		return {
+			builtInItems: Object.keys(DEFAULT_ITEM_PLACEMENTS).sort(),
+			piSources: Object.fromEntries(Object.entries(lastPiSources).map(([key, value]) => [key, previewValue(value)])),
+			defaultBuiltInAdapters: DEFAULT_BUILT_IN_ADAPTERS,
+			externalItems: Array.from(externalItems.values()).map((item) => ({
+				id: item.id,
+				label: item.label,
+				hasValue: item.value !== undefined,
+				hasStatus: item.status !== undefined,
+				hasData: item.data !== undefined,
+				hint: item.hint,
+			})),
+			extensionStatuses: lastFooterSnapshot?.extensionStatuses ?? [],
+			customEntries: Array.from(customEntries.values()).sort((a, b) => a.customType.localeCompare(b.customType)),
+			tools: pi.getAllTools().map((tool) => ({ name: tool.name, description: tool.description, sourceInfo: tool.sourceInfo })),
+			commands: pi.getCommands().map((command) => ({ name: command.name, description: command.description, sourceInfo: command.sourceInfo })),
+			adapters: settings.adapters,
+			renderedItems: lastFooterSnapshot?.renderedItems ?? [],
+			configPaths: currentCtx ? { user: userConfigPath(), project: projectConfigPath(currentCtx) } : { user: userConfigPath() },
+		};
 	}
 
 	function applyFooterConfig(input: string, ctx?: ExtensionContext): string {
@@ -919,7 +1233,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 						cost += entry.message.usage.cost.total;
 					}
 
-					const statsText = theme.fg("dim", `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`);
+					const statsText = `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`;
 					const items = collectItems(theme, footerData, statsText);
 					const maxLine = Math.max(2, ...items.map((item) => item.placement.line));
 					const lineResults = Array.from({ length: maxLine }, (_, index) => {
@@ -1021,6 +1335,66 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				};
 				return {
 					content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+					details: payload,
+				};
+			},
+		}),
+	);
+
+	pi.registerTool(
+		defineTool({
+			name: "footer_framework_sources",
+			label: "Footer Framework Sources",
+			description: "Inspect data sources the footer framework can adapt into footer items, including extension statuses, session entries, tools, and commands",
+			parameters: Type.Object({}),
+			async execute() {
+				const payload = footerSourceInventory();
+				return {
+					content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+					details: payload,
+				};
+			},
+		}),
+	);
+
+	pi.registerTool(
+		defineTool({
+			name: "footer_framework_adapter_config",
+			label: "Footer Framework Adapter Config",
+			description: "List, set, or remove footer adapters that map existing Pi/extension data sources into framework-owned footer items",
+			parameters: Type.Object({
+				action: Type.String({ description: "One of: list, set, remove" }),
+				id: Type.Optional(Type.String({ description: "Adapter id for set/remove" })),
+				adapterJson: Type.Optional(Type.String({ description: "JSON adapter config for set. Required fields: source ('pi', 'extensionStatus', or 'sessionEntry') and key." })),
+			}),
+			async execute(_toolCallId, params) {
+				const action = params.action.trim();
+				let message: string;
+				if (action === "list") {
+					message = JSON.stringify({ defaultBuiltInAdapters: DEFAULT_BUILT_IN_ADAPTERS, adapters: settings.adapters }, null, 2);
+				} else if (action === "remove") {
+					if (!params.id?.trim()) throw new Error("remove requires id");
+					const id = params.id.trim();
+					if (DEFAULT_BUILT_IN_ADAPTERS[id]) settings.adapters[id] = { ...DEFAULT_BUILT_IN_ADAPTERS[id], enabled: false };
+					else delete settings.adapters[id];
+					persistSettings();
+					if (currentCtx) installFooter(currentCtx);
+					message = DEFAULT_BUILT_IN_ADAPTERS[id] ? `Built-in adapter ${id} disabled.` : `Adapter ${id} removed.`;
+				} else if (action === "set") {
+					if (!params.id?.trim()) throw new Error("set requires id");
+					if (!params.adapterJson?.trim()) throw new Error("set requires adapterJson");
+					const adapter = normalizeAdapter(JSON.parse(params.adapterJson));
+					if (!adapter) throw new Error("adapterJson must include valid source and key");
+					settings.adapters[params.id.trim()] = adapter;
+					persistSettings();
+					if (currentCtx) installFooter(currentCtx);
+					message = `Adapter ${params.id.trim()} saved.`;
+				} else {
+					throw new Error("action must be list, set, or remove");
+				}
+				const payload = { message, adapters: settings.adapters };
+				return {
+					content: [{ type: "text", text: message }],
 					details: payload,
 				};
 			},
