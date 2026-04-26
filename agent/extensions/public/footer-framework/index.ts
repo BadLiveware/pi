@@ -107,9 +107,22 @@ interface FooterAdapterConfig {
 	urlPath?: string;
 	tone?: ExternalFooterItemTone;
 	format?: ExternalFooterItemFormat;
+	/** Liquid-style interpolation template. Supports variables, string literals, and style filters. */
+	template?: string;
+	/** Optional fallback template when the selected source is empty. */
+	emptyTemplate?: string;
+	/** Default style applied to the full rendered adapter item. */
+	style?: string;
 	icon?: string;
 	placement?: Partial<FooterItemPlacement>;
 	hideWhenEmpty?: boolean;
+}
+
+interface FooterTemplateDiagnostic {
+	adapterId: string;
+	message: string;
+	token?: string;
+	severity: "warning" | "error";
 }
 
 interface FooterAdapterSourceValue {
@@ -191,12 +204,30 @@ const DEFAULT_ITEM_PLACEMENTS: Record<string, FooterItemPlacement> = {
 };
 
 const DEFAULT_BUILT_IN_ADAPTERS: Record<string, FooterAdapterConfig> = {
-	cwd: { source: "pi", key: "cwd", itemId: "cwd", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.cwd },
-	model: { source: "pi", key: "model", itemId: "model", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.model },
-	branch: { source: "pi", key: "branch", itemId: "branch", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.branch },
-	stats: { source: "pi", key: "stats", itemId: "stats", format: "value", tone: "muted", placement: DEFAULT_ITEM_PLACEMENTS.stats },
-	context: { source: "pi", key: "context", itemId: "context", format: "value", placement: DEFAULT_ITEM_PLACEMENTS.context },
-	pr: { source: "pi", key: "pr", itemId: "pr", label: "PR", format: "status", placement: DEFAULT_ITEM_PLACEMENTS.pr },
+	cwd: { source: "pi", key: "cwd", itemId: "cwd", template: '{{ pi.cwd | style: "dim" }}', placement: DEFAULT_ITEM_PLACEMENTS.cwd },
+	model: {
+		source: "pi",
+		key: "model",
+		itemId: "model",
+		template: '{{ pi.model.id | style: "dim" }}{{ ":" | style: "dim" }}{{ pi.model.thinking | style: "dim" }}',
+		placement: DEFAULT_ITEM_PLACEMENTS.model,
+	},
+	branch: { source: "pi", key: "branch", itemId: "branch", template: '{{ pi.branch.label | style: "muted" }}', placement: DEFAULT_ITEM_PLACEMENTS.branch },
+	stats: {
+		source: "pi",
+		key: "stats",
+		itemId: "stats",
+		template: '{{ "↑" | style: "dim" }}{{ pi.stats.inputText | style: "dim" }} {{ "↓" | style: "dim" }}{{ pi.stats.outputText | style: "dim" }} {{ "$" | style: "dim" }}{{ pi.stats.costText | style: "dim" }}',
+		placement: DEFAULT_ITEM_PLACEMENTS.stats,
+	},
+	context: {
+		source: "pi",
+		key: "context",
+		itemId: "context",
+		template: '{{ "ctx " | style: pi.context.tone }}{{ pi.context.percentText | style: pi.context.tone }} {{ pi.context.tokenText | style: pi.context.tone }}',
+		placement: DEFAULT_ITEM_PLACEMENTS.context,
+	},
+	pr: { source: "pi", key: "pr", itemId: "pr", template: '{{ "PR " | style: "muted" }}{{ pi.pr.checkGlyph | style: pi.pr.checkTone }}{{ pi.pr.commentsText | style: "muted" }}', placement: DEFAULT_ITEM_PLACEMENTS.pr },
 };
 
 function formatTokens(count: number): string {
@@ -317,6 +348,9 @@ function normalizeAdapter(input: unknown): FooterAdapterConfig | undefined {
 	if (tone) adapter.tone = tone;
 	const format = normalizeFormat(raw.format);
 	if (format) adapter.format = format;
+	if (typeof raw.template === "string" && raw.template.trim()) adapter.template = raw.template;
+	if (typeof raw.emptyTemplate === "string" && raw.emptyTemplate.trim()) adapter.emptyTemplate = raw.emptyTemplate;
+	if (typeof raw.style === "string" && raw.style.trim()) adapter.style = raw.style.trim();
 	if (typeof raw.icon === "string" && raw.icon.trim()) adapter.icon = sanitizeStatusText(raw.icon);
 	if (raw.placement && typeof raw.placement === "object") adapter.placement = normalizePlacement(raw.placement);
 	if (typeof raw.hideWhenEmpty === "boolean") adapter.hideWhenEmpty = raw.hideWhenEmpty;
@@ -462,6 +496,89 @@ function applyExternalTone(theme: ExtensionContext["ui"]["theme"], tone: Externa
 	return theme.fg("dim", text);
 }
 
+const THEME_FG_COLORS = new Set([
+	"accent",
+	"border",
+	"borderAccent",
+	"borderMuted",
+	"success",
+	"error",
+	"warning",
+	"muted",
+	"dim",
+	"text",
+	"thinkingText",
+	"userMessageText",
+	"customMessageText",
+	"customMessageLabel",
+	"toolTitle",
+	"toolOutput",
+	"mdHeading",
+	"mdLink",
+	"mdLinkUrl",
+	"mdCode",
+	"mdCodeBlock",
+	"mdCodeBlockBorder",
+	"mdQuote",
+	"mdQuoteBorder",
+	"mdHr",
+	"mdListBullet",
+	"toolDiffAdded",
+	"toolDiffRemoved",
+	"toolDiffContext",
+	"syntaxComment",
+	"syntaxKeyword",
+	"syntaxFunction",
+	"syntaxVariable",
+	"syntaxString",
+	"syntaxNumber",
+	"syntaxType",
+	"syntaxOperator",
+	"syntaxPunctuation",
+	"thinkingOff",
+	"thinkingMinimal",
+	"thinkingLow",
+	"thinkingMedium",
+	"thinkingHigh",
+	"thinkingXhigh",
+	"bashMode",
+]);
+
+const THEME_BG_COLORS = new Set(["selectedBg", "userMessageBg", "customMessageBg", "toolPendingBg", "toolSuccessBg", "toolErrorBg"]);
+const THEME_TEXT_ATTRIBUTES = new Set(["bold", "italic", "underline", "inverse", "strikethrough"]);
+
+function applyStyleSpec(
+	theme: ExtensionContext["ui"]["theme"],
+	text: string,
+	styleSpec: unknown,
+	diagnostics: FooterTemplateDiagnostic[],
+	adapterId: string,
+	token?: string,
+): string {
+	const spec = valueToText(styleSpec);
+	if (!spec) return text;
+	let out = text;
+	for (const rawPart of spec.split(",")) {
+		const part = rawPart.trim();
+		if (!part) continue;
+		const [prefix, value] = part.includes(":") ? (part.split(/:(.*)/s).filter(Boolean) as [string, string]) : [undefined, part];
+		if ((prefix === "fg" || prefix === "color") && THEME_FG_COLORS.has(value)) out = theme.fg(value as never, out);
+		else if ((prefix === "bg" || prefix === "background") && THEME_BG_COLORS.has(value)) out = theme.bg(value as never, out);
+		else if (!prefix && THEME_FG_COLORS.has(value)) out = theme.fg(value as never, out);
+		else if (!prefix && value === "bold") out = theme.bold(out);
+		else if (!prefix && value === "italic") out = theme.italic(out);
+		else if (!prefix && value === "underline") out = theme.underline(out);
+		else if (!prefix && value === "inverse") out = theme.inverse(out);
+		else if (!prefix && value === "strikethrough") out = theme.strikethrough(out);
+		else if (prefix === "attr" && THEME_TEXT_ATTRIBUTES.has(value)) out = applyStyleSpec(theme, out, value, diagnostics, adapterId, token);
+		else {
+			diagnostics.push({ adapterId, token, severity: "warning", message: `Unknown style token: ${part}` });
+			out = theme.fg("warning", out);
+		}
+	}
+	return out;
+}
+
 function renderExternalItem(theme: ExtensionContext["ui"]["theme"], item: ExternalFooterItem): string | undefined {
 	const hint = item.hint;
 	const label = hint.label ?? item.label;
@@ -505,6 +622,168 @@ function selectPath(value: unknown, pathExpression?: string): unknown {
 	return current;
 }
 
+function splitTemplatePipes(expression: string): string[] {
+	const parts: string[] = [];
+	let current = "";
+	let quote: string | undefined;
+	let escaped = false;
+	for (const char of expression) {
+		if (escaped) {
+			current += char;
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			current += char;
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			current += char;
+			if (char === quote) quote = undefined;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			current += char;
+			continue;
+		}
+		if (char === "|") {
+			parts.push(current.trim());
+			current = "";
+			continue;
+		}
+		current += char;
+	}
+	parts.push(current.trim());
+	return parts;
+}
+
+function parseFilter(filterExpression: string): { name: string; arg?: string } {
+	let quote: string | undefined;
+	let escaped = false;
+	for (let index = 0; index < filterExpression.length; index++) {
+		const char = filterExpression[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			if (char === quote) quote = undefined;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			continue;
+		}
+		if (char === ":") {
+			return { name: filterExpression.slice(0, index).trim(), arg: filterExpression.slice(index + 1).trim() };
+		}
+	}
+	return { name: filterExpression.trim() };
+}
+
+function parseQuotedString(expression: string): string | undefined {
+	const trimmed = expression.trim();
+	if (trimmed.length < 2) return undefined;
+	const quote = trimmed[0];
+	if ((quote !== '"' && quote !== "'") || trimmed[trimmed.length - 1] !== quote) return undefined;
+	try {
+		return quote === '"' ? JSON.parse(trimmed) : trimmed.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, "\\");
+	} catch {
+		return undefined;
+	}
+}
+
+function evaluateTemplateTerm(
+	term: string | undefined,
+	context: Record<string, unknown>,
+	diagnostics: FooterTemplateDiagnostic[],
+	adapterId: string,
+	token: string,
+	reportMissing = true,
+): unknown {
+	if (!term) return undefined;
+	const literal = parseQuotedString(term);
+	if (literal !== undefined) return literal;
+	const value = selectPath(context, term);
+	if (value === undefined) {
+		if (reportMissing) diagnostics.push({ adapterId, token, severity: "error", message: `Missing template variable: ${term}` });
+		return reportMissing ? `[missing:${term}]` : undefined;
+	}
+	return value;
+}
+
+function applyTemplateFilter(
+	theme: ExtensionContext["ui"]["theme"],
+	value: string,
+	filterExpression: string,
+	context: Record<string, unknown>,
+	diagnostics: FooterTemplateDiagnostic[],
+	adapterId: string,
+	token: string,
+): string {
+	const { name, arg } = parseFilter(filterExpression);
+	if (name === "style" || name === "color") {
+		return applyStyleSpec(theme, value, evaluateTemplateTerm(arg, context, diagnostics, adapterId, token), diagnostics, adapterId, token);
+	}
+	if (name === "bg" || name === "background") {
+		const bg = valueToText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token));
+		return bg && THEME_BG_COLORS.has(bg) ? theme.bg(bg as never, value) : applyStyleSpec(theme, value, `bg:${bg}`, diagnostics, adapterId, token);
+	}
+	if (name === "bold" || name === "italic" || name === "underline" || name === "inverse" || name === "strikethrough") {
+		return applyStyleSpec(theme, value, name, diagnostics, adapterId, token);
+	}
+	if (name === "link") {
+		const url = valueToText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token));
+		return url ? osc8(value, url) : value;
+	}
+	if (name === "default") {
+		return value.length > 0 && !value.startsWith("[missing:") ? value : (valueToText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token)) ?? "");
+	}
+	diagnostics.push({ adapterId, token, severity: "warning", message: `Unknown template filter: ${name}` });
+	return theme.fg("warning", value);
+}
+
+function renderTemplate(
+	template: string,
+	context: Record<string, unknown>,
+	theme: ExtensionContext["ui"]["theme"],
+	adapterId: string,
+	diagnostics: FooterTemplateDiagnostic[],
+): string {
+	let output = "";
+	let cursor = 0;
+	const tokenPattern = /{{([\s\S]*?)}}/g;
+	for (let match = tokenPattern.exec(template); match; match = tokenPattern.exec(template)) {
+		output += template.slice(cursor, match.index);
+		const token = match[0];
+		const expression = match[1]?.trim() ?? "";
+		if (!expression) {
+			diagnostics.push({ adapterId, token, severity: "error", message: "Empty template token" });
+			output += theme.fg("error", "[empty-token]");
+		} else {
+			const [head, ...filters] = splitTemplatePipes(expression);
+			const hasDefaultFilter = filters.some((filter) => parseFilter(filter).name === "default");
+			let rendered = valueToText(evaluateTemplateTerm(head, context, diagnostics, adapterId, token, !hasDefaultFilter)) ?? "";
+			for (const filter of filters) rendered = applyTemplateFilter(theme, rendered, filter, context, diagnostics, adapterId, token);
+			output += rendered;
+		}
+		cursor = match.index + token.length;
+	}
+	output += template.slice(cursor);
+	const literalRemainder = template.replace(/{{[\s\S]*?}}/g, "");
+	if (literalRemainder.includes("{{") || literalRemainder.includes("}}")) {
+		diagnostics.push({ adapterId, severity: "error", message: "Unbalanced template braces" });
+		return `${output}${theme.fg("error", "[template braces]")}`;
+	}
+	return output;
+}
+
 function extractMatchedValue(text: string, adapter: FooterAdapterConfig): string | undefined {
 	if (!adapter.match) return text;
 	let match: RegExpMatchArray | null;
@@ -532,14 +811,17 @@ function adapterItemFromSource(adapterId: string, adapter: FooterAdapterConfig, 
 	const defaultPath = adapter.source === "sessionEntry" ? "data" : "value";
 	const selected = selectPath(sourceValue, adapter.path ?? defaultPath);
 	const selectedText = valueToText(selected);
-	if (!selectedText && adapter.hideWhenEmpty !== false) return undefined;
+	const allowEmpty = adapter.hideWhenEmpty === false || Boolean(adapter.emptyTemplate);
+	if (!selectedText && !allowEmpty) return undefined;
 	const matched = selectedText ? extractMatchedValue(selectedText, adapter) : undefined;
-	if (!matched && adapter.hideWhenEmpty !== false) return undefined;
+	if (!matched && !allowEmpty) return undefined;
 	const url = valueToText(selectPath(sourceValue, adapter.urlPath)) ?? sourceObject.url;
 	return {
 		id: adapter.itemId ?? adapterId,
 		label: adapter.label ?? sourceObject.label ?? adapterId,
 		value: matched ?? selectedText ?? "",
+		status: sourceObject.status,
+		data: sourceObject.data,
 		url,
 		tone: adapter.tone ?? sourceObject.tone,
 		hint: {
@@ -549,6 +831,49 @@ function adapterItemFromSource(adapterId: string, adapter: FooterAdapterConfig, 
 			placement: normalizePlacement({ ...(sourceObject.hint?.placement ?? {}), ...(adapter.placement ?? {}) }),
 		},
 	};
+}
+
+function templatePiContext(piSources: Record<string, FooterAdapterSourceValue>): Record<string, unknown> {
+	return {
+		cwd: piSources.cwd?.value,
+		model: piSources.model?.data ?? {},
+		stats: piSources.stats?.data ?? {},
+		context: piSources.context?.data ?? {},
+		branch: piSources.branch?.data ?? {},
+		pr: piSources.pr?.data ?? {},
+		tools: piSources.tools?.data ?? {},
+		commands: piSources.commands?.data ?? {},
+		extensionStatuses: piSources.extensionStatuses?.data ?? {},
+	};
+}
+
+function templateContextForAdapter(external: ExternalFooterItem, sourceValue: unknown, piSources: Record<string, FooterAdapterSourceValue>): Record<string, unknown> {
+	const sourceObject = sourceValueObject(sourceValue);
+	return {
+		label: external.label ?? sourceObject.label,
+		value: external.value ?? sourceObject.value,
+		status: external.status ?? sourceObject.status,
+		data: external.data ?? sourceObject.data ?? sourceValue,
+		url: external.url ?? sourceObject.url,
+		source: sourceObject,
+		pi: templatePiContext(piSources),
+	};
+}
+
+function renderAdapterText(
+	theme: ExtensionContext["ui"]["theme"],
+	adapterId: string,
+	adapter: FooterAdapterConfig,
+	external: ExternalFooterItem,
+	sourceValue: unknown,
+	piSources: Record<string, FooterAdapterSourceValue>,
+	diagnostics: FooterTemplateDiagnostic[],
+): string | undefined {
+	const template = !external.value && adapter.emptyTemplate ? adapter.emptyTemplate : adapter.template;
+	let text = template ? renderTemplate(template, templateContextForAdapter(external, sourceValue, piSources), theme, adapterId, diagnostics) : renderExternalItem(theme, external);
+	if (text && adapter.style) text = applyStyleSpec(theme, text, adapter.style, diagnostics, adapterId);
+	if (text && template && external.url) text = osc8(text, external.url);
+	return text;
 }
 
 function redactSensitive(value: unknown, depth = 0): unknown {
@@ -726,6 +1051,18 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 			delete settings.adapters[id];
 			return `Adapter ${id} removed.`;
 		}
+		if (action === "template" || action === "empty-template" || action === "style") {
+			const existing = settings.adapters[id] ?? DEFAULT_BUILT_IN_ADAPTERS[id];
+			if (!existing) return `Adapter ${id} does not exist yet. Create it with pi/status/custom or footer_framework_adapter_config first.`;
+			const match = args.match(new RegExp(`^adapter\\s+${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+${action}\\s+([\\s\\S]+)$`));
+			const body = match?.[1]?.trim();
+			if (!body) return `Usage: /footerfx adapter ${id} ${action} <value>`;
+			settings.adapters[id] = { ...existing };
+			if (action === "template") settings.adapters[id].template = body;
+			else if (action === "empty-template") settings.adapters[id].emptyTemplate = body;
+			else settings.adapters[id].style = body;
+			return `Adapter ${id} ${action} updated.`;
+		}
 		if (action === "pi") {
 			if (!sourceKey) return `Usage: /footerfx adapter ${id} pi <source-key> [label]`;
 			settings.adapters[id] = {
@@ -798,6 +1135,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	let lastLoadedConfig = "defaults";
 	let lastFooterSnapshot: FooterSnapshot | undefined;
 	let lastPiSources: Record<string, FooterAdapterSourceValue> = {};
+	let lastTemplateDiagnostics: FooterTemplateDiagnostic[] = [];
 
 	function applyValidatedSettings(input: Partial<FooterFrameworkSettings>): void {
 		Object.assign(settings, normalizeSettings(input));
@@ -945,7 +1283,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			label: "ctx",
 			value: `ctx ${percentText} ${tokenText}`,
 			tone,
-			data: { tokens, contextWindow, percent },
+			data: { tokens, contextWindow, window: contextWindow, percent, percentText, tokenText, tone },
 		};
 	}
 
@@ -1045,36 +1383,62 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	function buildPiSources(
 		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
-		statsText: string,
+		stats: { input: number; output: number; cost: number; inputText: string; outputText: string; costText: string; value: string },
 	): Record<string, FooterAdapterSourceValue> {
+		const activeTools = pi.getActiveTools();
+		const commands = pi.getCommands();
 		const sources: Record<string, FooterAdapterSourceValue> = {
-			cwd: { label: "cwd", value: currentCtx?.cwd ?? "", tone: "muted" },
-			model: { label: "model", value: renderModelLabel(), tone: "muted", data: currentCtx?.model ?? null },
-			stats: { label: "stats", value: statsText, tone: "muted" },
+			cwd: { label: "cwd", value: currentCtx?.cwd ?? "", tone: "muted", data: { path: currentCtx?.cwd ?? "" } },
+			model: {
+				label: "model",
+				value: renderModelLabel(),
+				tone: "muted",
+				data: { ...(currentCtx?.model ?? {}), id: currentCtx?.model?.id ?? "no-model", provider: currentCtx?.model?.provider, thinking: pi.getThinkingLevel() },
+			},
+			stats: { label: "stats", value: stats.value, tone: "muted", data: stats },
 			extensionStatuses: { label: "ext", value: footerData.getExtensionStatuses().size, data: Object.fromEntries(footerData.getExtensionStatuses()) },
-			tools: { label: "tools", value: pi.getActiveTools().length, data: pi.getActiveTools() },
-			commands: { label: "commands", value: pi.getCommands().length, data: pi.getCommands().map((command) => command.name) },
+			tools: { label: "tools", value: activeTools.length, data: { count: activeTools.length, names: activeTools } },
+			commands: { label: "commands", value: commands.length, data: { count: commands.length, names: commands.map((command) => command.name) } },
 		};
 		const context = contextUsageSource();
 		if (context) sources.context = context;
 		const gitBranch = footerData.getGitBranch();
 		if (gitBranch) {
 			const compact = compactBranchName(gitBranch, settings.branchMaxLength);
-			if (settings.showPr && prState?.pr && prState.branch === gitBranch) {
-				sources.branch = { label: "branch", value: `(${compact} #${prState.pr.number})`, url: prState.pr.url, tone: "muted", data: { branch: gitBranch, pr: prState.pr } };
-			} else {
-				sources.branch = { label: "branch", value: `(${compact})`, tone: "muted", data: { branch: gitBranch } };
-			}
+			const pr = settings.showPr && prState?.pr && prState.branch === gitBranch ? prState.pr : undefined;
+			const label = pr ? `(${compact} #${pr.number})` : `(${compact})`;
+			sources.branch = {
+				label: "branch",
+				value: label,
+				url: pr?.url,
+				tone: "muted",
+				data: { name: gitBranch, compact, label, prNumber: pr?.number, prUrl: pr?.url, pr },
+			};
 		}
 		if (prState?.pr) {
-			const parts = [checkGlyph(prState.pr.checks)];
-			if (prState.pr.comments > 0) parts.push(`💬${prState.pr.comments}`);
-			sources.pr = { label: "PR", value: parts.join(" "), url: prState.pr.url, tone: checkTone(prState.pr.checks), data: prState };
+			const commentsText = prState.pr.comments > 0 ? ` 💬${prState.pr.comments}` : "";
+			const data = {
+				...prState,
+				number: prState.pr.number,
+				title: prState.pr.title,
+				url: prState.pr.url,
+				comments: prState.pr.comments,
+				commentsText,
+				checks: prState.pr.checks,
+				checkGlyph: checkGlyph(prState.pr.checks),
+				checkTone: checkTone(prState.pr.checks),
+			};
+			sources.pr = { label: "PR", value: `${data.checkGlyph}${commentsText}`, url: prState.pr.url, tone: data.checkTone, data };
 		}
 		return sources;
 	}
 
-	function collectAdapterItems(theme: ExtensionContext["ui"]["theme"], footerData: { getExtensionStatuses(): ReadonlyMap<string, string> }, piSources: Record<string, FooterAdapterSourceValue>): FooterItem[] {
+	function collectAdapterItems(
+		theme: ExtensionContext["ui"]["theme"],
+		footerData: { getExtensionStatuses(): ReadonlyMap<string, string> },
+		piSources: Record<string, FooterAdapterSourceValue>,
+		diagnostics: FooterTemplateDiagnostic[],
+	): FooterItem[] {
 		const items: FooterItem[] = [];
 		const extensionStatuses = footerData.getExtensionStatuses();
 		for (const [adapterId, adapter] of Object.entries(allAdapters())) {
@@ -1092,7 +1456,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			}
 			const external = adapterItemFromSource(adapterId, adapter, sourceValue);
 			if (!external) continue;
-			const text = renderExternalItem(theme, external);
+			const text = renderAdapterText(theme, adapterId, adapter, external, sourceValue, piSources, diagnostics);
 			if (!text) continue;
 			items.push({
 				id: external.id,
@@ -1106,10 +1470,11 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	function collectItems(
 		theme: ExtensionContext["ui"]["theme"],
 		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
-		statsText: string,
+		stats: { input: number; output: number; cost: number; inputText: string; outputText: string; costText: string; value: string },
+		diagnostics: FooterTemplateDiagnostic[],
 	): FooterItem[] {
 		const items: FooterItem[] = [];
-		const piSources = buildPiSources(footerData, statsText);
+		const piSources = buildPiSources(footerData, stats);
 		lastPiSources = piSources;
 
 		const adaptedStatusKeys = adaptedExtensionStatusKeys();
@@ -1125,7 +1490,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			.join(" · ");
 		if (extStatuses) items.push({ id: "ext", text: extStatuses, placement: placementFor("ext", DEFAULT_ITEM_PLACEMENTS.ext) });
 
-		items.push(...collectAdapterItems(theme, footerData, piSources));
+		items.push(...collectAdapterItems(theme, footerData, piSources, diagnostics));
 
 		for (const [id, external] of externalItems) {
 			const text = renderExternalItem(theme, external);
@@ -1154,6 +1519,12 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return {
 			builtInItems: Object.keys(DEFAULT_ITEM_PLACEMENTS).sort(),
 			piSources: Object.fromEntries(Object.entries(lastPiSources).map(([key, value]) => [key, previewValue(value)])),
+			stylePrimitives: {
+				foregroundColors: Array.from(THEME_FG_COLORS),
+				backgroundColors: Array.from(THEME_BG_COLORS),
+				attributes: Array.from(THEME_TEXT_ATTRIBUTES),
+			},
+			templateDiagnostics: lastTemplateDiagnostics,
 			defaultBuiltInAdapters: DEFAULT_BUILT_IN_ADAPTERS,
 			externalItems: Array.from(externalItems.values()).map((item) => ({
 				id: item.id,
@@ -1222,7 +1593,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 					unsubscribe();
 				},
 				invalidate() {},
-				render(width: number): string[] {
+					render(width: number): string[] {
 					let input = 0;
 					let output = 0;
 					let cost = 0;
@@ -1233,8 +1604,18 @@ export default function footerFramework(pi: ExtensionAPI): void {
 						cost += entry.message.usage.cost.total;
 					}
 
-					const statsText = `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`;
-					const items = collectItems(theme, footerData, statsText);
+					const stats = {
+						input,
+						output,
+						cost,
+						inputText: formatTokens(input),
+						outputText: formatTokens(output),
+						costText: cost.toFixed(3),
+						value: `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`,
+					};
+					const diagnostics: FooterTemplateDiagnostic[] = [];
+					const items = collectItems(theme, footerData, stats, diagnostics);
+					lastTemplateDiagnostics = diagnostics;
 					const maxLine = Math.max(2, ...items.map((item) => item.placement.line));
 					const lineResults = Array.from({ length: maxLine }, (_, index) => {
 						const line = index + 1;
@@ -1313,6 +1694,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				loadedConfig: lastLoadedConfig,
 				configPaths: { user: userConfigPath(), project: projectConfigPath(ctx) },
 				prState,
+				lastTemplateDiagnostics,
 				lastFooterSnapshot,
 			};
 			ctx.ui.notify(JSON.stringify(payload, null, 2), "info");
@@ -1331,6 +1713,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 					loadedConfig: lastLoadedConfig,
 					configPaths: currentCtx ? { user: userConfigPath(), project: projectConfigPath(currentCtx) } : { user: userConfigPath() },
 					prState,
+					lastTemplateDiagnostics,
 					lastFooterSnapshot,
 				};
 				return {

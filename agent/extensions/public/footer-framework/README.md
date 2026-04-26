@@ -79,6 +79,52 @@ Example adapter JSON for the agent tool:
 
 For built-in Pi data, use `"source": "pi"` and a source key from `footer_framework_sources.piSources`. For custom session entries, adapters select from the latest entry with a matching `customType`. Paths are small dotted selectors such as `data.state`, `data.items[0].status`, or `$.data.loopName`.
 
+## Templates and styles
+
+Adapters can override their rendered text with a small Liquid-style interpolation subset:
+
+```liquid
+{{ pi.stats.costText }}
+{{ "EUR" }}
+{{ "EUR" | style: "accent" }}{{ pi.stats.costText | style: "success,bold" }}
+```
+
+Quoted strings are literals. Unquoted terms are variables, so missing variables are reported as template diagnostics instead of being guessed as text. Diagnostics appear in `/footerfx-debug`, `footer_framework_state`, and `footer_framework_sources`.
+
+Useful template context:
+
+| Path | Meaning |
+| --- | --- |
+| `value`, `label`, `status`, `data`, `url` | The current adapter source. |
+| `pi.cwd` | Current working directory. |
+| `pi.model.id`, `pi.model.provider`, `pi.model.thinking` | Current model information. |
+| `pi.stats.inputText`, `pi.stats.outputText`, `pi.stats.costText` | Formatted session token/cost stats. Raw numbers are `input`, `output`, and `cost`. |
+| `pi.context.percentText`, `pi.context.tokenText`, `pi.context.tone` | Context usage and recommended tone. |
+| `pi.branch.name`, `pi.branch.compact`, `pi.branch.label` | Git branch values. |
+| `pi.pr.number`, `pi.pr.url`, `pi.pr.checkGlyph`, `pi.pr.checkTone`, `pi.pr.commentsText` | Pull request state when available. |
+| `pi.tools.count`, `pi.tools.names`, `pi.commands.count`, `pi.commands.names` | Active tools and commands. |
+
+Supported filters:
+
+| Filter | Example |
+| --- | --- |
+| `style` | `{{ value | style: "accent,bold" }}` |
+| `color` | Alias for `style`. |
+| `bg` / `background` | `{{ value | bg: "toolSuccessBg" }}` |
+| `bold`, `italic`, `underline`, `inverse`, `strikethrough` | `{{ value | underline }}` |
+| `link` | `{{ pi.pr.number | link: pi.pr.url }}` |
+| `default` | `{{ data.state | default: "unknown" }}` |
+
+Style strings use Pi theme tokens and text attributes. Foreground examples: `accent`, `muted`, `dim`, `success`, `warning`, `error`, `text`, `mdLink`, `toolDiffAdded`, and the other Pi theme foreground tokens. Backgrounds use `bg:<token>`, such as `bg:toolSuccessBg`. Attributes are `bold`, `italic`, `underline`, `inverse`, and `strikethrough`.
+
+Example: combine cwd and branch into one item:
+
+```text
+/footerfx adapter cwd-branch pi cwd cwd
+/footerfx adapter cwd-branch template {{ pi.cwd | style: "dim" }} {{ "(" | style: "muted" }}{{ pi.branch.compact | style: "accent" }}{{ ")" | style: "muted" }}
+/footerfx item branch hide
+```
+
 ## Configuration
 
 User settings persist to:
@@ -117,6 +163,9 @@ Use `/footerfx save project` only when you intentionally want a project-specific
 | `/footerfx adapter <id> pi <source-key> [label]` | Adapt a built-in Pi source. |
 | `/footerfx adapter <id> status <status-key> [label]` | Adapt an existing extension status key. |
 | `/footerfx adapter <id> custom <custom-type> <path> [label]` | Adapt the latest matching custom session entry. |
+| `/footerfx adapter <id> template <template>` | Set the adapter's Liquid-style render template. |
+| `/footerfx adapter <id> empty-template <template>` | Set the template used for an empty adapter value. |
+| `/footerfx adapter <id> style <style>` | Apply a default style to the rendered adapter text. |
 | `/footerfx adapter <id> remove` | Remove an adapter. |
 | `/footerfx gap <min> <max>` | Set spacing bounds. |
 | `/footerfx branch-width <n>` | Set max branch label width. |
