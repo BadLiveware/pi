@@ -95,7 +95,6 @@ interface FooterSnapshot {
 }
 
 interface FooterAdapterConfig {
-	enabled?: boolean;
 	source: FooterAdapterSource;
 	/** Built-in Pi source key, extension status key, or custom entry type for sessionEntry adapters. */
 	key: string;
@@ -157,19 +156,7 @@ interface PrState {
 
 interface FooterFrameworkSettings {
 	enabled: boolean;
-	showCwd: boolean;
-	showStats: boolean;
-	showContext: boolean;
-	showModel: boolean;
-	showBranch: boolean;
-	showPr: boolean;
-	showExtensionStatuses: boolean;
-	hideZeroMcp: boolean;
-	// Kept for old config files; lineAnchors is the generalized source.
-	line1Anchor: FooterAnchorMode;
-	line2Anchor: FooterAnchorMode;
 	lineAnchors: Record<string, FooterAnchorMode>;
-	branchMaxLength: number;
 	minGap: number;
 	maxGap: number;
 	items: Record<string, Partial<FooterItemPlacement>>;
@@ -180,18 +167,7 @@ const MIN_FOOTER_LINE = 1;
 
 const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 	enabled: true,
-	showCwd: true,
-	showStats: true,
-	showContext: true,
-	showModel: true,
-	showBranch: true,
-	showPr: true,
-	showExtensionStatuses: true,
-	hideZeroMcp: true,
-	line1Anchor: "right",
-	line2Anchor: "right",
 	lineAnchors: { "1": "right", "2": "right" },
-	branchMaxLength: 22,
 	minGap: 2,
 	maxGap: 20,
 	items: {},
@@ -219,7 +195,7 @@ const DEFAULT_BUILT_IN_ADAPTERS: Record<string, FooterAdapterConfig> = {
 		template: '{{ pi.model.id | style: "dim" }}{{ ":" | style: "dim" }}{{ pi.model.thinking | style: "dim" }}',
 		placement: DEFAULT_ITEM_PLACEMENTS.model,
 	},
-	branch: { source: "pi", key: "branch", itemId: "branch", template: '{{ pi.branch.label | style: "muted" }}', placement: DEFAULT_ITEM_PLACEMENTS.branch },
+	branch: { source: "pi", key: "branch", itemId: "branch", template: '{{ pi.branch.label | truncate: 22 | style: "muted" }}', placement: DEFAULT_ITEM_PLACEMENTS.branch },
 	stats: {
 		source: "pi",
 		key: "stats",
@@ -278,19 +254,10 @@ function parseFooterLineSelector(value: string): FooterLine | "all" | undefined 
 
 function setLineAnchor(settings: FooterFrameworkSettings, line: FooterLine, mode: FooterAnchorMode): void {
 	settings.lineAnchors[String(line)] = mode;
-	if (line === 1) settings.line1Anchor = mode;
-	if (line === 2) settings.line2Anchor = mode;
 }
 
 function getLineAnchor(settings: FooterFrameworkSettings, line: FooterLine): FooterAnchorMode {
-	return settings.lineAnchors[String(line)] ?? (line === 1 ? settings.line1Anchor : line === 2 ? settings.line2Anchor : settings.line2Anchor);
-}
-
-function syncLegacyLineAnchors(settings: FooterFrameworkSettings): void {
-	if (settings.line1Anchor && !settings.lineAnchors["1"]) settings.lineAnchors["1"] = settings.line1Anchor;
-	if (settings.line2Anchor && !settings.lineAnchors["2"]) settings.lineAnchors["2"] = settings.line2Anchor;
-	settings.line1Anchor = settings.lineAnchors["1"] ?? settings.line1Anchor;
-	settings.line2Anchor = settings.lineAnchors["2"] ?? settings.line2Anchor;
+	return settings.lineAnchors[String(line)] ?? settings.lineAnchors["2"] ?? "right";
 }
 
 function setAllLineAnchors(settings: FooterFrameworkSettings, mode: FooterAnchorMode): void {
@@ -344,7 +311,6 @@ function normalizeAdapter(input: unknown): FooterAdapterConfig | undefined {
 		source: raw.source,
 		key: raw.key.trim(),
 	};
-	if (typeof raw.enabled === "boolean") adapter.enabled = raw.enabled;
 	if (typeof raw.itemId === "string" && raw.itemId.trim()) adapter.itemId = raw.itemId.trim();
 	if (typeof raw.label === "string" && raw.label.trim()) adapter.label = sanitizeStatusText(raw.label);
 	if (typeof raw.path === "string" && raw.path.trim()) adapter.path = raw.path.trim();
@@ -366,17 +332,7 @@ function normalizeAdapter(input: unknown): FooterAdapterConfig | undefined {
 
 function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<FooterFrameworkSettings> {
 	const normalized: Partial<FooterFrameworkSettings> = {};
-	for (const key of [
-		"enabled",
-		"showCwd",
-		"showStats",
-		"showContext",
-		"showModel",
-		"showBranch",
-		"showPr",
-		"showExtensionStatuses",
-		"hideZeroMcp",
-	] as const) {
+	for (const key of ["enabled"] as const) {
 		if (typeof input[key] === "boolean") normalized[key] = input[key];
 	}
 	const lineAnchors: Record<string, FooterAnchorMode> = {};
@@ -386,16 +342,7 @@ function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<Foo
 			if (line !== undefined && ANCHOR_MODES.includes(mode)) lineAnchors[String(line)] = mode;
 		}
 	}
-	if (input.line1Anchor && ANCHOR_MODES.includes(input.line1Anchor)) {
-		normalized.line1Anchor = input.line1Anchor;
-		lineAnchors["1"] = input.line1Anchor;
-	}
-	if (input.line2Anchor && ANCHOR_MODES.includes(input.line2Anchor)) {
-		normalized.line2Anchor = input.line2Anchor;
-		lineAnchors["2"] = input.line2Anchor;
-	}
 	if (Object.keys(lineAnchors).length > 0) normalized.lineAnchors = lineAnchors;
-	if (Number.isFinite(input.branchMaxLength)) normalized.branchMaxLength = Math.max(1, Math.round(input.branchMaxLength as number));
 	if (Number.isFinite(input.minGap)) normalized.minGap = Math.max(0, Math.round(input.minGap as number));
 	if (Number.isFinite(input.maxGap)) normalized.maxGap = Math.max(normalized.minGap ?? 0, Math.round(input.maxGap as number));
 	if (input.items && typeof input.items === "object") {
@@ -429,12 +376,6 @@ function readConfigFile(filePath: string): Partial<FooterFrameworkSettings> | un
 function writeConfigFile(filePath: string, settings: FooterFrameworkSettings): void {
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");
-}
-
-function compactBranchName(branch: string, maxLength: number): string {
-	if (branch.length <= maxLength) return branch;
-	if (maxLength <= 1) return "…";
-	return `${branch.slice(0, maxLength - 1)}…`;
 }
 
 function osc8(label: string, url: string): string {
@@ -707,6 +648,44 @@ function parseFilter(filterExpression: string): { name: string; arg?: string } {
 	return { name: filterExpression.trim() };
 }
 
+function splitFilterArgs(expression: string | undefined): string[] {
+	if (!expression?.trim()) return [];
+	const args: string[] = [];
+	let current = "";
+	let quote: string | undefined;
+	let escaped = false;
+	for (const char of expression) {
+		if (escaped) {
+			current += char;
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			current += char;
+			escaped = true;
+			continue;
+		}
+		if (quote) {
+			current += char;
+			if (char === quote) quote = undefined;
+			continue;
+		}
+		if (char === '"' || char === "'") {
+			quote = char;
+			current += char;
+			continue;
+		}
+		if (char === ",") {
+			args.push(current.trim());
+			current = "";
+			continue;
+		}
+		current += char;
+	}
+	args.push(current.trim());
+	return args.filter(Boolean);
+}
+
 function parseQuotedString(expression: string): string | undefined {
 	const trimmed = expression.trim();
 	if (trimmed.length < 2) return undefined;
@@ -728,14 +707,63 @@ function evaluateTemplateTerm(
 	reportMissing = true,
 ): unknown {
 	if (!term) return undefined;
-	const literal = parseQuotedString(term);
+	const trimmed = term.trim();
+	const literal = parseQuotedString(trimmed);
 	if (literal !== undefined) return literal;
-	const value = selectPath(context, term);
+	if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+	if (trimmed === "true") return true;
+	if (trimmed === "false") return false;
+	const value = selectPath(context, trimmed);
 	if (value === undefined) {
-		if (reportMissing) diagnostics.push({ adapterId, token, severity: "error", message: `Missing template variable: ${term}` });
-		return reportMissing ? `[missing:${term}]` : undefined;
+		if (reportMissing) diagnostics.push({ adapterId, token, severity: "error", message: `Missing template variable: ${trimmed}` });
+		return reportMissing ? `[missing:${trimmed}]` : undefined;
 	}
 	return value;
+}
+
+function numberFilterArg(value: unknown, fallback: number, min: number): number {
+	const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : Number.NaN;
+	return Number.isFinite(parsed) ? Math.max(min, Math.round(parsed)) : fallback;
+}
+
+function truncateStartToWidth(text: string, maxWidth: number, ellipsis = "…"): string {
+	if (visibleWidth(text) <= maxWidth) return text;
+	if (maxWidth <= visibleWidth(ellipsis)) return ellipsis;
+	let suffix = "";
+	for (const char of Array.from(text).reverse()) {
+		const next = `${char}${suffix}`;
+		if (visibleWidth(next) + visibleWidth(ellipsis) > maxWidth) break;
+		suffix = next;
+	}
+	return `${ellipsis}${suffix}`;
+}
+
+function compactPathText(input: string, maxWidth: number, tailSegments: number): string {
+	if (!input) return input;
+	const home = os.homedir();
+	let display = input;
+	if (home && (display === home || display.startsWith(`${home}/`) || display.startsWith(`${home}\\`))) display = `~${display.slice(home.length)}`;
+	if (visibleWidth(display) <= maxWidth) return display;
+
+	const normalized = display.replace(/\\/g, "/").replace(/\/+/g, "/");
+	const driveMatch = normalized.match(/^[A-Za-z]:\//);
+	const prefix = normalized.startsWith("~/") ? "~/" : driveMatch ? driveMatch[0] : normalized.startsWith("/") ? "/" : "";
+	const body = prefix ? normalized.slice(prefix.length) : normalized;
+	const segments = body.split("/").filter(Boolean);
+	const tailCount = Math.max(1, tailSegments);
+	if (segments.length <= tailCount) return truncateStartToWidth(normalized, maxWidth);
+	const compact = `${prefix}…/${segments.slice(-tailCount).join("/")}`;
+	return truncateStartToWidth(compact, maxWidth);
+}
+
+function evaluateFilterArgs(
+	arg: string | undefined,
+	context: Record<string, unknown>,
+	diagnostics: FooterTemplateDiagnostic[],
+	adapterId: string,
+	token: string,
+): unknown[] {
+	return splitFilterArgs(arg).map((part) => evaluateTemplateTerm(part, context, diagnostics, adapterId, token));
 }
 
 function applyTemplateFilter(
@@ -761,6 +789,18 @@ function applyTemplateFilter(
 	if (name === "link") {
 		const url = valueToText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token));
 		return url ? osc8(value, url) : value;
+	}
+	if (name === "truncate") {
+		const [maxWidthArg, ellipsisArg] = evaluateFilterArgs(arg, context, diagnostics, adapterId, token);
+		const maxWidth = numberFilterArg(maxWidthArg, 40, 1);
+		const ellipsis = valueToText(ellipsisArg) || "…";
+		return truncateToWidth(value, maxWidth, ellipsis);
+	}
+	if (name === "compactPath") {
+		const [maxWidthArg, tailSegmentsArg] = evaluateFilterArgs(arg, context, diagnostics, adapterId, token);
+		const maxWidth = numberFilterArg(maxWidthArg, 40, 4);
+		const tailSegments = numberFilterArg(tailSegmentsArg, 2, 1);
+		return compactPathText(value, maxWidth, tailSegments);
 	}
 	if (name === "default") {
 		return value.length > 0 && !value.startsWith("[missing:") ? value : (valueToTemplateText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token)) ?? "");
@@ -826,7 +866,6 @@ function sourceValueObject(sourceValue: unknown): FooterAdapterSourceValue {
 }
 
 function adapterItemFromSource(adapterId: string, adapter: FooterAdapterConfig, sourceValue: unknown): ExternalFooterItem | undefined {
-	if (adapter.enabled === false) return undefined;
 	const sourceObject = sourceValueObject(sourceValue);
 	const defaultPath = adapter.source === "sessionEntry" ? "data" : "value";
 	const selected = selectPath(sourceValue, adapter.path ?? defaultPath);
@@ -934,34 +973,10 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 	if (command === "section") {
 		if (!key || !value) return "Usage: /footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>";
 		const enabled = value === "on" || value === "enable" || value === "true";
-		if (!["on", "off", "enable", "disable", "true", "false"].includes(value)) {
-			return "Section value must be on/off.";
-		}
-		switch (key) {
-			case "cwd":
-				settings.showCwd = enabled;
-				return `Section cwd ${enabled ? "enabled" : "disabled"}.`;
-			case "stats":
-				settings.showStats = enabled;
-				return `Section stats ${enabled ? "enabled" : "disabled"}.`;
-			case "context":
-				settings.showContext = enabled;
-				return `Section context ${enabled ? "enabled" : "disabled"}.`;
-			case "model":
-				settings.showModel = enabled;
-				return `Section model ${enabled ? "enabled" : "disabled"}.`;
-			case "branch":
-				settings.showBranch = enabled;
-				return `Section branch ${enabled ? "enabled" : "disabled"}.`;
-			case "pr":
-				settings.showPr = enabled;
-				return `Section pr ${enabled ? "enabled" : "disabled"}.`;
-			case "ext":
-				settings.showExtensionStatuses = enabled;
-				return `Section ext ${enabled ? "enabled" : "disabled"}.`;
-			default:
-				return "Unknown section. Use: cwd|stats|context|model|branch|pr|ext";
-		}
+		if (!["on", "off", "enable", "disable", "true", "false"].includes(value)) return "Section value must be on/off.";
+		if (!["cwd", "stats", "context", "model", "branch", "pr", "ext"].includes(key)) return "Unknown section. Use: cwd|stats|context|model|branch|pr|ext";
+		(settings.items[key] ??= {}).visible = enabled;
+		return `Section ${key} ${enabled ? "enabled" : "disabled"}.`;
 	}
 	if (command === "gap") {
 		if (!key || !value) return "Usage: /footerfx gap <min> <max>";
@@ -986,18 +1001,6 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		if (target === undefined) return "Anchor target must be all or a positive line number.";
 		setLineAnchor(settings, target, mode);
 		return `Anchor line ${target} set to ${mode}.`;
-	}
-	if (command === "branch-width") {
-		if (!key) return "Usage: /footerfx branch-width <n>";
-		const maxLength = Number(key);
-		if (!Number.isFinite(maxLength)) return "branch-width must be a number.";
-		settings.branchMaxLength = Math.max(1, Math.round(maxLength));
-		return `Branch width max set to ${settings.branchMaxLength}.`;
-	}
-	if (command === "mcp-zero") {
-		if (!key || !["hide", "show"].includes(key)) return "Usage: /footerfx mcp-zero <hide|show>";
-		settings.hideZeroMcp = key === "hide";
-		return `MCP 0/x server line ${settings.hideZeroMcp ? "hidden" : "shown"}.`;
 	}
 	if (command === "item") {
 		const [id, action, arg] = tokens.slice(1);
@@ -1062,11 +1065,11 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 			return ids.length ? `Adapters: ${ids.join(", ")}` : "No footer adapters configured.";
 		}
 		if (action === "remove" || action === "delete") {
-			if (DEFAULT_BUILT_IN_ADAPTERS[id]) {
-				settings.adapters[id] = { ...DEFAULT_BUILT_IN_ADAPTERS[id], enabled: false };
-				return `Built-in adapter ${id} disabled.`;
-			}
 			delete settings.adapters[id];
+			if (DEFAULT_BUILT_IN_ADAPTERS[id]) {
+				(settings.items[id] ??= {}).visible = false;
+				return `Built-in item ${id} hidden.`;
+			}
 			return `Adapter ${id} removed.`;
 		}
 		if (action === "template" || action === "empty-template" || action === "style") {
@@ -1130,11 +1133,8 @@ function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: strin
 	return [
 		loadedConfig ? `loaded=${loadedConfig}` : undefined,
 		`enabled=${settings.enabled}`,
-		`sections: cwd=${settings.showCwd}, stats=${settings.showStats}, context=${settings.showContext}, model=${settings.showModel}, branch=${settings.showBranch}, pr=${settings.showPr}, ext=${settings.showExtensionStatuses}`,
 		`anchors: ${sortedLineAnchors(settings)}`,
 		`gap: min=${settings.minGap}, max=${settings.maxGap}`,
-		`branchMaxLength=${settings.branchMaxLength}`,
-		`hideZeroMcp=${settings.hideZeroMcp}`,
 		customizedItems.length ? `customizedItems=${customizedItems.join(",")}` : undefined,
 		adapters.length ? `adapters=${adapters.join(",")}` : undefined,
 	]
@@ -1157,10 +1157,8 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	function applyValidatedSettings(input: Partial<FooterFrameworkSettings>): void {
 		Object.assign(settings, normalizeSettings(input));
-		syncLegacyLineAnchors(settings);
 		settings.minGap = Math.max(0, Math.round(settings.minGap));
 		settings.maxGap = Math.max(settings.minGap, Math.round(settings.maxGap));
-		settings.branchMaxLength = Math.max(1, Math.round(settings.branchMaxLength));
 	}
 
 	function saveSettings(scope: ConfigScope, ctx?: ExtensionContext): string {
@@ -1313,21 +1311,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		};
 	}
 
-	function applyLegacySectionVisibility(items: FooterItem[]): void {
-		const legacy: Record<string, boolean> = {
-			cwd: settings.showCwd,
-			stats: settings.showStats,
-			context: settings.showContext,
-			model: settings.showModel,
-			branch: settings.showBranch,
-			pr: settings.showPr,
-			ext: settings.showExtensionStatuses,
-		};
-		for (const item of items) {
-			if (legacy[item.id] === false && settings.items[item.id]?.visible === undefined) item.placement.visible = false;
-		}
-	}
-
 	function resolveRelativeOrders(items: FooterItem[]): FooterItem[] {
 		const sorted = [...items].sort((a, b) => a.placement.order - b.placement.order || a.id.localeCompare(b.id));
 		for (const item of sorted) {
@@ -1390,7 +1373,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	function adaptedExtensionStatusKeys(): Set<string> {
 		return new Set(
 			Object.values(allAdapters())
-				.filter((adapter) => adapter.enabled !== false && adapter.source === "extensionStatus")
+				.filter((adapter) => adapter.source === "extensionStatus")
 				.map((adapter) => adapter.key),
 		);
 	}
@@ -1418,15 +1401,14 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		if (context) sources.context = context;
 		const gitBranch = footerData.getGitBranch();
 		if (gitBranch) {
-			const compact = compactBranchName(gitBranch, settings.branchMaxLength);
-			const pr = settings.showPr && prState?.pr && prState.branch === gitBranch ? prState.pr : undefined;
-			const label = pr ? `(${compact} #${pr.number})` : `(${compact})`;
+			const pr = prState?.pr && prState.branch === gitBranch ? prState.pr : undefined;
+			const label = pr ? `(${gitBranch} #${pr.number})` : `(${gitBranch})`;
 			sources.branch = {
 				label: "branch",
 				value: label,
 				url: pr?.url,
 				tone: "muted",
-				data: { name: gitBranch, compact, label, prNumber: pr?.number, prUrl: pr?.url, pr },
+				data: { name: gitBranch, label, prNumber: pr?.number, prUrl: pr?.url, pr },
 			};
 		}
 		if (prState?.pr) {
@@ -1498,7 +1480,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				const text = sanitizeStatusText(value);
 				if (key === "footer-framework" || key === "pr-upstream" || adaptedStatusKeys.has(key)) return [];
 				if (visibleWidth(text) === 0) return [];
-				if (settings.hideZeroMcp && /MCP:\s*0\/\d+\s+servers/.test(text)) return [];
 				return [text];
 			})
 			.join(" · ");
@@ -1516,7 +1497,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			});
 		}
 
-		applyLegacySectionVisibility(items);
 		return resolveRelativeOrders(items).filter((item) => item.placement.visible && item.text.length > 0);
 	}
 
@@ -1703,7 +1683,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	});
 
 	pi.registerCommand("footerfx", {
-		description: "Footer framework controls (on/off, item layout, anchor, gap, branch-width, mcp-zero, reset)",
+		description: "Footer framework controls (on/off, item layout, anchor, gap, reset)",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			if (!trimmed) {
@@ -1791,11 +1771,11 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				} else if (action === "remove") {
 					if (!params.id?.trim()) throw new Error("remove requires id");
 					const id = params.id.trim();
-					if (DEFAULT_BUILT_IN_ADAPTERS[id]) settings.adapters[id] = { ...DEFAULT_BUILT_IN_ADAPTERS[id], enabled: false };
-					else delete settings.adapters[id];
+					delete settings.adapters[id];
+					if (DEFAULT_BUILT_IN_ADAPTERS[id]) (settings.items[id] ??= {}).visible = false;
 					persistSettings();
 					if (currentCtx) installFooter(currentCtx);
-					message = DEFAULT_BUILT_IN_ADAPTERS[id] ? `Built-in adapter ${id} disabled.` : `Adapter ${id} removed.`;
+					message = DEFAULT_BUILT_IN_ADAPTERS[id] ? `Built-in item ${id} hidden.` : `Adapter ${id} removed.`;
 				} else if (action === "set") {
 					if (!params.id?.trim()) throw new Error("set requires id");
 					if (!params.adapterJson?.trim()) throw new Error("set requires adapterJson");

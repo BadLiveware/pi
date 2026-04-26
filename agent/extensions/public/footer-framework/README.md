@@ -1,8 +1,8 @@
 # pi-footer-framework
 
-Configurable footer replacement for Pi. It owns footer layout and formatting, while compatible extensions publish structured status data for it to place and render.
+Configurable footer replacement for Pi. It owns footer layout, formatting, color, truncation, and placement while other extensions publish structured status/data for it to render.
 
-Use it when the default footer is too cramped, when you want context/model/branch/PR state in predictable places, or when multiple extensions need one shared footer surface.
+Use it when you want to customize Pi's footer through a configurable framework that agents can inspect and reconfigure from natural-language prompts.
 
 ## Install
 
@@ -29,58 +29,115 @@ The default layout uses two footer lines. If you place an item on another positi
 /footerfx off
 ```
 
-## What it shows
+## Showcase
 
-The default built-in items are implemented as adapters over Pi data sources:
+This is a real Pi terminal using templates, theme-aware styles, right-anchored layout, fixed-column placement, PR state, and an adapted extension status item:
 
-- `cwd`
-- `model` with thinking level
-- `branch`
-- `stats`
-- `context` usage, such as `ctx 52.2% 142K/272K`
-- `pr` state
-- `ext` legacy status text from other extensions
+![Footer framework showcase with templated cwd, PR, model, token stats, context, and watchdog status](assets/footer-framework-showcase.png)
 
-Items can be shown/hidden and positioned by line, left/right zone, relative order, or fixed terminal column. User and agent configuration overrides built-in defaults and extension-provided hints.
+The screenshot demonstrates:
 
-## Adapting existing extensions
+- combined template output: cwd plus branch/PR label in one item
+- token-level styling: labels, model id, thinking level, token stats, context, and cost use different Pi theme colors/attributes
+- built-in Pi data: `cwd`, `branch`, `model`, `stats`, `context`, and `pr`
+- extension status adaptation: `compaction-continue` status becomes `watchdog:on`
+- flexible placement: line 1 and line 2 are right-anchored, while line 3 uses fixed `column` placement for middle and center-right items
 
-Extensions do not have to explicitly target footer-framework. The framework can adapt data that Pi already exposes:
+<details>
+<summary>Config used for the screenshot</summary>
 
-- built-in Pi/session/footer data through `pi` sources such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, and `extensionStatuses`
-- `ctx.ui.setStatus()` values through Pi footer status data
-- custom session entries written by extensions with `pi.appendEntry()`
-
-Agents can inspect those sources with `footer_framework_sources`, then add adapter rules with `footer_framework_adapter_config` or simple `/footerfx adapter ...` commands. The source tool defaults to concise footer-relevant data; pass `includeTools`, `includeCommands`, `includeSkills`, and `includeDetails` only when runtime metadata is useful for debugging. The default built-in footer items dogfood this same adapter path.
-
-Example: render another extension's existing status key as its own footer item instead of leaving it in the generic `ext` bucket:
-
-```text
-/footerfx adapter cache status cache:state cache
-/footerfx item cache line 3
-/footerfx item cache zone right
-```
-
-Example adapter JSON for the agent tool:
+Save this as `~/.pi/agent/footer-framework.json` or adapt it with `footer_framework_adapter_config`:
 
 ```json
 {
-  "source": "extensionStatus",
-  "key": "cache:state",
-  "label": "cache",
-  "match": "(?<state>warm|cold|rebuilding)",
-  "group": "state",
-  "tone": "info",
-  "format": "label-value",
-  "placement": { "line": 3, "zone": "right", "order": 20 }
+  "enabled": true,
+  "lineAnchors": {
+    "1": "right",
+    "2": "right",
+    "3": "left"
+  },
+  "minGap": 2,
+  "maxGap": 24,
+  "items": {
+    "branch": { "visible": false },
+    "ext": { "visible": false }
+  },
+  "adapters": {
+    "cwd": {
+      "source": "pi",
+      "key": "cwd",
+      "itemId": "cwd",
+      "urlPath": "url",
+      "template": "{{ \"cwd\" | style: \"muted\" }} {{ pi.cwd | compactPath: 48, 2 | style: \"dim\" }}{{ \" · \" | style: \"muted\" }}{{ pi.branch.label | default: \"\" | truncate: 22 | style: \"accent\" }}",
+      "placement": { "visible": true, "line": 1, "zone": "left", "order": 10 }
+    },
+    "model": {
+      "source": "pi",
+      "key": "model",
+      "itemId": "model",
+      "urlPath": "url",
+      "template": "{{ \"model:\" | style: \"muted\" }}{{ pi.model.id | style: \"accent\" }}{{ \"/\" | style: \"muted\" }}{{ pi.model.thinking | style: \"thinkingXhigh,bold\" }}",
+      "placement": { "visible": true, "line": 1, "zone": "right", "order": 10 }
+    },
+    "stats": {
+      "source": "pi",
+      "key": "stats",
+      "itemId": "stats",
+      "urlPath": "url",
+      "template": "{{ \"↑\" | style: \"dim\" }}{{ pi.stats.inputText | style: \"dim\" }} {{ \"↓\" | style: \"dim\" }}{{ pi.stats.outputText | style: \"dim\" }} {{ \"$\" | style: \"accent\" }}{{ pi.stats.costText | style: \"success\" }}",
+      "placement": { "visible": true, "line": 2, "zone": "left", "order": 10 }
+    },
+    "context": {
+      "source": "pi",
+      "key": "context",
+      "itemId": "context",
+      "urlPath": "url",
+      "template": "{{ \"ctx\" | style: pi.context.tone }} {{ pi.context.percentText | style: pi.context.tone }} {{ pi.context.tokenText | style: pi.context.tone }}",
+      "placement": { "visible": true, "line": 3, "zone": "left", "order": 10, "column": 78 }
+    },
+    "pr": {
+      "source": "pi",
+      "key": "pr",
+      "itemId": "pr",
+      "urlPath": "url",
+      "template": "{{ \"PR \" | style: \"muted\" }}{{ pi.pr.checkGlyph | style: pi.pr.checkTone }}{{ pi.pr.commentsText | style: \"muted\" }}",
+      "placement": { "visible": true, "line": 3, "zone": "left", "order": 20, "column": 132 }
+    },
+    "watchdog": {
+      "source": "extensionStatus",
+      "key": "compaction-continue",
+      "itemId": "watchdog",
+      "match": "(on|off)",
+      "group": 1,
+      "urlPath": "url",
+      "template": "{{ \"watchdog:\" | style: \"muted\" }}{{ value | style: \"accent,bold\" }}",
+      "placement": { "visible": true, "line": 2, "zone": "right", "order": 20 }
+    }
+  }
 }
 ```
 
-For built-in Pi data, use `"source": "pi"` and a source key from `footer_framework_sources.piSources`. For custom session entries, adapters select from the latest entry with a matching `customType`. Paths are small dotted selectors such as `data.state`, `data.items[0].status`, or `$.data.loopName`.
+Fixed `column` positions are terminal-width dependent; adjust them for narrower terminals.
+
+</details>
+
+## How it works
+
+Footer-framework renders normalized footer items from three adapter sources:
+
+| Source | Use it for |
+| --- | --- |
+| `pi` | Built-in Pi/session/footer data such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, and `extensionStatuses`. |
+| `extensionStatus` | Existing `ctx.ui.setStatus()` footer/status entries from other extensions. |
+| `sessionEntry` | The latest custom session entry written by an extension with `pi.appendEntry()`. |
+
+The built-in footer items (`cwd`, `model`, `branch`, `stats`, `context`, `pr`) use the same adapter path as user-defined items. User/project config overrides built-in defaults and producer hints.
+
+Agents can inspect concise footer-relevant data with `footer_framework_sources`, then add adapter rules with `footer_framework_adapter_config`. Runtime metadata such as tools, commands, skills, descriptions, and `sourceInfo` is opt-in via `includeTools`, `includeCommands`, `includeSkills`, and `includeDetails`.
 
 ## Templates and styles
 
-Adapters can override their rendered text with a small Liquid-style interpolation subset:
+Adapters can render with a restricted Liquid-style interpolation subset:
 
 ```liquid
 {{ pi.stats.costText }}
@@ -99,31 +156,24 @@ Useful template context:
 | `pi.model.id`, `pi.model.provider`, `pi.model.thinking` | Current model information. |
 | `pi.stats.inputText`, `pi.stats.outputText`, `pi.stats.costText` | Formatted session token/cost stats. Raw numbers are `input`, `output`, and `cost`. |
 | `pi.context.percentText`, `pi.context.tokenText`, `pi.context.tone` | Context usage and recommended tone. |
-| `pi.branch.name`, `pi.branch.compact`, `pi.branch.label` | Git branch values. |
+| `pi.branch.name`, `pi.branch.label` | Git branch values. Use `truncate` in templates when you want a shorter display. |
 | `pi.pr.number`, `pi.pr.url`, `pi.pr.checkGlyph`, `pi.pr.checkTone`, `pi.pr.commentsText` | Pull request state when available. |
 
 Supported filters:
 
 | Filter | Example |
 | --- | --- |
-| `style` | `{{ value | style: "accent,bold" }}` |
-| `color` | Alias for `style`. |
+| `style` / `color` | `{{ value | style: "accent,bold" }}` |
 | `bg` / `background` | `{{ value | bg: "toolSuccessBg" }}` |
 | `bold`, `italic`, `underline`, `inverse`, `strikethrough` | `{{ value | underline }}` |
 | `link` | `{{ pi.pr.number | link: pi.pr.url }}` |
+| `truncate` | `{{ pi.branch.label | truncate: 22 }}` limits any value to 22 cells with an ellipsis. |
+| `compactPath` | `{{ pi.cwd | compactPath: 48, 2 }}` keeps the last 2 path segments when the path is wider than 48 cells. |
 | `default` | `{{ data.state | default: "unknown" }}` |
 
 Style strings use Pi theme tokens and text attributes. Foreground examples: `accent`, `muted`, `dim`, `success`, `warning`, `error`, `text`, `mdLink`, `toolDiffAdded`, and the other Pi theme foreground tokens. Backgrounds use `bg:<token>`, such as `bg:toolSuccessBg`. Attributes are `bold`, `italic`, `underline`, `inverse`, and `strikethrough`.
 
-Example: combine cwd and branch into one item:
-
-```text
-/footerfx adapter cwd-branch pi cwd cwd
-/footerfx adapter cwd-branch template {{ pi.cwd | style: "dim" }} {{ "(" | style: "muted" }}{{ pi.branch.compact | style: "accent" }}{{ ")" | style: "muted" }}
-/footerfx item branch hide
-```
-
-## Configuration
+## Configuration files
 
 User settings persist to:
 
@@ -139,52 +189,45 @@ Project settings can override them:
 
 Use `/footerfx save project` only when you intentionally want a project-specific footer layout.
 
-## Troubleshooting
-
-### Blank space below the footer
-
-If blank rows sometimes appear below the footer and disappear after you send a prompt, check `/footerfx-debug` or `footer_framework_state`. When `lastFooterSnapshot.lines` contains only the expected footer lines, the framework is not rendering extra rows. This is usually Pi's TUI viewport/differential rendering leaving unused terminal space below the last rendered component.
-
-A Pi-side workaround is `terminal.clearOnShrink: true` in `~/.pi/agent/settings.json`, but that can add redraw flicker. Footer-framework does not change this setting.
-
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `/footerfx` | Show current config and source. |
 | `/footerfx on` / `/footerfx off` | Enable or disable the replacement footer. |
+| `/footerfx config` | Show loaded config source and config paths. |
 | `/footerfx load` | Reload user/project config files. |
 | `/footerfx save user` | Save current settings as the user default. |
 | `/footerfx save project` | Save current settings for the current project. |
 | `/footerfx reset` | Restore defaults and persist them to user config. |
+| `/footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>` | Convenience alias for item visibility. |
 | `/footerfx item <id> <show|hide|reset>` | Control item visibility. |
-| `/footerfx item <id> line <n>` | Move an item to any positive footer line. |
-| `/footerfx item <id> row <n>` | Alias for `line`. |
+| `/footerfx item <id> line <n>` / `row <n>` | Move an item to any positive footer line. |
 | `/footerfx item <id> zone <left|right>` | Move an item between left/right zones. |
-| `/footerfx item <id> before <other-id>` | Place an item before another item. |
-| `/footerfx item <id> after <other-id>` | Place an item after another item. |
-| `/footerfx item <id> column <n|off>` | Pin or unpin an item column. |
+| `/footerfx item <id> before <other-id>` / `after <other-id>` | Place an item relative to another item. |
+| `/footerfx item <id> column <n|off>` | Pin or unpin an item at an absolute terminal column. |
 | `/footerfx anchor <line|all> <gap|left|center|right|spread>` | Control line alignment. `line3` and `3` both work. |
 | `/footerfx adapter` | List configured adapters. |
 | `/footerfx adapter <id> pi <source-key> [label]` | Adapt a built-in Pi source. |
 | `/footerfx adapter <id> status <status-key> [label]` | Adapt an existing extension status key. |
 | `/footerfx adapter <id> custom <custom-type> <path> [label]` | Adapt the latest matching custom session entry. |
-| `/footerfx adapter <id> template <template>` | Set the adapter's Liquid-style render template. |
+| `/footerfx adapter <id> template <template>` | Set the adapter's render template. |
 | `/footerfx adapter <id> empty-template <template>` | Set the template used for an empty adapter value. |
 | `/footerfx adapter <id> style <style>` | Apply a default style to the rendered adapter text. |
-| `/footerfx adapter <id> remove` | Remove an adapter. |
+| `/footerfx adapter <id> remove` | Remove an adapter. For built-ins, hide the item with `/footerfx item <id> hide`. |
 | `/footerfx gap <min> <max>` | Set spacing bounds. |
-| `/footerfx branch-width <n>` | Set max branch label width. |
-| `/footerfx-debug` | Show render snapshot, settings, and layout telemetry. |
+| `/footerfx-debug` | Show render snapshot, settings, template diagnostics, and layout telemetry. |
 
 ## Agent tools
 
 The extension exposes tools so agents can inspect and adjust the footer without asking you to run commands:
 
 - `footer_framework_state`
-- `footer_framework_sources` (concise by default; optional `includeTools`, `includeCommands`, `includeSkills`, and `includeDetails` flags expose runtime metadata)
+- `footer_framework_sources`
 - `footer_framework_config`
 - `footer_framework_adapter_config`
+
+`footer_framework_sources` is concise by default. Pass `includeTools`, `includeCommands`, `includeSkills`, and `includeDetails` only when runtime metadata is directly useful.
 
 ## Extension data API
 
@@ -196,6 +239,7 @@ pi.events.emit("footer-framework:item", {
   label: "cache",
   value: "warm",
   tone: "success",
+  data: { entries: 42 },
   hint: {
     icon: "◇",
     format: "label-value",
@@ -211,3 +255,11 @@ Remove an item with:
 ```ts
 pi.events.emit("footer-framework:item", { id: "cache:status", remove: true });
 ```
+
+## Troubleshooting
+
+### Blank space below the footer
+
+If blank rows sometimes appear below the footer and disappear after you send a prompt, check `/footerfx-debug` or `footer_framework_state`. When `lastFooterSnapshot.lines` contains only the expected footer lines, the framework is not rendering extra rows. This is usually Pi's TUI viewport/differential rendering leaving unused terminal space below the last rendered component.
+
+A Pi-side workaround is `terminal.clearOnShrink: true` in `~/.pi/agent/settings.json`, but that can add redraw flicker. Footer-framework does not change this setting.
