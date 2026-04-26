@@ -8,14 +8,66 @@ type ChecksState = "pass" | "fail" | "running" | "unknown";
 interface GitHubCombinedStatus {
 	state?: string;
 	total_count?: number;
+	statuses?: GitHubStatusContext[];
+}
+
+interface GitHubStatusContext {
+	state?: string;
+	context?: string;
+	description?: string;
+	target_url?: string | null;
 }
 
 interface GitHubCheckRuns {
 	total_count?: number;
-	check_runs?: Array<{
-		status?: string;
-		conclusion?: string | null;
-	}>;
+	check_runs?: GitHubCheckRun[];
+}
+
+interface GitHubCheckRun {
+	id?: number;
+	name?: string;
+	status?: string;
+	conclusion?: string | null;
+	details_url?: string | null;
+	html_url?: string | null;
+	external_id?: string | null;
+	output?: {
+		title?: string | null;
+		summary?: string | null;
+		text?: string | null;
+		annotations_count?: number;
+	};
+}
+
+interface GitHubActionsJobs {
+	total_count?: number;
+	jobs?: GitHubActionsJob[];
+}
+
+interface GitHubActionsJob {
+	id?: number;
+	run_id?: number;
+	name?: string;
+	status?: string;
+	conclusion?: string | null;
+	html_url?: string | null;
+	steps?: GitHubActionsJobStep[];
+}
+
+interface GitHubActionsJobStep {
+	name?: string;
+	number?: number;
+	status?: string;
+	conclusion?: string | null;
+}
+
+interface GitHubCheckRunAnnotation {
+	path?: string;
+	start_line?: number;
+	end_line?: number;
+	annotation_level?: string;
+	message?: string;
+	raw_details?: string | null;
 }
 
 interface RepoRef {
@@ -47,6 +99,33 @@ interface PullRequestFeedback {
 interface PullRequestOpenFeedbackResult {
 	items: PullRequestFeedback[];
 	openCount: number;
+}
+
+interface PullRequestCiFailure {
+	id: string;
+	source: "check-run" | "status";
+	name: string;
+	conclusion: string;
+	description?: string;
+	url?: string;
+	detailsUrl?: string;
+	workflowRunId?: number;
+	jobId?: number;
+	failingSteps: Array<{
+		name: string;
+		number?: number;
+		conclusion?: string | null;
+	}>;
+	annotations: Array<{
+		path?: string;
+		startLine?: number;
+		endLine?: number;
+		level?: string;
+		message: string;
+		rawDetails?: string;
+	}>;
+	logExcerpt?: string;
+	outputSummary?: string;
 }
 
 interface BranchSnapshot {
@@ -85,6 +164,7 @@ interface CodeHostProvider {
 		token?: string;
 	}): Promise<PullRequestInfo | undefined>;
 	fetchOpenFeedback(params: { pr: PullRequestInfo; token?: string; maxItems?: number }): Promise<PullRequestFeedback[]>;
+	fetchCiFailures(params: { pr: PullRequestInfo; token?: string; maxItems?: number }): Promise<PullRequestCiFailure[]>;
 }
 
 const REFRESH_INTERVAL_MS = 90_000;
@@ -220,6 +300,30 @@ async function fetchGitHubJson<T>(path: string, token?: string, timeoutMs = 8_00
 	}
 }
 
+async function fetchGitHubText(path: string, token?: string, timeoutMs = 15_000): Promise<string | undefined> {
+	const headers: Record<string, string> = {
+		Accept: "text/plain, application/vnd.github+json",
+		"User-Agent": "pi-pr-upstream-status",
+	};
+	if (token) headers.Authorization = `Bearer ${token}`;
+
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	try {
+		const response = await fetch(`https://api.github.com${path}`, {
+			headers,
+			signal: controller.signal,
+			redirect: "follow",
+		});
+		if (!response.ok) return undefined;
+		return await response.text();
+	} catch {
+		return undefined;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 async function fetchGitHubGraphQL<T>(query: string, variables: Record<string, unknown>, token?: string, timeoutMs = 8_000): Promise<T | undefined> {
 	if (!token) return undefined;
 	const headers: Record<string, string> = {
@@ -272,7 +376,7 @@ function resolveGitHubChecks(status: GitHubCombinedStatus | undefined, checkRuns
 			continue;
 		}
 
-		if (["failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"].includes(run.conclusion ?? "")) {
+		if (isFailureConclusion(run.conclusion)) {
 			hasFailingSignal = true;
 		} else if (["success", "neutral", "skipped"].includes(run.conclusion ?? "")) {
 			hasPassingSignal = true;
@@ -287,6 +391,83 @@ function resolveGitHubChecks(status: GitHubCombinedStatus | undefined, checkRuns
 	return "unknown";
 }
 
+function isFailureConclusion(conclusion: string | null | undefined): boolean {
+	return ["failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"].includes(conclusion ?? "");
+}
+
+function isFailedStatus(state: string | undefined): boolean {
+	return state === "failure" || state === "error";
+}
+
+function parseGitHubActionsJobRef(detailsUrl: string | null | undefined): { runId?: number; jobId?: number } {
+	if (!detailsUrl) return {};
+	const match = detailsUrl.match(/\/actions\/runs\/(\d+)\/job\/(\d+)/);
+	if (!match) return {};
+	return {
+		runId: Number(match[1]),
+		jobId: Number(match[2]),
+	};
+}
+
+function truncateText(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	return `${text.slice(0, maxChars)}\n...[truncated ${text.length - maxChars} chars]`;
+}
+
+function stripAnsi(text: string): string {
+	return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
+}
+
+function ciFailureKey(pr: PullRequestInfo, failure: PullRequestCiFailure): string {
+	const stepKey = failure.failingSteps.map((step) => `${step.number ?? "?"}:${step.name}:${step.conclusion ?? ""}`).join("|");
+	return `${pr.headSha ?? "unknown-head"}:${failure.source}:${failure.id}:${failure.conclusion}:${stepKey}`;
+}
+
+function extractFailureLogExcerpt(logText: string, failedStepNames: string[]): string | undefined {
+	const lines = stripAnsi(logText).replace(/\r/g, "").split("\n");
+	if (lines.length === 0) return undefined;
+
+	const anchors: number[] = [];
+	const lowerFailedStepNames = failedStepNames.map((name) => name.toLowerCase()).filter(Boolean);
+	const errorPattern = /##\[error\]|\b(error|failed|failure|panic|exception|traceback)\b|exit code|^FAIL\b|\bFAILED\b/i;
+
+	for (let i = 0; i < lines.length; i += 1) {
+		const line = lines[i];
+		const lower = line.toLowerCase();
+		if (errorPattern.test(line)) anchors.push(i);
+		else if (lowerFailedStepNames.some((name) => lower.includes(name))) anchors.push(i);
+		if (anchors.length >= 10) break;
+	}
+
+	if (anchors.length === 0) {
+		const tail = lines.slice(Math.max(0, lines.length - 120));
+		return truncateText(tail.join("\n"), 18_000);
+	}
+
+	const windows = anchors.map((anchor) => ({ start: Math.max(0, anchor - 25), end: Math.min(lines.length, anchor + 35) }));
+	windows.sort((a, b) => a.start - b.start);
+	const merged: Array<{ start: number; end: number }> = [];
+	for (const window of windows) {
+		const last = merged[merged.length - 1];
+		if (last && window.start <= last.end + 5) {
+			last.end = Math.max(last.end, window.end);
+		} else {
+			merged.push({ ...window });
+		}
+	}
+
+	let remainingLines = 180;
+	const chunks: string[] = [];
+	for (const window of merged) {
+		if (remainingLines <= 0) break;
+		const slice = lines.slice(window.start, Math.min(window.end, window.start + remainingLines));
+		remainingLines -= slice.length;
+		chunks.push(`[log lines ${window.start + 1}-${window.start + slice.length}]\n${slice.join("\n")}`);
+	}
+
+	return truncateText(chunks.join("\n\n...\n\n"), 22_000);
+}
+
 function feedbackKey(item: PullRequestFeedback): string {
 	return `${item.kind}:${item.id}:${item.updatedAt ?? ""}`;
 }
@@ -297,6 +478,44 @@ function summarizeFeedback(items: PullRequestFeedback[]): string {
 			const loc = item.path ? ` (${item.path})` : "";
 			const link = item.url ? `\nURL: ${item.url}` : "";
 			return `${index + 1}. [${item.kind}] @${item.author}${loc}\n${item.body}${link}`;
+		})
+		.join("\n\n");
+}
+
+function summarizeCiFailures(items: PullRequestCiFailure[]): string {
+	return items
+		.map((item, index) => {
+			const links = [item.url ? `URL: ${item.url}` : undefined, item.detailsUrl && item.detailsUrl !== item.url ? `Details: ${item.detailsUrl}` : undefined]
+				.filter(Boolean)
+				.join("\n");
+			const steps = item.failingSteps.length
+				? item.failingSteps
+					.map((step) => `- ${step.number ? `#${step.number} ` : ""}${step.name}${step.conclusion ? ` (${step.conclusion})` : ""}`)
+					.join("\n")
+				: "- No failed step metadata available; inspect the log/context below.";
+			const annotations = item.annotations.length
+				? item.annotations
+					.map((annotation) => {
+						const loc = annotation.path ? `${annotation.path}${annotation.startLine ? `:${annotation.startLine}` : ""}${annotation.endLine && annotation.endLine !== annotation.startLine ? `-${annotation.endLine}` : ""}` : "no file";
+						const raw = annotation.rawDetails ? `\n  raw: ${truncateText(annotation.rawDetails, 1_500)}` : "";
+						return `- ${annotation.level ?? "annotation"} ${loc}: ${annotation.message}${raw}`;
+					})
+					.join("\n")
+				: "- None returned by GitHub.";
+			const summary = item.outputSummary ? `\nCheck output summary:\n${truncateText(item.outputSummary, 3_000)}\n` : "";
+			const log = item.logExcerpt ? `\nLog excerpt:\n\`\`\`text\n${item.logExcerpt}\n\`\`\`` : "\nLog excerpt: unavailable from GitHub API; use the linked check details if needed.";
+			return [
+				`${index + 1}. ${item.name} [${item.source}] -> ${item.conclusion}`,
+				item.description ? `Description: ${item.description}` : undefined,
+				links || undefined,
+				item.workflowRunId || item.jobId ? `Workflow run/job: ${item.workflowRunId ?? "unknown"}/${item.jobId ?? "unknown"}` : undefined,
+				`Failed step(s):\n${steps}`,
+				`Annotations:\n${annotations}`,
+				summary.trim() ? summary.trim() : undefined,
+				log,
+			]
+				.filter(Boolean)
+				.join("\n");
 		})
 		.join("\n\n");
 }
@@ -503,6 +722,92 @@ const githubProvider: CodeHostProvider = {
 			.sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""))
 			.slice(-maxItems);
 	},
+	async fetchCiFailures({ pr, token, maxItems = 10 }) {
+		if (!pr.headSha) return [];
+
+		const [status, checkRuns] = await Promise.all([
+			fetchGitHubJson<GitHubCombinedStatus>(`/repos/${pr.base.owner}/${pr.base.repo}/commits/${pr.headSha}/status`, token),
+			fetchGitHubJson<GitHubCheckRuns>(`/repos/${pr.base.owner}/${pr.base.repo}/commits/${pr.headSha}/check-runs?per_page=100&filter=latest`, token),
+		]);
+
+		const failures: PullRequestCiFailure[] = [];
+		const failedRunNames = new Set<string>();
+		for (const run of checkRuns?.check_runs ?? []) {
+			if (run.status && run.status !== "completed") continue;
+			if (!isFailureConclusion(run.conclusion)) continue;
+			const name = run.name ?? `check-run-${run.id ?? failures.length + 1}`;
+			failedRunNames.add(name);
+
+			const { runId, jobId } = parseGitHubActionsJobRef(run.details_url);
+			let job: GitHubActionsJob | undefined;
+			if (runId) {
+				const jobs = await fetchGitHubJson<GitHubActionsJobs>(`/repos/${pr.base.owner}/${pr.base.repo}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, token);
+				job = jobs?.jobs?.find((candidate) => candidate.id === jobId)
+					?? jobs?.jobs?.find((candidate) => candidate.name === name && isFailureConclusion(candidate.conclusion));
+			}
+
+			const failingSteps = (job?.steps ?? [])
+				.filter((step) => step.status === "completed" && isFailureConclusion(step.conclusion))
+				.map((step) => ({
+					name: step.name ?? `step-${step.number ?? "unknown"}`,
+					number: step.number,
+					conclusion: step.conclusion,
+				}));
+
+			const annotations = run.id
+				? await fetchGitHubJson<GitHubCheckRunAnnotation[]>(`/repos/${pr.base.owner}/${pr.base.repo}/check-runs/${run.id}/annotations?per_page=50`, token)
+				: undefined;
+
+			const logText = job?.id
+				? await fetchGitHubText(`/repos/${pr.base.owner}/${pr.base.repo}/actions/jobs/${job.id}/logs`, token)
+				: undefined;
+			const outputSummary = [run.output?.title, run.output?.summary, run.output?.text]
+				.map((value) => value?.trim())
+				.filter((value): value is string => Boolean(value))
+				.join("\n\n");
+
+			failures.push({
+				id: run.id ? String(run.id) : `${name}:${run.conclusion ?? "unknown"}`,
+				source: "check-run",
+				name,
+				conclusion: run.conclusion ?? "unknown",
+				url: run.html_url ?? run.details_url ?? undefined,
+				detailsUrl: run.details_url ?? undefined,
+				workflowRunId: job?.run_id ?? runId,
+				jobId: job?.id ?? jobId,
+				failingSteps,
+				annotations: (annotations ?? []).map((annotation) => ({
+					path: annotation.path,
+					startLine: annotation.start_line,
+					endLine: annotation.end_line,
+					level: annotation.annotation_level,
+					message: annotation.message ?? "",
+					rawDetails: annotation.raw_details ?? undefined,
+				})).filter((annotation) => annotation.message.trim().length > 0),
+				logExcerpt: logText ? extractFailureLogExcerpt(logText, failingSteps.map((step) => step.name)) : undefined,
+				outputSummary: outputSummary || undefined,
+			});
+		}
+
+		for (const statusContext of status?.statuses ?? []) {
+			if (!isFailedStatus(statusContext.state)) continue;
+			const name = statusContext.context ?? "legacy-status";
+			if (failedRunNames.has(name)) continue;
+			failures.push({
+				id: `status:${name}:${statusContext.target_url ?? ""}`,
+				source: "status",
+				name,
+				conclusion: statusContext.state ?? "failure",
+				description: statusContext.description,
+				url: statusContext.target_url ?? undefined,
+				detailsUrl: statusContext.target_url ?? undefined,
+				failingSteps: [],
+				annotations: [],
+			});
+		}
+
+		return failures.slice(0, maxItems);
+	},
 };
 
 function dedupeRepos(repos: RepoRef[]): RepoRef[] {
@@ -619,6 +924,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let sessionStartedAt = Date.now();
 	let lastPromptedHeadSha: string | undefined;
 	let promptedFeedbackKeys = new Set<string>();
+	let promptedCiFailureKeys = new Set<string>();
 	let lastRefreshAt = 0;
 
 	function loadSettings(): void {
@@ -724,7 +1030,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		return true;
 	}
 
-	async function maybeAutoSolveComments(
+	async function maybeAutoSolve(
 		ctx: ExtensionContext,
 		options: { force?: boolean; allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean } = {},
 	): Promise<void> {
@@ -739,6 +1045,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 
 		if (lastPromptedHeadSha && pr.headSha && pr.headSha !== lastPromptedHeadSha) {
 			promptedFeedbackKeys = new Set<string>();
+			promptedCiFailureKeys = new Set<string>();
 		}
 		lastPromptedHeadSha = pr.headSha;
 
@@ -747,29 +1054,39 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 
 		autoSolvePromptInFlight = true;
 		try {
-			const feedback = await provider.fetchOpenFeedback({ pr, token, maxItems: 30 });
-			const unseen = feedback.filter((item) => !promptedFeedbackKeys.has(feedbackKey(item)));
-			if (unseen.length === 0) return;
+			const [feedback, ciFailures] = await Promise.all([
+				provider.fetchOpenFeedback({ pr, token, maxItems: 30 }),
+				pr.checks === "fail" ? provider.fetchCiFailures({ pr, token, maxItems: 10 }) : Promise.resolve<PullRequestCiFailure[]>([]),
+			]);
+			const unseenFeedback = feedback.filter((item) => !promptedFeedbackKeys.has(feedbackKey(item)));
+			const unseenCiFailures = ciFailures.filter((item) => !promptedCiFailureKeys.has(ciFailureKey(pr, item)));
+			if (unseenFeedback.length === 0 && unseenCiFailures.length === 0) return;
 
-			const keys = unseen.map(feedbackKey);
-			for (const key of keys) promptedFeedbackKeys.add(key);
+			for (const key of unseenFeedback.map(feedbackKey)) promptedFeedbackKeys.add(key);
+			for (const failure of unseenCiFailures) promptedCiFailureKeys.add(ciFailureKey(pr, failure));
 			lastAutoSolveAt = now;
 
-			const prompt = [
-				`Review feedback needs triage for PR #${pr.number} (${pr.url}).`,
-				"Checks have completed and Pi is idle.",
-				"For each comment below:",
-				"1) Verify whether the feedback is factually true and relevant to this PR.",
-				"2) If not true/relevant, explain briefly why and do not change code for that comment.",
-				"3) If true and relevant, implement the fix with minimal, reviewable changes.",
-				"4) Summarize which comments were addressed vs dismissed.",
-				"",
-				"Comments:",
-				summarizeFeedback(unseen),
-			].join("\n");
+			const promptParts = [
+				`Auto-solve needed for PR #${pr.number} (${pr.url}).`,
+				`Checks: ${pr.checks}${pr.headSha ? `, head: ${pr.headSha}` : ""}. Pi is idle.`,
+				"Use the context below as starting evidence. If it is incomplete, fetch or inspect the linked logs/checks before editing.",
+				"Tasks:",
+				"1) For PR comments: verify whether each comment is true/relevant; fix only true/relevant comments.",
+				"2) For CI failures: identify the failing job, failing step, root cause, and minimal fix.",
+				"3) Implement minimal, reviewable changes and run the relevant local validation.",
+				"4) Summarize what was fixed, dismissed, and what validation passed or remains blocked.",
+			];
+			if (unseenFeedback.length > 0) {
+				promptParts.push("", "PR comments:", summarizeFeedback(unseenFeedback));
+			}
+			if (unseenCiFailures.length > 0) {
+				promptParts.push("", "CI failure context:", summarizeCiFailures(unseenCiFailures));
+			}
 
-			ctx.ui.notify(`Auto-solve queued for ${unseen.length} new PR comment(s).`, "info");
-			pi.sendUserMessage(prompt);
+			const commentText = unseenFeedback.length === 1 ? "1 new PR comment" : `${unseenFeedback.length} new PR comments`;
+			const ciText = unseenCiFailures.length === 1 ? "1 CI failure" : `${unseenCiFailures.length} CI failures`;
+			ctx.ui.notify(`Auto-solve queued for ${commentText} and ${ciText}.`, "info");
+			pi.sendUserMessage(promptParts.join("\n"));
 		} finally {
 			autoSolvePromptInFlight = false;
 		}
@@ -810,7 +1127,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			};
 			updateStatus(ctx);
 			emitPrimitives();
-			await maybeAutoSolveComments(ctx);
+			await maybeAutoSolve(ctx);
 		} catch (error) {
 			snapshot = {
 				...snapshot,
@@ -831,13 +1148,13 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("pr-autosolve", {
-		description: "Control auto-solving new PR comments after checks complete (default: on)",
+		description: "Control auto-solving new PR comments and CI failures after checks complete (default: on)",
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
 			if (["on", "enable", "enabled", "true", "yes", "1", "start"].includes(action)) {
 				setAutoSolveEnabled(true);
 				ctx.ui.notify("PR auto-solve enabled.", "info");
-				await maybeAutoSolveComments(ctx, { force: true });
+				await maybeAutoSolve(ctx, { force: true });
 				return;
 			}
 			if (["off", "disable", "disabled", "false", "no", "0", "stop"].includes(action)) {
@@ -850,7 +1167,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 					ctx.ui.notify("PR auto-solve is off. Enable it with /pr-autosolve on.", "warning");
 					return;
 				}
-				await maybeAutoSolveComments(ctx, { force: true, allowConcurrentWorkspace: true, allowFreshSession: true });
+				await maybeAutoSolve(ctx, { force: true, allowConcurrentWorkspace: true, allowFreshSession: true });
 				return;
 			}
 			ctx.ui.notify(`PR auto-solve: ${autoSolveStatusText(ctx)} (persisted in ${userConfigPath()})`, "info");

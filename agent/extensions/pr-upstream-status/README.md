@@ -32,7 +32,7 @@ For private repos:
 - then optionally tries `gh auth token` as an auth source (if `gh` is installed/logged in),
 - and finally falls back to `git ls-remote refs/pull/*/head` to detect the PR number without requiring `gh`.
 
-## Auto-solve PR comments (default: on)
+## Auto-solve PR comments and CI failures (default: on)
 
 Auto-solve is enabled by default. Explicit `/pr-autosolve on` and
 `/pr-autosolve off` choices persist in:
@@ -48,11 +48,20 @@ When enabled, the extension waits until:
 - the session is no longer fresh, and
 - no older Pi session is running in the same workspace,
 
-then fetches new issue comments and unresolved review-thread comments and sends a prompt that asks the agent to:
+then fetches:
+
+- new issue comments and unresolved review-thread comments, and
+- failed CI check context when checks are failing.
+
+For GitHub Actions failures, the extension tries to find the failing check run, workflow job, failed step metadata, annotations, and a focused log excerpt around error lines. Legacy status failures are included with their target URL/description when check-run logs are not available.
+
+It sends a prompt that asks the agent to:
 
 1. verify each comment is true/relevant,
 2. ignore comments that are not true/relevant (with explanation),
-3. apply fixes for relevant comments.
+3. identify the failing CI job/step and root cause,
+4. apply minimal fixes for relevant comments or CI failures,
+5. run relevant validation and summarize outcomes.
 
 The fresh-session and older-session guards keep ad-hoc extra Pi instances from immediately starting code work in a repository where another Pi is already active. When a guard suppresses auto-solve, Pi shows a notification that auto-solve would have run. `/pr-autosolve now` intentionally bypasses these guards for the current session.
 
@@ -73,4 +82,4 @@ Payload fields include branch, PR metadata (number/url/comments/checks), and aut
 - `/pr-autosolve` – show auto-solve status and config path
 - `/pr-autosolve on` – enable and persist auto-solve
 - `/pr-autosolve off` – disable and persist auto-solve
-- `/pr-autosolve now` – force an immediate auto-solve pass (must be enabled)
+- `/pr-autosolve now` – force an immediate auto-solve pass for new comments and current CI failures (must be enabled)
