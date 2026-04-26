@@ -11,6 +11,7 @@ Use this skill when a user wants footer layout changes without editing extension
 - the user asks to reduce footer clutter, spacing, or jitter
 - the user wants specific footer sections on/off
 - the user wants model/branch/PR placement tuned
+- the user wants the agent to decide a footer layout
 - the user wants default Pi footer restored quickly
 
 ## Commands Reference
@@ -24,18 +25,26 @@ Use this skill when a user wants footer layout changes without editing extension
 - `/footerfx save project` — save current settings for the current project
 - `/footerfx section <cwd|stats|context|model|branch|pr|ext> <on|off>`
 - `/footerfx item <id> <show|hide|reset>`
-- `/footerfx item <id> line <1|2>`
+- `/footerfx item <id> line <n>`
+- `/footerfx item <id> row <n>`
 - `/footerfx item <id> zone <left|right>`
 - `/footerfx item <id> order <n>`
 - `/footerfx item <id> before <other-id>` / `/footerfx item <id> after <other-id>`
 - `/footerfx item <id> column <n|off>`
-- `/footerfx anchor <line1|line2|all> <gap|left|center|right|spread>`
+- `/footerfx anchor <line|all> <gap|left|center|right|spread>`
 - `/footerfx gap <min> <max>`
 - `/footerfx branch-width <n>`
 - `/footerfx mcp-zero <hide|show>`
 
+## Layout Principles
+- The framework owns layout and formatting.
+- Compatible extensions should emit structured data/status plus optional hints; hints are advisory only.
+- User/project config and explicit agent changes override extension hints.
+- The default layout uses two lines, but items can be placed on any positive footer line.
+- Do not invent arbitrary hard limits for layout line numbers or columns; terminal width is the real rendering constraint.
+
 ## Workflow
-1. Read current state with `/footerfx`.
+1. Read current state with `/footerfx` or `footer_framework_state`.
 2. Apply one focused change at a time (item placement, section, anchor, gap, branch width).
 3. Changes persist automatically to the user config; use `/footerfx save project` only when the user explicitly wants project-specific layout.
 4. Prefer minimal-density defaults:
@@ -52,8 +61,7 @@ Use this skill when a user wants footer layout changes without editing extension
 - `/footerfx section ext off`
 
 ### Balanced
-- `/footerfx anchor line1 right`
-- `/footerfx anchor line2 right`
+- `/footerfx anchor all right`
 - `/footerfx item model line 1`
 - `/footerfx item model zone right`
 - `/footerfx item model before branch`
@@ -62,6 +70,11 @@ Use this skill when a user wants footer layout changes without editing extension
 - `/footerfx gap 2 16`
 - `/footerfx branch-width 22`
 - `/footerfx section ext on`
+
+### Expanded PR focus
+- `/footerfx item pr line 3`
+- `/footerfx item pr zone left`
+- `/footerfx anchor 3 left`
 
 ### Default Pi feel
 - `/footerfx off`

@@ -8,9 +8,11 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
 type FooterAnchorMode = "gap" | "left" | "center" | "right" | "spread";
-type FooterLine = 1 | 2;
+type FooterLine = number;
 type FooterZone = "left" | "right";
 type ConfigScope = "user" | "project";
+type ExternalFooterItemTone = "muted" | "info" | "success" | "warning" | "error" | "accent";
+type ExternalFooterItemFormat = "auto" | "value" | "label-value" | "status";
 
 interface FooterItemPlacement {
 	visible: boolean;
@@ -22,17 +24,73 @@ interface FooterItemPlacement {
 	after?: string;
 }
 
+interface FooterLineLayout {
+	anchor: FooterAnchorMode;
+	leftWidth: number;
+	rightWidthOriginal: number;
+	rightWidthFinal: number;
+	padCount: number;
+	rightStartCol: number;
+	rightEndCol: number;
+	truncated: boolean;
+}
+
 interface FooterItem {
 	id: string;
 	text: string;
 	placement: FooterItemPlacement;
 }
 
+interface FooterItemDisplayHint {
+	label?: string;
+	icon?: string;
+	format?: ExternalFooterItemFormat;
+	tone?: ExternalFooterItemTone;
+	placement?: Partial<FooterItemPlacement>;
+}
+
 interface ExternalFooterItemEvent {
 	id: string;
+	label?: string;
+	value?: unknown;
+	status?: unknown;
+	data?: unknown;
+	url?: string;
+	tone?: ExternalFooterItemTone;
+	/** Compatibility input. Prefer structured value/status/data plus optional hint. */
 	text?: string;
+	/** Display hint only. User config always wins over this placement/formatting advice. */
+	hint?: FooterItemDisplayHint;
 	placement?: Partial<FooterItemPlacement>;
 	remove?: boolean;
+}
+
+interface ExternalFooterItem {
+	id: string;
+	label?: string;
+	value?: unknown;
+	status?: unknown;
+	data?: unknown;
+	url?: string;
+	tone?: ExternalFooterItemTone;
+	text?: string;
+	hint: FooterItemDisplayHint;
+}
+
+interface FooterSnapshot {
+	width: number;
+	lines: Array<{ line: FooterLine; text: string; layout: FooterLineLayout }>;
+	line1: string;
+	line2: string;
+	line1Layout: FooterLineLayout;
+	line2Layout: FooterLineLayout;
+	gitBranch: string | null;
+	renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: number; width: number }>;
+	extensionStatuses: Array<{ key: string; value: string }>;
+	model: string;
+	contextUsage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
+	thinkingLevel: string;
+	cwd: string;
 }
 
 interface PrState {
@@ -58,13 +116,17 @@ interface FooterFrameworkSettings {
 	showPr: boolean;
 	showExtensionStatuses: boolean;
 	hideZeroMcp: boolean;
+	// Kept for old config files; lineAnchors is the generalized source.
 	line1Anchor: FooterAnchorMode;
 	line2Anchor: FooterAnchorMode;
+	lineAnchors: Record<string, FooterAnchorMode>;
 	branchMaxLength: number;
 	minGap: number;
 	maxGap: number;
 	items: Record<string, Partial<FooterItemPlacement>>;
 }
+
+const MIN_FOOTER_LINE = 1;
 
 const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 	enabled: true,
@@ -78,6 +140,7 @@ const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 	hideZeroMcp: true,
 	line1Anchor: "right",
 	line2Anchor: "right",
+	lineAnchors: { "1": "right", "2": "right" },
 	branchMaxLength: 22,
 	minGap: 2,
 	maxGap: 20,
@@ -113,6 +176,60 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
 }
 
+function cloneDefaultSettings(): FooterFrameworkSettings {
+	return {
+		...DEFAULT_SETTINGS,
+		lineAnchors: { ...DEFAULT_SETTINGS.lineAnchors },
+		items: { ...DEFAULT_SETTINGS.items },
+	};
+}
+
+function normalizeFooterLine(value: unknown): FooterLine | undefined {
+	const parsed = typeof value === "number" ? value : typeof value === "string" && /^\d+$/.test(value.trim()) ? Number(value.trim()) : undefined;
+	if (!Number.isFinite(parsed)) return undefined;
+	const line = Math.round(parsed as number);
+	return line >= MIN_FOOTER_LINE ? line : undefined;
+}
+
+function parseFooterLineSelector(value: string): FooterLine | "all" | undefined {
+	if (value === "all") return "all";
+	const normalized = value.toLowerCase().startsWith("line") ? value.slice(4) : value;
+	return normalizeFooterLine(normalized);
+}
+
+function setLineAnchor(settings: FooterFrameworkSettings, line: FooterLine, mode: FooterAnchorMode): void {
+	settings.lineAnchors[String(line)] = mode;
+	if (line === 1) settings.line1Anchor = mode;
+	if (line === 2) settings.line2Anchor = mode;
+}
+
+function getLineAnchor(settings: FooterFrameworkSettings, line: FooterLine): FooterAnchorMode {
+	return settings.lineAnchors[String(line)] ?? (line === 1 ? settings.line1Anchor : line === 2 ? settings.line2Anchor : settings.line2Anchor);
+}
+
+function syncLegacyLineAnchors(settings: FooterFrameworkSettings): void {
+	if (settings.line1Anchor && !settings.lineAnchors["1"]) settings.lineAnchors["1"] = settings.line1Anchor;
+	if (settings.line2Anchor && !settings.lineAnchors["2"]) settings.lineAnchors["2"] = settings.line2Anchor;
+	settings.line1Anchor = settings.lineAnchors["1"] ?? settings.line1Anchor;
+	settings.line2Anchor = settings.lineAnchors["2"] ?? settings.line2Anchor;
+}
+
+function setAllLineAnchors(settings: FooterFrameworkSettings, mode: FooterAnchorMode): void {
+	setLineAnchor(settings, 1, mode);
+	setLineAnchor(settings, 2, mode);
+	for (const lineKey of Object.keys(settings.lineAnchors)) {
+		const line = normalizeFooterLine(lineKey);
+		if (line !== undefined) setLineAnchor(settings, line, mode);
+	}
+}
+
+function sortedLineAnchors(settings: FooterFrameworkSettings): string {
+	return Object.entries(settings.lineAnchors)
+		.sort(([a], [b]) => Number(a) - Number(b))
+		.map(([line, mode]) => `line${line}=${mode}`)
+		.join(", ");
+}
+
 function agentDir(): string {
 	return process.env.PI_CODING_AGENT_DIR ?? process.env.PI_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
 }
@@ -127,11 +244,13 @@ function projectConfigPath(ctx: ExtensionContext): string {
 
 function normalizePlacement(input: Partial<FooterItemPlacement>): Partial<FooterItemPlacement> {
 	const placement: Partial<FooterItemPlacement> = {};
+	const rawInput = input as Partial<FooterItemPlacement> & { line?: unknown };
+	const line = normalizeFooterLine(rawInput.line);
 	if (typeof input.visible === "boolean") placement.visible = input.visible;
-	if (input.line === 1 || input.line === 2) placement.line = input.line;
+	if (line !== undefined) placement.line = line;
 	if (input.zone === "left" || input.zone === "right") placement.zone = input.zone;
 	if (Number.isFinite(input.order)) placement.order = Math.round(input.order as number);
-	if (Number.isFinite(input.column)) placement.column = clamp(Math.round(input.column as number), 0, 500);
+	if (Number.isFinite(input.column)) placement.column = Math.max(0, Math.round(input.column as number));
 	if (typeof input.before === "string" && input.before.trim()) placement.before = input.before.trim();
 	if (typeof input.after === "string" && input.after.trim()) placement.after = input.after.trim();
 	return placement;
@@ -152,11 +271,25 @@ function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<Foo
 	] as const) {
 		if (typeof input[key] === "boolean") normalized[key] = input[key];
 	}
-	if (input.line1Anchor && ANCHOR_MODES.includes(input.line1Anchor)) normalized.line1Anchor = input.line1Anchor;
-	if (input.line2Anchor && ANCHOR_MODES.includes(input.line2Anchor)) normalized.line2Anchor = input.line2Anchor;
-	if (Number.isFinite(input.branchMaxLength)) normalized.branchMaxLength = clamp(Math.round(input.branchMaxLength as number), 10, 64);
-	if (Number.isFinite(input.minGap)) normalized.minGap = clamp(Math.round(input.minGap as number), 1, 12);
-	if (Number.isFinite(input.maxGap)) normalized.maxGap = clamp(Math.round(input.maxGap as number), normalized.minGap ?? 1, 40);
+	const lineAnchors: Record<string, FooterAnchorMode> = {};
+	if (input.lineAnchors && typeof input.lineAnchors === "object") {
+		for (const [lineKey, mode] of Object.entries(input.lineAnchors)) {
+			const line = normalizeFooterLine(lineKey);
+			if (line !== undefined && ANCHOR_MODES.includes(mode)) lineAnchors[String(line)] = mode;
+		}
+	}
+	if (input.line1Anchor && ANCHOR_MODES.includes(input.line1Anchor)) {
+		normalized.line1Anchor = input.line1Anchor;
+		lineAnchors["1"] = input.line1Anchor;
+	}
+	if (input.line2Anchor && ANCHOR_MODES.includes(input.line2Anchor)) {
+		normalized.line2Anchor = input.line2Anchor;
+		lineAnchors["2"] = input.line2Anchor;
+	}
+	if (Object.keys(lineAnchors).length > 0) normalized.lineAnchors = lineAnchors;
+	if (Number.isFinite(input.branchMaxLength)) normalized.branchMaxLength = Math.max(1, Math.round(input.branchMaxLength as number));
+	if (Number.isFinite(input.minGap)) normalized.minGap = Math.max(0, Math.round(input.minGap as number));
+	if (Number.isFinite(input.maxGap)) normalized.maxGap = Math.max(normalized.minGap ?? 0, Math.round(input.maxGap as number));
 	if (input.items && typeof input.items === "object") {
 		normalized.items = {};
 		for (const [id, placement] of Object.entries(input.items)) {
@@ -184,8 +317,8 @@ function writeConfigFile(filePath: string, settings: FooterFrameworkSettings): v
 
 function compactBranchName(branch: string, maxLength: number): string {
 	if (branch.length <= maxLength) return branch;
-	const keep = Math.max(8, maxLength - 1);
-	return `${branch.slice(0, keep)}…`;
+	if (maxLength <= 1) return "…";
+	return `${branch.slice(0, maxLength - 1)}…`;
 }
 
 function osc8(label: string, url: string): string {
@@ -197,6 +330,77 @@ function sanitizeStatusText(text: string): string {
 		.replace(/[\r\n\t]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
+}
+
+function normalizeTone(tone: unknown): ExternalFooterItemTone | undefined {
+	return tone === "muted" || tone === "info" || tone === "success" || tone === "warning" || tone === "error" || tone === "accent" ? tone : undefined;
+}
+
+function normalizeFormat(format: unknown): ExternalFooterItemFormat | undefined {
+	return format === "auto" || format === "value" || format === "label-value" || format === "status" ? format : undefined;
+}
+
+function valueToText(value: unknown): string | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value === "string") return sanitizeStatusText(value);
+	if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) return sanitizeStatusText(value.map((entry) => valueToText(entry)).filter(Boolean).join(" "));
+	try {
+		return sanitizeStatusText(JSON.stringify(value));
+	} catch {
+		return sanitizeStatusText(String(value));
+	}
+}
+
+function normalizeDisplayHint(event: ExternalFooterItemEvent): FooterItemDisplayHint {
+	return {
+		label: typeof event.hint?.label === "string" ? sanitizeStatusText(event.hint.label) : undefined,
+		icon: typeof event.hint?.icon === "string" ? sanitizeStatusText(event.hint.icon) : undefined,
+		format: normalizeFormat(event.hint?.format),
+		tone: normalizeTone(event.hint?.tone),
+		placement: normalizePlacement({ ...(event.placement ?? {}), ...(event.hint?.placement ?? {}) }),
+	};
+}
+
+function normalizeExternalItemEvent(event: ExternalFooterItemEvent): ExternalFooterItem | undefined {
+	const id = event.id?.trim();
+	if (!id) return undefined;
+	return {
+		id,
+		label: typeof event.label === "string" ? sanitizeStatusText(event.label) : undefined,
+		value: event.value,
+		status: event.status,
+		data: event.data,
+		url: typeof event.url === "string" ? event.url : undefined,
+		tone: normalizeTone(event.tone),
+		text: typeof event.text === "string" ? sanitizeStatusText(event.text) : undefined,
+		hint: normalizeDisplayHint(event),
+	};
+}
+
+function applyExternalTone(theme: ExtensionContext["ui"]["theme"], tone: ExternalFooterItemTone | undefined, text: string): string {
+	if (tone === "success") return theme.fg("success", text);
+	if (tone === "warning") return theme.fg("warning", text);
+	if (tone === "error") return theme.fg("error", text);
+	if (tone === "accent") return theme.fg("accent", text);
+	if (tone === "muted") return theme.fg("muted", text);
+	return theme.fg("dim", text);
+}
+
+function renderExternalItem(theme: ExtensionContext["ui"]["theme"], item: ExternalFooterItem): string | undefined {
+	const hint = item.hint;
+	const label = hint.label ?? item.label;
+	const value = valueToText(item.value) ?? valueToText(item.status) ?? valueToText(item.data) ?? item.text;
+	const format = hint.format ?? (item.text && !label && item.value === undefined && item.status === undefined && item.data === undefined ? "value" : "auto");
+	const renderedValue = value ? applyExternalTone(theme, item.tone ?? hint.tone, value) : undefined;
+	const prefix = hint.icon ? `${hint.icon} ` : "";
+	let text: string | undefined;
+	if (format === "value") text = renderedValue ? `${prefix}${renderedValue}` : undefined;
+	else if (label && renderedValue) text = `${prefix}${theme.fg("muted", label)}: ${renderedValue}`;
+	else if (renderedValue) text = `${prefix}${renderedValue}`;
+	else if (label) text = `${prefix}${theme.fg("muted", label)}`;
+	if (!text) return undefined;
+	return item.url ? osc8(text, item.url) : text;
 }
 
 function parseSettingsInput(settings: FooterFrameworkSettings, args: string): string | undefined {
@@ -216,7 +420,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		return "Footer framework disabled (default footer restored).";
 	}
 	if (command === "reset") {
-		Object.assign(settings, { ...DEFAULT_SETTINGS, items: { ...DEFAULT_SETTINGS.items } });
+		Object.assign(settings, cloneDefaultSettings());
 		return "Footer framework reset to defaults.";
 	}
 	if (command === "section") {
@@ -256,31 +460,30 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		const min = Number(key);
 		const max = Number(value);
 		if (!Number.isFinite(min) || !Number.isFinite(max)) return "gap values must be numbers.";
-		settings.minGap = clamp(Math.round(min), 1, 12);
-		settings.maxGap = clamp(Math.round(max), settings.minGap, 40);
+		settings.minGap = Math.max(0, Math.round(min));
+		settings.maxGap = Math.max(settings.minGap, Math.round(max));
 		return `Gap updated (min=${settings.minGap}, max=${settings.maxGap}).`;
 	}
 	if (command === "anchor") {
-		if (!key || !value) return "Usage: /footerfx anchor <line1|line2|all> <gap|left|center|right|spread>";
+		if (!key || !value) return "Usage: /footerfx anchor <line|all> <gap|left|center|right|spread>";
 		if (!ANCHOR_MODES.includes(value as FooterAnchorMode)) {
 			return "Anchor must be one of: gap, left, center, right, spread.";
 		}
 		const mode = value as FooterAnchorMode;
-		if (key === "line1") settings.line1Anchor = mode;
-		else if (key === "line2") settings.line2Anchor = mode;
-		else if (key === "all") {
-			settings.line1Anchor = mode;
-			settings.line2Anchor = mode;
-		} else {
-			return "Anchor target must be one of: line1, line2, all.";
+		const target = parseFooterLineSelector(key);
+		if (target === "all") {
+			setAllLineAnchors(settings, mode);
+			return `Anchor all lines set to ${mode}.`;
 		}
-		return `Anchor ${key} set to ${mode}.`;
+		if (target === undefined) return "Anchor target must be all or a positive line number.";
+		setLineAnchor(settings, target, mode);
+		return `Anchor line ${target} set to ${mode}.`;
 	}
 	if (command === "branch-width") {
 		if (!key) return "Usage: /footerfx branch-width <n>";
 		const maxLength = Number(key);
 		if (!Number.isFinite(maxLength)) return "branch-width must be a number.";
-		settings.branchMaxLength = clamp(Math.round(maxLength), 10, 64);
+		settings.branchMaxLength = Math.max(1, Math.round(maxLength));
 		return `Branch width max set to ${settings.branchMaxLength}.`;
 	}
 	if (command === "mcp-zero") {
@@ -291,7 +494,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 	if (command === "item") {
 		const [id, action, arg] = tokens.slice(1);
 		if (!id || !action) {
-			return "Usage: /footerfx item <id> <show|hide|line|zone|order|column|before|after|reset> [value]";
+			return "Usage: /footerfx item <id> <show|hide|line|row|zone|order|column|before|after|reset> [value]";
 		}
 		const item = (settings.items[id] ??= {});
 		if (action === "show") {
@@ -306,9 +509,9 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 			delete settings.items[id];
 			return `Item ${id} reset.`;
 		}
-		if (action === "line") {
-			const line = Number(arg);
-			if (line !== 1 && line !== 2) return "Item line must be 1 or 2.";
+		if (action === "line" || action === "row") {
+			const line = normalizeFooterLine(arg);
+			if (line === undefined) return "Item line must be a positive number.";
 			item.line = line;
 			return `Item ${id} moved to line ${line}.`;
 		}
@@ -332,7 +535,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 			}
 			const column = Number(arg);
 			if (!Number.isFinite(column)) return "Item column must be a number, off, or auto.";
-			item.column = clamp(Math.round(column), 0, 500);
+			item.column = Math.max(0, Math.round(column));
 			return `Item ${id} column set to ${item.column}.`;
 		}
 		if (action === "before" || action === "after") {
@@ -342,7 +545,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 			item[action] = arg;
 			return `Item ${id} positioned ${action} ${arg}.`;
 		}
-		return "Unknown item action. Use show|hide|line|zone|order|column|before|after|reset.";
+		return "Unknown item action. Use show|hide|line|row|zone|order|column|before|after|reset.";
 	}
 
 	return `Unknown command: ${command}`;
@@ -354,7 +557,7 @@ function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: strin
 		loadedConfig ? `loaded=${loadedConfig}` : undefined,
 		`enabled=${settings.enabled}`,
 		`sections: cwd=${settings.showCwd}, stats=${settings.showStats}, context=${settings.showContext}, model=${settings.showModel}, branch=${settings.showBranch}, pr=${settings.showPr}, ext=${settings.showExtensionStatuses}`,
-		`anchor: line1=${settings.line1Anchor}, line2=${settings.line2Anchor}`,
+		`anchors: ${sortedLineAnchors(settings)}`,
 		`gap: min=${settings.minGap}, max=${settings.maxGap}`,
 		`branchMaxLength=${settings.branchMaxLength}`,
 		`hideZeroMcp=${settings.hideZeroMcp}`,
@@ -367,52 +570,20 @@ function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: strin
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default function footerFramework(pi: ExtensionAPI): void {
-	const settings: FooterFrameworkSettings = { ...DEFAULT_SETTINGS, items: { ...DEFAULT_SETTINGS.items } };
+	const settings: FooterFrameworkSettings = cloneDefaultSettings();
 	let prState: PrState | undefined;
 	let currentCtx: ExtensionContext | undefined;
 	let requestRender: (() => void) | undefined;
-	const externalItems = new Map<string, { text: string; placement: Partial<FooterItemPlacement> }>();
+	const externalItems = new Map<string, ExternalFooterItem>();
 	let lastLoadedConfig = "defaults";
-	let lastFooterSnapshot:
-		| {
-				width: number;
-				line1: string;
-				line2: string;
-				line1Layout: {
-					anchor: FooterAnchorMode;
-					leftWidth: number;
-					rightWidthOriginal: number;
-					rightWidthFinal: number;
-					padCount: number;
-					rightStartCol: number;
-					rightEndCol: number;
-					truncated: boolean;
-				};
-				line2Layout: {
-					anchor: FooterAnchorMode;
-					leftWidth: number;
-					rightWidthOriginal: number;
-					rightWidthFinal: number;
-					padCount: number;
-					rightStartCol: number;
-					rightEndCol: number;
-					truncated: boolean;
-				};
-				gitBranch: string | null;
-				renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: number; width: number }>;
-				extensionStatuses: Array<{ key: string; value: string }>;
-				model: string;
-				contextUsage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
-				thinkingLevel: string;
-				cwd: string;
-			}
-		| undefined;
+	let lastFooterSnapshot: FooterSnapshot | undefined;
 
 	function applyValidatedSettings(input: Partial<FooterFrameworkSettings>): void {
 		Object.assign(settings, normalizeSettings(input));
-		settings.minGap = clamp(settings.minGap, 1, 12);
-		settings.maxGap = clamp(settings.maxGap, settings.minGap, 40);
-		settings.branchMaxLength = clamp(settings.branchMaxLength, 10, 64);
+		syncLegacyLineAnchors(settings);
+		settings.minGap = Math.max(0, Math.round(settings.minGap));
+		settings.maxGap = Math.max(settings.minGap, Math.round(settings.maxGap));
+		settings.branchMaxLength = Math.max(1, Math.round(settings.branchMaxLength));
 	}
 
 	function saveSettings(scope: ConfigScope, ctx?: ExtensionContext): string {
@@ -435,7 +606,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	}
 
 	function loadSettings(ctx: ExtensionContext): string {
-		Object.assign(settings, { ...DEFAULT_SETTINGS, items: { ...DEFAULT_SETTINGS.items } });
+		Object.assign(settings, cloneDefaultSettings());
 		const userPath = userConfigPath();
 		const projectPath = projectConfigPath(ctx);
 		const userConfig = readConfigFile(userPath);
@@ -675,11 +846,12 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		if (extStatuses) items.push({ id: "ext", text: extStatuses, placement: placementFor("ext", DEFAULT_ITEM_PLACEMENTS.ext) });
 
 		for (const [id, external] of externalItems) {
-			if (!external.text) continue;
+			const text = renderExternalItem(theme, external);
+			if (!text) continue;
 			items.push({
 				id,
-				text: external.text,
-				placement: placementFor(id, { visible: true, line: 2, zone: "right", order: 100 }, external.placement),
+				text,
+				placement: placementFor(id, { visible: true, line: 2, zone: "right", order: 100 }, external.hint.placement),
 			});
 		}
 
@@ -749,15 +921,22 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 					const statsText = theme.fg("dim", `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`);
 					const items = collectItems(theme, footerData, statsText);
-					const line1Result = renderFooterLine(theme, width, items, 1, settings.line1Anchor);
-					const line2Result = renderFooterLine(theme, width, items, 2, settings.line2Anchor);
+					const maxLine = Math.max(2, ...items.map((item) => item.placement.line));
+					const lineResults = Array.from({ length: maxLine }, (_, index) => {
+						const line = index + 1;
+						const result = renderFooterLine(theme, width, items, line, getLineAnchor(settings, line));
+						return { line, text: result.line, layout: result.layout };
+					});
+					const line1Result = lineResults[0];
+					const line2Result = lineResults[1];
 
 					lastFooterSnapshot = {
 						width,
-						line1: line1Result.line,
-						line2: line2Result.line,
-						line1Layout: line1Result.layout,
-						line2Layout: line2Result.layout,
+						lines: lineResults,
+						line1: line1Result?.text ?? "",
+						line2: line2Result?.text ?? "",
+						line1Layout: line1Result?.layout ?? renderFooterLine(theme, width, [], 1, getLineAnchor(settings, 1)).layout,
+						line2Layout: line2Result?.layout ?? renderFooterLine(theme, width, [], 2, getLineAnchor(settings, 2)).layout,
 						gitBranch: footerData.getGitBranch(),
 						renderedItems: items.map((item) => ({
 							id: item.id,
@@ -773,7 +952,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 						thinkingLevel: pi.getThinkingLevel(),
 						cwd: ctx.cwd,
 					};
-					return [line1Result.line, line2Result.line];
+					return lineResults.map((line) => line.text);
 				},
 			};
 		});
@@ -790,16 +969,18 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	pi.events.on("footer-framework:item", (event) => {
 		const item = event as ExternalFooterItemEvent;
-		if (!item.id?.trim()) return;
-		if (item.remove) externalItems.delete(item.id);
-		else if (typeof item.text === "string") {
-			externalItems.set(item.id, { text: item.text, placement: normalizePlacement(item.placement ?? {}) });
+		const id = item.id?.trim();
+		if (!id) return;
+		if (item.remove) externalItems.delete(id);
+		else {
+			const normalized = normalizeExternalItemEvent(item);
+			if (normalized) externalItems.set(id, normalized);
 		}
 		requestRender?.();
 	});
 
 	pi.registerCommand("footerfx", {
-		description: "Footer framework controls (on/off, section, gap, branch-width, mcp-zero, reset)",
+		description: "Footer framework controls (on/off, item layout, anchor, gap, branch-width, mcp-zero, reset)",
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			if (!trimmed) {
@@ -854,7 +1035,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			parameters: Type.Object({
 				command: Type.String({
 					description:
-						"Same syntax as /footerfx, e.g. 'section context on', 'item context after stats', 'anchor all right', 'gap 1 10', 'save project', 'load', 'on', 'off', 'reset'",
+						"Same syntax as /footerfx, e.g. 'section context on', 'item context line 3', 'item context after stats', 'anchor all right', 'gap 1 10', 'save project', 'load', 'on', 'off', 'reset'",
 				}),
 			}),
 			async execute(_toolCallId, params) {
