@@ -7,6 +7,7 @@ Approach software development work with understanding, correctness, testability,
 ## Always Start Here
 
 - Read local project guidance first: `AGENTS.md`, `CLAUDE.md`, `README.md`, build/test files, CI, `.editorconfig`, and relevant architecture or contract docs.
+- Treat fully injected current-project guidance as already read; do not reread it just to satisfy this checklist. Reread only when it is missing/truncated, you need exact line text or freshness, or you switch to a different target repo/path whose guidance was not injected.
 - Treat local commands, constraints, and generated-file flows as part of the requirements.
 - Prefer changing sources of truth and regenerating derived outputs instead of hand-editing generated artifacts unless the project clearly expects otherwise.
 
