@@ -50,7 +50,7 @@ Use this skill when a user wants footer layout changes without editing extension
 - Compatible extensions should emit structured data/status plus optional hints; hints are advisory only.
 - Built-in footer items use the same adapter path as external integrations.
 - Existing extensions can be adapted from Pi status entries or custom session entries without changing their source.
-- Built-in Pi/session data can be adapted from `pi` sources such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, `tools`, `commands`, and `extensionStatuses`.
+- Built-in Pi/session data can be adapted from `pi` sources such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, and `extensionStatuses`.
 - Adapter templates use a restricted Liquid-style grammar: quoted strings are literals (`{{ "EUR" }}`), unquoted terms are variables (`{{ pi.stats.costText }}`), and filters apply styles (`{{ value | style: "accent,bold" }}`).
 - Style tokens are Pi theme foreground colors/background colors and text attributes: e.g. `accent`, `muted`, `dim`, `success`, `warning`, `error`, `bg:toolSuccessBg`, `bold`, `underline`, `strikethrough`.
 - User/project config and explicit agent changes override built-in adapter defaults, extension hints, and adapter defaults.
@@ -59,7 +59,7 @@ Use this skill when a user wants footer layout changes without editing extension
 
 ## Workflow
 1. Read current state with `/footerfx` or `footer_framework_state`.
-2. When adapting built-in or extension data, call `footer_framework_sources` first. Prefer `piSources` for Pi data, existing `extensionStatuses` for extension status text, and recent `customEntries` when status text is insufficient.
+2. When adapting built-in or extension data, call `footer_framework_sources` first. Prefer `piSources` for Pi data, existing `extensionStatuses` for extension status text, and recent `customEntries` when status text is insufficient. Do not request tool/command/skill metadata unless troubleshooting discovery itself; use `includeTools`, `includeCommands`, `includeSkills`, or `includeDetails` only when that extra runtime metadata is directly useful.
 3. Add adapters with `footer_framework_adapter_config` for precise JSON config, or `/footerfx adapter ...` for simple status/custom-entry mappings.
 4. Use templates when the user wants combined items or token-level styling, such as `{{ pi.cwd | style: "dim" }} {{ "(" | style: "muted" }}{{ pi.branch.compact | style: "accent" }}{{ ")" | style: "muted" }}`.
 5. Check `footer_framework_state` or `/footerfx-debug` for template diagnostics after changing templates.

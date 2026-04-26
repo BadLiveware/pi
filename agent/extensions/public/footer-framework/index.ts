@@ -125,6 +125,13 @@ interface FooterTemplateDiagnostic {
 	severity: "warning" | "error";
 }
 
+interface FooterSourceInventoryOptions {
+	includeTools?: boolean;
+	includeCommands?: boolean;
+	includeSkills?: boolean;
+	includeDetails?: boolean;
+}
+
 interface FooterAdapterSourceValue {
 	label?: string;
 	value?: unknown;
@@ -224,7 +231,7 @@ const DEFAULT_BUILT_IN_ADAPTERS: Record<string, FooterAdapterConfig> = {
 		source: "pi",
 		key: "context",
 		itemId: "context",
-		template: '{{ "ctx " | style: pi.context.tone }}{{ pi.context.percentText | style: pi.context.tone }} {{ pi.context.tokenText | style: pi.context.tone }}',
+		template: '{{ "ctx" | style: pi.context.tone }} {{ pi.context.percentText | style: pi.context.tone }} {{ pi.context.tokenText | style: pi.context.tone }}',
 		placement: DEFAULT_ITEM_PLACEMENTS.context,
 	},
 	pr: { source: "pi", key: "pr", itemId: "pr", template: '{{ "PR " | style: "muted" }}{{ pi.pr.checkGlyph | style: pi.pr.checkTone }}{{ pi.pr.commentsText | style: "muted" }}', placement: DEFAULT_ITEM_PLACEMENTS.pr },
@@ -434,6 +441,13 @@ function osc8(label: string, url: string): string {
 	return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
 }
 
+function normalizeLinkUrl(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	if (!trimmed || /[\r\n]/.test(trimmed)) return undefined;
+	return trimmed;
+}
+
 function sanitizeStatusText(text: string): string {
 	return text
 		.replace(/[\r\n\t]/g, " ")
@@ -459,6 +473,12 @@ function valueToText(value: unknown): string | undefined {
 	} catch {
 		return sanitizeStatusText(String(value));
 	}
+}
+
+function valueToTemplateText(value: unknown): string | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value === "string") return value.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ");
+	return valueToText(value);
 }
 
 function normalizeDisplayHint(event: ExternalFooterItemEvent): FooterItemDisplayHint {
@@ -743,7 +763,7 @@ function applyTemplateFilter(
 		return url ? osc8(value, url) : value;
 	}
 	if (name === "default") {
-		return value.length > 0 && !value.startsWith("[missing:") ? value : (valueToText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token)) ?? "");
+		return value.length > 0 && !value.startsWith("[missing:") ? value : (valueToTemplateText(evaluateTemplateTerm(arg, context, diagnostics, adapterId, token)) ?? "");
 	}
 	diagnostics.push({ adapterId, token, severity: "warning", message: `Unknown template filter: ${name}` });
 	return theme.fg("warning", value);
@@ -769,7 +789,7 @@ function renderTemplate(
 		} else {
 			const [head, ...filters] = splitTemplatePipes(expression);
 			const hasDefaultFilter = filters.some((filter) => parseFilter(filter).name === "default");
-			let rendered = valueToText(evaluateTemplateTerm(head, context, diagnostics, adapterId, token, !hasDefaultFilter)) ?? "";
+			let rendered = valueToTemplateText(evaluateTemplateTerm(head, context, diagnostics, adapterId, token, !hasDefaultFilter)) ?? "";
 			for (const filter of filters) rendered = applyTemplateFilter(theme, rendered, filter, context, diagnostics, adapterId, token);
 			output += rendered;
 		}
@@ -815,7 +835,7 @@ function adapterItemFromSource(adapterId: string, adapter: FooterAdapterConfig, 
 	if (!selectedText && !allowEmpty) return undefined;
 	const matched = selectedText ? extractMatchedValue(selectedText, adapter) : undefined;
 	if (!matched && !allowEmpty) return undefined;
-	const url = valueToText(selectPath(sourceValue, adapter.urlPath)) ?? sourceObject.url;
+	const url = (adapter.urlPath ? normalizeLinkUrl(selectPath(sourceValue, adapter.urlPath)) : undefined) ?? normalizeLinkUrl(sourceObject.url);
 	return {
 		id: adapter.itemId ?? adapterId,
 		label: adapter.label ?? sourceObject.label ?? adapterId,
@@ -841,8 +861,6 @@ function templatePiContext(piSources: Record<string, FooterAdapterSourceValue>):
 		context: piSources.context?.data ?? {},
 		branch: piSources.branch?.data ?? {},
 		pr: piSources.pr?.data ?? {},
-		tools: piSources.tools?.data ?? {},
-		commands: piSources.commands?.data ?? {},
 		extensionStatuses: piSources.extensionStatuses?.data ?? {},
 	};
 }
@@ -1385,8 +1403,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
 		stats: { input: number; output: number; cost: number; inputText: string; outputText: string; costText: string; value: string },
 	): Record<string, FooterAdapterSourceValue> {
-		const activeTools = pi.getActiveTools();
-		const commands = pi.getCommands();
 		const sources: Record<string, FooterAdapterSourceValue> = {
 			cwd: { label: "cwd", value: currentCtx?.cwd ?? "", tone: "muted", data: { path: currentCtx?.cwd ?? "" } },
 			model: {
@@ -1397,8 +1413,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			},
 			stats: { label: "stats", value: stats.value, tone: "muted", data: stats },
 			extensionStatuses: { label: "ext", value: footerData.getExtensionStatuses().size, data: Object.fromEntries(footerData.getExtensionStatuses()) },
-			tools: { label: "tools", value: activeTools.length, data: { count: activeTools.length, names: activeTools } },
-			commands: { label: "commands", value: commands.length, data: { count: commands.length, names: commands.map((command) => command.name) } },
 		};
 		const context = contextUsageSource();
 		if (context) sources.context = context;
@@ -1506,7 +1520,11 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return resolveRelativeOrders(items).filter((item) => item.placement.visible && item.text.length > 0);
 	}
 
-	function footerSourceInventory() {
+	function compactRuntimeItem(item: { name: string; description?: string; sourceInfo?: unknown }, options: FooterSourceInventoryOptions) {
+		return options.includeDetails ? { name: item.name, description: item.description, sourceInfo: item.sourceInfo } : { name: item.name };
+	}
+
+	function footerSourceInventory(options: FooterSourceInventoryOptions = {}) {
 		const entries = currentCtx?.sessionManager.getEntries() ?? [];
 		const customEntries = new Map<string, { customType: string; count: number; latest: unknown }>();
 		for (const entry of entries as Array<{ type?: string; customType?: string; data?: unknown }>) {
@@ -1516,7 +1534,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			current.latest = previewValue(entry.data);
 			customEntries.set(entry.customType, current);
 		}
-		return {
+		const payload: Record<string, unknown> = {
 			builtInItems: Object.keys(DEFAULT_ITEM_PLACEMENTS).sort(),
 			piSources: Object.fromEntries(Object.entries(lastPiSources).map(([key, value]) => [key, previewValue(value)])),
 			stylePrimitives: {
@@ -1536,12 +1554,22 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			})),
 			extensionStatuses: lastFooterSnapshot?.extensionStatuses ?? [],
 			customEntries: Array.from(customEntries.values()).sort((a, b) => a.customType.localeCompare(b.customType)),
-			tools: pi.getAllTools().map((tool) => ({ name: tool.name, description: tool.description, sourceInfo: tool.sourceInfo })),
-			commands: pi.getCommands().map((command) => ({ name: command.name, description: command.description, sourceInfo: command.sourceInfo })),
 			adapters: settings.adapters,
 			renderedItems: lastFooterSnapshot?.renderedItems ?? [],
 			configPaths: currentCtx ? { user: userConfigPath(), project: projectConfigPath(currentCtx) } : { user: userConfigPath() },
+			omitted: {
+				tools: "pass includeTools: true to include registered tool names",
+				commands: "pass includeCommands: true to include command names",
+				details: "pass includeDetails: true with includeTools/includeCommands for descriptions and sourceInfo",
+				skills: "pass includeSkills: true with includeCommands to include skill commands",
+			},
 		};
+		if (options.includeTools) payload.tools = pi.getAllTools().map((tool) => compactRuntimeItem(tool, options));
+		if (options.includeCommands) {
+			const commands = options.includeSkills ? pi.getCommands() : pi.getCommands().filter((command) => !command.name.startsWith("skill:"));
+			payload.commands = commands.map((command) => compactRuntimeItem(command, options));
+		}
+		return payload;
 	}
 
 	function applyFooterConfig(input: string, ctx?: ExtensionContext): string {
@@ -1728,10 +1756,15 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		defineTool({
 			name: "footer_framework_sources",
 			label: "Footer Framework Sources",
-			description: "Inspect data sources the footer framework can adapt into footer items, including extension statuses, session entries, tools, and commands",
-			parameters: Type.Object({}),
-			async execute() {
-				const payload = footerSourceInventory();
+			description: "Inspect data sources the footer framework can adapt into footer items. Defaults to concise footer-relevant data; pass includeTools/includeCommands for runtime metadata.",
+			parameters: Type.Object({
+				includeTools: Type.Optional(Type.Boolean({ description: "Include registered tool names. Default false to avoid bloating footer discovery output." })),
+				includeCommands: Type.Optional(Type.Boolean({ description: "Include command names. Default false to avoid bloating footer discovery output." })),
+				includeSkills: Type.Optional(Type.Boolean({ description: "Include skill commands when includeCommands is true. Default false." })),
+				includeDetails: Type.Optional(Type.Boolean({ description: "Include descriptions and sourceInfo for included tools/commands. Default false." })),
+			}),
+			async execute(_toolCallId, params) {
+				const payload = footerSourceInventory(params as FooterSourceInventoryOptions);
 				return {
 					content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
 					details: payload,

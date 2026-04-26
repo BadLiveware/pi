@@ -47,12 +47,11 @@ Items can be shown/hidden and positioned by line, left/right zone, relative orde
 
 Extensions do not have to explicitly target footer-framework. The framework can adapt data that Pi already exposes:
 
-- built-in Pi/session/footer data through `pi` sources such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, `tools`, `commands`, and `extensionStatuses`
+- built-in Pi/session/footer data through `pi` sources such as `cwd`, `model`, `stats`, `context`, `branch`, `pr`, and `extensionStatuses`
 - `ctx.ui.setStatus()` values through Pi footer status data
 - custom session entries written by extensions with `pi.appendEntry()`
-- tool and command metadata for discovery
 
-Agents can inspect those sources with `footer_framework_sources`, then add adapter rules with `footer_framework_adapter_config` or simple `/footerfx adapter ...` commands. The default built-in footer items dogfood this same adapter path.
+Agents can inspect those sources with `footer_framework_sources`, then add adapter rules with `footer_framework_adapter_config` or simple `/footerfx adapter ...` commands. The source tool defaults to concise footer-relevant data; pass `includeTools`, `includeCommands`, `includeSkills`, and `includeDetails` only when runtime metadata is useful for debugging. The default built-in footer items dogfood this same adapter path.
 
 Example: render another extension's existing status key as its own footer item instead of leaving it in the generic `ext` bucket:
 
@@ -102,7 +101,6 @@ Useful template context:
 | `pi.context.percentText`, `pi.context.tokenText`, `pi.context.tone` | Context usage and recommended tone. |
 | `pi.branch.name`, `pi.branch.compact`, `pi.branch.label` | Git branch values. |
 | `pi.pr.number`, `pi.pr.url`, `pi.pr.checkGlyph`, `pi.pr.checkTone`, `pi.pr.commentsText` | Pull request state when available. |
-| `pi.tools.count`, `pi.tools.names`, `pi.commands.count`, `pi.commands.names` | Active tools and commands. |
 
 Supported filters:
 
@@ -141,6 +139,14 @@ Project settings can override them:
 
 Use `/footerfx save project` only when you intentionally want a project-specific footer layout.
 
+## Troubleshooting
+
+### Blank space below the footer
+
+If blank rows sometimes appear below the footer and disappear after you send a prompt, check `/footerfx-debug` or `footer_framework_state`. When `lastFooterSnapshot.lines` contains only the expected footer lines, the framework is not rendering extra rows. This is usually Pi's TUI viewport/differential rendering leaving unused terminal space below the last rendered component.
+
+A Pi-side workaround is `terminal.clearOnShrink: true` in `~/.pi/agent/settings.json`, but that can add redraw flicker. Footer-framework does not change this setting.
+
 ## Commands
 
 | Command | What it does |
@@ -176,7 +182,7 @@ Use `/footerfx save project` only when you intentionally want a project-specific
 The extension exposes tools so agents can inspect and adjust the footer without asking you to run commands:
 
 - `footer_framework_state`
-- `footer_framework_sources`
+- `footer_framework_sources` (concise by default; optional `includeTools`, `includeCommands`, `includeSkills`, and `includeDetails` flags expose runtime metadata)
 - `footer_framework_config`
 - `footer_framework_adapter_config`
 
