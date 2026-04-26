@@ -1,6 +1,6 @@
 {
   "name": "@badliveware/pi-model-catalog",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Expose Pi model listings and selection guidance as an agent tool.",
   "type": "module",
   "keywords": [

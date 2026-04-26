@@ -1,6 +1,6 @@
 {
   "name": "@badliveware/pi-compaction-continue",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Auto-continue extension for Pi after idle compactions.",
   "type": "module",
   "keywords": [
