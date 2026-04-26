@@ -1,26 +1,27 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
-type FooterAnchorMode = "gap" | "left" | "center" | "right" | "spread";
-type FooterLine = number;
-type FooterZone = "left" | "right";
+export type FooterAnchorMode = "gap" | "left" | "center" | "right" | "spread";
+export type FooterLine = number;
+export type FooterZone = "left" | "right";
+export type FooterColumn = number | "center" | "middle" | `${number}%`;
 type ConfigScope = "user" | "project";
-type ExternalFooterItemTone = "muted" | "info" | "success" | "warning" | "error" | "accent";
-type ExternalFooterItemFormat = "auto" | "value" | "label-value" | "status";
-type FooterAdapterSource = "pi" | "extensionStatus" | "sessionEntry";
+export type ExternalFooterItemTone = "muted" | "info" | "success" | "warning" | "error" | "accent";
+export type ExternalFooterItemFormat = "auto" | "value" | "label-value" | "status";
+export type FooterAdapterSource = "pi" | "extensionStatus" | "sessionEntry";
 
-interface FooterItemPlacement {
+export interface FooterItemPlacement {
 	visible: boolean;
 	line: FooterLine;
 	zone: FooterZone;
 	order: number;
-	column?: number;
+	column?: FooterColumn;
 	before?: string;
 	after?: string;
 }
@@ -36,10 +37,61 @@ interface FooterLineLayout {
 	truncated: boolean;
 }
 
+interface FooterRenderedToken {
+	text: string;
+	style?: string;
+	url?: string;
+	width: number;
+}
+
 interface FooterItem {
 	id: string;
 	text: string;
 	placement: FooterItemPlacement;
+	tokens?: FooterRenderedToken[];
+	renderSource?: "template" | "function" | "external";
+}
+
+export interface FooterSpan {
+	text: unknown;
+	style?: string;
+	url?: string;
+}
+
+export type FooterRenderable = string | number | boolean | null | undefined | FooterSpan | FooterRenderable[];
+
+export interface FooterRenderPiContext {
+	cwd: string;
+	model: Record<string, unknown> & { id?: string; provider?: string; thinking?: string };
+	stats: Record<string, unknown> & { inputText?: string; outputText?: string; costText?: string };
+	context?: Record<string, unknown> & { percentText?: string; tokenText?: string; tone?: ExternalFooterItemTone };
+	branch?: Record<string, unknown> & { name?: string; label?: string; prNumber?: number; prUrl?: string };
+	pr?: Record<string, unknown> & { number?: number; url?: string; checkGlyph?: string; checkTone?: ExternalFooterItemTone; commentsText?: string };
+	extensionStatuses: Record<string, unknown>;
+}
+
+export interface FooterRenderContext {
+	id: string;
+	value?: unknown;
+	label?: string;
+	status?: unknown;
+	data?: unknown;
+	url?: string;
+	source?: unknown;
+	pi: FooterRenderPiContext;
+	span(text: unknown, style?: string, options?: { url?: string }): FooterSpan;
+	fn: {
+		text(value: unknown): string;
+		width(value: string): number;
+		truncate(value: unknown, maxWidth: number, ellipsis?: string): string;
+		compactPath(value: unknown, maxWidth: number, tailSegments?: number): string;
+	};
+}
+
+export type FooterRenderFunction = (context: FooterRenderContext) => FooterRenderable;
+
+export interface FooterItemConfig extends Partial<FooterItemPlacement> {
+	render?: FooterRenderFunction;
 }
 
 interface FooterItemDisplayHint {
@@ -86,7 +138,7 @@ interface FooterSnapshot {
 	line1Layout: FooterLineLayout;
 	line2Layout: FooterLineLayout;
 	gitBranch: string | null;
-	renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: number; width: number }>;
+	renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: FooterColumn; width: number; renderSource?: string; tokens?: FooterRenderedToken[] }>;
 	extensionStatuses: Array<{ key: string; value: string }>;
 	model: string;
 	contextUsage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
@@ -94,7 +146,7 @@ interface FooterSnapshot {
 	cwd: string;
 }
 
-interface FooterAdapterConfig {
+export interface FooterAdapterConfig {
 	source: FooterAdapterSource;
 	/** Built-in Pi source key, extension status key, or custom entry type for sessionEntry adapters. */
 	key: string;
@@ -112,6 +164,8 @@ interface FooterAdapterConfig {
 	emptyTemplate?: string;
 	/** Default style applied to the full rendered adapter item. */
 	style?: string;
+	/** TS/JS config only: normal render closure returning text/spans. Not persisted to JSON. */
+	render?: FooterRenderFunction;
 	icon?: string;
 	placement?: Partial<FooterItemPlacement>;
 	hideWhenEmpty?: boolean;
@@ -154,6 +208,15 @@ interface PrState {
 	};
 }
 
+export interface FooterFrameworkConfig {
+	enabled?: boolean;
+	lineAnchors?: Record<string, FooterAnchorMode>;
+	minGap?: number;
+	maxGap?: number;
+	items?: Record<string, FooterItemConfig>;
+	adapters?: Record<string, FooterAdapterConfig>;
+}
+
 interface FooterFrameworkSettings {
 	enabled: boolean;
 	lineAnchors: Record<string, FooterAnchorMode>;
@@ -176,6 +239,7 @@ const DEFAULT_SETTINGS: FooterFrameworkSettings = {
 
 const ANCHOR_MODES: FooterAnchorMode[] = ["gap", "left", "center", "right", "spread"];
 const CONFIG_FILE_NAME = "footer-framework.json";
+const CODE_CONFIG_FILE_NAMES = ["footer-framework.config.ts", "footer-framework.config.js", "footer-framework.config.mjs", "footer-framework.config.cjs"];
 const DEFAULT_ITEM_PLACEMENTS: Record<string, FooterItemPlacement> = {
 	cwd: { visible: true, line: 1, zone: "left", order: 10 },
 	model: { visible: true, line: 1, zone: "right", order: 10 },
@@ -288,15 +352,53 @@ function projectConfigPath(ctx: ExtensionContext): string {
 	return path.join(ctx.cwd, ".pi", CONFIG_FILE_NAME);
 }
 
+function codeConfigPathCandidates(dir: string): string[] {
+	return CODE_CONFIG_FILE_NAMES.map((fileName) => path.join(dir, fileName));
+}
+
+function firstExistingPath(paths: string[]): string | undefined {
+	return paths.find((candidate) => fs.existsSync(candidate));
+}
+
+function userCodeConfigPath(): string | undefined {
+	return firstExistingPath(codeConfigPathCandidates(agentDir()));
+}
+
+function projectCodeConfigPath(ctx: ExtensionContext): string | undefined {
+	return firstExistingPath(codeConfigPathCandidates(path.join(ctx.cwd, ".pi")));
+}
+
+function configPaths(ctx?: ExtensionContext): Record<string, unknown> {
+	return {
+		user: userConfigPath(),
+		userCodeCandidates: codeConfigPathCandidates(agentDir()),
+		userCode: userCodeConfigPath(),
+		project: ctx ? projectConfigPath(ctx) : undefined,
+		projectCodeCandidates: ctx ? codeConfigPathCandidates(path.join(ctx.cwd, ".pi")) : undefined,
+		projectCode: ctx ? projectCodeConfigPath(ctx) : undefined,
+	};
+}
+
+function normalizeColumn(value: unknown): FooterColumn | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.round(value));
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim().toLowerCase();
+	if (trimmed === "center" || trimmed === "middle") return trimmed;
+	if (/^-?\d+(?:\.\d+)?%$/.test(trimmed)) return trimmed as `${number}%`;
+	if (/^\d+$/.test(trimmed)) return Math.max(0, Math.round(Number(trimmed)));
+	return undefined;
+}
+
 function normalizePlacement(input: Partial<FooterItemPlacement>): Partial<FooterItemPlacement> {
 	const placement: Partial<FooterItemPlacement> = {};
-	const rawInput = input as Partial<FooterItemPlacement> & { line?: unknown };
+	const rawInput = input as Partial<FooterItemPlacement> & { line?: unknown; column?: unknown };
 	const line = normalizeFooterLine(rawInput.line);
+	const column = normalizeColumn(rawInput.column);
 	if (typeof input.visible === "boolean") placement.visible = input.visible;
 	if (line !== undefined) placement.line = line;
 	if (input.zone === "left" || input.zone === "right") placement.zone = input.zone;
 	if (Number.isFinite(input.order)) placement.order = Math.round(input.order as number);
-	if (Number.isFinite(input.column)) placement.column = Math.max(0, Math.round(input.column as number));
+	if (column !== undefined) placement.column = column;
 	if (typeof input.before === "string" && input.before.trim()) placement.before = input.before.trim();
 	if (typeof input.after === "string" && input.after.trim()) placement.after = input.after.trim();
 	return placement;
@@ -330,7 +432,7 @@ function normalizeAdapter(input: unknown): FooterAdapterConfig | undefined {
 	return adapter;
 }
 
-function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<FooterFrameworkSettings> {
+function normalizeSettings(input: Partial<FooterFrameworkConfig>): Partial<FooterFrameworkSettings> {
 	const normalized: Partial<FooterFrameworkSettings> = {};
 	for (const key of ["enabled"] as const) {
 		if (typeof input[key] === "boolean") normalized[key] = input[key];
@@ -349,8 +451,10 @@ function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<Foo
 		normalized.items = {};
 		for (const [id, placement] of Object.entries(input.items)) {
 			if (!id.trim() || !placement || typeof placement !== "object") continue;
-			normalized.items[id] = normalizePlacement(placement as Partial<FooterItemPlacement>);
+			const normalizedPlacement = normalizePlacement(placement as Partial<FooterItemPlacement>);
+			if (Object.keys(normalizedPlacement).length > 0) normalized.items[id] = normalizedPlacement;
 		}
+		if (Object.keys(normalized.items).length === 0) delete normalized.items;
 	}
 	if (input.adapters && typeof input.adapters === "object") {
 		normalized.adapters = {};
@@ -366,11 +470,19 @@ function normalizeSettings(input: Partial<FooterFrameworkSettings>): Partial<Foo
 function readConfigFile(filePath: string): Partial<FooterFrameworkSettings> | undefined {
 	try {
 		if (!fs.existsSync(filePath)) return undefined;
-		const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Partial<FooterFrameworkSettings>;
+		const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Partial<FooterFrameworkConfig>;
 		return normalizeSettings(parsed);
 	} catch {
 		return undefined;
 	}
+}
+
+async function readCodeConfigFile(filePath: string): Promise<FooterFrameworkConfig | undefined> {
+	if (!fs.existsSync(filePath)) return undefined;
+	const stat = fs.statSync(filePath);
+	const imported = (await import(`${pathToFileURL(filePath).href}?mtime=${stat.mtimeMs}`)) as { default?: unknown };
+	if (!imported.default || typeof imported.default !== "object") throw new Error("default export must be a footer config object");
+	return imported.default as FooterFrameworkConfig;
 }
 
 function writeConfigFile(filePath: string, settings: FooterFrameworkSettings): void {
@@ -555,6 +667,59 @@ function renderExternalItem(theme: ExtensionContext["ui"]["theme"], item: Extern
 	else if (label) text = `${prefix}${theme.fg("muted", label)}`;
 	if (!text) return undefined;
 	return item.url ? osc8(text, item.url) : text;
+}
+
+function isFooterSpan(value: unknown): value is FooterSpan {
+	return Boolean(value && typeof value === "object" && "text" in value);
+}
+
+function renderValueText(value: unknown): string {
+	return valueToTemplateText(value) ?? "";
+}
+
+function renderSpan(
+	theme: ExtensionContext["ui"]["theme"],
+	span: FooterSpan,
+	diagnostics: FooterTemplateDiagnostic[],
+	adapterId: string,
+): { text: string; tokens: FooterRenderedToken[] } {
+	const plain = renderValueText(span.text);
+	let styled = span.style ? applyStyleSpec(theme, plain, span.style, diagnostics, adapterId) : plain;
+	if (span.url) styled = osc8(styled, span.url);
+	return { text: styled, tokens: [{ text: plain, style: span.style, url: span.url, width: visibleWidth(plain) }] };
+}
+
+function renderRenderable(
+	theme: ExtensionContext["ui"]["theme"],
+	value: FooterRenderable,
+	diagnostics: FooterTemplateDiagnostic[],
+	adapterId: string,
+): { text: string; tokens: FooterRenderedToken[] } {
+	if (value === undefined || value === null || value === false) return { text: "", tokens: [] };
+	if (Array.isArray(value)) {
+		const parts = value.map((entry) => renderRenderable(theme, entry, diagnostics, adapterId));
+		return { text: parts.map((part) => part.text).join(""), tokens: parts.flatMap((part) => part.tokens) };
+	}
+	if (isFooterSpan(value)) return renderSpan(theme, value, diagnostics, adapterId);
+	const text = renderValueText(value);
+	return { text, tokens: text ? [{ text, width: visibleWidth(text) }] : [] };
+}
+
+function footerRenderFunctions(): FooterRenderContext["fn"] {
+	return {
+		text(value: unknown) {
+			return renderValueText(value);
+		},
+		width(value: string) {
+			return visibleWidth(value);
+		},
+		truncate(value: unknown, maxWidth: number, ellipsis = "…") {
+			return truncateToWidth(renderValueText(value), Math.max(1, Math.round(maxWidth)), ellipsis);
+		},
+		compactPath(value: unknown, maxWidth: number, tailSegments = 2) {
+			return compactPathText(renderValueText(value), Math.max(4, Math.round(maxWidth)), Math.max(1, Math.round(tailSegments)));
+		},
+	};
 }
 
 function parsePath(pathExpression: string): string[] {
@@ -904,6 +1069,39 @@ function templatePiContext(piSources: Record<string, FooterAdapterSourceValue>):
 	};
 }
 
+function renderPiContext(piSources: Record<string, FooterAdapterSourceValue>): FooterRenderPiContext {
+	return {
+		cwd: renderValueText(piSources.cwd?.value),
+		model: (piSources.model?.data ?? {}) as FooterRenderPiContext["model"],
+		stats: (piSources.stats?.data ?? {}) as FooterRenderPiContext["stats"],
+		context: piSources.context?.data as FooterRenderPiContext["context"],
+		branch: piSources.branch?.data as FooterRenderPiContext["branch"],
+		pr: piSources.pr?.data as FooterRenderPiContext["pr"],
+		extensionStatuses: (piSources.extensionStatuses?.data ?? {}) as Record<string, unknown>,
+	};
+}
+
+function renderContextForAdapter(
+	id: string,
+	external: ExternalFooterItem | undefined,
+	sourceValue: unknown,
+	piSources: Record<string, FooterAdapterSourceValue>,
+): FooterRenderContext {
+	const sourceObject = sourceValueObject(sourceValue);
+	return {
+		id,
+		label: external?.label ?? sourceObject.label,
+		value: external?.value ?? sourceObject.value,
+		status: external?.status ?? sourceObject.status,
+		data: external?.data ?? sourceObject.data ?? sourceValue,
+		url: external?.url ?? sourceObject.url,
+		source: sourceObject,
+		pi: renderPiContext(piSources),
+		span: (text, style, options) => ({ text, style, url: options?.url }),
+		fn: footerRenderFunctions(),
+	};
+}
+
 function templateContextForAdapter(external: ExternalFooterItem, sourceValue: unknown, piSources: Record<string, FooterAdapterSourceValue>): Record<string, unknown> {
 	const sourceObject = sourceValueObject(sourceValue);
 	return {
@@ -917,6 +1115,27 @@ function templateContextForAdapter(external: ExternalFooterItem, sourceValue: un
 	};
 }
 
+function renderFunctionOutput(
+	theme: ExtensionContext["ui"]["theme"],
+	id: string,
+	render: FooterRenderFunction,
+	context: FooterRenderContext,
+	diagnostics: FooterTemplateDiagnostic[],
+): { text: string; tokens: FooterRenderedToken[] } | undefined {
+	try {
+		const output = render(context);
+		if (output && typeof output === "object" && "then" in output && typeof (output as { then?: unknown }).then === "function") {
+			diagnostics.push({ adapterId: id, severity: "error", message: "Render functions must be synchronous" });
+			return undefined;
+		}
+		const rendered = renderRenderable(theme, output, diagnostics, id);
+		return rendered.text ? rendered : undefined;
+	} catch (error) {
+		diagnostics.push({ adapterId: id, severity: "error", message: `Render function failed: ${error instanceof Error ? error.message : String(error)}` });
+		return undefined;
+	}
+}
+
 function renderAdapterText(
 	theme: ExtensionContext["ui"]["theme"],
 	adapterId: string,
@@ -925,12 +1144,20 @@ function renderAdapterText(
 	sourceValue: unknown,
 	piSources: Record<string, FooterAdapterSourceValue>,
 	diagnostics: FooterTemplateDiagnostic[],
-): string | undefined {
+	renderOverride?: FooterRenderFunction,
+): { text: string; tokens?: FooterRenderedToken[]; renderSource: "template" | "function" | "external" } | undefined {
+	if (renderOverride) {
+		const rendered = renderFunctionOutput(theme, adapterId, renderOverride, renderContextForAdapter(adapterId, external, sourceValue, piSources), diagnostics);
+		if (!rendered) return undefined;
+		let text = rendered.text;
+		if (adapter.style) text = applyStyleSpec(theme, text, adapter.style, diagnostics, adapterId);
+		return { text, tokens: rendered.tokens, renderSource: "function" };
+	}
 	const template = !external.value && adapter.emptyTemplate ? adapter.emptyTemplate : adapter.template;
 	let text = template ? renderTemplate(template, templateContextForAdapter(external, sourceValue, piSources), theme, adapterId, diagnostics) : renderExternalItem(theme, external);
 	if (text && adapter.style) text = applyStyleSpec(theme, text, adapter.style, diagnostics, adapterId);
 	if (text && template && external.url) text = osc8(text, external.url);
-	return text;
+	return text ? { text, renderSource: template ? "template" : "external" } : undefined;
 }
 
 function redactSensitive(value: unknown, depth = 0): unknown {
@@ -1042,11 +1269,11 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 		if (action === "column") {
 			if (arg === "off" || arg === "auto") {
 				delete item.column;
-				return `Item ${id} absolute column disabled.`;
+				return `Item ${id} column disabled.`;
 			}
-			const column = Number(arg);
-			if (!Number.isFinite(column)) return "Item column must be a number, off, or auto.";
-			item.column = Math.max(0, Math.round(column));
+			const column = normalizeColumn(arg);
+			if (column === undefined) return "Item column must be a number, center, middle, percent like 50%, off, or auto.";
+			item.column = column;
 			return `Item ${id} column set to ${item.column}.`;
 		}
 		if (action === "before" || action === "after") {
@@ -1127,7 +1354,7 @@ function parseSettingsInput(settings: FooterFrameworkSettings, args: string): st
 	return `Unknown command: ${command}`;
 }
 
-function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: string): string {
+function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: string, configDiagnostics: string[] = []): string {
 	const customizedItems = Object.keys(settings.items).sort();
 	const adapters = Object.keys(settings.adapters).sort();
 	return [
@@ -1137,6 +1364,7 @@ function settingsSummary(settings: FooterFrameworkSettings, loadedConfig?: strin
 		`gap: min=${settings.minGap}, max=${settings.maxGap}`,
 		customizedItems.length ? `customizedItems=${customizedItems.join(",")}` : undefined,
 		adapters.length ? `adapters=${adapters.join(",")}` : undefined,
+		configDiagnostics.length ? `configDiagnostics=${configDiagnostics.length}` : undefined,
 	]
 		.filter(Boolean)
 		.join("\n");
@@ -1150,15 +1378,32 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	let currentCtx: ExtensionContext | undefined;
 	let requestRender: (() => void) | undefined;
 	const externalItems = new Map<string, ExternalFooterItem>();
+	let configuredItemRenderers: Record<string, { render: FooterRenderFunction; source: string }> = {};
+	let configuredAdapterRenderers: Record<string, { render: FooterRenderFunction; source: string }> = {};
 	let lastLoadedConfig = "defaults";
+	let lastConfigDiagnostics: string[] = [];
 	let lastFooterSnapshot: FooterSnapshot | undefined;
 	let lastPiSources: Record<string, FooterAdapterSourceValue> = {};
 	let lastTemplateDiagnostics: FooterTemplateDiagnostic[] = [];
 
-	function applyValidatedSettings(input: Partial<FooterFrameworkSettings>): void {
+	function applyValidatedSettings(input: Partial<FooterFrameworkConfig>): void {
 		Object.assign(settings, normalizeSettings(input));
 		settings.minGap = Math.max(0, Math.round(settings.minGap));
 		settings.maxGap = Math.max(settings.minGap, Math.round(settings.maxGap));
+	}
+
+	function applyCodeConfig(input: FooterFrameworkConfig, source: string): void {
+		applyValidatedSettings(input);
+		if (input.items && typeof input.items === "object") {
+			for (const [id, item] of Object.entries(input.items)) {
+				if (typeof item?.render === "function") configuredItemRenderers[id] = { render: item.render, source };
+			}
+		}
+		if (input.adapters && typeof input.adapters === "object") {
+			for (const [id, adapter] of Object.entries(input.adapters)) {
+				if (typeof adapter?.render === "function") configuredAdapterRenderers[id] = { render: adapter.render, source };
+			}
+		}
 	}
 
 	function saveSettings(scope: ConfigScope, ctx?: ExtensionContext): string {
@@ -1180,19 +1425,54 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		pi.appendEntry("footer-framework-state", settings);
 	}
 
-	function loadSettings(ctx: ExtensionContext): string {
+	async function loadSettings(ctx: ExtensionContext): Promise<string> {
 		Object.assign(settings, cloneDefaultSettings());
+		configuredItemRenderers = {};
+		configuredAdapterRenderers = {};
+		lastConfigDiagnostics = [];
+		const loaded: string[] = [];
 		const userPath = userConfigPath();
 		const projectPath = projectConfigPath(ctx);
+		const userCodePath = userCodeConfigPath();
+		const projectCodePath = projectCodeConfigPath(ctx);
+
+		if (userCodePath) {
+			try {
+				const config = await readCodeConfigFile(userCodePath);
+				if (config) {
+					applyCodeConfig(config, `user-code:${userCodePath}`);
+					loaded.push(`user-code:${userCodePath}`);
+				}
+			} catch (error) {
+				lastConfigDiagnostics.push(`Failed to load ${userCodePath}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+
 		const userConfig = readConfigFile(userPath);
+		if (userConfig) {
+			applyValidatedSettings(userConfig);
+			loaded.push(`user:${userPath}`);
+		}
+
+		if (projectCodePath) {
+			try {
+				const config = await readCodeConfigFile(projectCodePath);
+				if (config) {
+					applyCodeConfig(config, `project-code:${projectCodePath}`);
+					loaded.push(`project-code:${projectCodePath}`);
+				}
+			} catch (error) {
+				lastConfigDiagnostics.push(`Failed to load ${projectCodePath}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+
 		const projectConfig = readConfigFile(projectPath);
+		if (projectConfig) {
+			applyValidatedSettings(projectConfig);
+			loaded.push(`project:${projectPath}`);
+		}
 
-		if (userConfig) applyValidatedSettings(userConfig);
-		if (projectConfig) applyValidatedSettings(projectConfig);
-
-		if (projectConfig) lastLoadedConfig = `project:${projectPath}`;
-		else if (userConfig) lastLoadedConfig = `user:${userPath}`;
-		else lastLoadedConfig = "defaults";
+		lastLoadedConfig = loaded.length ? loaded.join(" -> ") : "defaults";
 		return lastLoadedConfig;
 	}
 
@@ -1328,13 +1608,23 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return sorted.sort((a, b) => a.placement.order - b.placement.order || a.id.localeCompare(b.id));
 	}
 
+	function resolveOverlayColumn(column: FooterColumn | undefined, width: number, itemWidth: number): number | undefined {
+		if (column === undefined) return undefined;
+		if (typeof column === "number") return clamp(column, 0, Math.max(0, width - 1));
+		if (column === "center" || column === "middle") return clamp(Math.round((width - itemWidth) / 2), 0, Math.max(0, width - 1));
+		const percent = Number(column.slice(0, -1));
+		if (!Number.isFinite(percent)) return undefined;
+		const target = Math.round((width - 1) * (percent / 100));
+		return clamp(Math.round(target - itemWidth / 2), 0, Math.max(0, width - 1));
+	}
+
 	function overlayAbsoluteItems(theme: ExtensionContext["ui"]["theme"], width: number, line: string, items: FooterItem[]): string {
 		let out = line;
 		const sorted = items
-			.filter((item) => Number.isFinite(item.placement.column))
-			.sort((a, b) => (a.placement.column ?? 0) - (b.placement.column ?? 0) || a.placement.order - b.placement.order);
-		for (const item of sorted) {
-			const column = clamp(item.placement.column ?? 0, 0, width - 1);
+			.map((item) => ({ item, column: resolveOverlayColumn(item.placement.column, width, visibleWidth(item.text)) }))
+			.filter((entry): entry is { item: FooterItem; column: number } => entry.column !== undefined)
+			.sort((a, b) => a.column - b.column || a.item.placement.order - b.item.placement.order);
+		for (const { item, column } of sorted) {
 			const prefix = truncateToWidth(out, column, "");
 			const pad = " ".repeat(Math.max(0, column - visibleWidth(prefix)));
 			const available = Math.max(0, width - column);
@@ -1346,7 +1636,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	function renderFooterLine(theme: ExtensionContext["ui"]["theme"], width: number, items: FooterItem[], line: FooterLine, anchor: FooterAnchorMode) {
 		const lineItems = items.filter((item) => item.placement.line === line);
-		const normalItems = lineItems.filter((item) => !Number.isFinite(item.placement.column));
+		const normalItems = lineItems.filter((item) => item.placement.column === undefined);
 		const left = normalItems
 			.filter((item) => item.placement.zone === "left")
 			.sort((a, b) => a.placement.order - b.placement.order)
@@ -1429,6 +1719,26 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return sources;
 	}
 
+	function collectConfiguredItems(
+		theme: ExtensionContext["ui"]["theme"],
+		piSources: Record<string, FooterAdapterSourceValue>,
+		diagnostics: FooterTemplateDiagnostic[],
+	): FooterItem[] {
+		const items: FooterItem[] = [];
+		for (const [id, renderer] of Object.entries(configuredItemRenderers)) {
+			const rendered = renderFunctionOutput(theme, id, renderer.render, renderContextForAdapter(id, undefined, undefined, piSources), diagnostics);
+			if (!rendered) continue;
+			items.push({
+				id,
+				text: rendered.text,
+				tokens: rendered.tokens,
+				renderSource: "function",
+				placement: placementFor(id, DEFAULT_ITEM_PLACEMENTS[id] ?? { visible: true, line: 2, zone: "right", order: 90 }),
+			});
+		}
+		return items;
+	}
+
 	function collectAdapterItems(
 		theme: ExtensionContext["ui"]["theme"],
 		footerData: { getExtensionStatuses(): ReadonlyMap<string, string> },
@@ -1438,6 +1748,8 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		const items: FooterItem[] = [];
 		const extensionStatuses = footerData.getExtensionStatuses();
 		for (const [adapterId, adapter] of Object.entries(allAdapters())) {
+			const itemId = adapter.itemId ?? adapterId;
+			if (configuredItemRenderers[itemId]) continue;
 			let sourceValue: unknown;
 			if (adapter.source === "pi") {
 				sourceValue = piSources[adapter.key];
@@ -1452,11 +1764,13 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			}
 			const external = adapterItemFromSource(adapterId, adapter, sourceValue);
 			if (!external) continue;
-			const text = renderAdapterText(theme, adapterId, adapter, external, sourceValue, piSources, diagnostics);
-			if (!text) continue;
+			const rendered = renderAdapterText(theme, adapterId, adapter, external, sourceValue, piSources, diagnostics, configuredAdapterRenderers[adapterId]?.render);
+			if (!rendered) continue;
 			items.push({
 				id: external.id,
-				text,
+				text: rendered.text,
+				tokens: rendered.tokens,
+				renderSource: rendered.renderSource,
 				placement: placementFor(external.id, { visible: true, line: 2, zone: "right", order: 90 }, external.hint.placement),
 			});
 		}
@@ -1483,8 +1797,9 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				return [text];
 			})
 			.join(" · ");
-		if (extStatuses) items.push({ id: "ext", text: extStatuses, placement: placementFor("ext", DEFAULT_ITEM_PLACEMENTS.ext) });
+		if (extStatuses && !configuredItemRenderers.ext) items.push({ id: "ext", text: extStatuses, placement: placementFor("ext", DEFAULT_ITEM_PLACEMENTS.ext), renderSource: "external" });
 
+		items.push(...collectConfiguredItems(theme, piSources, diagnostics));
 		items.push(...collectAdapterItems(theme, footerData, piSources, diagnostics));
 
 		for (const [id, external] of externalItems) {
@@ -1493,6 +1808,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			items.push({
 				id,
 				text,
+				renderSource: "external",
 				placement: placementFor(id, { visible: true, line: 2, zone: "right", order: 100 }, external.hint.placement),
 			});
 		}
@@ -1535,8 +1851,13 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			extensionStatuses: lastFooterSnapshot?.extensionStatuses ?? [],
 			customEntries: Array.from(customEntries.values()).sort((a, b) => a.customType.localeCompare(b.customType)),
 			adapters: settings.adapters,
+			configuredRenderers: {
+				items: Object.fromEntries(Object.entries(configuredItemRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+				adapters: Object.fromEntries(Object.entries(configuredAdapterRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+			},
 			renderedItems: lastFooterSnapshot?.renderedItems ?? [],
-			configPaths: currentCtx ? { user: userConfigPath(), project: projectConfigPath(currentCtx) } : { user: userConfigPath() },
+			configDiagnostics: lastConfigDiagnostics,
+			configPaths: configPaths(currentCtx),
 			omitted: {
 				tools: "pass includeTools: true to include registered tool names",
 				commands: "pass includeCommands: true to include command names",
@@ -1552,7 +1873,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return payload;
 	}
 
-	function applyFooterConfig(input: string, ctx?: ExtensionContext): string {
+	async function applyFooterConfig(input: string, ctx?: ExtensionContext): Promise<string> {
 		try {
 			const trimmed = input.trim();
 			const [command, scope] = trimmed.split(/\s+/);
@@ -1565,10 +1886,12 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				shouldPersist = false;
 			} else if (command === "load") {
 				if (!ctx) return "Cannot load footer config before a session is active.";
-				message = `Loaded footer config from ${loadSettings(ctx)}.`;
+				message = `Loaded footer config from ${await loadSettings(ctx)}.`;
 				shouldPersist = false;
 			} else if (command === "config") {
-				message = [`Loaded: ${lastLoadedConfig}`, `User: ${userConfigPath()}`, ctx ? `Project: ${projectConfigPath(ctx)}` : "Project: unavailable before session"].join("\n");
+				message = [`Loaded: ${lastLoadedConfig}`, `Paths: ${JSON.stringify(configPaths(ctx), null, 2)}`, lastConfigDiagnostics.length ? `Diagnostics:\n${lastConfigDiagnostics.join("\n")}` : undefined]
+					.filter(Boolean)
+					.join("\n");
 				shouldPersist = false;
 			} else {
 				message = parseSettingsInput(settings, trimmed) ?? settingsSummary(settings, lastLoadedConfig);
@@ -1648,6 +1971,8 @@ export default function footerFramework(pi: ExtensionAPI): void {
 							order: item.placement.order,
 							column: item.placement.column,
 							width: visibleWidth(item.text),
+							renderSource: item.renderSource,
+							tokens: item.tokens,
 						})),
 						extensionStatuses: Array.from(footerData.getExtensionStatuses().entries()).map(([key, value]) => ({ key, value })),
 						model: ctx.model?.id ?? "no-model",
@@ -1687,10 +2012,10 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			if (!trimmed) {
-				ctx.ui.notify(settingsSummary(settings, lastLoadedConfig), "info");
+				ctx.ui.notify(settingsSummary(settings, lastLoadedConfig, lastConfigDiagnostics), "info");
 				return;
 			}
-			ctx.ui.notify(applyFooterConfig(trimmed, ctx), "info");
+			ctx.ui.notify(await applyFooterConfig(trimmed, ctx), "info");
 		},
 	});
 
@@ -1700,7 +2025,12 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			const payload = {
 				settings,
 				loadedConfig: lastLoadedConfig,
-				configPaths: { user: userConfigPath(), project: projectConfigPath(ctx) },
+				configDiagnostics: lastConfigDiagnostics,
+				configPaths: configPaths(ctx),
+				configuredRenderers: {
+					items: Object.fromEntries(Object.entries(configuredItemRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+					adapters: Object.fromEntries(Object.entries(configuredAdapterRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+				},
 				prState,
 				lastTemplateDiagnostics,
 				lastFooterSnapshot,
@@ -1719,7 +2049,12 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				const payload = {
 					settings,
 					loadedConfig: lastLoadedConfig,
-					configPaths: currentCtx ? { user: userConfigPath(), project: projectConfigPath(currentCtx) } : { user: userConfigPath() },
+					configDiagnostics: lastConfigDiagnostics,
+					configPaths: configPaths(currentCtx),
+					configuredRenderers: {
+						items: Object.fromEntries(Object.entries(configuredItemRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+						adapters: Object.fromEntries(Object.entries(configuredAdapterRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+					},
 					prState,
 					lastTemplateDiagnostics,
 					lastFooterSnapshot,
@@ -1767,7 +2102,15 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				const action = params.action.trim();
 				let message: string;
 				if (action === "list") {
-					message = JSON.stringify({ defaultBuiltInAdapters: DEFAULT_BUILT_IN_ADAPTERS, adapters: settings.adapters }, null, 2);
+					message = JSON.stringify(
+						{
+							defaultBuiltInAdapters: DEFAULT_BUILT_IN_ADAPTERS,
+							adapters: settings.adapters,
+							configuredAdapterRenderers: Object.fromEntries(Object.entries(configuredAdapterRenderers).map(([id, renderer]) => [id, { source: renderer.source }])),
+						},
+						null,
+						2,
+					);
 				} else if (action === "remove") {
 					if (!params.id?.trim()) throw new Error("remove requires id");
 					const id = params.id.trim();
@@ -1809,7 +2152,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				}),
 			}),
 			async execute(_toolCallId, params) {
-				const message = applyFooterConfig(params.command, currentCtx);
+				const message = await applyFooterConfig(params.command, currentCtx);
 				return {
 					content: [{ type: "text", text: message }],
 					details: { message, settings },
@@ -1820,7 +2163,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		currentCtx = ctx;
-		loadSettings(ctx);
+		await loadSettings(ctx);
 
 		// Compatibility migration: if no config file exists yet, seed from the last
 		// session entry and immediately persist it as the user default.

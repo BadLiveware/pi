@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "description": "Configurable footer framework extension for Pi.",
   "type": "module",
+  "types": "./index.ts",
   "keywords": [
     "pi-package",
     "pi-extension",
@@ -27,6 +28,7 @@
     "README.md",
     "LICENSE",
     "assets",
+    "examples",
     "index.ts",
     "skills",
     "package.json"
