@@ -21,7 +21,7 @@ Publishing is intentionally manual and tag-triggered. Pushing to `main` does **n
 - repository visibility/metadata ready for public users.
 - secrets rotated and `gitleaks` checks passing.
 
-The publish workflow uses npm trusted publishing through GitHub Actions OIDC. It requests `id-token: write`, uses npm 11+, and does not need `NPM_TOKEN`. Do not configure `actions/setup-node` with `registry-url` in this workflow: that creates token-based npm auth config and can make npm publish fall back to token authentication instead of OIDC.
+The publish workflow uses npm trusted publishing through GitHub Actions OIDC. It requests `id-token: write`, uses `actions/setup-node@v6` with the npm registry URL, uses npm 11+, and does not need `NPM_TOKEN`.
 
 ## Bootstrap a brand-new package
 
