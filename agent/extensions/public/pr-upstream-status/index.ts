@@ -472,12 +472,54 @@ function feedbackKey(item: PullRequestFeedback): string {
 	return `${item.kind}:${item.id}:${item.updatedAt ?? ""}`;
 }
 
-function summarizeFeedback(items: PullRequestFeedback[]): string {
+const FEEDBACK_BODY_MAX_CHARS = 1_200;
+const FEEDBACK_DESCRIPTION_MAX_CHARS = 700;
+
+function compactWhitespace(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
+}
+
+function markedHtmlCommentSection(body: string, name: string): string | undefined {
+	const match = body.match(new RegExp(`<!--\\s*${name} START\\s*-->([\\s\\S]*?)<!--\\s*${name} END\\s*-->`, "i"));
+	return match?.[1]?.trim();
+}
+
+function stripReviewBotChrome(body: string): string {
+	return body
+		.replace(/<details\b[\s\S]*?<\/details>/gi, "")
+		.replace(/<div\b[\s\S]*?<\/div>/gi, "")
+		.replace(/<sup\b[\s\S]*?<\/sup>/gi, "")
+		.replace(/<!--([\s\S]*?)-->/g, "")
+		.trim();
+}
+
+export function summarizeFeedbackBody(body: string): string {
+	const title = body.match(/^#{1,6}\s+(.+)$/m)?.[1]?.trim();
+	const severity = body.match(/^(Low|Medium|High|Critical) Severity$/im)?.[0]?.trim();
+	const description = markedHtmlCommentSection(body, "DESCRIPTION");
+	const locations = markedHtmlCommentSection(body, "LOCATIONS")
+		?.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.join(", ");
+
+	const parts = [
+		title ? `Title: ${title}` : undefined,
+		severity ? `Severity: ${severity}` : undefined,
+		description ? `Summary: ${truncateText(compactWhitespace(description), FEEDBACK_DESCRIPTION_MAX_CHARS)}` : undefined,
+		locations ? `Locations: ${locations}` : undefined,
+	].filter(Boolean);
+	if (parts.length > 0) return parts.join("\n");
+
+	return truncateText(stripReviewBotChrome(body), FEEDBACK_BODY_MAX_CHARS);
+}
+
+export function summarizeFeedback(items: PullRequestFeedback[]): string {
 	return items
 		.map((item, index) => {
 			const loc = item.path ? ` (${item.path})` : "";
 			const link = item.url ? `\nURL: ${item.url}` : "";
-			return `${index + 1}. [${item.kind}] @${item.author}${loc}\n${item.body}${link}`;
+			return `${index + 1}. [${item.kind}] @${item.author}${loc}\n${summarizeFeedbackBody(item.body)}${link}`;
 		})
 		.join("\n\n");
 }
@@ -1067,14 +1109,9 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			lastAutoSolveAt = now;
 
 			const promptParts = [
-				`Auto-solve needed for PR #${pr.number} (${pr.url}).`,
-				`Checks: ${pr.checks}${pr.headSha ? `, head: ${pr.headSha}` : ""}. Pi is idle.`,
-				"Use the context below as starting evidence. If it is incomplete, fetch or inspect the linked logs/checks before editing.",
-				"Tasks:",
-				"1) For PR comments: verify whether each comment is true/relevant; fix only true/relevant comments.",
-				"2) For CI failures: identify the failing job, failing step, root cause, and minimal fix.",
-				"3) Implement minimal, reviewable changes and run the relevant local validation.",
-				"4) Summarize what was fixed, dismissed, and what validation passed or remains blocked.",
+				`Auto-solve PR #${pr.number}: ${pr.url}`,
+				`Checks: ${pr.checks}${pr.headSha ? `, head: ${pr.headSha}` : ""}.`,
+				"Review only true/relevant PR feedback; for CI, find the failing job/step/root cause. Inspect linked details if this summary is incomplete. Make minimal changes, validate locally, and summarize fixes/dismissals/validation.",
 			];
 			if (unseenFeedback.length > 0) {
 				promptParts.push("", "PR comments:", summarizeFeedback(unseenFeedback));
