@@ -27,12 +27,9 @@ Use this skill to structure branches, commits, and pull requests for review.
   - `refactor/`
 
 ## Commits
-- Use the `commit` skill when creating commits or deciding commit boundaries.
-- Commit coherent units of work.
-- Preserve the **why** in the message.
-- Use a brief first line under 72 characters that summarizes the actual change, not merely the source of the request.
-- Add a short body for non-trivial commits explaining what changed and why, including relevant constraints, trade-offs, compatibility notes, or validation context.
-- Do not narrate mechanics that are already obvious from the diff unless they are subtle.
+- Use the `commit` skill when creating commits or deciding exact commit boundaries.
+- At this level, decide only the review shape: which changes belong together, which should be split, and whether a preparatory refactor should land separately.
+- Do not duplicate commit-message policy here; the `commit` skill is the source of truth for staging, message structure, validation, and safety boundaries.
 
 ## Pull Requests
 - Verify PR state before describing it.
