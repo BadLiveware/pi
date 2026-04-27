@@ -16,7 +16,7 @@ Your job is to:
 Inputs:
 - diff / changed files
 - any available tests, build output, or CI logs
-- `agent/skills/code-review/wip/family-routing-table.md`
+- `agent/skills/review/wip/family-routing-table.md`
 - seed corpus artifact: `outputs/failure-mode-corpus-build.md`
 
 Process:

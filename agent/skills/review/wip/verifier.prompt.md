@@ -17,7 +17,7 @@ Inputs:
 - compact context packet
 - medium-reviewer shortlist
 - scout outputs
-- `agent/skills/code-review/wip/family-routing-table.md`
+- `agent/skills/review/wip/family-routing-table.md`
 - seed corpus artifact: `outputs/failure-mode-corpus-build.md`
 
 Verification process:

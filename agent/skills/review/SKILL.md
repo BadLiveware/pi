@@ -1,5 +1,5 @@
 ---
-name: code-review
+name: review
 description: Use when reviewing changed code, pull request diffs, or implementation work for defects, risk, tests, maintainability, security, performance, or repository impact.
 ---
 

@@ -1,6 +1,6 @@
-# Code Review Skill Validation Scenarios
+# Review Skill Validation Scenarios
 
-Use these scenarios when changing the `code-review` skill.
+Use these scenarios when changing the `review` skill.
 
 ## Scenario 1: Cross-file contract break
 Prompt an agent to review a diff where a function contract changes in one file, only some callers are updated, and a file-by-file review would miss an unchanged caller.

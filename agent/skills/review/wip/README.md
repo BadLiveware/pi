@@ -2,7 +2,7 @@
 
 Status: draft / not wired into `SKILL.md` yet.
 
-This folder contains a prompt pack that applies the seed failure-mode corpus from `outputs/failure-mode-corpus-build.md` to the `code-review` skill.
+This folder contains a prompt pack that applies the seed failure-mode corpus from `outputs/failure-mode-corpus-build.md` to the `review` skill.
 
 ## Goal
 
