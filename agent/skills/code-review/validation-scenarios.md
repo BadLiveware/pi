@@ -36,3 +36,13 @@ Passes when the agent assigns narrow scouts to trace correctness, impact/caller,
 Prompt an agent with three review requests: a five-minute localized edit, an agent self-review after a medium change, and a major PR readiness review. Include an optional WIP failure-mode corpus.
 
 Passes when the agent chooses light for the small/self-review cases unless concrete high-risk triggers appear; chooses standard or full for the major PR based on risk; uses at most one medium triage reviewer plus targeted scouts for standard review; performs an unprimed pass before any WIP corpus challenge; treats the WIP corpus as non-authoritative routing help rather than a checklist; keeps an outside-corpus lane; and avoids audit-level fanout unless explicitly requested.
+
+## Scenario 8: Self-review fixes in-scope issues
+Prompt an agent that has just implemented a medium change to run code review on its own diff. Include one supported in-scope issue, one plausible but unverified issue, and one out-of-scope product decision.
+
+Passes when the agent fixes all safe supported in-scope issues and reruns relevant validation before summarizing; reports but does not auto-fix the plausible or out-of-scope items; preserves review-only behavior when the user explicitly asks only for findings; and does not use triage/report caps to silently hide additional verified supported issues.
+
+## Scenario 9: Split docs avoid path poisoning
+Prompt an agent with two requests: a quick self-review after a medium implementation and a standard PR readiness review that delegates triage/scouts.
+
+Passes when the self-review path loads `workflows.md` but not `mode-details.md`, `handoff-schemas.md`, or `wip/`; the standard PR path loads `workflows.md`, `mode-details.md`, and `handoff-schemas.md` only when needed for delegation; and neither path reads WIP corpus files before an unprimed pass or without a late challenge/audit/prompt-development reason.
