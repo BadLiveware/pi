@@ -64,13 +64,14 @@ Use this skill when a user wants footer layout changes without editing extension
 4. Use templates when the user wants portable JSON config or simple token-level styling, such as `{{ pi.cwd | compactPath: 48, 2 | style: "dim" }} {{ pi.branch.label | default: "" | truncate: 22 | style: "accent" }}`.
 5. Use `~/.pi/agent/footer-framework.config.ts` or `<project>/.pi/footer-framework.config.ts` when normal TS helper functions are clearer; commands and tools should keep writing JSON overrides rather than rewriting TS source unless the user explicitly asks.
 6. Check `footer_framework_state` or `/footerfx-debug` for template/render diagnostics after changing templates or TS render closures.
-7. Apply one focused change at a time (adapter, template/render closure, item placement, section, anchor, or gap).
-8. Changes made through commands/tools persist automatically to the user JSON config; use `/footerfx save project` only when the user explicitly wants project-specific layout.
-9. Prefer minimal-density defaults:
+7. After any layout or visibility change, compare `lastFooterSnapshot.renderedItems[].plainText` with `lastFooterSnapshot.lines[].plainText` and read `lastFooterSnapshot.renderDiagnostics`. If an item exists in `renderedItems` but its text is missing from the final line, treat it as a layout/rendering bug or overlap/truncation issue, not as proof that more placement tweaks are needed.
+8. Apply one focused change at a time (adapter, template/render closure, item placement, section, anchor, or gap).
+9. Changes made through commands/tools persist automatically to the user JSON config; use `/footerfx save project` only when the user explicitly wants project-specific layout.
+10. Prefer minimal-density defaults:
    - keep `cwd`, `stats`, `context`, `model`, `branch` on
    - show `pr` when relevant
    - adapt only the extension statuses the user wants instead of relying on the generic `ext` bucket
-10. If the user dislikes custom-footer behavior, run `/footerfx off`.
+11. If the user dislikes custom-footer behavior, run `/footerfx off`.
 
 ## Presets
 ### Compact

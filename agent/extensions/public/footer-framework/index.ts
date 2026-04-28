@@ -130,15 +130,27 @@ interface ExternalFooterItem {
 	hint: FooterItemDisplayHint;
 }
 
+interface FooterRenderDiagnostic {
+	itemId: string;
+	line: FooterLine;
+	severity: "warning";
+	message: string;
+	itemPlainText: string;
+	linePlainText?: string;
+}
+
 interface FooterSnapshot {
 	width: number;
-	lines: Array<{ line: FooterLine; text: string; layout: FooterLineLayout }>;
+	lines: Array<{ line: FooterLine; text: string; plainText: string; layout: FooterLineLayout }>;
 	line1: string;
 	line2: string;
+	line1PlainText: string;
+	line2PlainText: string;
 	line1Layout: FooterLineLayout;
 	line2Layout: FooterLineLayout;
 	gitBranch: string | null;
-	renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: FooterColumn; width: number; renderSource?: string; tokens?: FooterRenderedToken[] }>;
+	renderedItems: Array<{ id: string; line: FooterLine; zone: FooterZone; order: number; column?: FooterColumn; width: number; plainText: string; renderSource?: string; tokens?: FooterRenderedToken[] }>;
+	renderDiagnostics: FooterRenderDiagnostic[];
 	extensionStatuses: Array<{ key: string; value: string }>;
 	model: string;
 	contextUsage: { tokens: number | null; contextWindow: number; percent: number | null } | null;
@@ -1618,6 +1630,92 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return clamp(Math.round(target - itemWidth / 2), 0, Math.max(0, width - 1));
 	}
 
+	function readAnsiEscape(text: string, index: number): string | undefined {
+		if (text.charCodeAt(index) !== 0x1b) return undefined;
+		const csi = text.slice(index).match(/^\u001b\[[0-9;?]*[ -/]*[@-~]/)?.[0];
+		if (csi) return csi;
+		return text.slice(index).match(/^\u001b\][\s\S]*?(?:\u0007|\u001b\\)/)?.[0];
+	}
+
+	function plainFooterText(text: string): string {
+		let out = "";
+		let index = 0;
+		while (index < text.length) {
+			const escape = readAnsiEscape(text, index);
+			if (escape) {
+				index += escape.length;
+				continue;
+			}
+
+			const codePoint = text.codePointAt(index);
+			if (codePoint === undefined) break;
+			const char = String.fromCodePoint(codePoint);
+			out += char;
+			index += char.length;
+		}
+		return out;
+	}
+
+	function sliceVisibleRange(text: string, startColumn: number, endColumn: number): string {
+		if (endColumn <= startColumn) return "";
+		let out = "";
+		let column = 0;
+		let index = 0;
+		while (index < text.length && column <= endColumn) {
+			const escape = readAnsiEscape(text, index);
+			if (escape) {
+				if (column >= startColumn && column <= endColumn) out += escape;
+				index += escape.length;
+				continue;
+			}
+
+			const codePoint = text.codePointAt(index);
+			if (codePoint === undefined) break;
+			const char = String.fromCodePoint(codePoint);
+			const charWidth = visibleWidth(char);
+			const nextColumn = column + charWidth;
+			if (charWidth === 0) {
+				if (column >= startColumn && column < endColumn) out += char;
+			} else if (column >= startColumn && nextColumn <= endColumn) {
+				out += char;
+			}
+			column = nextColumn;
+			index += char.length;
+		}
+		return out;
+	}
+
+	function renderVisibilityDiagnostics(items: FooterItem[], lines: Array<{ line: FooterLine; plainText: string }>): FooterRenderDiagnostic[] {
+		const lineTextByNumber = new Map(lines.map((line) => [line.line, line.plainText]));
+		const diagnostics: FooterRenderDiagnostic[] = [];
+		for (const item of items) {
+			const itemPlainText = plainFooterText(item.text).trim();
+			if (!itemPlainText) continue;
+			const linePlainText = lineTextByNumber.get(item.placement.line);
+			if (linePlainText === undefined) {
+				diagnostics.push({
+					itemId: item.id,
+					line: item.placement.line,
+					severity: "warning",
+					message: "Item rendered but its footer line was not produced.",
+					itemPlainText,
+				});
+				continue;
+			}
+			if (!linePlainText.includes(itemPlainText)) {
+				diagnostics.push({
+					itemId: item.id,
+					line: item.placement.line,
+					severity: "warning",
+					message: "Item is present in renderedItems but its text is not visible in the final rendered line; check overlap, truncation, or layout composition.",
+					itemPlainText,
+					linePlainText,
+				});
+			}
+		}
+		return diagnostics;
+	}
+
 	function overlayAbsoluteItems(theme: ExtensionContext["ui"]["theme"], width: number, line: string, items: FooterItem[]): string {
 		let out = line;
 		const sorted = items
@@ -1625,11 +1723,13 @@ export default function footerFramework(pi: ExtensionAPI): void {
 			.filter((entry): entry is { item: FooterItem; column: number } => entry.column !== undefined)
 			.sort((a, b) => a.column - b.column || a.item.placement.order - b.item.placement.order);
 		for (const { item, column } of sorted) {
+			// Preserve the existing suffix so centered overlays do not erase right-aligned items.
 			const prefix = truncateToWidth(out, column, "");
 			const pad = " ".repeat(Math.max(0, column - visibleWidth(prefix)));
 			const available = Math.max(0, width - column);
 			const text = truncateToWidth(item.text, available, theme.fg("dim", "..."));
-			out = truncateToWidth(`${prefix}${pad}${text}`, width, theme.fg("dim", "..."));
+			const suffix = sliceVisibleRange(out, column + visibleWidth(text), width);
+			out = truncateToWidth(`${prefix}${pad}${text}${suffix}`, width, theme.fg("dim", "..."));
 		}
 		return out;
 	}
@@ -1951,29 +2051,34 @@ export default function footerFramework(pi: ExtensionAPI): void {
 					const lineResults = Array.from({ length: maxLine }, (_, index) => {
 						const line = index + 1;
 						const result = renderFooterLine(theme, width, items, line, getLineAnchor(settings, line));
-						return { line, text: result.line, layout: result.layout };
+						return { line, text: result.line, plainText: plainFooterText(result.line), layout: result.layout };
 					});
 					const line1Result = lineResults[0];
 					const line2Result = lineResults[1];
+					const renderedItems = items.map((item) => ({
+						id: item.id,
+						line: item.placement.line,
+						zone: item.placement.zone,
+						order: item.placement.order,
+						column: item.placement.column,
+						width: visibleWidth(item.text),
+						plainText: plainFooterText(item.text),
+						renderSource: item.renderSource,
+						tokens: item.tokens,
+					}));
 
 					lastFooterSnapshot = {
 						width,
 						lines: lineResults,
 						line1: line1Result?.text ?? "",
 						line2: line2Result?.text ?? "",
+						line1PlainText: line1Result?.plainText ?? "",
+						line2PlainText: line2Result?.plainText ?? "",
 						line1Layout: line1Result?.layout ?? renderFooterLine(theme, width, [], 1, getLineAnchor(settings, 1)).layout,
 						line2Layout: line2Result?.layout ?? renderFooterLine(theme, width, [], 2, getLineAnchor(settings, 2)).layout,
 						gitBranch: footerData.getGitBranch(),
-						renderedItems: items.map((item) => ({
-							id: item.id,
-							line: item.placement.line,
-							zone: item.placement.zone,
-							order: item.placement.order,
-							column: item.placement.column,
-							width: visibleWidth(item.text),
-							renderSource: item.renderSource,
-							tokens: item.tokens,
-						})),
+						renderedItems,
+						renderDiagnostics: renderVisibilityDiagnostics(items, lineResults),
 						extensionStatuses: Array.from(footerData.getExtensionStatuses().entries()).map(([key, value]) => ({ key, value })),
 						model: ctx.model?.id ?? "no-model",
 						contextUsage: ctx.getContextUsage() ?? null,
