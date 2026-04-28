@@ -1074,11 +1074,11 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 
 	async function maybeAutoSolve(
 		ctx: ExtensionContext,
-		options: { force?: boolean; allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean } = {},
+		options: { force?: boolean; allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean; ignoreDisabled?: boolean } = {},
 	): Promise<void> {
-		const { force = false, allowConcurrentWorkspace = false, allowFreshSession = false } = options;
+		const { force = false, allowConcurrentWorkspace = false, allowFreshSession = false, ignoreDisabled = false } = options;
 		const pr = snapshot.pr;
-		if (!autoSolveEnabled || !pr) return;
+		if ((!autoSolveEnabled && !ignoreDisabled) || !pr) return;
 		if (!checksAreComplete(pr.checks)) return;
 		if (!ctx.isIdle() || ctx.hasPendingMessages()) return;
 		if (autoSolvePromptInFlight) return;
@@ -1200,11 +1200,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 				return;
 			}
 			if (action === "now" || action === "run" || action === "refresh") {
-				if (!autoSolveEnabled) {
-					ctx.ui.notify("PR auto-solve is off. Enable it with /pr-autosolve on.", "warning");
-					return;
-				}
-				await maybeAutoSolve(ctx, { force: true, allowConcurrentWorkspace: true, allowFreshSession: true });
+				await maybeAutoSolve(ctx, { force: true, allowConcurrentWorkspace: true, allowFreshSession: true, ignoreDisabled: true });
 				return;
 			}
 			ctx.ui.notify(`PR auto-solve: ${autoSolveStatusText(ctx)} (persisted in ${userConfigPath()})`, "info");

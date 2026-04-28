@@ -48,7 +48,7 @@ The extension detects the current branch, finds the matching open GitHub PR, ref
 
 When auto-solve is enabled and Pi is idle, it can fetch new issue comments, unresolved review-thread comments, and failing CI context. It then sends the agent a prompt to verify the feedback, fix relevant issues, run validation, and summarize what happened.
 
-Guardrails prevent auto-solve from starting immediately in fresh sessions or when an older Pi process is already active in the same workspace. `/pr-autosolve now` bypasses those guards intentionally.
+Guardrails prevent automatic auto-solve from starting immediately in fresh sessions or when an older Pi process is already active in the same workspace. `/pr-autosolve now` runs a one-shot solve even when auto-solve is off and bypasses those guards intentionally.
 
 ## Commands
 
@@ -61,7 +61,7 @@ Guardrails prevent auto-solve from starting immediately in fresh sessions or whe
 | `/pr-autosolve` | Show auto-solve status and config path. |
 | `/pr-autosolve on` | Enable auto-solve and persist the choice. |
 | `/pr-autosolve off` | Disable auto-solve and persist the choice. |
-| `/pr-autosolve now` | Run auto-solve now for current feedback and CI failures. |
+| `/pr-autosolve now` | Run a one-shot solve for current feedback and CI failures, even when auto-solve is off. |
 
 Auto-solve settings persist to:
 
