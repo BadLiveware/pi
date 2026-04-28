@@ -52,6 +52,266 @@ interface FooterItem {
 	renderSource?: "template" | "function" | "external";
 }
 
+export interface FooterCell {
+	raw: string;
+	plainText: string;
+	itemId?: string;
+	continuation?: boolean;
+	filler?: boolean;
+}
+
+export interface FooterColumnItem {
+	id: string;
+	text: string;
+	placement: Pick<FooterItemPlacement, "column" | "order">;
+}
+
+export interface ComposeFooterLineOptions {
+	width: number;
+	left: string;
+	right?: string;
+	anchor: FooterAnchorMode;
+	minGap: number;
+	maxGap: number;
+	ellipsis?: string;
+}
+
+export function readAnsiEscape(text: string, index: number): string | undefined {
+	if (text.charCodeAt(index) !== 0x1b) return undefined;
+	const csi = text.slice(index).match(/^\u001b\[[0-?]*[ -/]*[@-~]/)?.[0];
+	if (csi) return csi;
+	return text.slice(index).match(/^\u001b\][\s\S]*?(?:\u0007|\u001b\\)/)?.[0];
+}
+
+type GraphemeSegmenter = { segment(input: string): Iterable<{ segment: string }> };
+const Segmenter = (Intl as unknown as { Segmenter?: new (locale?: string | string[], options?: { granularity: "grapheme" }) => GraphemeSegmenter }).Segmenter;
+const graphemeSegmenter = Segmenter ? new Segmenter(undefined, { granularity: "grapheme" }) : undefined;
+
+function* visibleClusters(chunk: string): Iterable<string> {
+	if (graphemeSegmenter) {
+		for (const { segment } of graphemeSegmenter.segment(chunk)) yield segment;
+		return;
+	}
+	for (const char of Array.from(chunk)) yield char;
+}
+
+function updateAnsiState(escape: string, state: { ansi: string; osc: string }): void {
+	const osc8 = escape.match(/^\u001b\]8;[^;]*;([\s\S]*?)(?:\u0007|\u001b\\)$/);
+	if (osc8) {
+		state.osc = osc8[1] ? escape : "";
+		return;
+	}
+	if (!/^\u001b\[[0-?]*[ -/]*m$/.test(escape)) return;
+	const params = escape.match(/^\u001b\[([0-?]*)[ -/]*m$/)?.[1] ?? "";
+	if (params === "" || params === "0") state.ansi = "";
+	else if (params.startsWith("0;") || params.startsWith("0:")) state.ansi = escape;
+	else state.ansi += escape;
+}
+
+function activeCellPrefix(state: { ansi: string; osc: string }): string {
+	return `${state.osc}${state.ansi}`;
+}
+
+function activeCellSuffix(state: { ansi: string; osc: string }): string {
+	return `${state.ansi ? "\u001b[0m" : ""}${state.osc ? "\u001b]8;;\u0007" : ""}`;
+}
+
+function blankFooterCell(): FooterCell {
+	return { raw: " ", plainText: " ", filler: true };
+}
+
+export function createFooterCells(width: number): FooterCell[] {
+	return Array.from({ length: Math.max(0, width) }, blankFooterCell);
+}
+
+export function footerCellsFromText(text: string, itemId?: string): FooterCell[] {
+	const cells: FooterCell[] = [];
+	const state = { ansi: "", osc: "" };
+	let pendingZeroWidthRaw = "";
+	let pendingZeroWidthPlain = "";
+	const appendCluster = (cluster: string) => {
+		const clusterWidth = visibleWidth(cluster);
+		if (clusterWidth === 0) {
+			const raw = `${activeCellPrefix(state)}${cluster}${activeCellSuffix(state)}`;
+			let previous: FooterCell | undefined;
+			for (let cursor = cells.length - 1; cursor >= 0; cursor -= 1) {
+				if (!cells[cursor].continuation) {
+					previous = cells[cursor];
+					break;
+				}
+			}
+			if (previous) {
+				previous.raw += raw;
+				previous.plainText += cluster;
+			} else {
+				pendingZeroWidthRaw += raw;
+				pendingZeroWidthPlain += cluster;
+			}
+		} else {
+			cells.push({ raw: `${pendingZeroWidthRaw}${activeCellPrefix(state)}${cluster}${activeCellSuffix(state)}`, plainText: `${pendingZeroWidthPlain}${cluster}`, itemId });
+			pendingZeroWidthRaw = "";
+			pendingZeroWidthPlain = "";
+			for (let i = 1; i < clusterWidth; i += 1) cells.push({ raw: "", plainText: "", itemId, continuation: true });
+		}
+	};
+
+	let index = 0;
+	while (index < text.length) {
+		const escape = readAnsiEscape(text, index);
+		if (escape) {
+			updateAnsiState(escape, state);
+			index += escape.length;
+			continue;
+		}
+
+		const nextEscape = text.indexOf("\u001b", index);
+		const chunkEnd = nextEscape === -1 ? text.length : nextEscape;
+		if (chunkEnd === index) {
+			const codePoint = text.codePointAt(index);
+			if (codePoint === undefined) break;
+			const cluster = String.fromCodePoint(codePoint);
+			appendCluster(cluster);
+			index += cluster.length;
+			continue;
+		}
+
+		for (const cluster of visibleClusters(text.slice(index, chunkEnd))) appendCluster(cluster);
+		index = chunkEnd;
+	}
+	return cells;
+}
+
+export function plainFooterText(text: string): string {
+	return footerCellsFromText(text)
+		.filter((cell) => !cell.continuation)
+		.map((cell) => cell.plainText)
+		.join("");
+}
+
+function clearFooterCells(cells: FooterCell[], start: number, width: number): void {
+	if (width <= 0 || start >= cells.length) return;
+	const from = clamp(start, 0, cells.length);
+	const to = clamp(start + width, 0, cells.length);
+	const clearWideRun = (index: number) => {
+		let cursor = index;
+		while (cursor >= 0 && cells[cursor]?.continuation) cursor -= 1;
+		if (cursor < 0 || cursor >= cells.length) return;
+		cells[cursor] = blankFooterCell();
+		cursor += 1;
+		while (cursor < cells.length && cells[cursor].continuation) {
+			cells[cursor] = blankFooterCell();
+			cursor += 1;
+		}
+	};
+	if (cells[from]?.continuation) clearWideRun(from);
+	if (cells[to]?.continuation) clearWideRun(to);
+	for (let index = from; index < to; index += 1) cells[index] = blankFooterCell();
+}
+
+export function writeFooterText(cells: FooterCell[], start: number, text: string, itemId?: string): void {
+	if (start >= cells.length) return;
+	const textCells = footerCellsFromText(text, itemId);
+	clearFooterCells(cells, start, textCells.length);
+	for (let offset = 0; offset < textCells.length; offset += 1) {
+		const index = start + offset;
+		if (index < 0 || index >= cells.length) continue;
+		cells[index] = textCells[offset];
+	}
+}
+
+export function renderFooterCells(cells: FooterCell[]): string {
+	let end = cells.length;
+	while (end > 0) {
+		const cell = cells[end - 1];
+		if (cell.continuation || !cell.filler) break;
+		end -= 1;
+	}
+	return cells.slice(0, end).map((cell) => (cell.continuation ? "" : cell.raw)).join("");
+}
+
+export function resolveFooterColumn(column: FooterColumn | undefined, width: number, itemWidth: number): number | undefined {
+	if (column === undefined) return undefined;
+	if (typeof column === "number") return clamp(column, 0, Math.max(0, width - 1));
+	if (column === "center" || column === "middle") return clamp(Math.round((width - itemWidth) / 2), 0, Math.max(0, width - 1));
+	const percent = Number(column.slice(0, -1));
+	if (!Number.isFinite(percent)) return undefined;
+	const target = Math.round((width - 1) * (percent / 100));
+	return clamp(Math.round(target - itemWidth / 2), 0, Math.max(0, width - 1));
+}
+
+export function composeFooterLine(options: ComposeFooterLineOptions): { line: string; layout: FooterLineLayout } {
+	const { width, left, right, anchor, minGap, maxGap, ellipsis = "..." } = options;
+	const leftWidth = visibleWidth(left);
+	const cells = createFooterCells(width);
+	const compactLeft = truncateToWidth(left, width, ellipsis);
+	writeFooterText(cells, 0, compactLeft);
+
+	if (!right || visibleWidth(right) === 0) {
+		return {
+			line: renderFooterCells(cells),
+			layout: {
+				anchor,
+				leftWidth,
+				rightWidthOriginal: 0,
+				rightWidthFinal: 0,
+				padCount: 0,
+				rightStartCol: leftWidth,
+				rightEndCol: leftWidth,
+				truncated: visibleWidth(compactLeft) < leftWidth,
+			},
+		};
+	}
+
+	const rightWidthOriginal = visibleWidth(right);
+	const naturalPad = width - leftWidth - rightWidthOriginal;
+	let padCount = minGap;
+	if (anchor === "right" || anchor === "spread") {
+		padCount = Math.max(minGap, naturalPad);
+	} else if (anchor === "center") {
+		padCount = Math.max(minGap, Math.floor(naturalPad / 2));
+		padCount = Math.min(padCount, maxGap);
+	} else if (anchor === "gap") {
+		padCount = Math.max(minGap, Math.min(naturalPad, maxGap));
+	} else if (anchor === "left") {
+		padCount = minGap;
+	}
+
+	const availableForRight = Math.max(0, width - leftWidth - padCount);
+	const compactRight = truncateToWidth(right, availableForRight, ellipsis);
+	const rightWidthFinal = visibleWidth(compactRight);
+	const rightStartCol = leftWidth + padCount;
+	writeFooterText(cells, rightStartCol, compactRight);
+	const rightEndCol = Math.max(rightStartCol, rightStartCol + rightWidthFinal - 1);
+	return {
+		line: renderFooterCells(cells),
+		layout: {
+			anchor,
+			leftWidth,
+			rightWidthOriginal,
+			rightWidthFinal,
+			padCount,
+			rightStartCol,
+			rightEndCol,
+			truncated: rightWidthFinal < rightWidthOriginal,
+		},
+	};
+}
+
+export function overlayFooterColumnItems(width: number, line: string, items: FooterColumnItem[], ellipsis = "..."): string {
+	const cells = createFooterCells(width);
+	writeFooterText(cells, 0, line);
+	const sorted = items
+		.map((item) => ({ item, column: resolveFooterColumn(item.placement.column, width, visibleWidth(item.text)) }))
+		.filter((entry): entry is { item: FooterColumnItem; column: number } => entry.column !== undefined)
+		.sort((a, b) => a.column - b.column || a.item.placement.order - b.item.placement.order);
+	for (const { item, column } of sorted) {
+		const available = Math.max(0, width - column);
+		const text = truncateToWidth(item.text, available, ellipsis);
+		writeFooterText(cells, column, text, item.id);
+	}
+	return renderFooterCells(cells);
+}
+
 export interface FooterSpan {
 	text: unknown;
 	style?: string;
@@ -1510,66 +1770,9 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		anchor: FooterAnchorMode,
 	): {
 		line: string;
-		layout: {
-			anchor: FooterAnchorMode;
-			leftWidth: number;
-			rightWidthOriginal: number;
-			rightWidthFinal: number;
-			padCount: number;
-			rightStartCol: number;
-			rightEndCol: number;
-			truncated: boolean;
-		};
+		layout: FooterLineLayout;
 	} {
-		const leftWidth = visibleWidth(left);
-		if (!right || visibleWidth(right) === 0) {
-			return {
-				line: truncateToWidth(left, width, theme.fg("dim", "...")),
-				layout: {
-					anchor,
-					leftWidth,
-					rightWidthOriginal: 0,
-					rightWidthFinal: 0,
-					padCount: 0,
-					rightStartCol: leftWidth,
-					rightEndCol: leftWidth,
-					truncated: false,
-				},
-			};
-		}
-		const rightWidthOriginal = visibleWidth(right);
-		const naturalPad = width - leftWidth - rightWidthOriginal;
-		let padCount = settings.minGap;
-		if (anchor === "right" || anchor === "spread") {
-			padCount = Math.max(settings.minGap, naturalPad);
-		} else if (anchor === "center") {
-			padCount = Math.max(settings.minGap, Math.floor(naturalPad / 2));
-			padCount = Math.min(padCount, settings.maxGap);
-		} else if (anchor === "gap") {
-			padCount = Math.max(settings.minGap, Math.min(naturalPad, settings.maxGap));
-		} else if (anchor === "left") {
-			padCount = settings.minGap;
-		}
-
-		const availableForRight = Math.max(0, width - leftWidth - padCount);
-		const compactRight = truncateToWidth(right, availableForRight, theme.fg("dim", "..."));
-		const rightWidthFinal = visibleWidth(compactRight);
-		const line = truncateToWidth(`${left}${" ".repeat(padCount)}${compactRight}`, width, theme.fg("dim", "..."));
-		const rightStartCol = leftWidth + padCount;
-		const rightEndCol = Math.max(rightStartCol, rightStartCol + rightWidthFinal - 1);
-		return {
-			line,
-			layout: {
-				anchor,
-				leftWidth,
-				rightWidthOriginal,
-				rightWidthFinal,
-				padCount,
-				rightStartCol,
-				rightEndCol,
-				truncated: rightWidthFinal < rightWidthOriginal,
-			},
-		};
+		return composeFooterLine({ width, left, right, anchor, minGap: settings.minGap, maxGap: settings.maxGap, ellipsis: theme.fg("dim", "...") });
 	}
 
 	function renderModelLabel(): string {
@@ -1620,71 +1823,6 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return sorted.sort((a, b) => a.placement.order - b.placement.order || a.id.localeCompare(b.id));
 	}
 
-	function resolveOverlayColumn(column: FooterColumn | undefined, width: number, itemWidth: number): number | undefined {
-		if (column === undefined) return undefined;
-		if (typeof column === "number") return clamp(column, 0, Math.max(0, width - 1));
-		if (column === "center" || column === "middle") return clamp(Math.round((width - itemWidth) / 2), 0, Math.max(0, width - 1));
-		const percent = Number(column.slice(0, -1));
-		if (!Number.isFinite(percent)) return undefined;
-		const target = Math.round((width - 1) * (percent / 100));
-		return clamp(Math.round(target - itemWidth / 2), 0, Math.max(0, width - 1));
-	}
-
-	function readAnsiEscape(text: string, index: number): string | undefined {
-		if (text.charCodeAt(index) !== 0x1b) return undefined;
-		const csi = text.slice(index).match(/^\u001b\[[0-9;?]*[ -/]*[@-~]/)?.[0];
-		if (csi) return csi;
-		return text.slice(index).match(/^\u001b\][\s\S]*?(?:\u0007|\u001b\\)/)?.[0];
-	}
-
-	function plainFooterText(text: string): string {
-		let out = "";
-		let index = 0;
-		while (index < text.length) {
-			const escape = readAnsiEscape(text, index);
-			if (escape) {
-				index += escape.length;
-				continue;
-			}
-
-			const codePoint = text.codePointAt(index);
-			if (codePoint === undefined) break;
-			const char = String.fromCodePoint(codePoint);
-			out += char;
-			index += char.length;
-		}
-		return out;
-	}
-
-	function sliceVisibleRange(text: string, startColumn: number, endColumn: number): string {
-		if (endColumn <= startColumn) return "";
-		let out = "";
-		let column = 0;
-		let index = 0;
-		while (index < text.length && column <= endColumn) {
-			const escape = readAnsiEscape(text, index);
-			if (escape) {
-				if (column >= startColumn && column <= endColumn) out += escape;
-				index += escape.length;
-				continue;
-			}
-
-			const codePoint = text.codePointAt(index);
-			if (codePoint === undefined) break;
-			const char = String.fromCodePoint(codePoint);
-			const charWidth = visibleWidth(char);
-			const nextColumn = column + charWidth;
-			if (charWidth === 0) {
-				if (column >= startColumn && column < endColumn) out += char;
-			} else if (column >= startColumn && nextColumn <= endColumn) {
-				out += char;
-			}
-			column = nextColumn;
-			index += char.length;
-		}
-		return out;
-	}
-
 	function renderVisibilityDiagnostics(items: FooterItem[], lines: Array<{ line: FooterLine; plainText: string }>): FooterRenderDiagnostic[] {
 		const lineTextByNumber = new Map(lines.map((line) => [line.line, line.plainText]));
 		const diagnostics: FooterRenderDiagnostic[] = [];
@@ -1717,21 +1855,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	}
 
 	function overlayAbsoluteItems(theme: ExtensionContext["ui"]["theme"], width: number, line: string, items: FooterItem[]): string {
-		let out = line;
-		const sorted = items
-			.map((item) => ({ item, column: resolveOverlayColumn(item.placement.column, width, visibleWidth(item.text)) }))
-			.filter((entry): entry is { item: FooterItem; column: number } => entry.column !== undefined)
-			.sort((a, b) => a.column - b.column || a.item.placement.order - b.item.placement.order);
-		for (const { item, column } of sorted) {
-			// Preserve the existing suffix so centered overlays do not erase right-aligned items.
-			const prefix = truncateToWidth(out, column, "");
-			const pad = " ".repeat(Math.max(0, column - visibleWidth(prefix)));
-			const available = Math.max(0, width - column);
-			const text = truncateToWidth(item.text, available, theme.fg("dim", "..."));
-			const suffix = sliceVisibleRange(out, column + visibleWidth(text), width);
-			out = truncateToWidth(`${prefix}${pad}${text}${suffix}`, width, theme.fg("dim", "..."));
-		}
-		return out;
+		return overlayFooterColumnItems(width, line, items, theme.fg("dim", "..."));
 	}
 
 	function renderFooterLine(theme: ExtensionContext["ui"]["theme"], width: number, items: FooterItem[], line: FooterLine, anchor: FooterAnchorMode) {

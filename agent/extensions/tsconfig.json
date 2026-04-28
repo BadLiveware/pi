@@ -6,12 +6,8 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "files": [
-    "public/compaction-continue/index.ts",
-    "public/pr-upstream-status/index.ts",
-    "public/footer-framework/index.ts",
-    "public/model-catalog/index.ts"
-  ]
+  "include": ["public/**/*.ts"]
 }
