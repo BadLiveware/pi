@@ -20,6 +20,9 @@ Approach software development work with understanding, correctness, testability,
 
 ### 2. Make requirements explicit
 - Capture current and desired behavior, invariants, non-functional concerns, and relevant compatibility, migration, or public contract concerns.
+- Treat the latest user correction as the desired behavior.
+- Compatibility means externally relied-upon, documented, persisted, or shipped behavior. Do not preserve compatibility with the agent's own recent draft or intermediate implementation unless the user asks for it or a real contract/data/safety constraint requires it.
+- When docs, README text, examples, comments, tests, or config defaults are atomically changeable facts about the desired behavior, update them to match instead of preserving old behavior solely because they describe it. Treat them as compatibility constraints only when they represent an external promise, published contract, persisted data, or explicit user requirement.
 - Capture non-goals and scope boundaries.
 - For non-trivial work, present the requirements or a short plan before major edits.
 

@@ -30,6 +30,9 @@ Prefer language-native or project-standard mechanisms for:
 
 ### Compatibility and safety
 - Consider compatibility expectations for APIs, protocols, CLI output, configuration, or data models.
+- Compatibility protects externally relied-upon, documented, persisted, or shipped behavior.
+- Do not preserve compatibility with your own recent draft, interpretation, or intermediate implementation after the user corrects or supersedes it unless a real contract, persisted data, safety constraint, or explicit user request requires it.
+- If docs, README text, examples, comments, tests, or config defaults only describe behavior and can be changed atomically with the implementation, update them to the new behavior instead of adding legacy paths for their old statement.
 - When compatibility behavior, protocol quirks, or required-by-consumer constraints are not obvious from the code, add targeted comments explaining why the code exists and when it can be removed if the requirement disappears.
 - Do not add comments that merely narrate obvious code; document the non-obvious constraint, dependency, or removal trigger instead.
 - Plan for migrations, rollback, or destructive changes when relevant.
