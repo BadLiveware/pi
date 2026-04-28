@@ -1,29 +1,34 @@
 ---
 name: address-pr-feedback
-description: Inspect the current branch's open pull request, gather review comments and checks, fix the requested issues, commit fixes with small issues batched and larger issues separated, validate, and push by default unless the user says not to push.
+description: Use when the user explicitly asks to inspect/address the current branch's open pull request end-to-end, including gathering comments/checks, committing fixes, and pushing. Do not use for pr-upstream-status auto-solve prompts that already provide PR feedback/CI context.
 ---
 
 # Address PR Feedback
 
 Use this skill when the user asks to check an open PR for comments/review feedback, fix issues, commit fixes, and push the branch.
 
+This is the manual end-to-end PR feedback workflow. Do not use it just because a `pr-upstream-status` auto-solve prompt mentions PR comments or CI. Auto-solve prompts already provide starting feedback/CI context and do not imply PR watching, committing, or pushing.
+
 This skill pushes by default after fixes are committed and validated unless the user says not to push or the task is explicitly inspect-only/preparation-only.
 
 ## Outcomes
 - current branch's open PR is verified
-- review comments, conversation comments, requested changes, and relevant checks are collected after pending checks finish
+- review comments, conversation comments, requested changes, and relevant checks are collected after pending checks finish for manual end-to-end PR handling
 - actionable feedback is triaged into small batchable fixes and larger/separate fixes
 - fixes are implemented, validated, committed, and pushed by default
 - final response reports fixed groups, commits, validation, push result, and unresolved items
 
 ## Safety Boundaries
 - Push after commits and validation unless user opts out, task is inspect-only, validation has unresolved decision-requiring failures, or branch/remote state is ambiguous.
-- Do not start coding from partial visible comments while PR checks are still pending. Wait for checks to reach terminal state first, or ask the user whether to proceed with incomplete feedback if waiting becomes unreasonable.
+- When handling an auto-solve prompt, follow that prompt instead of this end-to-end workflow: verify/fix the provided feedback, inspect linked details only if needed, run relevant local validation, and summarize. Do not start PR check watchers, poll for pending checks, commit, or push unless the user explicitly asks.
+- For manual end-to-end PR handling, do not start coding from partial visible comments while PR checks are still pending. Wait for checks to reach terminal state first, or ask the user whether to proceed with incomplete feedback if waiting becomes unreasonable.
 - Do not force-push, reset, rebase, delete branches, merge, close, approve, request reviewers, edit PR metadata, or post/resolve PR comments unless explicitly asked.
 - If multiple open PRs match or no open PR is found, stop and ask which PR to use.
 - Preserve unrelated local changes; do not overwrite or commit them.
 
 ## Discovery Workflow
+If the current task came from an auto-solve prompt that already includes PR feedback or CI context, skip this discovery workflow unless the prompt context is incomplete. Fetch only the specific linked details needed to verify or fix the provided items.
+
 1. Read local guidance: `AGENTS.md`, `CLAUDE.md`, `README.md`, build/test files, CI, and relevant docs.
 2. Check branch, upstream/remote tracking branch, working tree status, and unrelated uncommitted changes.
 3. Identify the open PR for the current branch. Prefer `gh pr view --json number,title,headRefName,baseRefName,url,state,reviewDecision,comments,reviews,statusCheckRollup`, `gh pr view --comments`, or GitHub MCP/API equivalents.
@@ -37,7 +42,8 @@ Classify before editing:
 - **Separate commits:** behavior changes, public API/contracts, schema/migration/data-safety/compatibility changes, useful refactors, substantial tests/validation, unrelated areas, or anything clearer to review/rollback alone.
 
 Implementation rules:
-- Do not start coding from visible comments while checks are still pending unless the user explicitly chooses to proceed with partial feedback.
+- Auto-solve prompts are an explicit choice to proceed with available feedback. Do not wait for check completion or start check watchers after fixing auto-solve items unless the user asks for that follow-up.
+- Do not start coding from visible comments while checks are still pending during manual end-to-end PR handling unless the user explicitly chooses to proceed with partial feedback.
 - Understand referenced code and requested change before editing.
 - Fix review feedback and directly related validation issues; do not silently expand into unrelated cleanup.
 - Add/update tests for behavior, compatibility, failure handling, or public contract changes.
