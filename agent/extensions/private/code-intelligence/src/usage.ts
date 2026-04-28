@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -12,7 +13,7 @@ export interface CodeIntelUsageSummaryParams {
 	maxRecentEvents?: number;
 }
 
-type UsageKind = "tool_call" | "tool_result";
+type UsageKind = "tool_call" | "tool_result" | "symbol_replace_followup";
 
 type UsageEvent = {
 	version: 1;
@@ -35,14 +36,22 @@ type PendingToolCall = {
 	cwd?: string;
 	toolName: string;
 	category: string;
+	sequence: number;
 	inputShape?: Record<string, unknown>;
 };
 
 const pendingToolCalls = new Map<string, PendingToolCall>();
+const sessionToolCallCounts = new Map<string, number>();
+const recentSymbolReplacements: Array<{ sessionId: string; repoRoot?: string; cwd?: string; file?: string; symbolLength?: number; recordedAt: number; sequence: number; followups: number }> = [];
+const maxFollowupToolCalls = 10;
+const maxFollowupAgeMs = 5 * 60 * 1000;
 const codeIntelPrefix = "code_intel_";
 const actionCodeIntelTools = new Set([
 	"code_intel_symbol_context",
+	"code_intel_symbol_source",
+	"code_intel_replace_symbol",
 	"code_intel_references",
+	"code_intel_local_map",
 	"code_intel_impact_map",
 	"code_intel_syntax_search",
 ]);
@@ -72,6 +81,38 @@ function sessionIdFromContext(ctx: ExtensionContext): string {
 
 function nowIso(): string {
 	return new Date().toISOString();
+}
+
+function shortHash(value: string): string {
+	return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function lineCount(value: string): number {
+	if (value.length === 0) return 0;
+	return value.endsWith("\n") ? value.split("\n").length - 1 : value.split("\n").length;
+}
+
+function normalizeInputPath(value: string): string {
+	const withoutAt = value.startsWith("@") ? value.slice(1) : value;
+	if (withoutAt.startsWith("~")) return path.join(os.homedir(), withoutAt.slice(1));
+	return withoutAt;
+}
+
+function relativeFileFromInput(inputPath: unknown, repoRoot: string | undefined, ctx: ExtensionContext): string | undefined {
+	const rawPath = stringValue(inputPath);
+	if (!rawPath) return undefined;
+	const normalized = normalizeInputPath(rawPath);
+	const base = repoRoot ?? ctx.cwd;
+	const resolved = path.isAbsolute(normalized) ? path.resolve(normalized) : path.resolve(ctx.cwd, normalized);
+	const relative = path.relative(base, resolved);
+	if (relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))) return relative.split(path.sep).join(path.posix.sep) || ".";
+	return undefined;
+}
+
+function nextToolCallSequence(sessionId: string): number {
+	const next = (sessionToolCallCounts.get(sessionId) ?? 0) + 1;
+	sessionToolCallCounts.set(sessionId, next);
+	return next;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -125,30 +166,48 @@ function classifyBashCommand(command: unknown): string | undefined {
 function toolCategory(toolName: string, input: unknown): string {
 	if (toolName.startsWith(codeIntelPrefix)) return "code-intel";
 	if (toolName === "read") return classifyPath(isRecord(input) ? input.path : undefined) ?? "read";
+	if (toolName === "edit") return "edit";
 	if (toolName === "bash") return `bash:${classifyBashCommand(isRecord(input) ? input.command : undefined) ?? "unknown"}`;
 	if (toolName === "code_search" || toolName === "web_search" || toolName === "greedy_search") return "external-info-search";
 	return "other";
 }
 
 function shouldRecordToolCall(toolName: string): boolean {
-	return toolName.startsWith(codeIntelPrefix) || toolName === "read" || toolName === "bash" || toolName === "code_search" || toolName === "web_search" || toolName === "greedy_search";
+	return toolName.startsWith(codeIntelPrefix) || toolName === "read" || toolName === "edit" || toolName === "bash" || toolName === "code_search" || toolName === "web_search" || toolName === "greedy_search";
 }
 
 function codeIntelInputShape(toolName: string, input: Record<string, unknown>): Record<string, unknown> | undefined {
 	if (toolName === "code_intel_state") return { includeDiagnostics: booleanValue(input.includeDiagnostics) === true, hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_update") return { backend: stringValue(input.backend) ?? "auto", force: booleanValue(input.force) === true, hasRepoArtifactOverride: typeof input.allowRepoArtifacts === "string", hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_symbol_context") return { hasSymbol: typeof input.symbol === "string" && input.symbol.trim().length > 0, symbolLength: stringValue(input.symbol)?.length, maxCallers: numberValue(input.maxCallers), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_symbol_source") return { hasSymbol: typeof input.symbol === "string" && input.symbol.trim().length > 0, symbolLength: stringValue(input.symbol)?.length, hasFile: typeof input.file === "string", pathCount: arrayLength(input.paths), maxSourceBytes: numberValue(input.maxSourceBytes), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_replace_symbol") return { hasSymbol: typeof input.symbol === "string" && input.symbol.trim().length > 0, symbolLength: stringValue(input.symbol)?.length, hasFile: typeof input.file === "string", hasExpectedHash: typeof input.expectedHash === "string", hasExpectedRange: isRecord(input.expectedRange), newSourceLineCount: typeof input.newSource === "string" ? lineCount(input.newSource) : undefined, newSourceHash: typeof input.newSource === "string" ? shortHash(input.newSource) : undefined, hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_references") return { hasQuery: typeof input.query === "string" && input.query.trim().length > 0, queryLength: stringValue(input.query)?.length, relation: stringValue(input.relation) ?? "refs", detail: stringValue(input.detail) ?? "locations", pathCount: arrayLength(input.paths), excludeGlobCount: arrayLength(input.excludeGlobs), maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_local_map") return { anchorCount: arrayLength(input.anchors), nameCount: arrayLength(input.names), pathCount: arrayLength(input.paths), hasLanguage: typeof input.language === "string", includeSyntax: booleanValue(input.includeSyntax), detail: stringValue(input.detail) ?? "locations", maxResults: numberValue(input.maxResults), maxPerName: numberValue(input.maxPerName), hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_impact_map") return { symbolCount: arrayLength(input.symbols), changedFileCount: arrayLength(input.changedFiles), hasBaseRef: typeof input.baseRef === "string", detail: stringValue(input.detail) ?? "locations", maxDepth: numberValue(input.maxDepth), maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_syntax_search") return { hasPattern: typeof input.pattern === "string" && input.pattern.trim().length > 0, patternLength: stringValue(input.pattern)?.length, hasLanguage: typeof input.language === "string", detail: stringValue(input.detail) ?? "snippets", pathCount: arrayLength(input.paths), includeGlobCount: arrayLength(input.includeGlobs), excludeGlobCount: arrayLength(input.excludeGlobs), hasStrictness: typeof input.strictness === "string", maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_usage") return { allRepos: booleanValue(input.allRepos) === true, includeRecentEvents: booleanValue(input.includeRecentEvents) === true, sinceHours: numberValue(input.sinceHours), hasRepoRoot: typeof input.repoRoot === "string" };
 	return undefined;
 }
 
-function inputShape(toolName: string, input: unknown): Record<string, unknown> | undefined {
+function editTextShape(edits: unknown): Record<string, unknown> {
+	if (!Array.isArray(edits)) return { editCount: 0 };
+	const oldText = edits.map((edit) => isRecord(edit) && typeof edit.oldText === "string" ? edit.oldText : "").join("\n---edit---\n");
+	const newText = edits.map((edit) => isRecord(edit) && typeof edit.newText === "string" ? edit.newText : "").join("\n---edit---\n");
+	return {
+		editCount: edits.length,
+		oldTextLineCount: lineCount(oldText),
+		newTextLineCount: lineCount(newText),
+		oldTextHash: oldText ? shortHash(oldText) : undefined,
+		newTextHash: newText ? shortHash(newText) : undefined,
+	};
+}
+
+function inputShape(toolName: string, input: unknown, ctx: ExtensionContext, repoRoot?: string): Record<string, unknown> | undefined {
 	if (!isRecord(input)) return undefined;
 	if (toolName.startsWith(codeIntelPrefix)) return codeIntelInputShape(toolName, input);
-	if (toolName === "read") return { pathKind: classifyPath(input.path), hasRange: typeof input.offset === "number" || typeof input.limit === "number" };
+	if (toolName === "read") return { pathKind: classifyPath(input.path), file: relativeFileFromInput(input.path, repoRoot, ctx), hasRange: typeof input.offset === "number" || typeof input.limit === "number" };
+	if (toolName === "edit") return { pathKind: classifyPath(input.path), file: relativeFileFromInput(input.path, repoRoot, ctx), ...editTextShape(input.edits) };
 	if (toolName === "bash") return { commandKind: classifyBashCommand(input.command), hasTimeout: typeof input.timeout === "number" };
 	if (toolName === "code_search") return { hasQuery: typeof input.query === "string", maxTokens: numberValue(input.maxTokens) };
 	if (toolName === "web_search" || toolName === "greedy_search") return { hasQuery: typeof input.query === "string", queryCount: arrayLength(input.queries) };
@@ -202,11 +261,33 @@ function codeIntelResultShape(toolName: string, details: Record<string, unknown>
 		shape.callerCount = arrayLength(details.callers);
 		shape.matchCount = numberValue(details.matchCount);
 	}
+	if (toolName === "code_intel_symbol_source") {
+		shape.hasResolved = isRecord(details.resolved);
+		shape.matchCount = numberValue(details.matchCount);
+		shape.sourceLineCount = numberValue(details.lineCount);
+		shape.sourceBytes = numberValue(details.sourceBytes);
+		shape.sourceTruncated = booleanValue(details.sourceTruncated) === true;
+	}
+	if (toolName === "code_intel_replace_symbol") {
+		shape.file = stringValue(details.file);
+		shape.phase = stringValue(details.phase);
+		shape.reverted = booleanValue(details.reverted) === true;
+		shape.lineCountBefore = numberValue(details.lineCountBefore);
+		shape.lineCountAfter = numberValue(details.lineCountAfter);
+		shape.bytesBefore = numberValue(details.bytesBefore);
+		shape.bytesAfter = numberValue(details.bytesAfter);
+	}
 	if (toolName === "code_intel_references" || toolName === "code_intel_syntax_search") {
 		shape.relation = stringValue(details.relation);
 		shape.matchCount = numberValue(details.matchCount);
 		shape.returned = numberValue(details.returned);
 		shape.truncated = booleanValue(details.truncated) === true;
+	}
+	if (toolName === "code_intel_local_map") {
+		shape.nameCount = arrayLength(details.names);
+		shape.anchorCount = arrayLength(details.anchors);
+		shape.suggestedFileCount = isRecord(details.summary) ? arrayLength(details.summary.suggestedFiles) : undefined;
+		shape.truncated = isRecord(details.coverage) ? details.coverage.truncated === true : undefined;
 	}
 	if (toolName === "code_intel_impact_map") {
 		shape.rootCount = arrayLength(details.rootSymbols);
@@ -236,6 +317,64 @@ function appendUsageEvent(event: UsageEvent): void {
 	}
 }
 
+function pruneRecentSymbolReplacements(now = Date.now()): void {
+	for (let index = recentSymbolReplacements.length - 1; index >= 0; index -= 1) {
+		if (now - recentSymbolReplacements[index].recordedAt > maxFollowupAgeMs) recentSymbolReplacements.splice(index, 1);
+	}
+}
+
+function recordSymbolReplaceFollowup(toolName: string, shape: Record<string, unknown> | undefined, sessionId: string, repoRoot: string | undefined, ctx: ExtensionContext, sequence: number): void {
+	if (toolName !== "read" && toolName !== "edit") return;
+	const file = typeof shape?.file === "string" ? shape.file : undefined;
+	if (!file) return;
+	const now = Date.now();
+	pruneRecentSymbolReplacements(now);
+	for (const replacement of recentSymbolReplacements) {
+		if (replacement.sessionId !== sessionId) continue;
+		if (replacement.repoRoot !== repoRoot && replacement.cwd !== ctx.cwd) continue;
+		if (replacement.file !== file) continue;
+		const callsAfter = sequence - replacement.sequence;
+		if (callsAfter < 1 || callsAfter > maxFollowupToolCalls) continue;
+		replacement.followups += 1;
+		appendUsageEvent({
+			version: 1,
+			timestamp: nowIso(),
+			kind: "symbol_replace_followup",
+			sessionId,
+			repoRoot,
+			cwd: ctx.cwd,
+			toolName,
+			category: `symbol-replace-followup:${toolName}`,
+			inputShape: {
+				file,
+				followupTool: toolName,
+				callsAfter,
+				elapsedMs: now - replacement.recordedAt,
+				symbolLength: replacement.symbolLength,
+				followupCountForReplacement: replacement.followups,
+			},
+		});
+	}
+}
+
+function rememberSymbolReplacement(details: Record<string, unknown>, pending: PendingToolCall | undefined, ctx: ExtensionContext): void {
+	if (details.ok !== true || details.reverted === true) return;
+	const file = typeof details.file === "string" ? details.file : undefined;
+	if (!file) return;
+	pruneRecentSymbolReplacements();
+	recentSymbolReplacements.push({
+		sessionId: pending?.sessionId ?? sessionIdFromContext(ctx),
+		repoRoot: stringValue(details.repoRoot) ?? pending?.repoRoot ?? ctx.cwd,
+		cwd: pending?.cwd ?? ctx.cwd,
+		file,
+		symbolLength: stringValue(details.symbol)?.length,
+		recordedAt: Date.now(),
+		sequence: pending?.sequence ?? (sessionToolCallCounts.get(pending?.sessionId ?? sessionIdFromContext(ctx)) ?? 0),
+		followups: 0,
+	});
+	if (recentSymbolReplacements.length > 50) recentSymbolReplacements.splice(0, recentSymbolReplacements.length - 50);
+}
+
 export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void {
 	if (!isRecord(event)) return;
 	const toolName = stringValue(event.toolName);
@@ -243,7 +382,9 @@ export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void
 	const input = event.input;
 	const sessionId = sessionIdFromContext(ctx);
 	const repoRoot = repoRootFromInput(input, ctx);
-	const shape = inputShape(toolName, input);
+	const shape = inputShape(toolName, input, ctx, repoRoot);
+	const sequence = nextToolCallSequence(sessionId);
+	recordSymbolReplaceFollowup(toolName, shape, sessionId, repoRoot, ctx, sequence);
 	const entry: UsageEvent = {
 		version: 1,
 		timestamp: nowIso(),
@@ -256,7 +397,7 @@ export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void
 		inputShape: shape,
 	};
 	const toolCallId = stringValue(event.toolCallId);
-	if (toolCallId) pendingToolCalls.set(toolCallId, { startedAt: Date.now(), sessionId, repoRoot, cwd: ctx.cwd, toolName, category: entry.category, inputShape: shape });
+	if (toolCallId) pendingToolCalls.set(toolCallId, { startedAt: Date.now(), sessionId, repoRoot, cwd: ctx.cwd, toolName, category: entry.category, sequence, inputShape: shape });
 	appendUsageEvent(entry);
 }
 
@@ -268,6 +409,7 @@ export function recordUsageToolResult(event: unknown, ctx: ExtensionContext): vo
 	const pending = toolCallId ? pendingToolCalls.get(toolCallId) : undefined;
 	if (toolCallId) pendingToolCalls.delete(toolCallId);
 	const details = isRecord(event.details) ? event.details : {};
+	if (toolName === "code_intel_replace_symbol") rememberSymbolReplacement(details, pending, ctx);
 	const sessionId = pending?.sessionId ?? sessionIdFromContext(ctx);
 	const repoRoot = stringValue(details.repoRoot) ?? pending?.repoRoot ?? ctx.cwd;
 	appendUsageEvent({
@@ -351,6 +493,14 @@ function eventIsRead(event: UsageEvent): boolean {
 	return event.kind === "tool_call" && event.toolName === "read";
 }
 
+function eventIsSuccessfulReplaceResult(event: UsageEvent): boolean {
+	return event.kind === "tool_result" && event.toolName === "code_intel_replace_symbol" && event.resultShape?.ok === true && event.resultShape?.reverted !== true;
+}
+
+function eventIsSymbolReplaceFollowup(event: UsageEvent): boolean {
+	return event.kind === "symbol_replace_followup";
+}
+
 function eventIsInfoSearch(event: UsageEvent): boolean {
 	return event.kind === "tool_call" && (event.toolName === "code_search" || event.toolName === "web_search" || event.toolName === "greedy_search");
 }
@@ -373,6 +523,9 @@ function summarizeSessionBehavior(events: UsageEvent[]): Record<string, unknown>
 	let errorResultCount = 0;
 	let readAfterCodeIntelResultCount = 0;
 	let codeIntelResultCount = 0;
+	let successfulReplaceResultCount = 0;
+	let sameFileReadAfterReplaceCount = 0;
+	let sameFileEditAfterReplaceCount = 0;
 
 	for (const sessionEvents of bySession.values()) {
 		const firstCodeIntelIndex = sessionEvents.findIndex(eventIsCodeIntelCall);
@@ -388,6 +541,9 @@ function summarizeSessionBehavior(events: UsageEvent[]): Record<string, unknown>
 		let sawState = false;
 		for (let index = 0; index < sessionEvents.length; index += 1) {
 			const event = sessionEvents[index];
+			if (eventIsSuccessfulReplaceResult(event)) successfulReplaceResultCount += 1;
+			if (eventIsSymbolReplaceFollowup(event) && event.toolName === "read") sameFileReadAfterReplaceCount += 1;
+			if (eventIsSymbolReplaceFollowup(event) && event.toolName === "edit") sameFileEditAfterReplaceCount += 1;
 			if (event.kind === "tool_call" && event.toolName === "code_intel_state") sawState = true;
 			if (eventIsActionCodeIntelCall(event)) {
 				actionCount += 1;
@@ -413,6 +569,11 @@ function summarizeSessionBehavior(events: UsageEvent[]): Record<string, unknown>
 		stateBeforeActionUse: { count: stateBeforeActionCount, total: actionCount, rate: rate(stateBeforeActionCount, actionCount) },
 		diagnosticsAfterError: { count: diagnosticsAfterErrorCount, total: errorResultCount, rate: rate(diagnosticsAfterErrorCount, errorResultCount) },
 		readAfterCodeIntelResult: { count: readAfterCodeIntelResultCount, total: codeIntelResultCount, rate: rate(readAfterCodeIntelResultCount, codeIntelResultCount) },
+		symbolReplaceFollowups: {
+			successfulReplacements: successfulReplaceResultCount,
+			sameFileRead: sameFileReadAfterReplaceCount,
+			sameFileEdit: sameFileEditAfterReplaceCount,
+		},
 	};
 }
 

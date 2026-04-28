@@ -5,9 +5,13 @@ import type { RepoRoots } from "./types.ts";
 import { commandDiagnostic, runCommand } from "./exec.ts";
 import { normalizeStringArray } from "./util.ts";
 
+export function normalizeToolPath(input: string): string {
+	return input.startsWith("@") ? input.slice(1) : input;
+}
+
 export function resolveRequestedRoot(ctx: ExtensionContext, requested?: string): string {
 	if (!requested?.trim()) return ctx.cwd;
-	return path.resolve(ctx.cwd, requested.trim());
+	return path.resolve(ctx.cwd, normalizeToolPath(requested.trim()));
 }
 
 function rootInputDirectory(requestedRoot: string): string {
@@ -41,7 +45,7 @@ export async function resolveRepoRoots(ctx: ExtensionContext, requested?: string
 }
 
 export function ensureInsideRoot(repoRoot: string, requestedPath: string): string {
-	const resolved = path.resolve(repoRoot, requestedPath);
+	const resolved = path.resolve(repoRoot, normalizeToolPath(requestedPath));
 	const relative = path.relative(repoRoot, resolved);
 	if (relative === "") return ".";
 	if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {

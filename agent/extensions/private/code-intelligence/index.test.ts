@@ -147,6 +147,50 @@ test("cymbal tools return context, references, and impact maps", { skip: !hasCom
 	assert.equal(impact.related.length, 2);
 });
 
+test("symbol source and guarded replacement edit exactly one symbol", { skip: !hasCommand("cymbal") }, async () => {
+	const repo = fixtureRepo();
+	execFileSync("cymbal", ["index", "."], { cwd: repo, stdio: "ignore" });
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const source = parseToolResult(await tools.get("code_intel_symbol_source")!.execute("test", { symbol: "authenticate", file: "main.ts" }, undefined, undefined, ctx));
+	assert.equal(source.ok, true);
+	assert.equal(source.file, "main.ts");
+	assert.equal(source.range.startLine, 1);
+	assert.match(source.source, /export function authenticate/);
+	assert.match(source.sourceHash, /^sha256:/);
+	assert.deepEqual(source.preconditions.expectedRange, source.range);
+
+	const newSource = source.source.replace("return token.length > 0", "return token.trim().length > 0");
+	const replaced = parseToolResult(await tools.get("code_intel_replace_symbol")!.execute("test", { symbol: "authenticate", file: source.preconditions.file, expectedRange: source.preconditions.expectedRange, expectedHash: source.preconditions.expectedHash, newSource }, undefined, undefined, ctx));
+	assert.equal(replaced.ok, true);
+	assert.equal(replaced.file, "main.ts");
+	assert.equal(replaced.reverted, false);
+	assert.equal(replaced.rangeAfter.startLine, 1);
+	assert.match(fs.readFileSync(path.join(repo, "main.ts"), "utf8"), /token\.trim\(\)\.length/);
+
+	const stale = parseToolResult(await tools.get("code_intel_replace_symbol")!.execute("test", { symbol: "authenticate", file: source.preconditions.file, expectedRange: source.preconditions.expectedRange, expectedHash: source.preconditions.expectedHash, newSource: source.source }, undefined, undefined, ctx));
+	assert.equal(stale.ok, false);
+	assert.equal(stale.phase, "precondition");
+	assert.match(stale.reason, /hash/);
+});
+
+test("local map combines symbol context and scoped references", { skip: !hasCommand("cymbal") }, async () => {
+	const repo = fixtureRepo();
+	execFileSync("cymbal", ["index", "."], { cwd: repo, stdio: "ignore" });
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const localMap = parseToolResult(await tools.get("code_intel_local_map")!.execute("test", { anchors: ["authenticate"], names: ["loginHandler"], paths: ["main.ts"], includeSyntax: false, maxPerName: 3 }, undefined, undefined, ctx));
+	assert.equal(localMap.ok, true);
+	assert.deepEqual(localMap.anchors, ["authenticate"]);
+	assert.deepEqual(localMap.names, ["authenticate", "loginHandler"]);
+	assert.equal(localMap.sections.symbolContexts.length, 1);
+	assert.equal(localMap.sections.references.length, 2);
+	assert.equal(localMap.sections.syntaxMatches.length, 0);
+	assert.equal(localMap.sections.literalMatches.length, 2);
+	assert.equal(localMap.summary.suggestedFiles.some((file: any) => file.file === "main.ts"), true);
+	assert.equal(localMap.detail, "locations");
+});
+
 test("impact map caps changed-file roots to queried roots", { skip: !hasCommand("cymbal") }, async () => {
 	const repo = fixtureRepo();
 	execFileSync("cymbal", ["index", "."], { cwd: repo, stdio: "ignore" });
@@ -200,6 +244,26 @@ test("auto update indexes configured role backends", { skip: !hasCommand("sqry")
 	assert.match(state.runtimeDiagnostics.logPath, /pi-code-intel-runtime-test-/);
 	assert.equal(state.runtimeDiagnostics.recentOperations.at(-1).operation, "update");
 	assert.deepEqual(state.runtimeDiagnostics.recentOperations.at(-1).backends, ["sqry", "cymbal"]);
+});
+
+test("usage tracking records sanitized symbol replacement followups", { skip: !hasCommand("cymbal") }, async () => {
+	const repo = fixtureRepo();
+	execFileSync("cymbal", ["index", "."], { cwd: repo, stdio: "ignore" });
+	fs.rmSync(process.env.PI_CODE_INTEL_USAGE_LOG as string, { force: true });
+	const { tools, handlers } = loadExtension();
+	const { ctx } = mockContext(repo);
+	const source = parseToolResult(await tools.get("code_intel_symbol_source")!.execute("source", { symbol: "authenticate", file: "main.ts" }, undefined, undefined, ctx));
+	const newSource = source.source.replace("return token.length > 0", "return token.trim().length > 0");
+	const input = { symbol: "authenticate", file: source.preconditions.file, expectedRange: source.preconditions.expectedRange, expectedHash: source.preconditions.expectedHash, newSource };
+	for (const handler of handlers.get("tool_call") ?? []) await handler({ toolName: "code_intel_replace_symbol", toolCallId: "replace-test", input }, ctx);
+	const result = await tools.get("code_intel_replace_symbol")!.execute("replace-test", input, undefined, undefined, ctx);
+	for (const handler of handlers.get("tool_result") ?? []) await handler({ toolName: "code_intel_replace_symbol", toolCallId: "replace-test", input, details: result.details, content: result.content, isError: false }, ctx);
+	for (const handler of handlers.get("tool_call") ?? []) await handler({ toolName: "read", toolCallId: "read-after-replace", input: { path: "main.ts" } }, ctx);
+
+	const usageLog = fs.readFileSync(process.env.PI_CODE_INTEL_USAGE_LOG as string, "utf-8");
+	assert.match(usageLog, /symbol_replace_followup/);
+	assert.match(usageLog, /code_intel_replace_symbol/);
+	assert.doesNotMatch(usageLog, /token\.trim\(\)\.length/);
 });
 
 test("usage tracking records sanitized code-intel metadata", { skip: !hasCommand("ast-grep") }, async () => {

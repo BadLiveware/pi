@@ -1,0 +1,249 @@
+import type { CodeIntelConfig, CodeIntelLocalMapParams, CommandResult, ResultDetail } from "./types.ts";
+import { runReferences, runSymbolContext } from "./cymbal.ts";
+import { findExecutable, runCommand, summarizeCommandBrief } from "./exec.ts";
+import { pathArgsForRepo } from "./repo.ts";
+import { runSyntaxSearch } from "./syntax.ts";
+import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
+
+const LOCAL_MAP_DEFAULT_MAX_RESULTS = 25;
+const LOCAL_MAP_DEFAULT_MAX_PER_NAME = 8;
+const LOCAL_MAP_MAX_NAMES = 12;
+const LOCAL_MAP_MAX_ANCHORS = 6;
+
+function unique(items: string[]): string[] {
+	const seen = new Set<string>();
+	const output: string[] = [];
+	for (const item of items) {
+		const normalized = item.trim();
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		output.push(normalized);
+	}
+	return output;
+}
+
+function compactCommandRecord(record: Record<string, unknown>): Record<string, unknown> {
+	const output = { ...record };
+	delete output.source;
+	delete output.typeReferences;
+	delete output.fileImports;
+	return output;
+}
+
+function contextForDetail(payload: Record<string, unknown>, detail: ResultDetail): Record<string, unknown> {
+	const output = compactCommandRecord(payload);
+	if (detail === "locations") delete output.source;
+	const callers = Array.isArray(output.callers) ? output.callers.filter(isRecord) : [];
+	output.callers = callers.slice(0, 6).map((caller) => {
+		const compact = { ...caller };
+		if (detail === "locations") {
+			delete compact.context;
+			delete compact.source;
+			delete compact.text;
+			delete compact.snippet;
+		}
+		return compact;
+	});
+	return output;
+}
+
+function rowsFromSection(section: Record<string, unknown>, key: "results" | "matches" | "callers"): Record<string, unknown>[] {
+	return Array.isArray(section[key]) ? section[key].filter(isRecord) : [];
+}
+
+function addFileReason(files: Map<string, { count: number; reasons: Set<string> }>, file: unknown, reason: string): void {
+	if (typeof file !== "string" || !file.trim()) return;
+	const entry = files.get(file) ?? { count: 0, reasons: new Set<string>() };
+	entry.count += 1;
+	entry.reasons.add(reason);
+	files.set(file, entry);
+}
+
+function suggestedFilesFromSections(sections: Record<string, unknown>[]): Array<Record<string, unknown>> {
+	const files = new Map<string, { count: number; reasons: Set<string> }>();
+	for (const section of sections) {
+		const sectionKind = typeof section.kind === "string" ? section.kind : "section";
+		const name = typeof section.name === "string" ? section.name : typeof section.query === "string" ? section.query : typeof section.pattern === "string" ? section.pattern : "unknown";
+		const resolved = isRecord(section.resolved) ? section.resolved : undefined;
+		addFileReason(files, resolved?.file, `${sectionKind}:${name}`);
+		for (const key of ["callers", "results", "matches"] as const) {
+			for (const row of rowsFromSection(section, key)) addFileReason(files, row.file, `${sectionKind}:${name}`);
+		}
+	}
+	return [...files.entries()]
+		.sort((left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0]))
+		.slice(0, 12)
+		.map(([file, info]) => ({ file, count: info.count, reasons: [...info.reasons].slice(0, 6) }));
+}
+
+function isIdentifier(name: string): boolean {
+	return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+
+function selectorPattern(name: string): string | undefined {
+	if (!isIdentifier(name)) return undefined;
+	return `$X.${name}`;
+}
+
+function sectionOk(section: Record<string, unknown>): boolean {
+	return section.ok === true || section.ok === undefined;
+}
+
+function parseRipgrepJsonLines(stdout: string, detail: ResultDetail, maxResults: number): Array<Record<string, unknown>> {
+	const matches: Array<Record<string, unknown>> = [];
+	for (const line of stdout.split(/\r?\n/)) {
+		if (!line.trim()) continue;
+		let event: unknown;
+		try {
+			event = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		if (!isRecord(event) || event.type !== "match" || !isRecord(event.data)) continue;
+		const data = event.data;
+		const pathData = isRecord(data.path) ? data.path : undefined;
+		const linesData = isRecord(data.lines) ? data.lines : undefined;
+		const row: Record<string, unknown> = {
+			file: typeof pathData?.text === "string" ? pathData.text : undefined,
+			line: typeof data.line_number === "number" ? data.line_number : undefined,
+			column: Array.isArray(data.submatches) && isRecord(data.submatches[0]) && typeof data.submatches[0].start === "number" ? data.submatches[0].start + 1 : undefined,
+		};
+		if (detail === "snippets" && typeof linesData?.text === "string") row.text = linesData.text.trimEnd();
+		matches.push(Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)));
+		if (matches.length >= maxResults) break;
+	}
+	return matches;
+}
+
+async function runLiteralSearch(name: string, paths: string[], repoRoot: string, timeoutMs: number, maxPerName: number, detail: ResultDetail, signal?: AbortSignal): Promise<Record<string, unknown>> {
+	const rg = findExecutable("rg");
+	if (!rg) return { kind: "literal", name, ok: false, reason: "rg is not available for bounded literal fallback." };
+	let scopedPaths: string[];
+	try {
+		scopedPaths = pathArgsForRepo(repoRoot, paths);
+	} catch (error) {
+		return { kind: "literal", name, ok: false, diagnostic: error instanceof Error ? error.message : String(error) };
+	}
+	const command: CommandResult = await runCommand(rg, ["--json", "--fixed-strings", "--line-number", "--column", "--", name, ...scopedPaths], { cwd: repoRoot, timeoutMs, signal, maxOutputBytes: 500_000 });
+	if (command.exitCode !== 0 && command.exitCode !== 1) {
+		return { kind: "literal", name, ok: false, matchCount: 0, returned: 0, matches: [], command: summarizeCommandBrief(command) };
+	}
+	const matches = parseRipgrepJsonLines(command.stdout, detail, maxPerName);
+	return {
+		kind: "literal",
+		name,
+		ok: true,
+		matchCount: matches.length,
+		returned: matches.length,
+		truncated: command.outputTruncated === true || matches.length >= maxPerName,
+		detail,
+		summary: summarizeFileDistribution(matches),
+		matches,
+		command: summarizeCommandBrief(command),
+	};
+}
+
+async function safely<T extends Record<string, unknown>>(fallback: T, run: () => Promise<Record<string, unknown>>): Promise<Record<string, unknown>> {
+	try {
+		return await run();
+	} catch (error) {
+		return {
+			...fallback,
+			ok: false,
+			diagnostic: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {
+	const detail: ResultDetail = params.detail === "snippets" ? "snippets" : "locations";
+	const maxResults = normalizePositiveInteger(params.maxResults, Math.min(config.maxResults, LOCAL_MAP_DEFAULT_MAX_RESULTS), 1, 200);
+	const maxPerName = normalizePositiveInteger(params.maxPerName, Math.min(config.maxResults, LOCAL_MAP_DEFAULT_MAX_PER_NAME), 1, 50);
+	const timeoutMs = normalizePositiveInteger(params.timeoutMs, config.queryTimeoutMs, 1_000, 600_000);
+	const anchors = unique(normalizeStringArray(params.anchors)).slice(0, LOCAL_MAP_MAX_ANCHORS);
+	const explicitNames = unique(normalizeStringArray(params.names));
+	const names = unique([...anchors, ...explicitNames]).slice(0, LOCAL_MAP_MAX_NAMES);
+	const paths = normalizeStringArray(params.paths);
+	const language = params.language?.trim() || undefined;
+	const includeSyntax = params.includeSyntax !== false && Boolean(language);
+
+	if (names.length === 0) {
+		return {
+			ok: false,
+			backend: "mixed",
+			repoRoot,
+			reason: "Provide anchors or names to map.",
+			sections: [],
+			limitations: ["Local maps are routing evidence; read returned files before editing or reporting findings."],
+		};
+	}
+
+	const symbolContexts: Record<string, unknown>[] = [];
+	for (const anchor of anchors) {
+		const context = await safely({ kind: "symbol_context", name: anchor }, () => runSymbolContext({ symbol: anchor, maxCallers: Math.min(maxPerName, 6), timeoutMs }, repoRoot, config, signal));
+		symbolContexts.push({ kind: "symbol_context", name: anchor, ...contextForDetail(context, detail) });
+	}
+
+	const references: Record<string, unknown>[] = [];
+	for (const name of names) {
+		const refs = await safely({ kind: "references", name }, () => runReferences({ query: name, relation: "refs", paths, maxResults: maxPerName, timeoutMs, detail }, repoRoot, config, signal));
+		references.push({ kind: "references", name, ...refs });
+	}
+
+	const syntaxMatches: Record<string, unknown>[] = [];
+	if (includeSyntax) {
+		for (const name of names) {
+			const pattern = selectorPattern(name);
+			if (!pattern) continue;
+			const syntax = await safely({ kind: "selector_syntax", name, pattern }, () => runSyntaxSearch({ pattern, language, paths, maxResults: Math.min(maxPerName, 8), timeoutMs, detail }, repoRoot, config, signal));
+			syntaxMatches.push({ kind: "selector_syntax", name, ...syntax });
+		}
+	}
+
+	const literalMatches: Record<string, unknown>[] = [];
+	for (const name of names) {
+		const literal = await safely({ kind: "literal", name }, () => runLiteralSearch(name, paths, repoRoot, timeoutMs, Math.min(maxPerName, 12), detail, signal));
+		literalMatches.push(literal);
+	}
+
+	const sections = [...symbolContexts, ...references, ...syntaxMatches, ...literalMatches];
+	const suggestedFiles = suggestedFilesFromSections(sections).slice(0, maxResults);
+	const distributionRows = suggestedFiles.map((file) => ({ file: file.file }));
+	const truncated = anchors.length < normalizeStringArray(params.anchors).length || names.length < unique([...anchors, ...explicitNames]).length || suggestedFiles.length >= maxResults;
+
+	return {
+		ok: sections.some(sectionOk),
+		backend: "mixed",
+		backends: includeSyntax ? ["cymbal", "ast-grep", "rg"] : ["cymbal", "rg"],
+		repoRoot,
+		detail,
+		anchors,
+		names,
+		paths,
+		language,
+		sections: {
+			symbolContexts,
+			references,
+			syntaxMatches,
+			literalMatches,
+		},
+		summary: {
+			...summarizeFileDistribution(distributionRows),
+			suggestedFiles,
+			basis: "symbolContexts+references+syntaxMatches+literalMatches",
+		},
+		coverage: {
+			maxNames: LOCAL_MAP_MAX_NAMES,
+			maxAnchors: LOCAL_MAP_MAX_ANCHORS,
+			maxPerName,
+			maxResults,
+			includeSyntax,
+			truncated,
+		},
+		limitations: [
+			"Local maps are a convenience wrapper around symbol context, references, optional selector syntax matches, and bounded literal fallback.",
+			"Results are routing evidence, not proof of complete usage or safe compatibility.",
+			"Use rg afterward for literal text, comments/docs, generated files, or empty/stale backend results.",
+		],
+	};
+}

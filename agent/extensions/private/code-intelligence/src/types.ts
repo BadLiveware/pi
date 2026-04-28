@@ -162,6 +162,41 @@ export interface CymbalImpactMapParams {
 	detail?: ResultDetail;
 }
 
+export interface CodeIntelLocalMapParams {
+	repoRoot?: string;
+	anchors?: string[];
+	names?: string[];
+	paths?: string[];
+	language?: string;
+	includeSyntax?: boolean;
+	maxResults?: number;
+	maxPerName?: number;
+	timeoutMs?: number;
+	detail?: ResultDetail;
+}
+
+export interface CodeIntelSymbolSourceParams {
+	repoRoot?: string;
+	symbol: string;
+	file?: string;
+	paths?: string[];
+	maxSourceBytes?: number;
+	timeoutMs?: number;
+}
+
+export interface CodeIntelReplaceSymbolParams {
+	repoRoot?: string;
+	symbol: string;
+	file: string;
+	expectedRange: {
+		startLine: number;
+		endLine: number;
+	};
+	expectedHash: string;
+	newSource: string;
+	timeoutMs?: number;
+}
+
 export interface CymbalSymbol {
 	name?: string;
 	kind?: string;

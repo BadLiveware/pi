@@ -4,6 +4,19 @@ Private local Pi extension for evaluating advisory code-intelligence tools insid
 
 Use it to gather compact routing evidence: symbol context, references, impact maps, and explicit AST syntax-pattern matches. It does not replace source inspection, compiler/type checks, tests, or project-native validation.
 
+## When to Use It
+
+Use code-intel before falling into repeated `rg`/read navigation when you need to answer concrete relationship questions:
+
+- Who calls or references this function/type/handler?
+- Where is this symbol imported, implemented, or used?
+- I am editing an unfamiliar exported function, shared helper, handler, config/schema/protocol path, or file touched by a non-trivial diff; which unchanged caller/consumer/test files should I read first?
+- Where does this exact AST shape or API call pattern appear?
+
+Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often relationship searches in disguise. Use `code_intel_local_map` first for definitions/callers/usages/fields/API shapes, then use `rg` for literal fallback, generated text, comments/docs, or empty/stale backend results.
+
+Use the returned locations to choose files to read next; do not treat the result as exhaustive proof.
+
 ## Backends
 
 | Backend | Used for | Artifact behavior |
@@ -30,7 +43,7 @@ The extension is optimized for agent routing, not replacing source reads or proj
 
 Cymbal, ast-grep, and sqry remain the underlying engines. The Pi extension adds value by making them agent-operable:
 
-- **Stable task-level interface:** agents choose `state`, `references`, `impact_map`, `syntax_search`, or `update` without learning backend CLI flags.
+- **Stable task-level interface:** agents choose `state`, `symbol_source`, `replace_symbol`, `references`, `local_map`, `impact_map`, `syntax_search`, or `update` without learning backend CLI flags.
 - **Promptable guardrails:** tool snippets and guidelines teach when to use each lane, when to prefer locations over snippets, and why results are advisory.
 - **Context control:** detail modes, grouped summaries, compact command summaries, and TUI cards prevent raw CLI output from filling model and UI context.
 - **Operational policy:** sqry artifact checks, auto-indexing, footer status, and runtime diagnostics are handled consistently instead of by ad hoc shell commands.
@@ -92,9 +105,9 @@ Default log directory:
 
 Each session writes its own `<session-id>.jsonl` file to avoid contention between concurrent Pi sessions. Set `PI_CODE_INTEL_USAGE_LOG` only when you explicitly want a single-file override for tests/debugging.
 
-Recorded metadata includes tool names, timestamps, repo/cwd, sanitized parameter shapes, result counts/status, duration, and coarse adjacent-tool categories such as `read`, `bash:search`, or `bash:test`.
+Recorded metadata includes tool names, timestamps, repo/cwd, sanitized parameter shapes, result counts/status, duration, coarse adjacent-tool categories such as `read`, `edit`, `bash:search`, or `bash:test`, and same-file `read`/`edit` follow-up events after successful guarded symbol replacements.
 
-Not recorded by default: prompts, full tool outputs, file contents, raw shell commands, raw search queries, or raw code-intel symbol/query/pattern values.
+Not recorded by default: prompts, full tool outputs, file contents, raw shell commands, raw search queries, raw edit text, raw replacement source, or raw code-intel symbol/query/pattern values.
 
 Use the log manually when evaluating this private extension, for example:
 
@@ -133,6 +146,30 @@ Return Cymbal-backed definition/source/caller context for one symbol.
 
 Good for: unfamiliar functions, classes/types, handlers, and changed public symbols.
 
+### `code_intel_symbol_source`
+
+Resolve one symbol and return only its source span, relative file, start/end lines, source hash, and replacement preconditions.
+
+Good for large files when the intended inspection is focused on one function, method, type, or variable. If the symbol is ambiguous, pass `file` or `paths`. This is a focused read, not a substitute for callers/imports/surrounding invariants when those matter.
+
+### `code_intel_replace_symbol`
+
+Experimentally replace exactly one symbol span using preconditions returned by `code_intel_symbol_source`.
+
+Use only for narrow symbol-local edits where surrounding context is already understood or irrelevant. Do **not** use for signature changes, import changes, multi-symbol refactors, caller/test updates, generated files, or public contract changes whose callers were not inspected.
+
+The tool:
+
+1. re-resolves the current symbol,
+2. verifies file/range/hash preconditions,
+3. replaces only that source span under Pi's file mutation queue,
+4. re-resolves the symbol after writing,
+5. reverts the file if the replacement does not resolve as exactly the requested symbol span.
+
+Success means "the guarded edit landed," not "the code is valid or complete." Run project-native validation and fall back to normal `read` + `edit` when imports, adjacent declarations, or callers matter.
+
+Passive usage logs record sanitized follow-up signals for this experiment, including whether a same-file `read` or normal `edit` happens within a small window after a successful symbol replacement. Source text is not logged; hashes and line/byte counts are used instead.
+
 ### `code_intel_references`
 
 Return Cymbal-backed relationship rows. Results include a `summary` section with returned-row `fileCount` and `topFiles` so agents can see distribution before reading files.
@@ -147,6 +184,28 @@ Relations:
 - `implementers`
 - `implementedBy`
 - `importers`
+
+### `code_intel_local_map`
+
+Build a scoped local implementation map from central anchors plus related names. This is the convenience tool for replacing compound relationship-search commands such as:
+
+```bash
+rg -n "func lowerAggregation|aggregation.*RequiredTagLabels|RequiredTagLabels" internal/promshim/native/renderer/aggregation* internal/promshim/native/renderer/lower*.go
+```
+
+Example:
+
+```json
+{
+  "anchors": ["lowerAggregation"],
+  "names": ["RequiredTagLabels"],
+  "paths": ["internal/promshim/native/renderer"],
+  "language": "go",
+  "detail": "locations"
+}
+```
+
+The tool combines symbol context, references, optional selector syntax matches like `$X.RequiredTagLabels`, and bounded literal fallback, then returns suggested files to read next. Use standalone `rg` afterward for comments/docs, generated text beyond the returned cap, or empty/stale backend results.
 
 ### `code_intel_impact_map`
 

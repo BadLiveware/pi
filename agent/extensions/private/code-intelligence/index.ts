@@ -3,15 +3,17 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { withFileMutationQueue, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { runImpactMap, runReferences, runSymbolContext } from "./src/cymbal.ts";
 import { loadConfig } from "./src/config.ts";
 import { summarizeCommand } from "./src/exec.ts";
-import { resolveRepoRoots } from "./src/repo.ts";
+import { runLocalMap } from "./src/local-map.ts";
+import { ensureInsideRoot, resolveRepoRoots } from "./src/repo.ts";
 import { artifactPolicyState, backendStatuses, requestedUpdateBackend, runIndexUpdate, statePayload } from "./src/state.ts";
 import { runSyntaxSearch } from "./src/syntax.ts";
-import { SQRY_REPO_ARTIFACTS, type ArtifactPolicyState, type BackendName, type BackendStatus, type CodeIntelConfig, type CodeIntelStateParams, type CodeIntelSyntaxSearchParams, type CodeIntelUpdateParams, type CymbalImpactMapParams, type CymbalReferencesParams, type CymbalSymbolContextParams } from "./src/types.ts";
+import { runReplaceSymbol, runSymbolSource } from "./src/symbol-source.ts";
+import { SQRY_REPO_ARTIFACTS, type ArtifactPolicyState, type BackendName, type BackendStatus, type CodeIntelConfig, type CodeIntelLocalMapParams, type CodeIntelReplaceSymbolParams, type CodeIntelStateParams, type CodeIntelSymbolSourceParams, type CodeIntelSyntaxSearchParams, type CodeIntelUpdateParams, type CymbalImpactMapParams, type CymbalReferencesParams, type CymbalSymbolContextParams } from "./src/types.ts";
 import { recordUsageToolCall, recordUsageToolResult } from "./src/usage.ts";
 import { normalizePositiveInteger } from "./src/util.ts";
 
@@ -287,15 +289,73 @@ function renderSyntaxResult(details: Record<string, unknown>, expanded: boolean,
 	return renderLines(lines);
 }
 
-function renderGenericCodeIntelResult(kind: "state" | "update" | "symbol" | "references" | "impact" | "syntax") {
+function renderSymbolSourceResult(details: Record<string, unknown>, expanded: boolean, theme: any): Text {
+	const resolved = asRecord(details.resolved);
+	const range = asRecord(details.range);
+	const location = details.file ? `${compactPath(details.file)}${range.startLine ? `:${range.startLine}-${range.endLine}` : ""}` : "unresolved";
+	const sourceBytes = asNumber(details.sourceBytes);
+	const truncated = details.sourceTruncated === true ? renderColor(theme, "warning", " truncated") : "";
+	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "symbol source")} ${renderColor(theme, "muted", asString(details.symbol) ?? "")} · ${location}${sourceBytes !== undefined ? ` · ${compactNumber(sourceBytes)}B` : ""}${truncated}`];
+	if (expanded) {
+		if (resolved.kind) lines.push(`${renderColor(theme, "muted", "kind")} ${String(resolved.kind)}${resolved.language ? ` · ${String(resolved.language)}` : ""}`);
+		if (details.reason) lines.push(`${renderColor(theme, "warning", "reason")} ${firstLine(details.reason, 120)}`);
+		const matches = asArray(details.matches).map(asRecord);
+		for (const match of matches.slice(0, 8)) lines.push(`${renderColor(theme, "muted", "match")} ${compactPath(match.file)}${match.startLine ? `:${match.startLine}` : ""} ${asString(match.kind) ?? ""}`.trim());
+	} else appendExpandHint(lines, expanded, theme);
+	return renderLines(lines);
+}
+
+function renderReplaceSymbolResult(details: Record<string, unknown>, expanded: boolean, theme: any): Text {
+	const before = asRecord(details.rangeBefore);
+	const after = asRecord(details.rangeAfter);
+	const location = details.file ? `${compactPath(details.file)}${before.startLine ? `:${before.startLine}-${before.endLine}` : ""}` : "unknown";
+	const afterText = after.startLine ? ` → ${after.startLine}-${after.endLine}` : "";
+	const reverted = details.reverted === true ? renderColor(theme, "warning", " reverted") : "";
+	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "replace symbol")} ${renderColor(theme, "muted", asString(details.symbol) ?? "")} · ${location}${afterText}${reverted}`];
+	if (expanded) {
+		if (details.reason) lines.push(`${renderColor(theme, "warning", "reason")} ${firstLine(details.reason, 160)}`);
+		const beforeLines = asNumber(details.lineCountBefore);
+		const afterLines = asNumber(details.lineCountAfter);
+		if (beforeLines !== undefined || afterLines !== undefined) lines.push(`${renderColor(theme, "muted", "lines")} ${String(beforeLines ?? "?")} → ${String(afterLines ?? "?")}`);
+		const validation = asRecord(details.validation);
+		if (Object.keys(validation).length > 0) lines.push(`${renderColor(theme, "muted", "validation")} ${validation.resolvedAfterReplacement === true ? "resolved" : "unresolved"} · ${validation.exactReplacementSpan === true ? "exact-span" : "span-check"}`);
+	} else appendExpandHint(lines, expanded, theme);
+	return renderLines(lines);
+}
+
+function renderLocalMapResult(details: Record<string, unknown>, expanded: boolean, theme: any): Text {
+	const summary = asRecord(details.summary);
+	const coverage = asRecord(details.coverage);
+	const suggestedFiles = asArray(summary.suggestedFiles).map(asRecord);
+	const sections = asRecord(details.sections);
+	const contextCount = asArray(sections.symbolContexts).length;
+	const refsCount = asArray(sections.references).length;
+	const syntaxCount = asArray(sections.syntaxMatches).length;
+	const literalCount = asArray(sections.literalMatches).length;
+	const truncated = coverage.truncated === true ? renderColor(theme, "warning", " truncated") : "";
+	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "local map")} names ${asArray(details.names).length} · files ${suggestedFiles.length} · ctx/ref/syn/lit ${contextCount}/${refsCount}/${syntaxCount}/${literalCount}${truncated}`];
+	if (expanded) {
+		for (const file of suggestedFiles.slice(0, 10)) {
+			const reasons = asArray(file.reasons).map((reason) => String(reason)).slice(0, 2).join(", ");
+			lines.push(`${compactPath(file.file)}×${String(file.count ?? "?")}${reasons ? ` ${renderColor(theme, "dim", reasons)}` : ""}`);
+		}
+		if (suggestedFiles.length > 10) lines.push(renderColor(theme, "dim", `… ${suggestedFiles.length - 10} more suggested file(s)`));
+	} else appendExpandHint(lines, expanded, theme);
+	return renderLines(lines);
+}
+
+function renderGenericCodeIntelResult(kind: "state" | "update" | "symbol" | "source" | "replace" | "references" | "impact" | "syntax" | "local") {
 	return (result: unknown, options: { expanded?: boolean; isPartial?: boolean } | undefined, theme: any) => {
 		if (options?.isPartial) return renderLines([renderColor(theme, "accent", "code-intel working…")]);
 		const details = asRecord(asRecord(result).details);
 		if (kind === "state") return renderStateResult(details, options?.expanded === true, theme);
 		if (kind === "update") return renderUpdateResult(details, options?.expanded === true, theme);
 		if (kind === "symbol") return renderSymbolContextResult(details, options?.expanded === true, theme);
+		if (kind === "source") return renderSymbolSourceResult(details, options?.expanded === true, theme);
+		if (kind === "replace") return renderReplaceSymbolResult(details, options?.expanded === true, theme);
 		if (kind === "references") return renderReferencesResult(details, options?.expanded === true, theme);
 		if (kind === "impact") return renderImpactResult(details, options?.expanded === true, theme);
+		if (kind === "local") return renderLocalMapResult(details, options?.expanded === true, theme);
 		return renderSyntaxResult(details, options?.expanded === true, theme);
 	};
 }
@@ -406,6 +466,8 @@ function registerStateTool(pi: ExtensionAPI): void {
 		promptSnippet: "Inspect code-intel role status before relying on indexes: sem/sqry, nav/Cymbal, ast/ast-grep.",
 		promptGuidelines: [
 			"Treat code_intel output as advisory routing evidence, not proof of complete impact.",
+			"In large or unfamiliar repos, prefer one bounded code_intel_* routing query before repeated rg/read navigation for callers, usages, imports, or implementers; then read returned files to verify.",
+			"If you are about to run rg for function/type/field names across source files to understand definitions, callers, usages, or API shapes, prefer code_intel_symbol_context, code_intel_symbol_source, code_intel_references, code_intel_local_map, or code_intel_syntax_search first; use rg as literal fallback.",
 			"Call code_intel_state before relying on availability, freshness, sqry artifact policy, or footer error state.",
 			"For normal freshness checks, omit includeDiagnostics; use includeDiagnostics:true only to debug footer errors, stale output, or failed auto-index/update commands.",
 		],
@@ -433,9 +495,10 @@ function registerSymbolContextTool(pi: ExtensionAPI): void {
 		name: "code_intel_symbol_context",
 		label: "Code Intelligence Symbol Context",
 		description: "Get compact Cymbal-backed context for a symbol: definition, source, callers, imports, and alternate matches.",
-		promptSnippet: "Use nav/Cymbal symbol context for one unfamiliar or changed symbol before editing or reviewing callers.",
+		promptSnippet: "Inspect one unfamiliar function/type/class before editing it or changing behavior its callers may depend on.",
 		promptGuidelines: [
-			"Best for one symbol; use code_intel_references or code_intel_impact_map for broader blast-radius checks.",
+			"Use code_intel_symbol_context before editing unfamiliar exported functions, handlers, config/schema/protocol helpers, or code whose callers you have not inspected.",
+			"Best for one symbol; use code_intel_references or code_intel_impact_map for broader caller/consumer checks.",
 			"If results look stale or fail, inspect code_intel_state or refresh nav with code_intel_update.",
 			"Read returned source files before turning context into a finding or fix.",
 		],
@@ -456,16 +519,86 @@ function registerSymbolContextTool(pi: ExtensionAPI): void {
 	});
 }
 
+function registerSymbolSourceTool(pi: ExtensionAPI): void {
+	pi.registerTool({
+		name: "code_intel_symbol_source",
+		label: "Code Intelligence Symbol Source",
+		description: "Resolve one symbol and return only its source span with file/range/hash preconditions for focused inspection or guarded replacement.",
+		promptSnippet: "Get only a symbol's source span before focused symbol-local edits in large files.",
+		promptGuidelines: [
+			"Use code_intel_symbol_source when you need the exact body/source of one known function, method, type, or variable without reading the whole file.",
+			"Use code_intel_symbol_source before code_intel_replace_symbol; pass file or paths when the symbol is ambiguous.",
+			"Do not treat code_intel_symbol_source as enough context when imports, adjacent declarations, callers, or public contracts matter; read those files normally.",
+		],
+		renderCall: renderToolCall("code_intel_symbol_source", (args) => `${asString(args.symbol) ?? ""}${args.file ? ` · ${compactPath(args.file)}` : ""}`.trim()),
+		renderResult: renderGenericCodeIntelResult("source"),
+		parameters: Type.Object({
+			repoRoot: repoRootParam,
+			symbol: Type.String({ description: "Symbol name to resolve." }),
+			file: Type.Optional(Type.String({ description: "Repo-relative file to disambiguate the symbol." })),
+			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative path filters to disambiguate the symbol." })),
+			maxSourceBytes: Type.Optional(Type.Number({ description: "Maximum symbol source bytes to return. Default 200000, max 2000000." })),
+			timeoutMs: timeoutParam,
+		}),
+		async execute(_toolCallId: string, params: CodeIntelSymbolSourceParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+			const loadedConfig = loadConfig(ctx);
+			const roots = await resolveRepoRoots(ctx, params.repoRoot);
+			const payload = await runSymbolSource(params, roots.repoRoot, loadedConfig.config, signal);
+			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+		},
+	});
+}
+
+function registerReplaceSymbolTool(pi: ExtensionAPI): void {
+	pi.registerTool({
+		name: "code_intel_replace_symbol",
+		label: "Code Intelligence Replace Symbol",
+		description: "Experimentally and guardedly replace exactly one resolved symbol span using code_intel_symbol_source preconditions. Use only for narrow symbol-local changes; not for signatures, imports, multi-symbol refactors, caller updates, generated files, or unknown surrounding invariants.",
+		promptSnippet: "Guardedly replace one already-understood symbol span; prefer normal read/edit when surrounding context or imports may matter.",
+		promptGuidelines: [
+			"Use code_intel_replace_symbol only after code_intel_symbol_source has returned file, expectedRange, and expectedHash for the same symbol.",
+			"Use code_intel_replace_symbol only for narrow symbol-local body/source changes where surrounding file context is already understood or irrelevant.",
+			"Do not use code_intel_replace_symbol for signature changes, import changes, multi-symbol refactors, caller/test updates, generated files, or public contract changes whose callers were not inspected.",
+			"If code_intel_replace_symbol fails or you need surrounding context, read the file and use normal edit instead; treat success as an edit, not validation.",
+		],
+		renderCall: renderToolCall("code_intel_replace_symbol", (args) => `${asString(args.symbol) ?? ""}${args.file ? ` · ${compactPath(args.file)}` : ""}`.trim()),
+		renderResult: renderGenericCodeIntelResult("replace"),
+		parameters: Type.Object({
+			repoRoot: repoRootParam,
+			symbol: Type.String({ description: "Symbol name from code_intel_symbol_source." }),
+			file: Type.String({ description: "Repo-relative file from code_intel_symbol_source preconditions." }),
+			expectedRange: Type.Object({
+				startLine: Type.Number({ description: "Start line from code_intel_symbol_source preconditions." }),
+				endLine: Type.Number({ description: "End line from code_intel_symbol_source preconditions." }),
+			}),
+			expectedHash: Type.String({ description: "sha256 source hash from code_intel_symbol_source preconditions." }),
+			newSource: Type.String({ description: "Complete replacement source for exactly this symbol span." }),
+			timeoutMs: timeoutParam,
+		}),
+		async execute(_toolCallId: string, params: CodeIntelReplaceSymbolParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+			const loadedConfig = loadConfig(ctx);
+			const roots = await resolveRepoRoots(ctx, params.repoRoot);
+			const file = ensureInsideRoot(roots.repoRoot, params.file);
+			const absoluteFile = path.resolve(roots.repoRoot, file);
+			return withFileMutationQueue(absoluteFile, async () => {
+				const payload = await runReplaceSymbol({ ...params, file }, roots.repoRoot, loadedConfig.config, signal);
+				return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			});
+		},
+	});
+}
+
 function registerReferencesTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_references",
 		label: "Code Intelligence References",
 		description: "Find Cymbal-backed references, callers, callees, impact rows, implementers, implemented interfaces, or importers.",
-		promptSnippet: "Use nav/Cymbal references for callers, callees, implementers, importers, or refs of a known symbol/type/file.",
+		promptSnippet: "Find callers/usages/importers/implementers of a known symbol/type/file; prefer before broad rg relationship chasing.",
 		promptGuidelines: [
+			"Use code_intel_references before broad rg/read loops when you need callers, usages, refs, importers, or implementers of a known function/type/file/package.",
 			"Choose the narrowest relation and bounded maxResults; add path filters when reviewing scoped changes.",
 			"Use code_intel_references detail:'locations' when you expect to read or edit returned files; use detail:'snippets' only for small inline context.",
-			"Use impact_map when starting from changed files or multiple root symbols.",
+			"Use code_intel_impact_map when starting from a diff, edited files, or multiple root symbols.",
 			"Treat missing or empty results as non-authoritative; verify important candidates in source.",
 		],
 		renderCall: renderToolCall("code_intel_references", (args) => `${asString(args.relation) ?? "refs"} ${asString(args.query) ?? ""}`.trim()),
@@ -490,13 +623,55 @@ function registerReferencesTool(pi: ExtensionAPI): void {
 	});
 }
 
+function registerLocalMapTool(pi: ExtensionAPI): void {
+	pi.registerTool({
+		name: "code_intel_local_map",
+		label: "Code Intelligence Local Map",
+		description: "Build a scoped local implementation map from anchor names, related symbol/field names, optional path scope, and bounded literal fallback.",
+		promptSnippet: "Map symbol/field names in a scoped subsystem before writing compound rg relationship searches.",
+		promptGuidelines: [
+			"Use code_intel_local_map when you would otherwise run rg with several function/type/field names to understand a local implementation area before editing.",
+			"Use code_intel_local_map for questions like: where is this implementation anchor, where are these fields/symbols used, and which scoped files should I read next?",
+			"Provide anchors for central functions/types and names for related fields/types/API terms; add paths to keep the map local.",
+			"Use code_intel_local_map detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or stale/empty backend results.",
+		],
+		renderCall: renderToolCall("code_intel_local_map", (args) => {
+			const anchors = asArray(args.anchors).length;
+			const names = asArray(args.names).length;
+			const paths = asArray(args.paths).length;
+			return [`${anchors} anchor(s)`, `${names} name(s)`, paths ? `${paths} path(s)` : undefined].filter(Boolean).join(" · ");
+		}),
+		renderResult: renderGenericCodeIntelResult("local"),
+		parameters: Type.Object({
+			repoRoot: repoRootParam,
+			anchors: Type.Optional(Type.Array(Type.String(), { description: "Central function/type names that anchor the implementation area, e.g. lowerAggregation." })),
+			names: Type.Optional(Type.Array(Type.String(), { description: "Related symbol, field, type, or API names to map, e.g. RequiredTagLabels." })),
+			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files or directories to keep the map local." })),
+			language: Type.Optional(Type.String({ description: "Language for optional selector syntax matches, e.g. go, ts, python." })),
+			includeSyntax: Type.Optional(Type.Boolean({ description: "Run optional selector syntax matches like $X.Name when language is provided. Default true." })),
+			maxResults: Type.Optional(Type.Number({ description: "Maximum suggested files returned. Default min(config maxResults, 25)." })),
+			maxPerName: Type.Optional(Type.Number({ description: "Maximum refs/syntax matches per name. Default min(config maxResults, 8)." })),
+			timeoutMs: timeoutParam,
+			detail: detailParam,
+		}),
+		async execute(_toolCallId: string, params: CodeIntelLocalMapParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+			const loadedConfig = loadConfig(ctx);
+			const roots = await resolveRepoRoots(ctx, params.repoRoot);
+			const payload = await runLocalMap(params, roots.repoRoot, loadedConfig.config, signal);
+			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+		},
+	});
+}
+
 function registerImpactMapTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_impact_map",
 		label: "Code Intelligence Impact Map",
-		description: "Build a compact Cymbal-backed impact map from queried symbols, changed files, or a git base ref.",
-		promptSnippet: "Use nav/Cymbal impact maps before reviewing changed symbols, changed files, or public API blast radius.",
+		description: "Build a compact Cymbal-backed candidate file map from edited files, queried symbols, or a git base ref.",
+		promptSnippet: "List likely caller/consumer files to read before non-trivial edits or reviews of edited files/symbols.",
 		promptGuidelines: [
+			"Use code_intel_impact_map after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
+			"Use code_intel_impact_map to answer: which unchanged caller, consumer, or test files should I read before changing or reviewing this code?",
 			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, and truncation.",
 			"Use code_intel_impact_map detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
 			"Impact maps are a candidate file list, not exhaustive proof of all callers or safe compatibility.",
@@ -627,7 +802,10 @@ export default function codeIntelligence(pi: ExtensionAPI): void {
 	});
 	registerStateTool(pi);
 	registerSymbolContextTool(pi);
+	registerSymbolSourceTool(pi);
+	registerReplaceSymbolTool(pi);
 	registerReferencesTool(pi);
+	registerLocalMapTool(pi);
 	registerImpactMapTool(pi);
 	registerSyntaxSearchTool(pi);
 	registerUpdateTool(pi);
