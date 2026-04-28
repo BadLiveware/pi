@@ -1,12 +1,13 @@
 {
   "name": "@badliveware/pi-compaction-continue",
-  "version": "0.1.1",
-  "description": "Auto-continue extension for Pi after idle compactions.",
+  "version": "0.1.2",
+  "description": "Watchdog nudge extension for Pi after idle compactions or stalled Ralph turns.",
   "type": "module",
   "keywords": [
     "pi-package",
     "pi-extension",
-    "compaction"
+    "compaction",
+    "ralph"
   ],
   "license": "MIT",
   "author": "BadLiveware",
