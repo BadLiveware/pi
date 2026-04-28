@@ -27,8 +27,9 @@ Verification process:
    - `corpus-suggested`
    - `outside-corpus`
 3. For each candidate, classify as:
-   - `supported`
-   - `plausible but unverified`
+   - `supported-deterministic`
+   - `supported-trace`
+   - `plausible-but-unverified`
    - `rejected`
 4. Reject any candidate that lacks:
    - a concrete path,
@@ -51,7 +52,7 @@ Rules:
 Output format:
 
 ## Retained findings
-- **Severity / confidence:** <critical|high|medium|low>, <high|medium|low>
+- **Severity / confidence / evidence:** <critical|high|medium|low>, <high|medium|low>, <supported-deterministic|supported-trace>
   **Origin:** `unprimed | corpus-suggested | outside-corpus`
   **Family / entry:** `F? / FM-...` or `outside-corpus`
   **Location:** `path:line`
@@ -60,7 +61,7 @@ Output format:
   **Evidence:** ...
   **Suggested fix:** ...
 
-## Plausible but unverified
+## Plausible-but-unverified
 - `FM-...` or `outside-corpus`: what seems possible, and what evidence is missing
 
 ## Rejected / dropped
