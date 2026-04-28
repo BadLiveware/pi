@@ -1,0 +1,34 @@
+{
+  "name": "pi-private-code-intelligence",
+  "version": "0.1.0",
+  "description": "Private local code-intelligence extension for evaluating advisory symbol, impact-map, and syntax-search tools.",
+  "private": true,
+  "type": "module",
+  "keywords": [
+    "pi-extension",
+    "code-intelligence",
+    "review"
+  ],
+  "license": "MIT",
+  "files": [
+    "README.md",
+    "LICENSE",
+    "index.ts",
+    "src",
+    "package.json",
+    "skills"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
