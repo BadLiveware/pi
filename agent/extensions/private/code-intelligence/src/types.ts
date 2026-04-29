@@ -3,6 +3,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
 export const DEFAULT_MAX_OUTPUT_BYTES = 5_000_000;
 
 export type BackendName = "tree-sitter" | "rg";
+export type LanguageServerName = "gopls" | "rust-analyzer" | "typescript";
 export type Availability = "available" | "missing" | "error";
 export type IndexStatus = "not-required" | "error";
 export type ResultDetail = "locations" | "snippets";
@@ -52,6 +53,15 @@ export interface BackendStatus {
 	indexStatus: IndexStatus;
 	writesToRepo: boolean;
 	artifacts: string[];
+	diagnostics: string[];
+	details?: Record<string, unknown>;
+}
+
+export interface LanguageServerStatus {
+	server: LanguageServerName;
+	available: Availability;
+	executable?: string;
+	version?: string;
 	diagnostics: string[];
 	details?: Record<string, unknown>;
 }

@@ -9,9 +9,9 @@ import { loadConfig } from "./src/config.ts";
 import { runImpactMap } from "./src/impact.ts";
 import { runLocalMap } from "./src/local-map.ts";
 import { resolveRepoRoots } from "./src/repo.ts";
-import { backendStatuses, statePayload } from "./src/state.ts";
+import { backendStatuses, languageServerStatuses, statePayload } from "./src/state.ts";
 import { runSyntaxSearch } from "./src/syntax.ts";
-import type { BackendName, BackendStatus, CodeIntelConfig, CodeIntelImpactMapParams, CodeIntelLocalMapParams, CodeIntelStateParams, CodeIntelSyntaxSearchParams } from "./src/types.ts";
+import type { BackendName, BackendStatus, CodeIntelImpactMapParams, CodeIntelLocalMapParams, CodeIntelStateParams, CodeIntelSyntaxSearchParams } from "./src/types.ts";
 import { recordUsageToolCall, recordUsageToolResult } from "./src/usage.ts";
 
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
@@ -181,12 +181,17 @@ function renderStateResult(details: Record<string, unknown>, expanded: boolean, 
 	const rg = asRecord(backends.rg);
 	const syn = `${renderColor(theme, "muted", "syn:")}${renderColor(theme, backendAvailable(treeSitter) ? "success" : "error", backendAvailable(treeSitter) ? "ok" : String(treeSitter.available ?? "?"))}`;
 	const literal = `${renderColor(theme, "muted", "rg:")}${renderColor(theme, backendAvailable(rg) ? "success" : "warning", backendAvailable(rg) ? "ok" : String(rg.available ?? "?"))}`;
-	const lines = [`${renderStatus(theme, backendAvailable(treeSitter))} ${renderBold(theme, "code-intel state")} ${syn} · ${literal}`];
+	const languageServers = asRecord(details.languageServers);
+	const availableLsps = (["gopls", "rust-analyzer", "typescript"] as const).filter((server) => backendAvailable(asRecord(languageServers[server]))).length;
+	const lsp = `${renderColor(theme, "muted", "lsp:")}${renderColor(theme, availableLsps > 0 ? "success" : "warning", `${availableLsps}/3`)}`;
+	const lines = [`${renderStatus(theme, backendAvailable(treeSitter))} ${renderBold(theme, "code-intel state")} ${syn} · ${literal} · ${lsp}`];
 	if (expanded) {
 		const treeDetails = asRecord(treeSitter.details);
 		lines.push(`${renderColor(theme, "muted", "repo")} ${compactPath(details.repoRoot)}`);
 		lines.push(`${renderColor(theme, "muted", "tree-sitter")} ${String(treeDetails.runtime ?? "wasm")} ${treeSitter.version ? `v${String(treeSitter.version)}` : ""} · languages ${Array.isArray(treeDetails.languages) ? treeDetails.languages.length : "?"}`.trim());
 		lines.push(`${renderColor(theme, "muted", "rg")} ${rg.version ? String(rg.version).split(/\s+/).slice(0, 2).join(" ") : String(rg.available ?? "?")}`);
+		const lspSummary = (["gopls", "rust-analyzer", "typescript"] as const).map((server) => `${server}:${String(asRecord(languageServers[server]).available ?? "?")}`).join(" · ");
+		lines.push(`${renderColor(theme, "muted", "language servers")} ${lspSummary}`);
 		const diagnostics = asArray(details.diagnostics);
 		if (diagnostics.length > 0) lines.push(`${renderColor(theme, "warning", "diagnostics")} ${diagnostics.length}`);
 		const runtime = asRecord(details.runtimeDiagnostics);
@@ -299,7 +304,7 @@ function registerStateTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_state",
 		label: "Code Intelligence State",
-		description: "Inspect local Tree-sitter parser and rg fallback availability plus config and runtime diagnostics.",
+		description: "Inspect local Tree-sitter parser, rg fallback, optional language-server availability, config, and runtime diagnostics.",
 		promptSnippet: "Inspect code-intel status before debugging parser availability, rg fallback, config, or footer errors.",
 		promptGuidelines: [
 			"Treat code_intel output as advisory routing evidence for deciding what to read next, not proof of complete impact or exact references.",
@@ -317,8 +322,9 @@ function registerStateTool(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const statuses = await backendStatuses(roots.repoRoot, loadedConfig.config);
+			const languageServers = await languageServerStatuses(roots.repoRoot, loadedConfig.config);
 			setStatusSummary(ctx, statuses);
-			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true) as Record<string, unknown>;
+			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true, languageServers) as Record<string, unknown>;
 			if (params.includeDiagnostics === true) payload.runtimeDiagnostics = runtimeDiagnostics(roots.repoRoot);
 			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
 		},

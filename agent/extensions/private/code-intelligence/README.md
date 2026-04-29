@@ -20,7 +20,7 @@ Use code-intel when you need a bounded candidate file list before a non-trivial 
 - You have a scoped subsystem with central anchors plus related field/type/API names.
 - You need to find an explicit AST shape or API call pattern in current source.
 
-Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. Use language servers such as `gopls`, TypeScript language services, or Rust Analyzer when exact references matter.
+Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. `code_intel_state` reports optional language-server availability for planning/debugging only; current routing tools do not call `gopls`, TypeScript language services, or Rust Analyzer.
 
 Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or unsupported-language gaps.
 
@@ -32,6 +32,8 @@ Use returned locations to choose files to read next; do not treat the result as 
 | --- | --- | --- |
 | Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search | no index |
 | rg | bounded literal fallback in local maps and human follow-up searches | no index |
+
+Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, and TypeScript server availability) are status-only. They are reserved for future explicit exact-reference confirmation workflows and are not used by the default routing tools.
 
 Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path anymore.
 
@@ -115,9 +117,9 @@ tail -n 40 ~/.cache/pi-code-intelligence/usage/*.jsonl
 
 ### `code_intel_state`
 
-Inspect Tree-sitter and `rg` availability, config paths, loaded config, limitations, and optional diagnostics.
+Inspect Tree-sitter, `rg`, and optional language-server availability, plus config paths, loaded config, limitations, and optional diagnostics.
 
-Use this first when parser availability, missing `rg`, or footer status matters. It also refreshes the `code-intel` footer status. Omit `includeDiagnostics` for routine checks; use `includeDiagnostics: true` for footer errors or failed parser/fallback probes.
+Use this first when parser availability, missing `rg`, optional LSP availability, or footer status matters. It also refreshes the `code-intel` footer status. Omit `includeDiagnostics` for routine checks; use `includeDiagnostics: true` for footer errors or failed parser/fallback probes. LSP status is availability-only, not proof that exact-reference confirmation has been run.
 
 ### `code_intel_impact_map`
 

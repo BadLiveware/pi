@@ -158,6 +158,10 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal("sqryArtifactPolicy" in state, false);
 	assert.equal("cymbal" in state.backends, false);
 	assert.equal("sqry" in state.backends, false);
+	assert.equal(state.languageServers.gopls.server, "gopls");
+	assert.equal(state.languageServers["rust-analyzer"].server, "rust-analyzer");
+	assert.equal(state.languageServers.typescript.server, "typescript");
+	assert.match(state.limitations.join("\n"), /availability-only/);
 	assert.deepEqual(state.config, { maxResults: 50, queryTimeoutMs: 30000, maxOutputBytes: 5000000 });
 	assert.equal(statuses.at(-1)?.key, "code-intel");
 	assert.match(statuses.at(-1)?.value ?? "", /^ci\s+syn:ok/);

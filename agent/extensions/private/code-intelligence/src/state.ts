@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import type { BackendName, BackendStatus, CodeIntelConfig, LoadedConfig, RepoRoots } from "./types.ts";
+import type { BackendName, BackendStatus, CodeIntelConfig, LanguageServerName, LanguageServerStatus, LoadedConfig, RepoRoots } from "./types.ts";
 import { commandDiagnostic, findExecutable, firstLine, runCommand } from "./exec.ts";
 
 const TREE_SITTER_LANGUAGES = ["go", "typescript", "tsx", "javascript", "rust", "python", "java", "c", "cpp", "csharp", "ruby", "php", "bash", "css"];
@@ -49,12 +49,52 @@ async function rgStatus(repoRoot: string, config: CodeIntelConfig): Promise<Back
 	};
 }
 
+async function commandStatus(server: LanguageServerName, command: string, args: string[], repoRoot: string, config: CodeIntelConfig, missingDiagnostic?: string): Promise<LanguageServerStatus> {
+	const executable = findExecutable(command);
+	if (!executable) return { server, available: "missing", diagnostics: [missingDiagnostic ?? `${command} not found on PATH`] };
+	const result = await runCommand(executable, args, { cwd: repoRoot, timeoutMs: Math.min(config.queryTimeoutMs, 10_000), maxOutputBytes: Math.min(config.maxOutputBytes, 200_000) });
+	const diagnostic = commandDiagnostic(result);
+	return {
+		server,
+		available: diagnostic ? "error" : "available",
+		executable,
+		version: firstLine(result.stdout || result.stderr),
+		diagnostics: diagnostic ? [diagnostic] : [],
+	};
+}
+
+async function typescriptStatus(repoRoot: string, config: CodeIntelConfig): Promise<LanguageServerStatus> {
+	const tsserver = findExecutable("tsserver");
+	if (tsserver) return { server: "typescript", available: "available", executable: tsserver, diagnostics: [], details: { command: "tsserver", versionProbe: "not-run" } };
+	const tsls = findExecutable("typescript-language-server");
+	if (!tsls) return { server: "typescript", available: "missing", diagnostics: ["tsserver or typescript-language-server not found on PATH"] };
+	const result = await runCommand(tsls, ["--version"], { cwd: repoRoot, timeoutMs: Math.min(config.queryTimeoutMs, 10_000), maxOutputBytes: Math.min(config.maxOutputBytes, 200_000) });
+	const diagnostic = commandDiagnostic(result);
+	return {
+		server: "typescript",
+		available: diagnostic ? "error" : "available",
+		executable: tsls,
+		version: firstLine(result.stdout || result.stderr),
+		diagnostics: diagnostic ? [diagnostic] : [],
+		details: { command: "typescript-language-server" },
+	};
+}
+
+export async function languageServerStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<LanguageServerName, LanguageServerStatus>> {
+	const [gopls, rustAnalyzer, typescript] = await Promise.all([
+		commandStatus("gopls", "gopls", ["version"], repoRoot, config),
+		commandStatus("rust-analyzer", "rust-analyzer", ["--version"], repoRoot, config),
+		typescriptStatus(repoRoot, config),
+	]);
+	return { gopls, "rust-analyzer": rustAnalyzer, typescript };
+}
+
 export async function backendStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<BackendName, BackendStatus>> {
 	const rg = await rgStatus(repoRoot, config);
 	return { "tree-sitter": treeSitterStatus(), rg };
 }
 
-export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statuses: Record<BackendName, BackendStatus>, includeDiagnostics: boolean): Record<string, unknown> {
+export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statuses: Record<BackendName, BackendStatus>, includeDiagnostics: boolean, languageServers?: Record<LanguageServerName, LanguageServerStatus>): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		repoRoot: roots.repoRoot,
 		requestedRoot: roots.requestedRoot,
@@ -65,8 +105,17 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		limitations: [
 			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
 			"rg literal fallback is for text discovery only; use source reads and project-native validation before making claims.",
+			"Language-server status is availability-only; current code-intel routing does not use LSPs unless a future explicit confirmation tool is added.",
 		],
 	};
-	if (includeDiagnostics) payload.diagnostics = [...roots.diagnostics, ...loadedConfig.diagnostics, ...Object.values(statuses).flatMap((status) => status.diagnostics)];
+	if (languageServers) payload.languageServers = languageServers;
+	if (includeDiagnostics) {
+		payload.diagnostics = [
+			...roots.diagnostics,
+			...loadedConfig.diagnostics,
+			...Object.values(statuses).flatMap((status) => status.diagnostics),
+			...Object.values(languageServers ?? {}).flatMap((status) => status.diagnostics),
+		];
+	}
 	return payload;
 }
