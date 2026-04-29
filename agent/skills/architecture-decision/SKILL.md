@@ -7,6 +7,8 @@ description: Use when designing a new subsystem or making/revisiting large struc
 
 Use this skill to choose the system shape before sequencing implementation. The outcome is a clear decision, or a deliberately narrowed set of options, with constraints, tradeoffs, risks, and validation evidence.
 
+Respect real ownership, but do not worship accidental boundaries. Identify what must remain compatible and what adjacent boundary could change to remove local complexity.
+
 ## When to Use
 - You are designing a new subsystem, service, extension, protocol, storage layer, data model, API, worker/queue model, or plugin boundary.
 - You are rethinking an existing architecture because requirements changed or the current shape causes repeated friction, scale limits, reliability issues, security risk, or testability problems.
@@ -21,12 +23,14 @@ Use this skill to choose the system shape before sequencing implementation. The 
 ## Workflow
 1. State the decision being made, desired behavior, non-goals, assumptions, constraints, and public contracts.
 2. If redesigning, inspect the current architecture, invariants, data ownership, dependency direction, failure model, and migration constraints before proposing replacements.
-3. Identify the forces that matter: correctness, state ownership, compatibility, testability, performance cost shape, reliability, security, observability, operability, and repo/team conventions.
-4. List viable options, including the status quo, the simplest local change, and no-new-abstraction when those are credible.
-5. Compare options by tradeoff, not preference: what each improves, what it makes harder, what it risks, and what evidence would change the choice.
-6. Choose the smallest adequate architecture and define its boundaries, contracts, invariants, data flow, failure states, and ownership.
-7. Define proof points before implementation: tests, prototypes, benchmarks, migrations, rollout/rollback checks, compatibility checks, or observability signals.
-8. Hand off to `planning` with concrete implementation boundaries and validation once the architecture decision is stable.
+3. Identify ownership and change authority in both directions: what cannot change without compatibility, migration, rollout, or approval, and what adjacent boundary could change to make the solution simpler.
+4. Ask whether local complexity means the problem is being solved at the wrong boundary: producer vs consumer, storage model vs adapter, API vs caller, validation layer vs workaround, or runtime/operational boundary vs application code.
+5. Identify the forces that matter: correctness, state ownership, compatibility, testability, performance cost shape, reliability, security, observability, operability, and repo/team conventions.
+6. List viable options, including the status quo, the simplest local change, an adjacent-boundary change, and no-new-abstraction when those are credible.
+7. Compare options by tradeoff, not preference: what each improves, what it makes harder, what it risks, and what evidence would change the choice.
+8. Choose the smallest adequate architecture and define its boundaries, contracts, invariants, data flow, failure states, and ownership.
+9. Define proof points before implementation: tests, prototypes, benchmarks, migrations, rollout/rollback checks, compatibility checks, or observability signals.
+10. Hand off to `planning` with concrete implementation boundaries and validation once the architecture decision is stable.
 
 ## Output Shape
 For non-trivial decisions, produce a compact ADR-style summary:
@@ -34,6 +38,7 @@ For non-trivial decisions, produce a compact ADR-style summary:
 ```md
 Decision:
 Context and constraints:
+Ownership and change authority:
 Options considered:
 Chosen shape:
 Boundaries, contracts, and invariants:
@@ -46,6 +51,8 @@ If the right architecture cannot be chosen from current evidence, stop with the 
 
 ## Common Failure Modes
 - Sequencing implementation tasks before deciding ownership, contracts, state, and migration boundaries.
+- Treating every touched file or behavior as freely changeable instead of identifying real ownership, generated sources, public contracts, and downstream users.
+- Treating the first touched layer as fixed and piling on local complexity instead of considering a simpler change at the real ownership boundary.
 - Preserving accidental current behavior as compatibility, or breaking real compatibility because it was not identified.
 - Adding a framework, service, cache, queue, or abstraction before the simpler shape has been ruled out.
 - Ignoring operational realities: deployment, credentials, observability, retries, data repair, rollback, or failure recovery.
