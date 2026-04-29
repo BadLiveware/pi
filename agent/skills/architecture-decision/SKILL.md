@@ -1,6 +1,6 @@
 ---
 name: architecture-decision
-description: Use when designing a new subsystem or making/revisiting large structural decisions: module/service boundaries, APIs, protocols, storage/data models, state ownership, concurrency/queueing, extension points, migrations, public contracts, major abstractions, or cross-cutting operational/security/performance choices. Do not use for routine implementation inside an established architecture.
+description: "Use when designing a new subsystem or making/revisiting large structural decisions: module/service boundaries, APIs, protocols, storage/data models, state ownership, concurrency/queueing, extension points, migrations, public contracts, major abstractions, or cross-cutting operational/security/performance choices. Do not use for routine implementation inside an established architecture."
 ---
 
 # Architecture Decision
