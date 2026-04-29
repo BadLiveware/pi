@@ -260,18 +260,61 @@ function shouldIncludeFile(file: string, includeGlobs: string[], excludeGlobs: s
 	return true;
 }
 
-function collectFilesForSpec(repoRoot: string, spec: LanguageSpec, paths: string[], includeGlobs: string[] = [], excludeGlobs: string[] = []): string[] {
-	const files: string[] = [];
+function specsForLanguages(languages: string[], diagnostics: string[]): LanguageSpec[] {
+	const specs: LanguageSpec[] = [];
+	const seen = new Set<string>();
+	for (const language of languages) {
+		const spec = languageSpec(language);
+		if (!spec) {
+			diagnostics.push(`Unsupported Tree-sitter language: ${language}`);
+			continue;
+		}
+		if (seen.has(spec.id)) continue;
+		seen.add(spec.id);
+		specs.push(spec);
+	}
+	return specs;
+}
+
+function extensionSpecMap(specs: LanguageSpec[]): Map<string, LanguageSpec[]> {
+	const extensions = new Map<string, LanguageSpec[]>();
+	for (const spec of specs) {
+		for (const extension of spec.extensions) {
+			const bucket = extensions.get(extension) ?? [];
+			bucket.push(spec);
+			extensions.set(extension, bucket);
+		}
+	}
+	return extensions;
+}
+
+function emptyFileGroups(specs: LanguageSpec[]): Map<string, Set<string>> {
+	return new Map(specs.map((spec) => [spec.id, new Set<string>()]));
+}
+
+function collectFilesForSpecs(repoRoot: string, specs: LanguageSpec[], paths: string[], includeGlobs: string[] = [], excludeGlobs: string[] = []): Map<string, string[]> {
+	const filesBySpec = emptyFileGroups(specs);
+	const specsByExtension = extensionSpecMap(specs);
 	const roots = paths.length > 0 ? paths : ["."];
 	const stack: string[] = [];
+
+	const addFile = (absoluteFile: string): void => {
+		const matchingSpecs = specsByExtension.get(path.extname(absoluteFile));
+		if (!matchingSpecs) return;
+		const relative = repoRelative(repoRoot, absoluteFile);
+		if (!shouldIncludeFile(relative, includeGlobs, excludeGlobs)) return;
+		for (const spec of matchingSpecs) filesBySpec.get(spec.id)?.add(absoluteFile);
+	};
+
 	for (const inputPath of roots) {
 		const safe = ensureInsideRoot(repoRoot, inputPath);
 		const absolute = path.resolve(repoRoot, safe);
 		if (!fs.existsSync(absolute)) continue;
 		const stat = fs.statSync(absolute);
 		if (stat.isDirectory()) stack.push(absolute);
-		else if (stat.isFile() && spec.extensions.includes(path.extname(absolute)) && shouldIncludeFile(repoRelative(repoRoot, absolute), includeGlobs, excludeGlobs)) files.push(absolute);
+		else if (stat.isFile()) addFile(absolute);
 	}
+
 	while (stack.length > 0) {
 		const current = stack.pop() as string;
 		let entries: fs.Dirent[];
@@ -284,13 +327,11 @@ function collectFilesForSpec(repoRoot: string, spec: LanguageSpec, paths: string
 			const absolute = path.join(current, entry.name);
 			if (entry.isDirectory()) {
 				if (!isIgnoredDir(entry.name)) stack.push(absolute);
-			} else if (entry.isFile() && spec.extensions.includes(path.extname(entry.name))) {
-				const relative = repoRelative(repoRoot, absolute);
-				if (shouldIncludeFile(relative, includeGlobs, excludeGlobs)) files.push(absolute);
-			}
+			} else if (entry.isFile()) addFile(absolute);
 		}
 	}
-	return [...new Set(files)].sort();
+
+	return new Map([...filesBySpec.entries()].map(([language, files]) => [language, [...files].sort()]));
 }
 
 async function parseFiles(repoRoot: string, languages: string[], paths: string[] = [], includeGlobs: string[] = [], excludeGlobs: string[] = [], timeoutMs = 30_000, signal?: AbortSignal): Promise<{ parsedFiles: ParsedFile[]; diagnostics: string[]; filesByLanguage: Record<string, number>; parsedByLanguage: Record<string, number> }> {
@@ -299,12 +340,9 @@ async function parseFiles(repoRoot: string, languages: string[], paths: string[]
 	const parsedFiles: ParsedFile[] = [];
 	const filesByLanguage: Record<string, number> = {};
 	const parsedByLanguage: Record<string, number> = {};
-	for (const language of languages) {
-		const spec = languageSpec(language);
-		if (!spec) {
-			diagnostics.push(`Unsupported Tree-sitter language: ${language}`);
-			continue;
-		}
+	const specs = specsForLanguages(languages, diagnostics);
+	const filesBySpec = collectFilesForSpecs(repoRoot, specs, paths, includeGlobs, excludeGlobs);
+	for (const spec of specs) {
 		let bundle: ParserBundle;
 		try {
 			bundle = await parserFor(spec);
@@ -312,7 +350,7 @@ async function parseFiles(repoRoot: string, languages: string[], paths: string[]
 			diagnostics.push(`Could not initialize Tree-sitter ${spec.id}: ${error instanceof Error ? error.message : String(error)}`);
 			continue;
 		}
-		const files = collectFilesForSpec(repoRoot, spec, paths, includeGlobs, excludeGlobs);
+		const files = filesBySpec.get(spec.id) ?? [];
 		filesByLanguage[spec.id] = files.length;
 		for (const absoluteFile of files) {
 			if (signal?.aborted) break;
