@@ -100,7 +100,7 @@ export interface CodeIntelImpactMapParams {
 	maxRootSymbols?: number;
 	timeoutMs?: number;
 	detail?: ResultDetail;
-	confirmReferences?: "gopls";
+	confirmReferences?: "gopls" | "typescript";
 	maxReferenceRoots?: number;
 	maxReferenceResults?: number;
 	includeReferenceDeclarations?: boolean;

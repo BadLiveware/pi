@@ -8,7 +8,7 @@ The current product boundary is:
 
 - Tree-sitter WASM for fast current-source syntax routing.
 - Bounded `rg` fallback for literal text, docs/comments, generated files, and unsupported-language gaps.
-- Optional language-server status plus opt-in `gopls` exact-reference confirmation when Tree-sitter candidates are too noisy or insufficient.
+- Optional language-server status plus opt-in Go and TypeScript/JavaScript exact-reference confirmation when Tree-sitter candidates are too noisy or insufficient.
 
 This plan supersedes the earlier Cymbal/sqry/ast-grep/indexing direction.
 
@@ -21,7 +21,7 @@ The extension is designed around recurring agent behavior, not around exposing e
 | Reviews inspect only the edited files. | Agents miss unchanged callers, consumers, tests, config paths, and protocol boundaries affected by a change. | `code_intel_impact_map` turns changed files, root symbols, or a base ref into a bounded candidate read-next list before findings or edits. |
 | Agents hand-roll broad `rg` regexes for context. | Regex soups such as `rg "func Foo|Foo.*Bar|Bar" ...` mix definitions, comments, strings, and unrelated names, then agents over-trust the result. | `code_intel_local_map` makes this a structured workflow: anchors, related names, Tree-sitter rows, bounded literal fallback, and explicit limitations. |
 | Tool output becomes a finding. | Agents report a defect because a pattern matched, without reading surrounding source or validating behavior. | Every tool labels output as routing evidence. Docs and skill require source reads and project-native validation before claims. |
-| Agents confuse current-source syntax with semantic references. | Same-name functions, methods, fields, or object keys are treated as exact references. | Evidence rows carry source labels such as `tree-sitter:call_expression`, `tree-sitter:member_expression`, `rg` literal fallback, or opt-in `gopls:references`. |
+| Agents confuse current-source syntax with semantic references. | Same-name functions, methods, fields, or object keys are treated as exact references. | Evidence rows carry source labels such as `tree-sitter:call_expression`, `tree-sitter:member_expression`, `rg` literal fallback, or opt-in provider evidence such as `gopls:references` and `typescript:references`. |
 | Broad changed-file diffs starve the root budget. | One large or alphabetically early file consumes all roots, so the map misses other changed subsystems. | Changed-file root selection ranks by signal and spreads roots across changed files within a signal tier. |
 | Common interface methods dominate impact maps. | Go methods such as `String`, `Set`, `Error`, `Len`, or `Swap` route to unrelated flag/string/sort call sites. | Low-signal method names rank later; they remain available when the budget is large enough. |
 | Tests and fixtures dominate changed-file roots. | A changed test helper can outrank production symbols and drive noisy read-next suggestions. | Non-test files rank before test/spec files; object-literal methods are not root definitions. |
@@ -49,13 +49,14 @@ Implemented and committed under `agent/extensions/private/code-intelligence/`:
 - `code_intel_local_map`
 - `code_intel_syntax_search`
 
-Current `code_intel_state` also reports status-only availability for `gopls`, Rust Analyzer, and TypeScript server commands. Current `code_intel_impact_map` supports `confirmReferences: "gopls"` as a bounded opt-in exact-reference confirmation layer for returned Go roots.
+Current `code_intel_state` also reports status-only availability for `gopls`, Rust Analyzer, and TypeScript tooling. Current `code_intel_impact_map` supports bounded opt-in exact-reference confirmation for returned Go and TypeScript/JavaScript roots.
 
 Current backends:
 
 - `tree-sitter` via `@vscode/tree-sitter-wasm`
 - `rg` via ripgrep
 - opt-in `gopls` confirmation through short-lived `gopls references` commands
+- opt-in TypeScript/JavaScript confirmation through the local TypeScript language service
 
 Current config:
 
@@ -74,6 +75,7 @@ Recent validated commits:
 - `845d4bc fix: spread changed-file impact roots`
 - `b382b77 fix: suppress method-call selector duplicates`
 - `667a539 feat: report language-server availability`
+- `bde6072 feat: add opt-in gopls reference confirmation`
 
 Current validation evidence:
 
@@ -84,7 +86,7 @@ npm --prefix agent/extensions test
 ./link-into-pi-agent.sh
 ```
 
-The suite currently passes with 27 tests.
+The suite currently passes with 28 tests.
 
 ## Evidence Model
 
@@ -94,7 +96,7 @@ All output is routing evidence, not proof.
 | --- | --- | --- |
 | Tree-sitter | Current-source syntax candidates with file/line locations. Useful for definitions, calls, selectors/member fields, keyed/object-literal fields, and explicit syntax shapes. | Not type-resolved. Same-name methods/fields from unrelated types may appear. Cannot prove complete impact. |
 | `rg` | Literal text fallback. Useful for docs/comments/generated text and unsupported-language gaps. | Not semantic. A text match is not a reference. |
-| LSP | Status-only availability plus opt-in `gopls:references` rows for Go exactness confirmation. Future TypeScript/Rust adapters remain deferred. | Depends on workspace setup, generated files, language-server behavior, and project configuration. Still evidence, not absolute proof. |
+| LSP/provider confirmation | Status-only availability plus opt-in `gopls:references` and `typescript:references` rows for exactness confirmation. Future Rust/C#/Python/Bash adapters remain deferred. | Depends on workspace setup, generated files, language-server behavior, and project configuration. Still evidence, not absolute proof. |
 
 Agents must read source before reporting findings or making compatibility claims. Project-native validation remains required for correctness-sensitive changes.
 
@@ -181,14 +183,19 @@ Reports:
 - status-only `gopls`, Rust Analyzer, and TypeScript server availability
 - limitations and optional diagnostics
 
-### Opt-in `gopls` reference confirmation
+### Opt-in reference confirmation
 
-`code_intel_impact_map` accepts `confirmReferences: "gopls"` to run bounded `gopls references` checks for returned Go roots. The confirmation payload is separate from the Tree-sitter routing rows and includes:
+`code_intel_impact_map` accepts `confirmReferences` to run bounded exact-reference checks for returned roots:
+
+- `"gopls"` uses short-lived `gopls references` for Go roots.
+- `"typescript"` uses the local TypeScript language service for TypeScript/TSX/JavaScript roots.
+
+The confirmation payload is separate from the Tree-sitter routing rows and includes:
 
 - `basis: "lspExactReferences"`
-- `gopls:references` evidence labels
+- provider evidence labels such as `gopls:references` and `typescript:references`
 - root and reference caps
-- graceful diagnostics when `gopls` or workspace setup fails
+- graceful diagnostics when provider tooling or workspace setup fails
 
 This keeps the normal four-tool surface intact while making exactness confirmation explicit and opt-in.
 
@@ -221,39 +228,43 @@ npm --prefix agent/extensions test
 ./link-into-pi-agent.sh
 ```
 
-### 2. Dogfood opt-in `gopls` confirmation
+### 2. Dogfood opt-in reference confirmation
 
-Goal: verify that the existing-tool option is useful without making LSP work feel mandatory.
+Goal: verify that the existing-tool option is useful without making LSP/provider work feel mandatory.
 
 Current decision:
 
 - Keep the four-tool surface unchanged.
-- Use `code_intel_impact_map` with `confirmReferences: "gopls"` for bounded Go confirmation.
-- Keep confirmation payload under `referenceConfirmation` so Tree-sitter routing and LSP exactness evidence stay separate.
+- Use `code_intel_impact_map` with provider-specific `confirmReferences` values for bounded confirmation.
+- Keep confirmation payload under `referenceConfirmation` so Tree-sitter routing and exactness evidence stay separate.
 
 Acceptance criteria:
 
-- Manual dogfood on promshim for one noisy symbol.
-- Diagnostics remain graceful when `gopls`, module setup, or workspace metadata fails.
-- Docs and skill keep LSP confirmation opt-in.
+- Manual dogfood on promshim for one noisy Go symbol.
+- Deterministic TypeScript fixture confirms references without external installs.
+- Diagnostics remain graceful when provider tooling, module setup, or workspace metadata fails.
+- Docs and skill keep confirmation opt-in.
 
 Validation:
 
 - Small deterministic fake-`gopls` fixture test.
+- Small deterministic TypeScript language-service fixture test.
 - Manual dogfood on promshim for one noisy symbol.
 
-### 3. Add TypeScript/Rust exactness only after Go proves useful
+### 3. Add Rust/C#/Python/Bash exactness only after Go/TypeScript prove useful
 
-Goal: avoid building multiple adapters before the workflow is validated.
+Goal: avoid building more adapters before the workflow is validated.
 
 Potential future adapters:
 
-- TypeScript references/definitions via TypeScript language service.
 - Rust references/definitions via rust-analyzer.
+- C# references/definitions via Roslyn LSP, `csharp-ls`, or OmniSharp depending on local project shape.
+- Python references/definitions via Pyright/Jedi/PylSP depending on local availability.
+- Bash diagnostics/symbol support via ShellCheck or bash-language-server where useful; exact references may not be worth prioritizing.
 
 Acceptance criteria:
 
-- Go adapter has demonstrated value first.
+- Go and TypeScript adapters have demonstrated value first.
 - Each adapter has bounded output, diagnostics, and source-specific limitations.
 - Docs keep Tree-sitter as the default routing substrate.
 

@@ -208,7 +208,7 @@ function renderImpactResult(details: Record<string, unknown>, expanded: boolean,
 	const relatedFileCount = asNumber(summary.relatedFileCount);
 	const confirmation = asRecord(details.referenceConfirmation);
 	const referenceCount = asArray(confirmation.references).length;
-	const confirmedRefs = confirmation.backend ? ` · gopls refs ${referenceCount}` : "";
+	const confirmedRefs = confirmation.backend ? ` · ${String(confirmation.backend)} refs ${referenceCount}` : "";
 	const truncated = coverage.truncated === true ? renderColor(theme, "warning", " truncated") : "";
 	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "impact map")} roots ${roots.length} · related ${related.length}${relatedFileCount !== undefined ? ` · ${relatedFileCount} file(s)` : ""}${confirmedRefs}${truncated}`];
 	if (expanded) {
@@ -387,7 +387,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, truncation, and limitations.",
 			"Use detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
 			"Impact maps are a candidate read list, not exhaustive proof of all callers or safe compatibility.",
-			"Use confirmReferences:'gopls' only when Go exact-reference confirmation is worth the extra bounded LSP call; keep it opt-in.",
+			"Use confirmReferences only when exact-reference confirmation is worth the extra bounded LSP call; keep it opt-in.",
 			"When delegating review, run this in the parent and pass the candidate files/reasons to subagents unless the subagent is explicitly configured with code-intel tools.",
 		],
 		renderCall: renderToolCall("code_intel_impact_map", (args) => {
@@ -407,9 +407,9 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 			maxRootSymbols: Type.Optional(Type.Number({ description: "Maximum root symbols to query after expanding changed files. Default 20." })),
 			timeoutMs: timeoutParam,
 			detail: detailParam,
-			confirmReferences: Type.Optional(Type.Literal("gopls", { description: "Opt-in Go exact-reference confirmation using gopls for returned Go roots." })),
-			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum Go roots to confirm with gopls when confirmReferences is 'gopls'. Default 5." })),
-			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum gopls reference rows returned when confirmReferences is 'gopls'. Default min(config maxResults, 25)." })),
+			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript")], { description: "Opt-in exact-reference confirmation for returned roots using gopls or the TypeScript language service." })),
+			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum roots to confirm when confirmReferences is set. Default 5." })),
+			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum reference rows returned when confirmReferences is set. Default min(config maxResults, 25)." })),
 			includeReferenceDeclarations: Type.Optional(Type.Boolean({ description: "Include declarations in gopls reference output. Default false." })),
 		}),
 		async execute(_toolCallId: string, params: CodeIntelImpactMapParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {

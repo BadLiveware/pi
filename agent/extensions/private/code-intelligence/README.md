@@ -20,7 +20,7 @@ Use code-intel when you need a bounded candidate file list before a non-trivial 
 - You have a scoped subsystem with central anchors plus related field/type/API names.
 - You need to find an explicit AST shape or API call pattern in current source.
 
-Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. `code_intel_state` reports optional language-server availability for planning/debugging only; current routing tools do not call `gopls`, TypeScript language services, or Rust Analyzer.
+Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. `code_intel_state` reports optional language-server availability for planning/debugging, and `code_intel_impact_map` can run bounded opt-in confirmation for Go or TypeScript/JavaScript roots when exactness materially matters.
 
 Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or unsupported-language gaps.
 
@@ -33,7 +33,7 @@ Use returned locations to choose files to read next; do not treat the result as 
 | Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search | no index |
 | rg | bounded literal fallback in local maps and human follow-up searches | no index |
 
-Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, and TypeScript server availability) are status-only. They are reserved for future explicit exact-reference confirmation workflows and are not used by the default routing tools.
+Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, and TypeScript availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback.
 
 Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path anymore.
 
@@ -133,7 +133,12 @@ The output groups roots and related caller/consumer candidates, with truncation 
 
 Rows such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field` have current file/line/column locations and enclosing function names where available, but they are syntax candidates, not type-resolved references.
 
-For high-value Go exactness checks, pass `confirmReferences: "gopls"` to run a bounded opt-in `gopls references` confirmation for returned Go roots. Use `maxReferenceRoots`, `maxReferenceResults`, and `includeReferenceDeclarations` to control scope. The confirmation appears under `referenceConfirmation` with `gopls:references` evidence labels; it is not part of default routing and missing/broken `gopls` should not affect the Tree-sitter map.
+For high-value exactness checks, pass `confirmReferences` to run bounded opt-in confirmation for returned roots:
+
+- `"gopls"` runs short-lived `gopls references` confirmation for Go roots.
+- `"typescript"` uses the local TypeScript language service for TypeScript/TSX/JavaScript roots.
+
+Use `maxReferenceRoots`, `maxReferenceResults`, and `includeReferenceDeclarations` to control scope. The confirmation appears under `referenceConfirmation` with provider evidence labels such as `gopls:references` or `typescript:references`; it is not part of default routing and missing/broken confirmation tooling should not affect the Tree-sitter map.
 
 When delegating review, run this in the parent and pass the roots, candidate files, reasons, coverage limits, and validation gaps to the reviewer. Builtin subagents may not have code-intel tools.
 

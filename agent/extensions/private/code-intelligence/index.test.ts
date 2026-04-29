@@ -182,6 +182,8 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal(state.languageServers.gopls.server, "gopls");
 	assert.equal(state.languageServers["rust-analyzer"].server, "rust-analyzer");
 	assert.equal(state.languageServers.typescript.server, "typescript");
+	assert.equal(state.languageServers.typescript.available, "available");
+	assert.equal(["tsserver", "typescript-language-server", "typescript-language-service"].includes(state.languageServers.typescript.details.command), true);
 	assert.match(state.limitations.join("\n"), /availability-only/);
 	assert.deepEqual(state.config, { maxResults: 50, queryTimeoutMs: 30000, maxOutputBytes: 5000000 });
 	assert.equal(statuses.at(-1)?.key, "code-intel");
@@ -262,6 +264,21 @@ test("impact map optionally confirms Go references with gopls", async () => {
 		assert.deepEqual(impact.referenceConfirmation.references, [{ file: "selector.go", line: 11, column: 2, endColumn: 16, rootSymbol: "load", evidence: "gopls:references" }]);
 		assert.equal(impact.referenceConfirmation.coverage.truncated, true);
 	});
+});
+
+test("impact map optionally confirms TypeScript references", async () => {
+	const repo = fixtureRepo();
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["authenticate"], confirmReferences: "typescript", maxReferenceRoots: 1, maxReferenceResults: 4, detail: "locations" }, undefined, undefined, ctx));
+	assert.equal(impact.referenceConfirmation.backend, "typescript");
+	assert.equal(impact.referenceConfirmation.basis, "lspExactReferences");
+	assert.equal(impact.referenceConfirmation.evidence, "typescript:references");
+	assert.equal(impact.referenceConfirmation.ok, true);
+	assert.equal(impact.referenceConfirmation.roots[0].position.startsWith("main.ts:1:"), true);
+	assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "main.ts" && row.line === 6 && row.evidence === "typescript:references"), true);
+	assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "main.test.ts"), true);
+	assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "main.ts" && row.line === 1 && row.isDefinition === true), false);
 });
 
 test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasCommand("rg") }, async () => {

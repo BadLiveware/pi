@@ -1,6 +1,6 @@
 import type { CodeIntelConfig, CodeIntelImpactMapParams, ResultDetail } from "./types.ts";
 import { changedFilesFromBase } from "./repo.ts";
-import { runGoplsReferenceConfirmation } from "./gopls.ts";
+import { runReferenceConfirmation } from "./lsp/confirmation.ts";
 import { runTreeSitterImpact } from "./tree-sitter.ts";
 import { normalizePositiveInteger, normalizeStringArray } from "./util.ts";
 
@@ -21,8 +21,9 @@ export async function runImpactMap(params: CodeIntelImpactMapParams, repoRoot: s
 		...payload,
 		diagnostics: [...diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])],
 	};
-	if (params.confirmReferences === "gopls") {
-		output.referenceConfirmation = await runGoplsReferenceConfirmation(
+	if (params.confirmReferences === "gopls" || params.confirmReferences === "typescript") {
+		output.referenceConfirmation = await runReferenceConfirmation(
+			params.confirmReferences,
 			Array.isArray(output.roots) ? output.roots : [],
 			repoRoot,
 			{ maxRoots: params.maxReferenceRoots, maxResults: params.maxReferenceResults, timeoutMs, includeDeclarations: params.includeReferenceDeclarations === true },

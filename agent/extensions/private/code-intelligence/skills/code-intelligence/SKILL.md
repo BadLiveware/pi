@@ -30,7 +30,7 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 
 ## Tool Selection
 
-- `code_intel_impact_map`: primary tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences: "gopls"` only for bounded, opt-in Go exact-reference confirmation when exactness materially reduces risk.
+- `code_intel_impact_map`: primary tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences` only for bounded, opt-in Go or TypeScript/JavaScript exact-reference confirmation when exactness materially reduces risk.
 - `code_intel_local_map`: scoped subsystem map. Uses Tree-sitter current-source rows plus bounded `rg` literal fallback when you have anchors plus related fields/types/API names and want suggested local files to read.
 - `code_intel_syntax_search`: explicit in-process Tree-sitter candidate search. Use supported patterns such as `foo($A)`, `$OBJ.Field`, `Field: $VALUE`, wrapper patterns containing those shapes, or raw Tree-sitter queries with captures.
 - `code_intel_state`: inspect Tree-sitter, `rg`, and optional LSP availability, config, footer status, and diagnostics when that matters.
@@ -41,7 +41,7 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 - Treat `rg` fallback as literal text discovery, not symbol/reference proof.
 - Do not turn tool output directly into a review finding; inspect current source first.
 - Treat LSP status in `code_intel_state` as availability-only; it is not exact-reference evidence.
-- Treat `referenceConfirmation` rows from opt-in `gopls` as confirmation evidence, not a replacement for reading current source.
+- Treat `referenceConfirmation` rows from opt-in providers such as `gopls` or `typescript` as confirmation evidence, not a replacement for reading current source.
 - Do not use code-intel as a substitute for `gopls`, TypeScript language services, Rust Analyzer, or project-native checks when exact references matter.
 - Do not run broad rule scans by default.
 - Do not perform rewrites through syntax search.

@@ -64,19 +64,31 @@ async function commandStatus(server: LanguageServerName, command: string, args: 
 }
 
 async function typescriptStatus(repoRoot: string, config: CodeIntelConfig): Promise<LanguageServerStatus> {
+	let library: { path?: string; version?: string; diagnostic?: string } = {};
+	try {
+		const require = createRequire(import.meta.url);
+		const packageJsonPath = require.resolve("typescript/package.json");
+		const packageJson = require(packageJsonPath) as { version?: string };
+		library = { path: packageJsonPath, version: packageJson.version };
+	} catch (error) {
+		library = { diagnostic: `typescript package not available: ${error instanceof Error ? error.message : String(error)}` };
+	}
 	const tsserver = findExecutable("tsserver");
-	if (tsserver) return { server: "typescript", available: "available", executable: tsserver, diagnostics: [], details: { command: "tsserver", versionProbe: "not-run" } };
+	if (tsserver) return { server: "typescript", available: "available", executable: tsserver, version: library.version, diagnostics: [], details: { command: "tsserver", libraryPath: library.path, versionProbe: "not-run" } };
 	const tsls = findExecutable("typescript-language-server");
-	if (!tsls) return { server: "typescript", available: "missing", diagnostics: ["tsserver or typescript-language-server not found on PATH"] };
+	if (!tsls) {
+		if (library.path) return { server: "typescript", available: "available", version: library.version, diagnostics: [], details: { command: "typescript-language-service", libraryPath: library.path } };
+		return { server: "typescript", available: "missing", diagnostics: ["tsserver or typescript-language-server not found on PATH", ...(library.diagnostic ? [library.diagnostic] : [])] };
+	}
 	const result = await runCommand(tsls, ["--version"], { cwd: repoRoot, timeoutMs: Math.min(config.queryTimeoutMs, 10_000), maxOutputBytes: Math.min(config.maxOutputBytes, 200_000) });
 	const diagnostic = commandDiagnostic(result);
 	return {
 		server: "typescript",
 		available: diagnostic ? "error" : "available",
 		executable: tsls,
-		version: firstLine(result.stdout || result.stderr),
+		version: firstLine(result.stdout || result.stderr) ?? library.version,
 		diagnostics: diagnostic ? [diagnostic] : [],
-		details: { command: "typescript-language-server" },
+		details: { command: "typescript-language-server", libraryPath: library.path },
 	};
 }
 
@@ -105,7 +117,7 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		limitations: [
 			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
 			"rg literal fallback is for text discovery only; use source reads and project-native validation before making claims.",
-			"Language-server status is availability-only; current code-intel routing does not use LSPs unless a future explicit confirmation tool is added.",
+			"Language-server status is availability-only; default code-intel routing does not use LSPs unless explicit reference confirmation is requested.",
 		],
 	};
 	if (languageServers) payload.languageServers = languageServers;
