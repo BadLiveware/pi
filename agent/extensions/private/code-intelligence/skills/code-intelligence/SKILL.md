@@ -30,7 +30,7 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 
 ## Tool Selection
 
-- `code_intel_impact_map`: primary tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences` only for bounded, opt-in Go or TypeScript/JavaScript exact-reference confirmation when exactness materially reduces risk.
+- `code_intel_impact_map`: primary tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Impact routing currently covers Go, TypeScript/TSX, JavaScript, and Python. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences` only for bounded, opt-in Go or TypeScript/JavaScript exact-reference confirmation when exactness materially reduces risk.
 - `code_intel_local_map`: scoped subsystem map. Uses Tree-sitter current-source rows plus bounded `rg` literal fallback when you have anchors plus related fields/types/API names and want suggested local files to read.
 - `code_intel_syntax_search`: explicit in-process Tree-sitter candidate search. Use supported patterns such as `foo($A)`, `$OBJ.Field`, `Field: $VALUE`, wrapper patterns containing those shapes, or raw Tree-sitter queries with captures.
 - `code_intel_state`: inspect Tree-sitter, `rg`, and optional LSP availability, config, footer status, and diagnostics when that matters.
@@ -46,4 +46,5 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 - Do not run broad rule scans by default.
 - Do not perform rewrites through syntax search.
 - Keep result sets bounded. Prefer `detail: "locations"` when files will be read next; use `detail: "snippets"` only for inline triage.
+- If an impact map is empty or `ok:false`, read the `reason` and `coverage.supportedImpactLanguages` / `unsupportedImpactFiles` / `nonSourceFiles`; do not treat it as a successful no-impact result.
 - Use standalone `rg` for comments/docs/generated text, literal fallback beyond caps, or unsupported-language gaps.

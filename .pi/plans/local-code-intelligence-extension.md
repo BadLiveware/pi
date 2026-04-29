@@ -86,7 +86,7 @@ npm --prefix agent/extensions test
 ./link-into-pi-agent.sh
 ```
 
-The suite currently passes with 29 tests.
+The suite currently passes with 31 tests.
 
 ## Evidence Model
 
@@ -136,11 +136,18 @@ Implemented files include:
 - `agent/extensions/private/code-intelligence/src/syntax.ts`
 - `agent/extensions/private/code-intelligence/src/state.ts`
 
-Supported language specs currently include Go, TypeScript, TSX, JavaScript, Rust, Python, Java, C/C++, C#, Ruby, PHP, Bash, and CSS.
+Supported Tree-sitter grammar specs currently include Go, TypeScript, TSX, JavaScript, Rust, Python, Java, C/C++, C#, Ruby, PHP, Bash, and CSS. Impact-map routing currently covers Go, TypeScript/TSX, JavaScript, and Python; other grammars remain available primarily for syntax search until dedicated routing quality is proven.
 
 ### `code_intel_impact_map`
 
 Builds candidate read-next maps from explicit `symbols`, `changedFiles`, or `baseRef`.
+
+Current impact-routing languages:
+
+- Go
+- TypeScript/TSX
+- JavaScript
+- Python
 
 Current changed-file root tuning:
 

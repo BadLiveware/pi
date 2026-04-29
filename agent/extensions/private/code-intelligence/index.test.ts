@@ -111,6 +111,18 @@ func BuildRoutingPolicy() {}
 func buildRoutingPolicyFallback() {}
 func applyRoutingPolicy() {}
 `);
+	fs.writeFileSync(path.join(dir, "watcher.py"), `def load_state(path):
+    return {}
+
+
+def save_state(path, state):
+    return None
+
+
+def run_poll_cycle(config):
+    state = load_state(config["state"])
+    save_state(config["state"], state)
+`);
 	return dir;
 }
 
@@ -249,6 +261,32 @@ test("impact map suppresses selector duplicates for method calls", async () => {
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["load"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "selector.load()"), true);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.load"), false);
+});
+
+test("impact map supports Python changed-file routing", async () => {
+	const repo = fixtureRepo();
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["watcher.py", "README.md"], maxRootSymbols: 3, maxResults: 10, detail: "snippets" }, undefined, undefined, ctx));
+	assert.equal(impact.ok, true);
+	assert.equal(impact.coverage.parsedByLanguage.python, 1);
+	assert.equal(impact.coverage.nonSourceFiles.includes("README.md"), true);
+	assert.deepEqual(impact.rootSymbols, ["load_state", "save_state", "run_poll_cycle"]);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "load_state(config[\"state\"])") , true);
+});
+
+test("impact map explains non-source changed files when no impact language files parse", async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-nonsource-"));
+	execFileSync("git", ["init", "-q"], { cwd: repo });
+	fs.writeFileSync(path.join(repo, "README.md"), "# docs\n");
+	fs.writeFileSync(path.join(repo, "config.json"), "{}\n");
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["README.md", "config.json"], maxResults: 10 }, undefined, undefined, ctx));
+	assert.equal(impact.ok, false);
+	assert.match(impact.reason, /Supported impact languages/);
+	assert.deepEqual(impact.coverage.nonSourceFiles, ["README.md", "config.json"]);
+	assert.deepEqual(impact.coverage.supportedImpactLanguages, ["go", "typescript", "tsx", "javascript", "python"]);
 });
 
 test("impact map optionally confirms Go references with gopls", async () => {
@@ -394,4 +432,7 @@ test("custom render cards keep code-intel results compact", async () => {
 	assert.match(expanded, /file-one\.ts:10/);
 	assert.match(expanded, /file-two\.ts:20/);
 	assert.ok(expanded.length < 800);
+
+	const failed = renderText(impact.renderResult({ details: { ok: false, roots: [], related: [], reason: "No supported current-source files were parsed for Tree-sitter impact mapping.", coverage: { nonSourceFiles: ["README.md"] }, summary: {} } }, { expanded: false, isPartial: false }, renderTheme, {}));
+	assert.match(failed, /No supported current-source files/);
 });

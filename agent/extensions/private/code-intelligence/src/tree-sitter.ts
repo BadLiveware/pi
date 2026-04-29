@@ -6,7 +6,8 @@ import { ensureInsideRoot } from "./repo.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
 const EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "target", ".cache"]);
-const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript"];
+const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript", "python"];
+const IMPACT_LANGUAGE_SET = new Set(IMPACT_LANGUAGES);
 
 interface TreeSitterPoint {
 	row: number;
@@ -353,7 +354,7 @@ function argumentNodes(node: TreeSitterNode): TreeSitterNode[] {
 }
 
 function selectorName(node: TreeSitterNode, source: string): string | undefined {
-	const fieldNode = childForField(node, "field") ?? childForField(node, "property") ?? node.namedChild(1);
+	const fieldNode = childForField(node, "field") ?? childForField(node, "property") ?? childForField(node, "attribute") ?? node.namedChild(1);
 	return fieldNode ? nodeText(source, fieldNode) : undefined;
 }
 
@@ -386,14 +387,14 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 	function visit(node: TreeSitterNode, currentFunction?: string, currentType?: string, parent?: TreeSitterNode): void {
 		let nextFunction = currentFunction;
 		let nextType = currentType;
-		if (["function_declaration", "method_declaration", "method_definition"].includes(node.type)) {
+		if (["function_declaration", "function_definition", "method_declaration", "method_definition"].includes(node.type)) {
 			const name = definitionName(node, parsed.source);
 			if (name) {
 				nextFunction = name;
 				const objectLiteralMethod = node.type === "method_definition" && !currentType;
 				if (!objectLiteralMethod) addDefinition(node, name, node.type, currentType);
 			}
-		} else if (["class_declaration", "interface_declaration", "type_alias_declaration", "type_spec"].includes(node.type)) {
+		} else if (["class_declaration", "class_definition", "interface_declaration", "type_alias_declaration", "type_spec"].includes(node.type)) {
 			const name = definitionName(node, parsed.source);
 			if (name) {
 				nextType = name;
@@ -414,11 +415,11 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 				const name = nodeText(parsed.source, fieldName);
 				definitions.push({ kind: "field_declaration", name, symbol: name, owner: currentType, file: parsed.file, language: parsed.language, evidence: "tree-sitter:field_declaration", type: typeNode ? nodeText(parsed.source, typeNode) : undefined, text: compactText(nodeText(parsed.source, node)), ...location(node) });
 			}
-		} else if (node.type === "call_expression") {
+		} else if (node.type === "call_expression" || node.type === "call") {
 			const functionNode = callFunctionNode(node);
 			const callee = functionNode ? nodeText(parsed.source, functionNode) : undefined;
 			if (callee) candidates.push({ kind: "syntax_call", name: simpleName(callee) ?? callee, symbol: simpleName(callee) ?? callee, file: parsed.file, language: parsed.language, evidence: "tree-sitter:call_expression", inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
-		} else if (node.type === "selector_expression" || node.type === "member_expression") {
+		} else if (node.type === "selector_expression" || node.type === "member_expression" || node.type === "attribute") {
 			const name = selectorName(node, parsed.source);
 			if (name && !(parent?.type === "call_expression" && isCallFunctionPart(node, parent))) candidates.push({ kind: "syntax_selector", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
 		} else if (node.type === "keyed_element" || node.type === "pair") {
@@ -454,6 +455,29 @@ function safeChangedFiles(repoRoot: string, changedFiles: string[]): string[] {
 		}
 	}
 	return files;
+}
+
+function languageIdsForFile(file: string): string[] {
+	const extension = path.extname(file);
+	return LANGUAGE_SPECS.filter((spec) => spec.extensions.includes(extension)).map((spec) => spec.id);
+}
+
+function changedFileSupportSummary(changedFiles: string[]): Record<string, unknown> {
+	const unsupportedImpactFiles: Array<Record<string, unknown>> = [];
+	const nonSourceFiles: string[] = [];
+	for (const file of changedFiles) {
+		const languages = languageIdsForFile(file);
+		if (languages.length === 0) {
+			nonSourceFiles.push(file);
+			continue;
+		}
+		if (!languages.some((language) => IMPACT_LANGUAGE_SET.has(language))) unsupportedImpactFiles.push({ file, languages });
+	}
+	return {
+		supportedImpactLanguages: IMPACT_LANGUAGES,
+		unsupportedImpactFiles,
+		nonSourceFiles,
+	};
 }
 
 function definitionRank(record: SymbolRecord): number {
@@ -518,10 +542,29 @@ function changedFileDefinitions(definitions: SymbolRecord[], changedFiles: strin
 
 export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRoot: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
 	const started = Date.now();
+	const changedFiles = safeChangedFiles(repoRoot, normalizeStringArray(params.changedFiles));
+	const supportSummary = changedFileSupportSummary(changedFiles);
 	const parsed = await parseFiles(repoRoot, IMPACT_LANGUAGES, normalizeStringArray(params.paths), [], [], params.timeoutMs, signal);
 	const diagnostics = [...parsed.diagnostics];
 	if (parsed.parsedFiles.length === 0) {
-		return { ok: false, backend: "tree-sitter", repoRoot, roots: [], related: [], diagnostics, reason: "No supported current-source files were parsed for Tree-sitter impact mapping.", elapsedMs: Date.now() - started };
+		return {
+			ok: false,
+			backend: "tree-sitter",
+			repoRoot,
+			roots: [],
+			related: [],
+			diagnostics,
+			reason: `No supported current-source files were parsed for Tree-sitter impact mapping. Supported impact languages: ${IMPACT_LANGUAGES.join(", ")}.`,
+			coverage: {
+				backendsUsed: ["tree-sitter"],
+				filesParsed: 0,
+				filesByLanguage: parsed.filesByLanguage,
+				parsedByLanguage: parsed.parsedByLanguage,
+				changedFiles,
+				...supportSummary,
+			},
+			elapsedMs: Date.now() - started,
+		};
 	}
 
 	const definitions: SymbolRecord[] = [];
@@ -550,12 +593,31 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 		addRoot(symbol, definition ? { ...definition, reason: "explicit symbol matched current-source Tree-sitter definition" } : { kind: "queried_symbol", name: symbol, symbol, file: "", evidence: "user", reason: "explicit symbol", line: 0, column: 0, endLine: 0, endColumn: 0 });
 	}
 
-	const changedFiles = safeChangedFiles(repoRoot, normalizeStringArray(params.changedFiles));
 	for (const definition of changedFileDefinitions(definitions, changedFiles)) {
 		addRoot(definition.name, { ...definition, reason: `current-source symbol defined in changed file ${definition.file}` });
 	}
 
-	if (rootSymbols.length === 0) return { ok: false, backend: "tree-sitter", repoRoot, roots: [], related: [], diagnostics, reason: "No symbols or changed-file symbols were available for Tree-sitter impact mapping.", filesParsed: parsed.parsedFiles.length, elapsedMs: Date.now() - started };
+	if (rootSymbols.length === 0) {
+		return {
+			ok: false,
+			backend: "tree-sitter",
+			repoRoot,
+			roots: [],
+			related: [],
+			diagnostics,
+			reason: "No symbols or changed-file symbols were available for Tree-sitter impact mapping. The parsed files may contain only unsupported definition shapes or non-source changes.",
+			filesParsed: parsed.parsedFiles.length,
+			coverage: {
+				backendsUsed: ["tree-sitter"],
+				filesParsed: parsed.parsedFiles.length,
+				filesByLanguage: parsed.filesByLanguage,
+				parsedByLanguage: parsed.parsedByLanguage,
+				changedFiles,
+				...supportSummary,
+			},
+			elapsedMs: Date.now() - started,
+		};
+	}
 
 	const related: SymbolRecord[] = [];
 	const relatedSeen = new Set<string>();
@@ -595,6 +657,7 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 			filesByLanguage: parsed.filesByLanguage,
 			parsedByLanguage: parsed.parsedByLanguage,
 			changedFiles,
+			...supportSummary,
 			truncated: related.length >= params.maxResults || discoveredRootNames.size > rootSymbols.length,
 			rootSymbolsDiscovered: discoveredRootNames.size,
 			rootSymbolsUsed: rootSymbols.length,

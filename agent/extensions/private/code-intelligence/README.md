@@ -30,7 +30,7 @@ Use returned locations to choose files to read next; do not treat the result as 
 
 | Engine | Used for | Artifact behavior |
 | --- | --- | --- |
-| Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search | no index |
+| Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, and Python; syntax search supports a wider grammar set. | no index |
 | rg | bounded literal fallback in local maps and human follow-up searches | no index |
 
 Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, and TypeScript availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback.
@@ -130,6 +130,8 @@ Build the primary candidate read-next impact map from:
 - optional `baseRef` using `git diff --name-only <baseRef> --`
 
 The output groups roots and related caller/consumer candidates, with truncation and limitation metadata. Defaults are intentionally tight: up to 20 root symbols after changed-file expansion and 25 related rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context. Use `detail: "snippets"` only when inline context helps triage without immediate reads.
+
+Impact-map routing currently supports Go, TypeScript/TSX, JavaScript, and Python source files. When changed files are non-source or outside the impact-routing set, the result includes `coverage.supportedImpactLanguages`, `coverage.unsupportedImpactFiles`, and `coverage.nonSourceFiles` so agents can fall back deliberately to source reads, `code_intel_syntax_search`, `code_intel_local_map`, or bounded `rg` instead of treating an empty map as a successful review.
 
 Rows such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field` have current file/line/column locations and enclosing function names where available, but they are syntax candidates, not type-resolved references.
 
