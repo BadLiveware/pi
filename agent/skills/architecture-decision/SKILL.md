@@ -46,6 +46,7 @@ Before recommending or implementing an architecture, answer these directly, even
 - **Ownership:** What can this change modify freely, what must remain compatible, and what needs migration, rollout, or approval?
 - **Boundary:** Is the simplest solution local, or does complexity indicate an adjacent boundary should change?
 - **Comprehension:** What must a maintainer understand to change this safely, and which hidden dependencies or mental context does the design remove?
+- **Performance shape:** What work scales with files, rows, requests, events, bytes, dependencies, tenants, users, or time; what bounds or cancels it; and which architecture choice changes that cost?
 - **Options:** Compare at least the status quo, simplest local change, adjacent-boundary change, and no-new-abstraction option when credible. Escalate to distributed, event-driven, or strict DDD-style structures only for concrete scaling, ownership, reliability, regulatory, or domain-complexity needs.
 - **Decision:** State the chosen shape and why rejected options are worse under current constraints.
 - **Proof:** Name the tests, prototype, benchmark, migration check, rollout/rollback check, or compatibility check that would validate the choice.
