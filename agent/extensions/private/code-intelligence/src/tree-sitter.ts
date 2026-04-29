@@ -5,7 +5,7 @@ import type { CodeIntelConfig, CodeIntelSyntaxSearchParams, ResultDetail } from 
 import { ensureInsideRoot } from "./repo.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
-const EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", ".sqry", ".sqry-cache", ".sqry-index", "node_modules", "vendor", "dist", "build", "target", ".cache"]);
+const EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "target", ".cache"]);
 const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript"];
 
 interface TreeSitterPoint {
@@ -65,6 +65,7 @@ interface SymbolRecord {
 	inFunction?: string;
 	metaVariables?: Record<string, unknown>;
 	snippet?: string;
+	exported?: boolean;
 }
 
 export interface TreeSitterImpactParams {
@@ -336,6 +337,12 @@ function functionHeader(node: TreeSitterNode, source: string, name: string): str
 	return compactText(raw.includes("{") ? raw.slice(0, raw.indexOf("{")) : raw.split(/\r?\n/)[0] ?? name);
 }
 
+function isExportedDefinition(node: TreeSitterNode, source: string, name: string): boolean {
+	if (/^[A-Z]/.test(name)) return true;
+	const prefix = source.slice(Math.max(0, node.startIndex - 48), node.startIndex);
+	return /\bexport\s+(?:default\s+)?$/.test(prefix);
+}
+
 function callFunctionNode(node: TreeSitterNode): TreeSitterNode | null {
 	return childForField(node, "function") ?? node.namedChild(0);
 }
@@ -364,7 +371,7 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 	const candidates: SymbolRecord[] = [];
 
 	function addDefinition(node: TreeSitterNode, name: string, kind = node.type, currentType?: string): void {
-		definitions.push({ kind, name, symbol: name, file: parsed.file, language: parsed.language, evidence: "tree-sitter:def", owner: currentType, type: typeSummary(node, parsed.source), text: functionHeader(node, parsed.source, name), ...location(node) });
+		definitions.push({ kind, name, symbol: name, file: parsed.file, language: parsed.language, evidence: "tree-sitter:def", owner: currentType, type: typeSummary(node, parsed.source), text: functionHeader(node, parsed.source, name), exported: isExportedDefinition(node, parsed.source, name), ...location(node) });
 	}
 
 	function visit(node: TreeSitterNode, currentFunction?: string, currentType?: string): void {
@@ -374,7 +381,8 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 			const name = definitionName(node, parsed.source);
 			if (name) {
 				nextFunction = name;
-				addDefinition(node, name);
+				const objectLiteralMethod = node.type === "method_definition" && !currentType;
+				if (!objectLiteralMethod) addDefinition(node, name, node.type, currentType);
 			}
 		} else if (["class_declaration", "interface_declaration", "type_alias_declaration", "type_spec"].includes(node.type)) {
 			const name = definitionName(node, parsed.source);
@@ -446,8 +454,20 @@ function definitionRank(record: SymbolRecord): number {
 	return 2;
 }
 
+function isTestFile(file: string): boolean {
+	return /(^|\/)(__tests__|test|tests)(\/|$)/.test(file) || /(^|\/).*\.(test|spec)\.[cm]?[tj]sx?$/.test(file) || /(^|\/).*_test\.go$/.test(file);
+}
+
+function fileRank(record: SymbolRecord): number {
+	return isTestFile(record.file) ? 1 : 0;
+}
+
+function exportRank(record: SymbolRecord): number {
+	return record.exported === true ? 0 : 1;
+}
+
 function compareDefinitions(left: SymbolRecord, right: SymbolRecord): number {
-	return definitionRank(left) - definitionRank(right) || left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.name.localeCompare(right.name);
+	return fileRank(left) - fileRank(right) || definitionRank(left) - definitionRank(right) || exportRank(left) - exportRank(right) || left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.name.localeCompare(right.name);
 }
 
 export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRoot: string, signal?: AbortSignal): Promise<Record<string, unknown>> {

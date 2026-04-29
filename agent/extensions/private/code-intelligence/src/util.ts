@@ -1,5 +1,3 @@
-import type { BackendName, RepoArtifactPolicy } from "./types.ts";
-
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -7,24 +5,6 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function normalizePositiveInteger(value: unknown, fallback: number, min = 1, max = Number.MAX_SAFE_INTEGER): number {
 	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
 	return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-export function normalizeRepoArtifactPolicy(value: unknown, fallback: RepoArtifactPolicy): RepoArtifactPolicy {
-	return value === "never" || value === "ifIgnored" || value === "always" ? value : fallback;
-}
-
-export function normalizeBackend(value: unknown): BackendName | undefined {
-	return value === "tree-sitter" || value === "cymbal" || value === "ast-grep" || value === "sqry" ? value : undefined;
-}
-
-export function normalizeBackendOrder(value: unknown, fallback: BackendName[]): BackendName[] {
-	if (!Array.isArray(value)) return fallback;
-	const order: BackendName[] = [];
-	for (const item of value) {
-		const backend = normalizeBackend(item);
-		if (backend && !order.includes(backend)) order.push(backend);
-	}
-	return order.length > 0 ? order : fallback;
 }
 
 export function normalizeStringArray(value: unknown): string[] {

@@ -1,4 +1,4 @@
-import type { CodeIntelConfig, CymbalImpactMapParams, ResultDetail } from "./types.ts";
+import type { CodeIntelConfig, CodeIntelImpactMapParams, ResultDetail } from "./types.ts";
 import { changedFilesFromBase } from "./repo.ts";
 import { runTreeSitterImpact } from "./tree-sitter.ts";
 import { normalizePositiveInteger, normalizeStringArray } from "./util.ts";
@@ -6,7 +6,7 @@ import { normalizePositiveInteger, normalizeStringArray } from "./util.ts";
 const IMPACT_DEFAULT_MAX_RESULTS = 25;
 const IMPACT_DEFAULT_MAX_ROOT_SYMBOLS = 20;
 
-export async function runImpactMap(params: CymbalImpactMapParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {
+export async function runImpactMap(params: CodeIntelImpactMapParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {
 	const maxResults = normalizePositiveInteger(params.maxResults, Math.min(config.maxResults, IMPACT_DEFAULT_MAX_RESULTS), 1, 500);
 	const maxRootSymbols = normalizePositiveInteger(params.maxRootSymbols, IMPACT_DEFAULT_MAX_ROOT_SYMBOLS, 1, 500);
 	const timeoutMs = normalizePositiveInteger(params.timeoutMs, config.queryTimeoutMs, 1_000, 600_000);

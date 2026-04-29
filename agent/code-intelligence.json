@@ -1,6 +1,5 @@
 {
-  "backendOrder": ["tree-sitter"],
-  "autoIndexOnSessionStart": true,
-  "autoIndexBackends": [],
-  "allowRepoArtifacts": "ifIgnored"
+  "maxResults": 50,
+  "queryTimeoutMs": 30000,
+  "maxOutputBytes": 5000000
 }
