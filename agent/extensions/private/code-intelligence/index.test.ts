@@ -344,6 +344,10 @@ test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasComma
 	assert.deepEqual(localMap.names, ["authenticate", "NeedTags"]);
 	assert.equal(localMap.sections.treeSitterMaps.length, 1);
 	assert.equal(localMap.sections.syntaxMatches.length, 2);
+	assert.equal(localMap.coverage.syntaxSearches, 2);
+	assert.equal(localMap.coverage.syntaxParsePasses, 1);
+	assert.equal(localMap.sections.syntaxMatches.every((section: any) => section.coverage.batched === true), true);
+	assert.equal(localMap.sections.syntaxMatches.every((section: any) => section.coverage.filesParsed === 1), true);
 	assert.equal(localMap.sections.literalMatches.length, 2);
 	assert.equal(localMap.sections.literalMatches.every((section: any) => section.command.command.endsWith("rg")), true);
 	assert.equal(localMap.summary.suggestedFiles.some((file: any) => file.file === "main.ts"), true);

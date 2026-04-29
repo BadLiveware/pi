@@ -79,6 +79,15 @@ export interface TreeSitterImpactParams {
 	detail: ResultDetail;
 }
 
+export interface TreeSitterSelectorBatchParams {
+	names: string[];
+	language: string;
+	paths?: string[];
+	maxPerName: number;
+	timeoutMs: number;
+	detail: ResultDetail;
+}
+
 const LANGUAGE_SPECS: LanguageSpec[] = [
 	{ id: "go", wasm: "tree-sitter-go.wasm", extensions: [".go"] },
 	{ id: "typescript", wasm: "tree-sitter-typescript.wasm", extensions: [".ts", ".mts", ".cts"] },
@@ -741,7 +750,7 @@ function syntaxMatchesForCall(parsed: ParsedFile, pattern: { callee: string; var
 
 function syntaxMatchesForSelector(parsed: ParsedFile, pattern: { variable: string; field: string }, selector: string | undefined, detail: ResultDetail): Record<string, unknown>[] {
 	const matches: Record<string, unknown>[] = [];
-	const selectorTypes = new Set(["selector_expression", "member_expression"]);
+	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute"]);
 	for (const node of collectNodes(parsed.root, (candidate) => selectorTypes.has(candidate.type))) {
 		const field = selectorName(node, parsed.source);
 		if (field !== pattern.field) continue;
@@ -793,6 +802,88 @@ function languagesForSyntaxSearch(language: string | undefined, paths: string[])
 	const pathExtensions = paths.map((item) => path.extname(item)).filter(Boolean);
 	const inferred = LANGUAGE_SPECS.filter((spec) => spec.extensions.some((extension) => pathExtensions.includes(extension))).map((spec) => spec.id);
 	return inferred.length > 0 ? [...new Set(inferred)] : ["go"];
+}
+
+function isIdentifierName(name: string): boolean {
+	return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
+}
+
+function distributionFromFileCounts(fileCounts: Map<string, number>): { fileCount: number; topFiles: Array<{ file: string; count: number }> } {
+	return {
+		fileCount: fileCounts.size,
+		topFiles: [...fileCounts.entries()]
+			.map(([file, count]) => ({ file, count }))
+			.sort((left, right) => right.count - left.count || left.file.localeCompare(right.file))
+			.slice(0, 8),
+	};
+}
+
+export async function runTreeSitterSelectorBatchSearch(params: TreeSitterSelectorBatchParams, repoRoot: string, signal?: AbortSignal): Promise<Record<string, unknown>[]> {
+	const names = [...new Set(params.names.map((name) => name.trim()).filter(isIdentifierName))];
+	if (names.length === 0) return [];
+	const maxPerName = normalizePositiveInteger(params.maxPerName, 8, 1, 50);
+	const timeoutMs = normalizePositiveInteger(params.timeoutMs, 30_000, 1_000, 600_000);
+	const detail: ResultDetail = params.detail === "snippets" ? "snippets" : "locations";
+	const paths = normalizeStringArray(params.paths);
+	const languages = languagesForSyntaxSearch(params.language, paths);
+	const parsed = await parseFiles(repoRoot, languages, paths, [], [], timeoutMs, signal);
+	const diagnostics = [...parsed.diagnostics];
+	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute"]);
+	const wanted = new Set(names);
+	const buckets = new Map<string, { matchCount: number; matches: Record<string, unknown>[]; fileCounts: Map<string, number> }>();
+	for (const name of names) buckets.set(name, { matchCount: 0, matches: [], fileCounts: new Map<string, number>() });
+
+	for (const file of parsed.parsedFiles) {
+		for (const node of collectNodes(file.root, (candidate) => selectorTypes.has(candidate.type))) {
+			const field = selectorName(node, file.source);
+			if (!field || !wanted.has(field)) continue;
+			const bucket = buckets.get(field);
+			if (!bucket) continue;
+			bucket.matchCount += 1;
+			bucket.fileCounts.set(file.file, (bucket.fileCounts.get(file.file) ?? 0) + 1);
+			if (bucket.matches.length >= maxPerName) continue;
+			const objectNode = selectorObject(node);
+			const variables: Record<string, string> = {};
+			if (objectNode) variables.X = nodeText(file.source, objectNode);
+			bucket.matches.push(normalizeSyntaxMatch(file, node, detail, variables));
+		}
+	}
+
+	return names.map((name) => {
+		const bucket = buckets.get(name) ?? { matchCount: 0, matches: [], fileCounts: new Map<string, number>() };
+		const matches = bucket.matches;
+		return {
+			kind: "selector_syntax",
+			name,
+			ok: diagnostics.length === 0 || bucket.matchCount > 0,
+			backend: "tree-sitter",
+			repoRoot,
+			pattern: `$X.${name}`,
+			detail,
+			language: params.language,
+			languages,
+			paths: paths.length > 0 ? paths : ["."],
+			includeGlobs: [],
+			excludeGlobs: [],
+			matchCount: bucket.matchCount,
+			returned: matches.length,
+			truncated: bucket.matchCount > matches.length,
+			summary: {
+				...distributionFromFileCounts(bucket.fileCounts),
+				returnedFileCount: summarizeFileDistribution(matches).fileCount,
+				basis: "treeSitterPatternAdapter",
+			},
+			matches,
+			coverage: {
+				filesParsed: parsed.parsedFiles.length,
+				filesByLanguage: parsed.filesByLanguage,
+				parsedByLanguage: parsed.parsedByLanguage,
+				batched: true,
+			},
+			diagnostics,
+			limitations: ["Syntax search matches are current-source Tree-sitter candidates, not semantic references, proof of a bug, or complete impact."],
+		};
+	});
 }
 
 export async function runTreeSitterSyntaxSearch(params: CodeIntelSyntaxSearchParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {

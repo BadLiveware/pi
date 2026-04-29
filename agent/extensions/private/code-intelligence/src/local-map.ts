@@ -1,8 +1,7 @@
 import type { CodeIntelConfig, CodeIntelLocalMapParams, CommandResult, ResultDetail } from "./types.ts";
-import { runTreeSitterImpact } from "./tree-sitter.ts";
+import { runTreeSitterImpact, runTreeSitterSelectorBatchSearch } from "./tree-sitter.ts";
 import { findExecutable, runCommand, summarizeCommandBrief } from "./exec.ts";
 import { pathArgsForRepo } from "./repo.ts";
-import { runSyntaxSearch } from "./syntax.ts";
 import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
 const LOCAL_MAP_DEFAULT_MAX_RESULTS = 25;
@@ -161,12 +160,12 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 	const references: Record<string, unknown>[] = [];
 
 	const syntaxMatches: Record<string, unknown>[] = [];
-	if (includeSyntax) {
-		for (const name of names) {
-			const pattern = selectorPattern(name);
-			if (!pattern) continue;
-			const syntax = await safely({ kind: "selector_syntax", name, pattern }, () => runSyntaxSearch({ pattern, language, paths, maxResults: Math.min(maxPerName, 8), timeoutMs, detail }, repoRoot, config, signal));
-			syntaxMatches.push({ kind: "selector_syntax", name, ...syntax });
+	const selectorNames = includeSyntax ? names.filter((name) => selectorPattern(name) !== undefined) : [];
+	if (includeSyntax && selectorNames.length > 0 && language) {
+		try {
+			syntaxMatches.push(...await runTreeSitterSelectorBatchSearch({ names: selectorNames, language, paths, maxPerName: Math.min(maxPerName, 8), timeoutMs, detail }, repoRoot, signal));
+		} catch (error) {
+			for (const name of selectorNames) syntaxMatches.push({ kind: "selector_syntax", name, pattern: selectorPattern(name), ok: false, diagnostic: error instanceof Error ? error.message : String(error) });
 		}
 	}
 
@@ -209,6 +208,8 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 			maxPerName,
 			maxResults,
 			includeSyntax,
+			syntaxSearches: syntaxMatches.length,
+			syntaxParsePasses: includeSyntax && selectorNames.length > 0 ? 1 : 0,
 			truncated,
 		},
 		limitations: [
