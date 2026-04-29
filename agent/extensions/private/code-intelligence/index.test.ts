@@ -91,10 +91,12 @@ const mock = {
 type SelectorSourceGo struct { NeedTags bool }
 
 func buildMatchedSeriesSQL() {}
+func (s SelectorSourceGo) load() bool { return true }
 
 func caller(selector SelectorSourceGo) {
 	buildMatchedSeriesSQL()
 	if selector.NeedTags {}
+	selector.load()
 	_ = SelectorSourceGo{NeedTags: true}
 }
 `);
@@ -207,10 +209,19 @@ test("impact map includes current-source syntax candidates", async () => {
 	assert.equal(impact.backend, "tree-sitter");
 	assert.deepEqual(impact.backends, ["tree-sitter"]);
 	assert.equal(impact.summary.basis, "currentSourceSyntax");
-	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "buildMatchedSeriesSQL()" && row.line === 8), true);
-	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.NeedTags" && row.line === 9), true);
-	assert.equal(impact.related.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags: true" && row.line === 10), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "buildMatchedSeriesSQL()" && row.line === 9), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.NeedTags" && row.line === 10), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags: true" && row.line === 12), true);
 	assert.match(impact.coverage.limitations.join("\n"), /current-source syntax/);
+});
+
+test("impact map suppresses selector duplicates for method calls", async () => {
+	const repo = fixtureRepo();
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["load"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "selector.load()"), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.load"), false);
 });
 
 test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasCommand("rg") }, async () => {

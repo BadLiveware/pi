@@ -357,6 +357,15 @@ function selectorName(node: TreeSitterNode, source: string): string | undefined 
 	return fieldNode ? nodeText(source, fieldNode) : undefined;
 }
 
+function childContains(parent: TreeSitterNode, maybeChild: TreeSitterNode): boolean {
+	return maybeChild.startIndex >= parent.startIndex && maybeChild.endIndex <= parent.endIndex;
+}
+
+function isCallFunctionPart(node: TreeSitterNode, callNode: TreeSitterNode): boolean {
+	const functionNode = callFunctionNode(callNode);
+	return functionNode ? childContains(functionNode, node) : false;
+}
+
 function selectorObject(node: TreeSitterNode): TreeSitterNode | undefined {
 	return childForField(node, "operand") ?? childForField(node, "object") ?? node.namedChild(0) ?? undefined;
 }
@@ -374,7 +383,7 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 		definitions.push({ kind, name, symbol: name, file: parsed.file, language: parsed.language, evidence: "tree-sitter:def", owner: currentType, type: typeSummary(node, parsed.source), text: functionHeader(node, parsed.source, name), exported: isExportedDefinition(node, parsed.source, name), ...location(node) });
 	}
 
-	function visit(node: TreeSitterNode, currentFunction?: string, currentType?: string): void {
+	function visit(node: TreeSitterNode, currentFunction?: string, currentType?: string, parent?: TreeSitterNode): void {
 		let nextFunction = currentFunction;
 		let nextType = currentType;
 		if (["function_declaration", "method_declaration", "method_definition"].includes(node.type)) {
@@ -411,13 +420,13 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 			if (callee) candidates.push({ kind: "syntax_call", name: simpleName(callee) ?? callee, symbol: simpleName(callee) ?? callee, file: parsed.file, language: parsed.language, evidence: "tree-sitter:call_expression", inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
 		} else if (node.type === "selector_expression" || node.type === "member_expression") {
 			const name = selectorName(node, parsed.source);
-			if (name) candidates.push({ kind: "syntax_selector", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
+			if (name && !(parent?.type === "call_expression" && isCallFunctionPart(node, parent))) candidates.push({ kind: "syntax_selector", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
 		} else if (node.type === "keyed_element" || node.type === "pair") {
 			const name = keyedName(node, parsed.source);
 			if (name) candidates.push({ kind: "syntax_keyed_field", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
 		}
 
-		for (const child of namedChildren(node)) visit(child, nextFunction, nextType);
+		for (const child of namedChildren(node)) visit(child, nextFunction, nextType, node);
 	}
 
 	visit(parsed.root);
