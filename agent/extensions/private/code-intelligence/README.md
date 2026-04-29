@@ -133,6 +133,8 @@ The output groups roots and related caller/consumer candidates, with truncation 
 
 Rows such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field` have current file/line/column locations and enclosing function names where available, but they are syntax candidates, not type-resolved references.
 
+For high-value Go exactness checks, pass `confirmReferences: "gopls"` to run a bounded opt-in `gopls references` confirmation for returned Go roots. Use `maxReferenceRoots`, `maxReferenceResults`, and `includeReferenceDeclarations` to control scope. The confirmation appears under `referenceConfirmation` with `gopls:references` evidence labels; it is not part of default routing and missing/broken `gopls` should not affect the Tree-sitter map.
+
 When delegating review, run this in the parent and pass the roots, candidate files, reasons, coverage limits, and validation gaps to the reviewer. Builtin subagents may not have code-intel tools.
 
 ### `code_intel_local_map`

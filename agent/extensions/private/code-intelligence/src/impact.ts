@@ -1,5 +1,6 @@
 import type { CodeIntelConfig, CodeIntelImpactMapParams, ResultDetail } from "./types.ts";
 import { changedFilesFromBase } from "./repo.ts";
+import { runGoplsReferenceConfirmation } from "./gopls.ts";
 import { runTreeSitterImpact } from "./tree-sitter.ts";
 import { normalizePositiveInteger, normalizeStringArray } from "./util.ts";
 
@@ -16,8 +17,18 @@ export async function runImpactMap(params: CodeIntelImpactMapParams, repoRoot: s
 	if (base.diagnostic) diagnostics.push(base.diagnostic);
 	const changedFiles = [...new Set([...normalizeStringArray(params.changedFiles), ...base.files])];
 	const payload = await runTreeSitterImpact({ symbols: params.symbols, changedFiles, maxRootSymbols, maxResults, timeoutMs, detail }, repoRoot, signal);
-	return {
+	const output: Record<string, unknown> = {
 		...payload,
 		diagnostics: [...diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])],
 	};
+	if (params.confirmReferences === "gopls") {
+		output.referenceConfirmation = await runGoplsReferenceConfirmation(
+			Array.isArray(output.roots) ? output.roots : [],
+			repoRoot,
+			{ maxRoots: params.maxReferenceRoots, maxResults: params.maxReferenceResults, timeoutMs, includeDeclarations: params.includeReferenceDeclarations === true },
+			config,
+			signal,
+		);
+	}
+	return output;
 }

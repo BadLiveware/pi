@@ -8,7 +8,7 @@ The current product boundary is:
 
 - Tree-sitter WASM for fast current-source syntax routing.
 - Bounded `rg` fallback for literal text, docs/comments, generated files, and unsupported-language gaps.
-- Optional language-server adapters as future exactness-confirmation layers when Tree-sitter candidates are too noisy or insufficient.
+- Optional language-server status plus opt-in `gopls` exact-reference confirmation when Tree-sitter candidates are too noisy or insufficient.
 
 This plan supersedes the earlier Cymbal/sqry/ast-grep/indexing direction.
 
@@ -21,7 +21,7 @@ The extension is designed around recurring agent behavior, not around exposing e
 | Reviews inspect only the edited files. | Agents miss unchanged callers, consumers, tests, config paths, and protocol boundaries affected by a change. | `code_intel_impact_map` turns changed files, root symbols, or a base ref into a bounded candidate read-next list before findings or edits. |
 | Agents hand-roll broad `rg` regexes for context. | Regex soups such as `rg "func Foo|Foo.*Bar|Bar" ...` mix definitions, comments, strings, and unrelated names, then agents over-trust the result. | `code_intel_local_map` makes this a structured workflow: anchors, related names, Tree-sitter rows, bounded literal fallback, and explicit limitations. |
 | Tool output becomes a finding. | Agents report a defect because a pattern matched, without reading surrounding source or validating behavior. | Every tool labels output as routing evidence. Docs and skill require source reads and project-native validation before claims. |
-| Agents confuse current-source syntax with semantic references. | Same-name functions, methods, fields, or object keys are treated as exact references. | Evidence rows carry source labels such as `tree-sitter:call_expression`, `tree-sitter:member_expression`, and `rg` literal fallback. Future LSP rows must be labeled separately. |
+| Agents confuse current-source syntax with semantic references. | Same-name functions, methods, fields, or object keys are treated as exact references. | Evidence rows carry source labels such as `tree-sitter:call_expression`, `tree-sitter:member_expression`, `rg` literal fallback, or opt-in `gopls:references`. |
 | Broad changed-file diffs starve the root budget. | One large or alphabetically early file consumes all roots, so the map misses other changed subsystems. | Changed-file root selection ranks by signal and spreads roots across changed files within a signal tier. |
 | Common interface methods dominate impact maps. | Go methods such as `String`, `Set`, `Error`, `Len`, or `Swap` route to unrelated flag/string/sort call sites. | Low-signal method names rank later; they remain available when the budget is large enough. |
 | Tests and fixtures dominate changed-file roots. | A changed test helper can outrank production symbols and drive noisy read-next suggestions. | Non-test files rank before test/spec files; object-literal methods are not root definitions. |
@@ -37,7 +37,7 @@ The desired agent loop is:
 2. Run `code_intel_impact_map` or `code_intel_local_map` for a small read-next queue.
 3. Read the returned files and inspect the actual code paths.
 4. Use `code_intel_syntax_search` for one narrow shape when the map cannot express it.
-5. Use future LSP confirmation only when exact references materially reduce risk.
+5. Use opt-in LSP confirmation only when exact references materially reduce risk.
 6. Validate with project-native commands before claiming correctness.
 
 ## Current State
@@ -49,10 +49,13 @@ Implemented and committed under `agent/extensions/private/code-intelligence/`:
 - `code_intel_local_map`
 - `code_intel_syntax_search`
 
+Current `code_intel_state` also reports status-only availability for `gopls`, Rust Analyzer, and TypeScript server commands. Current `code_intel_impact_map` supports `confirmReferences: "gopls"` as a bounded opt-in exact-reference confirmation layer for returned Go roots.
+
 Current backends:
 
 - `tree-sitter` via `@vscode/tree-sitter-wasm`
 - `rg` via ripgrep
+- opt-in `gopls` confirmation through short-lived `gopls references` commands
 
 Current config:
 
@@ -69,6 +72,8 @@ Recent validated commits:
 - `26ff1f1 refactor: remove legacy code intel backends`
 - `96c4fa7 fix: deprioritize generic method roots`
 - `845d4bc fix: spread changed-file impact roots`
+- `b382b77 fix: suppress method-call selector duplicates`
+- `667a539 feat: report language-server availability`
 
 Current validation evidence:
 
@@ -79,7 +84,7 @@ npm --prefix agent/extensions test
 ./link-into-pi-agent.sh
 ```
 
-The suite currently passes with 25 tests.
+The suite currently passes with 27 tests.
 
 ## Evidence Model
 
@@ -89,7 +94,7 @@ All output is routing evidence, not proof.
 | --- | --- | --- |
 | Tree-sitter | Current-source syntax candidates with file/line locations. Useful for definitions, calls, selectors/member fields, keyed/object-literal fields, and explicit syntax shapes. | Not type-resolved. Same-name methods/fields from unrelated types may appear. Cannot prove complete impact. |
 | `rg` | Literal text fallback. Useful for docs/comments/generated text and unsupported-language gaps. | Not semantic. A text match is not a reference. |
-| LSP, future | Language-server reference/definition/type evidence. Useful for exactness confirmation. | Depends on workspace setup, generated files, language-server behavior, and project configuration. Still evidence, not absolute proof. |
+| LSP | Status-only availability plus opt-in `gopls:references` rows for Go exactness confirmation. Future TypeScript/Rust adapters remain deferred. | Depends on workspace setup, generated files, language-server behavior, and project configuration. Still evidence, not absolute proof. |
 
 Agents must read source before reporting findings or making compatibility claims. Project-native validation remains required for correctness-sensitive changes.
 
@@ -173,7 +178,19 @@ Reports:
 - loaded config and config paths
 - Tree-sitter availability/version/languages
 - `rg` availability/version
+- status-only `gopls`, Rust Analyzer, and TypeScript server availability
 - limitations and optional diagnostics
+
+### Opt-in `gopls` reference confirmation
+
+`code_intel_impact_map` accepts `confirmReferences: "gopls"` to run bounded `gopls references` checks for returned Go roots. The confirmation payload is separate from the Tree-sitter routing rows and includes:
+
+- `basis: "lspExactReferences"`
+- `gopls:references` evidence labels
+- root and reference caps
+- graceful diagnostics when `gopls` or workspace setup fails
+
+This keeps the normal four-tool surface intact while making exactness confirmation explicit and opt-in.
 
 ## Ordered Work
 
@@ -204,83 +221,28 @@ npm --prefix agent/extensions test
 ./link-into-pi-agent.sh
 ```
 
-### 2. Add language-server availability reporting
+### 2. Dogfood opt-in `gopls` confirmation
 
-Goal: make exactness-confirmation tooling discoverable without changing default behavior.
+Goal: verify that the existing-tool option is useful without making LSP work feel mandatory.
 
-Candidate language servers:
+Current decision:
 
-- `gopls`
-- `rust-analyzer`
-- TypeScript language service / `tsserver` / `typescript-language-server`
-
-Acceptance criteria:
-
-- `code_intel_state` reports language-server availability and diagnostics separately from Tree-sitter and `rg`.
-- Missing language servers do not degrade existing tools.
-- No auto-installing tools.
-- No background daemon lifecycle is introduced unless explicitly designed.
-
-Validation:
-
-- Unit tests for availability normalization where practical.
-- Manual state smoke on this environment.
-
-### 3. Prototype Go exact-reference confirmation with `gopls`
-
-Goal: provide an opt-in exactness path for Go when Tree-sitter same-name candidates are noisy.
-
-Possible tool shape:
-
-```json
-{
-  "repoRoot": "...",
-  "file": "internal/promshim/storage/selector_sql.go",
-  "line": 1422,
-  "column": 6,
-  "query": "references"
-}
-```
-
-Potential implementation choices:
-
-- short-lived `gopls` command invocation if available and reliable
-- bounded JSON/RPC helper only if command mode is insufficient
-- no long-running daemon in the first slice
+- Keep the four-tool surface unchanged.
+- Use `code_intel_impact_map` with `confirmReferences: "gopls"` for bounded Go confirmation.
+- Keep confirmation payload under `referenceConfirmation` so Tree-sitter routing and LSP exactness evidence stay separate.
 
 Acceptance criteria:
 
-- Explicit opt-in only.
-- Bounded output with file/line/column and evidence labels.
-- Graceful diagnostics when `gopls`, module setup, or workspace metadata fails.
-- Documentation says LSP results are confirmation evidence, not default routing.
+- Manual dogfood on promshim for one noisy symbol.
+- Diagnostics remain graceful when `gopls`, module setup, or workspace metadata fails.
+- Docs and skill keep LSP confirmation opt-in.
 
 Validation:
 
-- Small Go fixture if possible.
+- Small deterministic fake-`gopls` fixture test.
 - Manual dogfood on promshim for one noisy symbol.
 
-### 4. Decide whether LSP confirmation should be a separate tool or existing-tool option
-
-Options:
-
-1. Separate narrow tool, for example `code_intel_lsp_references`.
-2. Optional parameter on existing map tools, for example `confirmWith: ["gopls"]`.
-3. Parent-only helper used internally by future agents, not part of normal tool surface.
-
-Decision criteria:
-
-- Keep normal tool selection simple for agents.
-- Avoid making LSP slow paths feel mandatory.
-- Keep evidence provenance clear.
-- Prefer explicitness until dogfood proves the combined path is worth it.
-
-Acceptance criteria:
-
-- A short decision note in this plan or README.
-- No expansion of the tool surface without a concrete dogfood-backed use case.
-
-### 5. Add TypeScript/Rust exactness only after Go proves useful
+### 3. Add TypeScript/Rust exactness only after Go proves useful
 
 Goal: avoid building multiple adapters before the workflow is validated.
 
@@ -295,7 +257,7 @@ Acceptance criteria:
 - Each adapter has bounded output, diagnostics, and source-specific limitations.
 - Docs keep Tree-sitter as the default routing substrate.
 
-### 6. Update docs and skill for LSP confirmation workflow
+### 4. Update docs and skill for LSP confirmation workflow
 
 Files:
 

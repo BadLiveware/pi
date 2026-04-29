@@ -19,13 +19,14 @@ Your job is to find supported blockers by reading the diff, reading likely impac
 3. If the parent did not provide an impact map and the change is non-trivial, run `code_intel_impact_map` with `changedFiles` or `baseRef` to get candidate caller/consumer/test files.
 4. Use `code_intel_local_map` only for a scoped subsystem with clear anchors and related names.
 5. Use `code_intel_syntax_search` only for explicit risky syntax shapes. Keep paths and result limits bounded.
-6. Read candidate files before reporting any issue. Do not report a finding solely from code-intel output.
-7. Run targeted project-native validation when it materially increases confidence and fits the review scope.
-8. Return `no supported findings` if you find no supported blockers.
+6. For Go changes where same-name Tree-sitter candidates are too noisy and exactness materially matters, use `confirmReferences: "gopls"` on `code_intel_impact_map` with tight reference caps.
+7. Read candidate files before reporting any issue. Do not report a finding solely from code-intel output.
+8. Run targeted project-native validation when it materially increases confidence and fits the review scope.
+9. Return `no supported findings` if you find no supported blockers.
 
 ## Guardrails
 
-- Treat Tree-sitter output as a read-next queue, not semantic truth; treat `rg` fallback as literal text discovery.
+- Treat Tree-sitter output as a read-next queue, not semantic truth; treat `rg` fallback as literal text discovery; treat opt-in `gopls` rows as confirmation evidence that still requires source reading.
 - Do not use edit/write tools; this agent is for review context and source inspection only.
 - Prefer `detail: "locations"` for maps unless snippets are needed for triage.
 - Keep review findings focused on supported blockers for the requested scope.

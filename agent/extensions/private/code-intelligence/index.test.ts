@@ -118,6 +118,27 @@ function parseToolResult(result: any): any {
 	return JSON.parse(result.content[0].text);
 }
 
+async function withFakeGopls(repo: string, run: () => Promise<void>): Promise<void> {
+	const binDir = path.join(repo, "bin");
+	fs.mkdirSync(binDir);
+	fs.writeFileSync(path.join(binDir, "gopls"), `#!/usr/bin/env sh
+if [ "$1" = "references" ]; then
+  echo "$PWD/selector.go:11:2-16"
+  echo "$PWD/selector.go:6:32-36"
+  exit 0
+fi
+echo "golang.org/x/tools/gopls v0.0.0-test"
+`);
+	fs.chmodSync(path.join(binDir, "gopls"), 0o755);
+	const originalPath = process.env.PATH;
+	process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+	try {
+		await run();
+	} finally {
+		process.env.PATH = originalPath;
+	}
+}
+
 function mockContext(cwd: string) {
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
 	return {
@@ -226,6 +247,21 @@ test("impact map suppresses selector duplicates for method calls", async () => {
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["load"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "selector.load()"), true);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.load"), false);
+});
+
+test("impact map optionally confirms Go references with gopls", async () => {
+	const repo = fixtureRepo();
+	await withFakeGopls(repo, async () => {
+		const tools = loadTools();
+		const { ctx } = mockContext(repo);
+		const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["load"], confirmReferences: "gopls", maxReferenceRoots: 1, maxReferenceResults: 1, detail: "locations" }, undefined, undefined, ctx));
+		assert.equal(impact.referenceConfirmation.backend, "gopls");
+		assert.equal(impact.referenceConfirmation.basis, "lspExactReferences");
+		assert.equal(impact.referenceConfirmation.ok, true);
+		assert.equal(impact.referenceConfirmation.roots[0].position.startsWith("selector.go:6:"), true);
+		assert.deepEqual(impact.referenceConfirmation.references, [{ file: "selector.go", line: 11, column: 2, endColumn: 16, rootSymbol: "load", evidence: "gopls:references" }]);
+		assert.equal(impact.referenceConfirmation.coverage.truncated, true);
+	});
 });
 
 test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasCommand("rg") }, async () => {

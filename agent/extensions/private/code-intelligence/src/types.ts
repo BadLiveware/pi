@@ -100,6 +100,10 @@ export interface CodeIntelImpactMapParams {
 	maxRootSymbols?: number;
 	timeoutMs?: number;
 	detail?: ResultDetail;
+	confirmReferences?: "gopls";
+	maxReferenceRoots?: number;
+	maxReferenceResults?: number;
+	includeReferenceDeclarations?: boolean;
 }
 
 export interface CodeIntelLocalMapParams {
