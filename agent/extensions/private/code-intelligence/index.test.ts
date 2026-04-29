@@ -237,6 +237,17 @@ test("syntax search returns bounded Tree-sitter candidates", async () => {
 	assert.equal(rawQuery.ok, true);
 	assert.equal(rawQuery.summary.basis, "treeSitterQueryCaptures");
 	assert.equal(rawQuery.matches.some((match: any) => match.text === "authenticate"), true);
+
+	const broadRawQuery = parseToolResult(await tools.get("code_intel_syntax_search")!.execute("test", { pattern: "(identifier) @id", language: "ts", paths: ["main.ts"], maxResults: 2, detail: "locations" }, undefined, undefined, ctx));
+	assert.equal(broadRawQuery.ok, true);
+	assert.equal(broadRawQuery.summary.basis, "treeSitterQueryCaptures");
+	assert.equal(broadRawQuery.returned, 2);
+	assert.equal(broadRawQuery.truncated, true);
+	assert.equal(broadRawQuery.matchCount > broadRawQuery.returned, true);
+	assert.equal(broadRawQuery.summary.fileCount, 1);
+	assert.equal(broadRawQuery.summary.returnedFileCount, 1);
+	assert.equal("text" in broadRawQuery.matches[0], false);
+	assert.equal("metaVariables" in broadRawQuery.matches[0], false);
 });
 
 test("impact map includes current-source syntax candidates", async () => {

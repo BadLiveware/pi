@@ -725,6 +725,26 @@ function collectNodes(node: TreeSitterNode, predicate: (node: TreeSitterNode) =>
 	return output;
 }
 
+function visitNodes(node: TreeSitterNode, predicate: (node: TreeSitterNode) => boolean, visit: (node: TreeSitterNode) => void): void {
+	if (predicate(node)) visit(node);
+	for (const child of namedChildren(node)) visitNodes(child, predicate, visit);
+}
+
+interface SyntaxMatchAccumulator {
+	detail: ResultDetail;
+	maxResults: number;
+	matchCount: number;
+	matches: Record<string, unknown>[];
+	fileCounts: Map<string, number>;
+}
+
+function addSyntaxMatch(accumulator: SyntaxMatchAccumulator, parsed: ParsedFile, node: TreeSitterNode, metaVariables?: () => Record<string, unknown>): void {
+	accumulator.matchCount += 1;
+	accumulator.fileCounts.set(parsed.file, (accumulator.fileCounts.get(parsed.file) ?? 0) + 1);
+	if (accumulator.matches.length >= accumulator.maxResults) return;
+	accumulator.matches.push(normalizeSyntaxMatch(parsed, node, accumulator.detail, accumulator.detail === "snippets" ? metaVariables?.() : undefined));
+}
+
 function normalizeSyntaxMatch(parsed: ParsedFile, node: TreeSitterNode, detail: ResultDetail, metaVariables?: Record<string, unknown>): Record<string, unknown> {
 	const row: Record<string, unknown> = {
 		file: parsed.file,
@@ -743,73 +763,60 @@ function normalizeSyntaxMatch(parsed: ParsedFile, node: TreeSitterNode, detail: 
 	return row;
 }
 
-function syntaxMatchesForCall(parsed: ParsedFile, pattern: { callee: string; variables: string[] }, detail: ResultDetail): Record<string, unknown>[] {
-	const matches: Record<string, unknown>[] = [];
-	for (const node of collectNodes(parsed.root, (candidate) => candidate.type === "call_expression")) {
+function collectSyntaxMatchesForCall(parsed: ParsedFile, pattern: { callee: string; variables: string[] }, accumulator: SyntaxMatchAccumulator): void {
+	visitNodes(parsed.root, (candidate) => candidate.type === "call_expression", (node) => {
 		const functionNode = callFunctionNode(node);
-		if (!functionNode) continue;
+		if (!functionNode) return;
 		const callee = nodeText(parsed.source, functionNode);
 		const matchesCallee = pattern.callee.includes(".") ? callee === pattern.callee : simpleName(callee) === pattern.callee;
-		if (!matchesCallee) continue;
-		let variables: Record<string, string> | undefined;
-		if (detail === "snippets" && pattern.variables.length > 0) {
+		if (!matchesCallee) return;
+		addSyntaxMatch(accumulator, parsed, node, pattern.variables.length > 0 ? () => {
 			const args = argumentNodes(node);
-			variables = {};
+			const variables: Record<string, string> = {};
 			for (let index = 0; index < Math.min(pattern.variables.length, args.length); index++) variables[pattern.variables[index]] = nodeText(parsed.source, args[index]);
-		}
-		matches.push(normalizeSyntaxMatch(parsed, node, detail, variables));
-	}
-	return matches;
+			return variables;
+		} : undefined);
+	});
 }
 
-function syntaxMatchesForSelector(parsed: ParsedFile, pattern: { variable: string; field: string }, selector: string | undefined, detail: ResultDetail): Record<string, unknown>[] {
-	const matches: Record<string, unknown>[] = [];
+function collectSyntaxMatchesForSelector(parsed: ParsedFile, pattern: { variable: string; field: string }, selector: string | undefined, accumulator: SyntaxMatchAccumulator): void {
 	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute"]);
-	for (const node of collectNodes(parsed.root, (candidate) => selectorTypes.has(candidate.type))) {
+	visitNodes(parsed.root, (candidate) => selectorTypes.has(candidate.type), (node) => {
 		const field = selectorName(node, parsed.source);
-		if (field !== pattern.field) continue;
-		if (selector && selector !== node.type) continue;
-		let variables: Record<string, string> | undefined;
-		if (detail === "snippets") {
+		if (field !== pattern.field) return;
+		if (selector && selector !== node.type) return;
+		addSyntaxMatch(accumulator, parsed, node, () => {
 			const objectNode = selectorObject(node);
-			if (objectNode) variables = { [pattern.variable]: nodeText(parsed.source, objectNode) };
-		}
-		matches.push(normalizeSyntaxMatch(parsed, node, detail, variables));
-	}
-	return matches;
+			return objectNode ? { [pattern.variable]: nodeText(parsed.source, objectNode) } : {};
+		});
+	});
 }
 
-function syntaxMatchesForKeyed(parsed: ParsedFile, pattern: { key: string; valueVariable?: string }, selector: string | undefined, detail: ResultDetail): Record<string, unknown>[] {
-	const matches: Record<string, unknown>[] = [];
+function collectSyntaxMatchesForKeyed(parsed: ParsedFile, pattern: { key: string; valueVariable?: string }, selector: string | undefined, accumulator: SyntaxMatchAccumulator): void {
 	const keyedTypes = new Set(["keyed_element", "pair"]);
-	for (const node of collectNodes(parsed.root, (candidate) => keyedTypes.has(candidate.type))) {
+	visitNodes(parsed.root, (candidate) => keyedTypes.has(candidate.type), (node) => {
 		const key = keyedName(node, parsed.source);
-		if (key !== pattern.key) continue;
-		if (selector && selector !== node.type) continue;
-		let variables: Record<string, string> | undefined;
-		if (detail === "snippets" && pattern.valueVariable) {
+		if (key !== pattern.key) return;
+		if (selector && selector !== node.type) return;
+		addSyntaxMatch(accumulator, parsed, node, pattern.valueVariable ? () => {
 			const valueNode = childForField(node, "value") ?? namedChildren(node).at(-1);
-			if (valueNode) variables = { [pattern.valueVariable]: nodeText(parsed.source, valueNode) };
-		}
-		matches.push(normalizeSyntaxMatch(parsed, node, detail, variables));
-	}
-	return matches;
+			return valueNode ? { [pattern.valueVariable as string]: nodeText(parsed.source, valueNode) } : {};
+		} : undefined);
+	});
 }
 
-function syntaxMatchesForRawQuery(parsed: ParsedFile, querySource: string, selector: string | undefined, detail: ResultDetail): Record<string, unknown>[] {
+function collectSyntaxMatchesForRawQuery(parsed: ParsedFile, querySource: string, selector: string | undefined, accumulator: SyntaxMatchAccumulator): void {
 	const Query = parsed.bundle.Query;
-	if (!Query) return [];
+	if (!Query) return;
 	const query = new Query(parsed.bundle.language, querySource);
 	try {
-		const rows: Record<string, unknown>[] = [];
 		for (const match of query.matches(parsed.root) as Array<{ captures?: Array<{ name: string; node: TreeSitterNode }> }>) {
 			const captures = Array.isArray(match.captures) ? match.captures : [];
 			const selected = selector
 				? captures.filter((capture) => capture.name === selector.replace(/^@/, "") || capture.node.type === selector)
 				: captures;
-			for (const capture of selected.length > 0 ? selected : captures.slice(0, 1)) rows.push(normalizeSyntaxMatch(parsed, capture.node, detail, detail === "snippets" ? { [capture.name]: nodeText(parsed.source, capture.node) } : undefined));
+			for (const capture of selected.length > 0 ? selected : captures.slice(0, 1)) addSyntaxMatch(accumulator, parsed, capture.node, () => ({ [capture.name]: nodeText(parsed.source, capture.node) }));
 		}
-		return rows;
 	} finally {
 		query.delete?.();
 	}
@@ -922,17 +929,17 @@ export async function runTreeSitterSyntaxSearch(params: CodeIntelSyntaxSearchPar
 	const keyedPattern = parseKeyedPattern(pattern);
 	const rawQuery = isRawTreeSitterQuery(pattern);
 	const diagnostics = [...parsed.diagnostics];
-	const allMatches: Record<string, unknown>[] = [];
+	const accumulator: SyntaxMatchAccumulator = { detail, maxResults, matchCount: 0, matches: [], fileCounts: new Map<string, number>() };
 	if (!callPattern && !selectorPattern && !keyedPattern && !rawQuery) diagnostics.push("Unsupported Tree-sitter syntax pattern. Use foo($A), $OBJ.Field, Key: $VALUE, a wrapper containing one of those shapes, or a raw Tree-sitter S-expression query with captures.");
 	for (const file of parsed.parsedFiles) {
-		if (callPattern) allMatches.push(...syntaxMatchesForCall(file, callPattern, detail));
-		else if (selectorPattern) allMatches.push(...syntaxMatchesForSelector(file, selectorPattern, params.selector?.trim(), detail));
-		else if (keyedPattern) allMatches.push(...syntaxMatchesForKeyed(file, keyedPattern, params.selector?.trim(), detail));
-		else if (rawQuery) allMatches.push(...syntaxMatchesForRawQuery(file, pattern, params.selector?.trim(), detail));
+		if (callPattern) collectSyntaxMatchesForCall(file, callPattern, accumulator);
+		else if (selectorPattern) collectSyntaxMatchesForSelector(file, selectorPattern, params.selector?.trim(), accumulator);
+		else if (keyedPattern) collectSyntaxMatchesForKeyed(file, keyedPattern, params.selector?.trim(), accumulator);
+		else if (rawQuery) collectSyntaxMatchesForRawQuery(file, pattern, params.selector?.trim(), accumulator);
 	}
-	const matches = allMatches.slice(0, maxResults);
+	const matches = accumulator.matches;
 	return {
-		ok: diagnostics.length === 0 || allMatches.length > 0,
+		ok: diagnostics.length === 0 || accumulator.matchCount > 0,
 		backend: "tree-sitter",
 		repoRoot,
 		pattern,
@@ -943,11 +950,11 @@ export async function runTreeSitterSyntaxSearch(params: CodeIntelSyntaxSearchPar
 		includeGlobs,
 		excludeGlobs,
 		selector: params.selector?.trim() || undefined,
-		matchCount: allMatches.length,
+		matchCount: accumulator.matchCount,
 		returned: matches.length,
-		truncated: allMatches.length > matches.length,
+		truncated: accumulator.matchCount > matches.length,
 		summary: {
-			...summarizeFileDistribution(allMatches),
+			...distributionFromFileCounts(accumulator.fileCounts),
 			returnedFileCount: summarizeFileDistribution(matches).fileCount,
 			basis: rawQuery ? "treeSitterQueryCaptures" : "treeSitterPatternAdapter",
 		},
