@@ -281,6 +281,20 @@ test("impact map optionally confirms TypeScript references", async () => {
 	assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "main.ts" && row.line === 1 && row.isDefinition === true), false);
 });
 
+test("TypeScript confirmation uses the root file's nearest tsconfig", async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-tsconfig-"));
+	execFileSync("git", ["init", "-q"], { cwd: repo });
+	fs.mkdirSync(path.join(repo, "packages/app/lib"), { recursive: true });
+	fs.writeFileSync(path.join(repo, "packages/app/tsconfig.json"), JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "@lib/*": ["lib/*"] } }, include: ["**/*.ts"] }));
+	fs.writeFileSync(path.join(repo, "packages/app/lib/auth.ts"), "export function authenticate(token: string): boolean { return token.length > 0 }\n");
+	fs.writeFileSync(path.join(repo, "packages/app/main.ts"), "import { authenticate } from '@lib/auth'\nexport const ok = authenticate('token')\n");
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["authenticate"], confirmReferences: "typescript", maxReferenceRoots: 1, maxReferenceResults: 5, detail: "locations" }, undefined, undefined, ctx));
+	assert.equal(impact.referenceConfirmation.ok, true);
+	assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "packages/app/main.ts" && row.line === 2 && row.evidence === "typescript:references"), true);
+});
+
 test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasCommand("rg") }, async () => {
 	const repo = fixtureRepo();
 	const tools = loadTools();

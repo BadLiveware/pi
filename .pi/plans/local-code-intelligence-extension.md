@@ -86,7 +86,7 @@ npm --prefix agent/extensions test
 ./link-into-pi-agent.sh
 ```
 
-The suite currently passes with 28 tests.
+The suite currently passes with 29 tests.
 
 ## Evidence Model
 

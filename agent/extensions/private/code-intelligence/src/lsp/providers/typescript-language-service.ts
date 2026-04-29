@@ -28,8 +28,31 @@ function collectTypeScriptFiles(repoRoot: string): string[] {
 	return files.sort();
 }
 
-function compilerOptions(repoRoot: string): { files: string[]; options: ts.CompilerOptions } {
-	const configPath = ts.findConfigFile(repoRoot, ts.sys.fileExists, "tsconfig.json");
+function configPathForRoots(repoRoot: string, roots: ReferenceRoot[]): string | undefined {
+	for (const root of roots) {
+		try {
+			const safeFile = ensureInsideRoot(repoRoot, root.file);
+			const configPath = ts.findConfigFile(path.dirname(path.resolve(repoRoot, safeFile)), ts.sys.fileExists, "tsconfig.json");
+			if (configPath) {
+				ensureInsideRoot(repoRoot, configPath);
+				return configPath;
+			}
+		} catch {
+			// Try the next root, then fall back to repo root discovery.
+		}
+	}
+	const repoConfigPath = ts.findConfigFile(repoRoot, ts.sys.fileExists, "tsconfig.json");
+	if (!repoConfigPath) return undefined;
+	try {
+		ensureInsideRoot(repoRoot, repoConfigPath);
+		return repoConfigPath;
+	} catch {
+		return undefined;
+	}
+}
+
+function compilerOptions(repoRoot: string, roots: ReferenceRoot[]): { files: string[]; options: ts.CompilerOptions } {
+	const configPath = configPathForRoots(repoRoot, roots);
 	if (configPath) {
 		const config = ts.readConfigFile(configPath, ts.sys.readFile);
 		if (!config.error) {
@@ -63,8 +86,8 @@ function symbolColumn(repoRoot: string, root: ReferenceRoot): number {
 	}
 }
 
-function createLanguageService(repoRoot: string): { service: ts.LanguageService; files: string[]; versions: Map<string, string> } {
-	const project = compilerOptions(repoRoot);
+function createLanguageService(repoRoot: string, roots: ReferenceRoot[]): { service: ts.LanguageService; files: string[]; versions: Map<string, string> } {
+	const project = compilerOptions(repoRoot, roots);
 	const files = project.files.map((file) => path.resolve(file));
 	const versions = new Map(files.map((file) => [file, "0"]));
 	const host: ts.LanguageServiceHost = {
@@ -127,7 +150,7 @@ async function confirmTypeScriptRoots(roots: ReferenceRoot[], context: Reference
 	let service: ts.LanguageService;
 	let files: string[];
 	try {
-		({ service, files } = createLanguageService(context.repoRoot));
+		({ service, files } = createLanguageService(context.repoRoot, roots));
 	} catch (error) {
 		return { roots: [], references: [], diagnostics: [`TypeScript language service setup failed: ${error instanceof Error ? error.message : String(error)}`], limitations: typescriptReferenceProvider.limitations };
 	}

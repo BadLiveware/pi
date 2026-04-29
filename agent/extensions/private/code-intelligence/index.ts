@@ -410,7 +410,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript")], { description: "Opt-in exact-reference confirmation for returned roots using gopls or the TypeScript language service." })),
 			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum roots to confirm when confirmReferences is set. Default 5." })),
 			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum reference rows returned when confirmReferences is set. Default min(config maxResults, 25)." })),
-			includeReferenceDeclarations: Type.Optional(Type.Boolean({ description: "Include declarations in gopls reference output. Default false." })),
+			includeReferenceDeclarations: Type.Optional(Type.Boolean({ description: "Include declarations in reference-confirmation output. Default false." })),
 		}),
 		async execute(_toolCallId: string, params: CodeIntelImpactMapParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const loadedConfig = loadConfig(ctx);
