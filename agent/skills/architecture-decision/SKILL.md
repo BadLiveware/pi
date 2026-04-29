@@ -7,6 +7,8 @@ description: Use when designing a new subsystem or making/revisiting large struc
 
 Use this skill to choose the system shape before sequencing implementation. The outcome is a clear decision, or a deliberately narrowed set of options, with constraints, tradeoffs, risks, and validation evidence.
 
+Default to using this as an internal design checkpoint. Do not return an architecture document just because this skill applies; surface only the decision, key tradeoff, blocker, or short plan the user needs.
+
 Start with the data/state shape: what exists, who owns it, what invariants hold, what the common path should make easy, and which special cases disappear if the shape is right.
 
 Respect real ownership, but do not worship accidental boundaries. Identify what must remain compatible and what adjacent boundary could change to remove local complexity.
@@ -35,8 +37,21 @@ Respect real ownership, but do not worship accidental boundaries. Identify what 
 10. Define proof points before implementation: tests, prototypes, benchmarks, migrations, rollout/rollback checks, compatibility checks, or observability signals.
 11. Hand off to `planning` with concrete implementation boundaries and validation once the architecture decision is stable.
 
-## Output Shape
-For non-trivial decisions, produce a compact ADR-style summary:
+## Minimum Decision Checklist
+Before recommending or implementing an architecture, answer these directly, even if only in your internal reasoning:
+
+- **Data/state:** What entities exist, where is the source of truth, who reads/writes, and who owns invariants?
+- **Ownership:** What can this change modify freely, what must remain compatible, and what needs migration, rollout, or approval?
+- **Boundary:** Is the simplest solution local, or does complexity indicate an adjacent boundary should change?
+- **Options:** Compare at least the status quo, simplest local change, adjacent-boundary change, and no-new-abstraction option when credible.
+- **Decision:** State the chosen shape and why rejected options are worse under current constraints.
+- **Proof:** Name the tests, prototype, benchmark, migration check, rollout/rollback check, or compatibility check that would validate the choice.
+- **Handoff:** Identify implementation boundaries and what should not be revisited during normal planning unless new evidence appears.
+
+## Visibility and Output
+Use the checklist to avoid rewrites after review; do not force the user to read an ADR for ordinary implementation work. Keep the architecture reasoning concise or internal unless the user asks for it, the decision is high-risk, approval is needed, or implementation would otherwise be hard to review.
+
+For non-trivial visible decisions, produce a compact ADR-style summary:
 
 ```md
 Decision:
