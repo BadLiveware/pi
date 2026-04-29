@@ -65,6 +65,17 @@ export function loginHandler(token: string) {
 export function unusedHandler() {
   return authenticate("test")
 }
+
+export interface SelectorSource {
+  NeedTags: boolean
+}
+
+export function needsTags(selector: SelectorSource): boolean {
+  if (selector.NeedTags) return true
+  return false
+}
+
+export const selector: SelectorSource = { NeedTags: true }
 `);
 	return dir;
 }
@@ -117,6 +128,20 @@ test("syntax search returns bounded ast-grep candidates", { skip: !hasCommand("a
 	assert.equal(locationsOnly.detail, "locations");
 	assert.equal("snippet" in locationsOnly.matches[0], false);
 	assert.equal("metaVariables" in locationsOnly.matches[0], false);
+
+	fs.writeFileSync(path.join(repo, "selector.go"), `package main
+
+func needsTags(selector SelectorSource) bool {
+  if selector.NeedTags { return true }
+  return false
+}
+`);
+	const selected = parseToolResult(await tools.get("code_intel_syntax_search")!.execute("test", { pattern: "func _() { if $OBJ.NeedTags {} }", language: "go", selector: "selector_expression", paths: ["selector.go"], detail: "snippets" }, undefined, undefined, ctx));
+	assert.equal(selected.ok, true);
+	assert.equal(selected.selector, "selector_expression");
+	assert.equal(selected.matchCount, 1);
+	assert.equal(selected.matches[0].text, "selector.NeedTags");
+	assert.equal(selected.matches[0].metaVariables.single.OBJ, "selector");
 });
 
 test("cymbal tools return context, references, and impact maps", { skip: !hasCommand("cymbal") }, async () => {
@@ -140,6 +165,15 @@ test("cymbal tools return context, references, and impact maps", { skip: !hasCom
 	const refsWithSnippets = parseToolResult(await tools.get("code_intel_references")!.execute("test", { query: "authenticate", relation: "refs", detail: "snippets" }, undefined, undefined, ctx));
 	assert.equal(refsWithSnippets.detail, "snippets");
 	assert.equal(Array.isArray(refsWithSnippets.results[0].context), true);
+
+	const fieldRefs = parseToolResult(await tools.get("code_intel_references")!.execute("test", { query: "NeedTags", relation: "refs", detail: "locations" }, undefined, undefined, ctx));
+	assert.equal(fieldRefs.ok, true);
+	assert.equal(fieldRefs.backend, "cymbal");
+	assert.equal(fieldRefs.summary.basis, "textFallbackRows");
+	assert.equal(fieldRefs.symbolMatchCount, 0);
+	assert.equal(fieldRefs.summary.fileCount, 1);
+	assert.equal(fieldRefs.results.some((row: any) => row.kind === "text_fallback" && row.file === "main.ts"), true);
+	assert.match(fieldRefs.limitations.join("\n"), /text search/);
 
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["authenticate"], maxResults: 5 }, undefined, undefined, ctx));
 	assert.equal(impact.ok, true);
@@ -199,7 +233,7 @@ test("impact map caps changed-file roots to queried roots", { skip: !hasCommand(
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["main.ts"], maxRootSymbols: 1, maxResults: 5 }, undefined, undefined, ctx));
 	assert.equal(impact.roots.length, 1);
 	assert.equal(impact.rootSymbols.length, 1);
-	assert.equal(impact.coverage.rootSymbolsDiscovered, 3);
+	assert.equal(impact.coverage.rootSymbolsDiscovered, 5);
 	assert.equal(impact.coverage.rootSymbolsUsed, 1);
 	assert.equal(impact.coverage.truncated, true);
 	assert.equal("absoluteFile" in impact.roots[0], false);

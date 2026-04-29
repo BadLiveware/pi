@@ -50,6 +50,32 @@ function truncateText(text: string, maxChars: number): string {
 	return text.length > maxChars ? `${text.slice(0, Math.max(0, maxChars - 1))}…` : text;
 }
 
+function normalizeCymbalTextMatch(row: unknown, repoRoot: string, detail: ResultDetail): Record<string, unknown> {
+	const normalized = normalizeCymbalLocation(row, repoRoot);
+	const compact: Record<string, unknown> = { ...normalized, kind: "text_fallback" };
+	if (isRecord(row) && typeof row.snippet === "string") compact.text = row.snippet;
+	return applyLocationDetail(compact, detail);
+}
+
+async function runTextReferenceFallback(params: CymbalReferencesParams, query: string, repoRoot: string, config: CodeIntelConfig, maxResults: number, timeoutMs: number, detail: ResultDetail, signal?: AbortSignal): Promise<Record<string, unknown>> {
+	const args = ["search", "--text", query, ...pathArgsForRepo(repoRoot, params.paths), "-n", String(maxResults)];
+	for (const item of normalizeStringArray(params.excludeGlobs)) args.push("--exclude", item);
+	const response = await runCymbalJson<CymbalListPayload<unknown>>(repoRoot, args, config, timeoutMs, signal);
+	const rows = cymbalResultRows(response.parsed);
+	const matches = rows.map((row) => normalizeCymbalTextMatch(row, repoRoot, detail)).slice(0, maxResults);
+	return {
+		used: true,
+		ok: response.ok || response.result.exitCode === 0,
+		reason: "cymbal refs returned no symbol references; used cymbal search --text for possible field/property/literal usages.",
+		matches,
+		matchCount: rows.length,
+		returned: matches.length,
+		truncated: response.result.outputTruncated || rows.length > matches.length,
+		command: summarizeCommandBrief(response.result),
+		diagnostic: response.diagnostic,
+	};
+}
+
 function compactImpactRecord(record: Record<string, unknown>): Record<string, unknown> {
 	const compact = { ...record };
 	delete compact.absoluteFile;
@@ -122,7 +148,7 @@ export async function runSymbolContext(params: CymbalSymbolContextParams, repoRo
 		matchCount: result?.match_count ?? 0,
 		command: summarizeCommandBrief(response.result),
 		diagnostic: response.diagnostic,
-		limitations: ["Cymbal context is best-effort routing evidence; verify important details in source."],
+		limitations: ["Cymbal context is best-effort routing evidence; caller rows are callsites and backend row names may repeat the target symbol; verify enclosing functions in source when that matters."],
 	};
 }
 
@@ -152,10 +178,16 @@ export async function runReferences(params: CymbalReferencesParams, repoRoot: st
 	}
 	const response = await runCymbalJson<CymbalListPayload<unknown>>(repoRoot, args, config, timeoutMs, signal);
 	const rows = cymbalResultRows(response.parsed);
-	const results = rows.map((row) => applyLocationDetail(normalizeCymbalLocation(row, repoRoot), detail)).slice(0, maxResults);
+	let results = rows.map((row) => applyLocationDetail(normalizeCymbalLocation(row, repoRoot), detail)).slice(0, maxResults);
+	const fallback = relation === "refs" && rows.length === 0 ? await runTextReferenceFallback(params, query, repoRoot, config, maxResults, timeoutMs, detail, signal) : undefined;
+	if (results.length === 0 && Array.isArray(fallback?.matches) && fallback.matches.length > 0) {
+		results = fallback.matches.filter(isRecord).slice(0, maxResults);
+	}
+	const usedFallback = fallback !== undefined && results.length > 0;
 	return {
-		ok: response.ok || (response.result.exitCode === 0 && rows.length === 0),
+		ok: response.ok || (response.result.exitCode === 0 && rows.length === 0) || fallback?.ok === true,
 		backend: "cymbal",
+		backends: ["cymbal"],
 		repoRoot,
 		query,
 		relation,
@@ -163,14 +195,19 @@ export async function runReferences(params: CymbalReferencesParams, repoRoot: st
 		results,
 		summary: {
 			...summarizeFileDistribution(results),
-			basis: "returnedRows",
+			basis: usedFallback ? "textFallbackRows" : "returnedRows",
 		},
-		matchCount: rows.length,
+		matchCount: usedFallback ? fallback?.matchCount ?? results.length : rows.length,
+		symbolMatchCount: rows.length,
 		returned: results.length,
-		truncated: response.result.outputTruncated || rows.length > results.length,
+		truncated: response.result.outputTruncated || rows.length > results.length || fallback?.truncated === true,
+		fallback,
 		command: summarizeCommandBrief(response.result),
 		diagnostic: response.diagnostic,
-		limitations: ["Reference results are index-supported routing evidence, not proof of complete usage."],
+		limitations: [
+			"Reference results are index-supported routing evidence, not exact references or proof of complete usage.",
+			...(usedFallback ? ["Rows marked kind=text_fallback come from Cymbal text search, not symbol-resolved references; read returned files before treating them as code relationships."] : []),
+		],
 	};
 }
 
@@ -250,7 +287,7 @@ export async function runImpactMap(params: CymbalImpactMapParams, repoRoot: stri
 			rootSymbolsUsed: usedNames.length,
 			defaultMaxResults: IMPACT_DEFAULT_MAX_RESULTS,
 			defaultMaxRootSymbols: IMPACT_DEFAULT_MAX_ROOT_SYMBOLS,
-			limitations: ["Impact maps are index-supported routing evidence, not proof of complete blast radius."],
+			limitations: ["Impact maps are candidate read-next maps, not proof of complete blast radius or exact references."],
 		}, 
 		diagnostics,
 		command: summarizeCommandBrief(response.result),

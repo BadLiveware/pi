@@ -58,6 +58,7 @@ export async function runSyntaxSearch(params: CodeIntelSyntaxSearchParams, repoR
 	const detail: ResultDetail = params.detail === "locations" ? "locations" : "snippets";
 	const args = ["run", "--json=compact", "--pattern", pattern];
 	if (params.language?.trim()) args.push("--lang", params.language.trim());
+	if (params.selector?.trim()) args.push("--selector", params.selector.trim());
 	if (params.strictness) args.push("--strictness", params.strictness);
 	for (const glob of normalizeStringArray(params.includeGlobs)) args.push("--globs", glob);
 	for (const glob of normalizeStringArray(params.excludeGlobs)) args.push("--globs", glob.startsWith("!") ? glob : `!${glob}`);
@@ -77,6 +78,7 @@ export async function runSyntaxSearch(params: CodeIntelSyntaxSearchParams, repoR
 		paths: pathArgsForRepo(repoRoot, params.paths),
 		includeGlobs: normalizeStringArray(params.includeGlobs),
 		excludeGlobs: normalizeStringArray(params.excludeGlobs),
+		selector: params.selector?.trim() || undefined,
 		matchCount: allMatches.length,
 		returned: matches.length,
 		truncated: result.outputTruncated || allMatches.length > matches.length,
@@ -87,6 +89,6 @@ export async function runSyntaxSearch(params: CodeIntelSyntaxSearchParams, repoR
 		},
 		matches,
 		command: summarizeCommand(result),
-		limitations: ["Syntax search matches are candidate routing evidence, not proof of a bug or complete impact."],
+		limitations: ["Syntax search matches are current-source AST candidates, not semantic references, proof of a bug, or complete impact."],
 	};
 }

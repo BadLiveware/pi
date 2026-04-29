@@ -173,7 +173,7 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		backends: statuses,
 		sqryArtifactPolicy: sqryArtifacts,
 		limitations: [
-			"Results from code-intelligence backends are advisory routing evidence, not proof of complete impact.",
+			"Results from code-intelligence backends are advisory read-next routing evidence, not exact references or proof of complete impact.",
 			"Backend indexes can be stale or best-effort; verify important candidates against current source files.",
 		],
 	};

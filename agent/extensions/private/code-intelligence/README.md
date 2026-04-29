@@ -2,28 +2,30 @@
 
 Private local Pi extension for evaluating advisory code-intelligence tools inside Pi.
 
-Use it to gather compact routing evidence: symbol context, references, impact maps, and explicit AST syntax-pattern matches. It does not replace source inspection, compiler/type checks, tests, or project-native validation.
+Use it to prepare compact read-next maps for reviews and edits. The normal product surface is `impact_map`, `local_map`, and scoped `syntax_search`; lower-level symbol/reference tools exist only to explain or refine those maps. It does not replace source inspection, language servers, compiler/type checks, tests, or project-native validation.
 
 ## When to Use It
 
-Use code-intel before falling into repeated `rg`/read navigation when you need to answer concrete relationship questions:
+Use code-intel when you need a bounded candidate file list before a non-trivial review/edit:
 
-- Who calls or references this function/type/handler?
-- Where is this symbol imported, implemented, or used?
-- I am editing an unfamiliar exported function, shared helper, handler, config/schema/protocol path, or file touched by a non-trivial diff; which unchanged caller/consumer/test files should I read first?
-- Where does this exact AST shape or API call pattern appear?
+- A diff touches exported functions, shared helpers, handlers, config/schema/protocol paths, or multiple files.
+- You need to delegate review and want to pass a compact list of likely caller/consumer/test files.
+- You have a scoped subsystem with central anchors plus related field/type/API names.
+- You need to find an explicit AST shape or API call pattern in current source.
 
-Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often relationship searches in disguise. Use `code_intel_local_map` first for definitions/callers/usages/fields/API shapes, then use `rg` for literal fallback, generated text, comments/docs, or empty/stale backend results.
+Do **not** use this extension as a general exact-reference engine. Cymbal and sqry rows can be useful routing evidence, but they are not authoritative semantic references. Use language servers such as `gopls`, TypeScript language services, or Rust Analyzer when exact references matter.
 
-Use the returned locations to choose files to read next; do not treat the result as exhaustive proof.
+Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or empty/stale backend results.
+
+Use returned locations to choose files to read next; do not treat the result as exhaustive proof.
 
 ## Backends
 
 | Backend | Used for | Artifact behavior |
 | --- | --- | --- |
-| Cymbal | symbol context, refs/callers, callees, implementers, importers, impact maps | OS cache per repo by default |
-| ast-grep | read-only syntax-pattern search | no index |
-| sqry | semantic graph index status/update and future semantic-query experiments | repo-local artifacts such as `.sqry/` |
+| Cymbal | low-level source/context and candidate caller rows used by maps | OS cache per repo by default |
+| ast-grep | scoped read-only syntax-pattern candidates | no index |
+| sqry | graph status/update and experimental routing evidence; not trusted for line-exact refs | repo-local artifacts such as `.sqry/` |
 
 ## Design Rationale
 
@@ -34,7 +36,8 @@ The extension is optimized for agent routing, not replacing source reads or proj
 | Role labels (`sem`, `nav`, `ast`) instead of backend-as-fallback wording | sqry, Cymbal, and ast-grep answer different questions; one healthy backend does not make another irrelevant. |
 | Auto-index configured role backends on session start | Agents should not need to remember an indexing ritual before using navigation tools. sqry still obeys repo-artifact policy. |
 | Keep `includeDiagnostics` opt-in | Normal state checks stay small; detailed runtime logs are for footer errors, stale state, or failed update/debug paths. |
-| Default broad nav tools to `detail: "locations"` | Agents usually read/edit returned files next, so inline snippets would duplicate source context. Use `detail: "snippets"` only for triage. |
+| Make `impact_map` and `local_map` the normal entry points | Agents need a read-next queue more than raw backend rows. Low-level tools are kept available for debugging/refinement but are not the product promise. |
+| Default broad map tools to `detail: "locations"` | Agents usually read/edit returned files next, so inline snippets would duplicate source context. Use `detail: "snippets"` only for triage. |
 | Summaries before pagination | `fileCount` and `topFiles` show distribution and hidden breadth without encouraging agents to browse pages mechanically. |
 | Compact TUI cards, full structured JSON for the agent | The UI stays readable while agent-facing content remains available for reasoning and follow-up tool calls. |
 | Passive usage logs, no agent-facing usage tool | We can evaluate natural adoption without adding a tool that changes normal agent behavior. |
@@ -43,7 +46,7 @@ The extension is optimized for agent routing, not replacing source reads or proj
 
 Cymbal, ast-grep, and sqry remain the underlying engines. The Pi extension adds value by making them agent-operable:
 
-- **Stable task-level interface:** agents choose `state`, `symbol_source`, `replace_symbol`, `references`, `local_map`, `impact_map`, `syntax_search`, or `update` without learning backend CLI flags.
+- **Stable task-level interface:** agents normally choose `impact_map`, `local_map`, or `syntax_search` without learning backend CLI flags; low-level tools are available for focused refinement/debugging.
 - **Promptable guardrails:** tool snippets and guidelines teach when to use each lane, when to prefer locations over snippets, and why results are advisory.
 - **Context control:** detail modes, grouped summaries, compact command summaries, and TUI cards prevent raw CLI output from filling model and UI context.
 - **Operational policy:** sqry artifact checks, auto-indexing, footer status, and runtime diagnostics are handled consistently instead of by ad hoc shell commands.
@@ -57,6 +60,7 @@ Using the CLIs directly is still useful for debugging. The extension exists to m
 - 2026-04-28: In a promshim review session, an agent naturally read the code-intelligence skill, checked state, and used parallel Cymbal reference queries before reading files. This suggests the prompt surface is discoverable.
 - 2026-04-28: Micro-action prompt tests on a tiny fixture and `~/code/external/pi-mono` showed agents naturally chose code-intel tools. They initially overused `includeDiagnostics:true`; guidance was tightened so diagnostics are for error/debug paths.
 - 2026-04-28: Large-repo testing showed `detail:"locations"` was useful for routing to follow-up reads, reinforcing the default for references and impact maps.
+- 2026-04-29: promshim and pi-processes review experiments showed Cymbal/sqry are too uneven to expose as general semantic-reference tools. The intended workflow narrowed to parent-run `impact_map`/`local_map` context prep plus optional ast-grep syntax candidates before source reads or reviewer delegation.
 
 ## Footer Status
 
@@ -142,15 +146,15 @@ sqry artifact policy:
 
 ### `code_intel_symbol_context`
 
-Return Cymbal-backed definition/source/caller context for one symbol.
+Return low-level Cymbal-backed definition/source/caller-candidate context for one symbol.
 
-Good for: unfamiliar functions, classes/types, handlers, and changed public symbols.
+Use sparingly to explain one symbol that appears in an impact/local map. Caller rows are candidate callsites and can have imprecise names/locations; read current source before relying on them.
 
 ### `code_intel_symbol_source`
 
 Resolve one symbol and return only its source span, relative file, start/end lines, source hash, and replacement preconditions.
 
-Good for large files when the intended inspection is focused on one function, method, type, or variable. If the symbol is ambiguous, pass `file` or `paths`. This is a focused read, not a substitute for callers/imports/surrounding invariants when those matter.
+Use only for focused source inspection after the surrounding impact/context is already understood. This is not a substitute for reading imports, adjacent declarations, callers, tests, or public-contract context when those matter.
 
 ### `code_intel_replace_symbol`
 
@@ -172,9 +176,11 @@ Passive usage logs record sanitized follow-up signals for this experiment, inclu
 
 ### `code_intel_references`
 
-Return Cymbal-backed relationship rows. Results include a `summary` section with returned-row `fileCount` and `topFiles` so agents can see distribution before reading files.
+Return low-level relationship candidate rows for one known symbol/type/file/package. Prefer `code_intel_impact_map` or `code_intel_local_map` first; use this only to refine a specific relationship question.
 
-Use `detail: "locations"` (default) when returned files are likely read/edit targets. Use `detail: "snippets"` when small inline context is useful before deciding whether to read.
+When `refs` returns no symbol-resolved rows, the tool runs bounded `cymbal search --text` fallback and marks rows as `kind: "text_fallback"`. This catches common field/property text cases, but those rows are not symbol-proven references.
+
+Use `detail: "locations"` (default) when returned files are likely read targets. Use `detail: "snippets"` when small inline context is useful before deciding whether to read.
 
 Relations:
 
@@ -187,7 +193,7 @@ Relations:
 
 ### `code_intel_local_map`
 
-Build a scoped local implementation map from central anchors plus related names. This is the convenience tool for replacing compound relationship-search commands such as:
+Build a scoped local read-next map from central anchors plus related names. This is the convenience tool for replacing compound context-gathering commands such as:
 
 ```bash
 rg -n "func lowerAggregation|aggregation.*RequiredTagLabels|RequiredTagLabels" internal/promshim/native/renderer/aggregation* internal/promshim/native/renderer/lower*.go
@@ -205,25 +211,29 @@ Example:
 }
 ```
 
-The tool combines symbol context, references, optional selector syntax matches like `$X.RequiredTagLabels`, and bounded literal fallback, then returns suggested files to read next. Use standalone `rg` afterward for comments/docs, generated text beyond the returned cap, or empty/stale backend results.
+The tool combines symbol context, relationship candidates, optional selector syntax matches like `$X.RequiredTagLabels`, and bounded literal fallback, then returns suggested files to read next. Use standalone `rg` afterward for comments/docs, generated text beyond the returned cap, or empty/stale backend results.
 
 ### `code_intel_impact_map`
 
-Build a compact impact map from:
+Build the primary candidate read-next impact map from:
 
 - explicit `symbols`
 - `changedFiles` expanded through Cymbal `outline`
 - optional `baseRef` using `git diff --name-only <baseRef> --`
 
-The output groups roots and related caller rows, with truncation and limitation metadata. Defaults are intentionally tighter than other nav queries: up to 20 root symbols after changed-file expansion and 25 related rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context. Use `detail: "snippets"` only when inline context helps triage without immediate reads. Returned impact rows omit absolute paths and cap context text; use `repoRoot` plus relative `file` paths for follow-up reads. The `summary` section reports related-file distribution (`relatedFileCount`, `topRelatedFiles`) so hidden breadth is visible without paging.
+The output groups roots and related caller/consumer candidates, with truncation and limitation metadata. Defaults are intentionally tighter than other nav queries: up to 20 root symbols after changed-file expansion and 25 related rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context. Use `detail: "snippets"` only when inline context helps triage without immediate reads. Returned impact rows omit absolute paths and cap context text; use `repoRoot` plus relative `file` paths for follow-up reads. The `summary` section reports related-file distribution (`relatedFileCount`, `topRelatedFiles`) so hidden breadth is visible without paging.
+
+When delegating review, run this in the parent and pass the roots, candidate files, reasons, coverage limits, and validation gaps to the reviewer. Builtin subagents may not have code-intel tools.
 
 ### `code_intel_syntax_search`
 
 Run read-only ast-grep search for an explicit pattern. Results include a `summary` over all parsed matches, including `fileCount`, `topFiles`, and `returnedFileCount`.
 
+Use `selector` when the node you want is nested inside a wrapper pattern. For example, Go field selections often need a valid wrapper plus `selector: "selector_expression"`.
+
 `detail: "snippets"` is the default because syntax matches often need the matched text to judge relevance. Use `detail: "locations"` when matches are just read/edit targets.
 
-Example:
+Examples:
 
 ```json
 {
@@ -231,6 +241,16 @@ Example:
   "language": "ts",
   "paths": ["src/"],
   "maxResults": 25,
+  "detail": "locations"
+}
+```
+
+```json
+{
+  "pattern": "func _() { if $OBJ.NeedTags {} }",
+  "language": "go",
+  "selector": "selector_expression",
+  "paths": ["internal/promshim"],
   "detail": "locations"
 }
 ```

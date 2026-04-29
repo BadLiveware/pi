@@ -241,7 +241,7 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 			truncated,
 		},
 		limitations: [
-			"Local maps are a convenience wrapper around symbol context, references, optional selector syntax matches, and bounded literal fallback.",
+			"Local maps are candidate read-next maps built from mixed backend evidence, not exact reference reports.",
 			"Results are routing evidence, not proof of complete usage or safe compatibility.",
 			"Use rg afterward for literal text, comments/docs, generated files, or empty/stale backend results.",
 		],

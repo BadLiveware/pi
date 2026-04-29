@@ -229,10 +229,15 @@ function renderSymbolContextResult(details: Record<string, unknown>, expanded: b
 	const resolved = asRecord(details.resolved);
 	const callers = asArray(details.callers).map(asRecord);
 	const location = resolved.file ? `${compactPath(resolved.file)}${resolved.startLine ? `:${resolved.startLine}` : ""}` : "unresolved";
-	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "symbol context")} ${renderColor(theme, "muted", asString(details.symbol) ?? "")} · ${location} · callers ${callers.length}`];
+	const symbol = asString(details.symbol) ?? "";
+	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "symbol context")} ${renderColor(theme, "muted", symbol)} · ${location} · callsites ${callers.length}`];
 	if (expanded) {
-		for (const caller of callers.slice(0, 8)) lines.push(`${renderColor(theme, "muted", "caller")} ${compactPath(caller.file)}${caller.line ? `:${caller.line}` : ""} ${asString(caller.name) ?? ""}`.trim());
-		if (callers.length > 8) lines.push(renderColor(theme, "dim", `… ${callers.length - 8} more caller(s)`));
+		for (const caller of callers.slice(0, 8)) {
+			const name = asString(caller.name);
+			const nameSuffix = name && name !== symbol ? ` ${name}` : "";
+			lines.push(`${renderColor(theme, "muted", "callsite")} ${compactPath(caller.file)}${caller.line ? `:${caller.line}` : ""}${nameSuffix}`.trim());
+		}
+		if (callers.length > 8) lines.push(renderColor(theme, "dim", `… ${callers.length - 8} more callsite(s)`));
 	} else appendExpandHint(lines, expanded, theme);
 	return renderLines(lines);
 }
@@ -244,7 +249,12 @@ function renderReferencesResult(details: Record<string, unknown>, expanded: bool
 	const matchCount = asNumber(details.matchCount) ?? returned;
 	const fileCount = asNumber(summary.fileCount);
 	const truncated = details.truncated === true ? renderColor(theme, "warning", " truncated") : "";
-	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "references")} ${renderColor(theme, "muted", asString(details.relation) ?? "refs")} ${renderColor(theme, "dim", asString(details.query) ?? "")} · ${returned}/${matchCount}${fileCount !== undefined ? ` · ${fileCount} file(s)` : ""}${truncated}`];
+	const summaryBasis = asString(summary.basis);
+	const fallback = asRecord(details.fallback);
+	const fallbackText = summaryBasis === "textFallbackRows" ? ` ${renderColor(theme, "warning", "text fallback")}` : "";
+	const fallbackReason = firstLine(fallback.reason, 140);
+	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "references")} ${renderColor(theme, "muted", asString(details.relation) ?? "refs")} ${renderColor(theme, "dim", asString(details.query) ?? "")} · ${returned}/${matchCount}${fileCount !== undefined ? ` · ${fileCount} file(s)` : ""}${truncated}${fallbackText}`];
+	if (fallbackReason && (expanded || summaryBasis === "textFallbackRows")) lines.push(`${renderColor(theme, "warning", "fallback")} ${fallbackReason}`);
 	if (expanded) {
 		const topFiles = compactTopFiles(summary);
 		if (topFiles) lines.push(`${renderColor(theme, "muted", "top files")} ${topFiles}`);
@@ -465,9 +475,9 @@ function registerStateTool(pi: ExtensionAPI): void {
 		description: "Inspect local code-intelligence backend availability, config, artifact policy, and index status.",
 		promptSnippet: "Inspect code-intel role status before relying on indexes: sem/sqry, nav/Cymbal, ast/ast-grep.",
 		promptGuidelines: [
-			"Treat code_intel output as advisory routing evidence, not proof of complete impact.",
-			"In large or unfamiliar repos, prefer one bounded code_intel_* routing query before repeated rg/read navigation for callers, usages, imports, or implementers; then read returned files to verify.",
-			"If you are about to run rg for function/type/field names across source files to understand definitions, callers, usages, or API shapes, prefer code_intel_symbol_context, code_intel_symbol_source, code_intel_references, code_intel_local_map, or code_intel_syntax_search first; use rg as literal fallback.",
+			"Treat code_intel output as advisory routing evidence for deciding what to read next, not proof of complete impact or exact references.",
+			"Normal use should start from code_intel_impact_map for diffs/changed symbols or code_intel_local_map for a scoped subsystem; use lower-level tools only to explain or refine that map.",
+			"Do not use Cymbal/sqry-backed rows as authoritative semantic truth; verify important candidates by reading current source and running project-native validation.",
 			"Call code_intel_state before relying on availability, freshness, sqry artifact policy, or footer error state.",
 			"For normal freshness checks, omit includeDiagnostics; use includeDiagnostics:true only to debug footer errors, stale output, or failed auto-index/update commands.",
 		],
@@ -494,13 +504,13 @@ function registerSymbolContextTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_symbol_context",
 		label: "Code Intelligence Symbol Context",
-		description: "Get compact Cymbal-backed context for a symbol: definition, source, callers, imports, and alternate matches.",
-		promptSnippet: "Inspect one unfamiliar function/type/class before editing it or changing behavior its callers may depend on.",
+		description: "Low-level Cymbal context for one symbol: definition, source, caller candidates, imports, and alternate matches.",
+		promptSnippet: "Use sparingly to explain one symbol from an impact/local map; not a general reference engine.",
 		promptGuidelines: [
-			"Use code_intel_symbol_context before editing unfamiliar exported functions, handlers, config/schema/protocol helpers, or code whose callers you have not inspected.",
-			"Best for one symbol; use code_intel_references or code_intel_impact_map for broader caller/consumer checks.",
+			"Prefer code_intel_impact_map or code_intel_local_map for review/edit routing; use code_intel_symbol_context only when one returned symbol needs a quick source/callsite sketch.",
+			"Treat caller rows as candidate callsites; backend row names and line metadata can be imprecise, so read current source before relying on them.",
 			"If results look stale or fail, inspect code_intel_state or refresh nav with code_intel_update.",
-			"Read returned source files before turning context into a finding or fix.",
+			"Do not turn this output directly into a finding or compatibility claim.",
 		],
 		renderCall: renderToolCall("code_intel_symbol_context", (args) => asString(args.symbol)),
 		renderResult: renderGenericCodeIntelResult("symbol"),
@@ -523,10 +533,10 @@ function registerSymbolSourceTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_symbol_source",
 		label: "Code Intelligence Symbol Source",
-		description: "Resolve one symbol and return only its source span with file/range/hash preconditions for focused inspection or guarded replacement.",
-		promptSnippet: "Get only a symbol's source span before focused symbol-local edits in large files.",
+		description: "Low-level focused source span for one resolved symbol with file/range/hash preconditions.",
+		promptSnippet: "Use only for focused source inspection after the surrounding impact/context is already understood.",
 		promptGuidelines: [
-			"Use code_intel_symbol_source when you need the exact body/source of one known function, method, type, or variable without reading the whole file.",
+			"Do not use code_intel_symbol_source as a general navigation substitute; prefer reading files from an impact/local map when behavior, imports, or callers matter.",
 			"Use code_intel_symbol_source before code_intel_replace_symbol; pass file or paths when the symbol is ambiguous.",
 			"Do not treat code_intel_symbol_source as enough context when imports, adjacent declarations, callers, or public contracts matter; read those files normally.",
 		],
@@ -592,13 +602,13 @@ function registerReferencesTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_references",
 		label: "Code Intelligence References",
-		description: "Find Cymbal-backed references, callers, callees, impact rows, implementers, implemented interfaces, or importers.",
-		promptSnippet: "Find callers/usages/importers/implementers of a known symbol/type/file; prefer before broad rg relationship chasing.",
+		description: "Low-level relationship candidate query for one known symbol/type/file/package; normally prefer impact_map or local_map first.",
+		promptSnippet: "Use sparingly to refine an impact/local map; results are candidate relationships, not exact refs.",
 		promptGuidelines: [
-			"Use code_intel_references before broad rg/read loops when you need callers, usages, refs, importers, or implementers of a known function/type/file/package.",
-			"Choose the narrowest relation and bounded maxResults; add path filters when reviewing scoped changes.",
-			"Use code_intel_references detail:'locations' when you expect to read or edit returned files; use detail:'snippets' only for small inline context.",
-			"Use code_intel_impact_map when starting from a diff, edited files, or multiple root symbols.",
+			"Do not use code_intel_references as a general exact-reference tool; prefer code_intel_impact_map for review/edit routing and code_intel_local_map for scoped subsystem mapping.",
+			"Use this only when a specific relationship query will refine the candidate file map; keep maxResults bounded and add path filters.",
+			"When refs returns rows marked kind:'text_fallback', treat them as Cymbal text-search candidate locations rather than symbol-proven references.",
+			"Use detail:'locations' when returned files are read targets; use detail:'snippets' only for small inline triage.",
 			"Treat missing or empty results as non-authoritative; verify important candidates in source.",
 		],
 		renderCall: renderToolCall("code_intel_references", (args) => `${asString(args.relation) ?? "refs"} ${asString(args.query) ?? ""}`.trim()),
@@ -627,13 +637,13 @@ function registerLocalMapTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_local_map",
 		label: "Code Intelligence Local Map",
-		description: "Build a scoped local implementation map from anchor names, related symbol/field names, optional path scope, and bounded literal fallback.",
-		promptSnippet: "Map symbol/field names in a scoped subsystem before writing compound rg relationship searches.",
+		description: "Build a scoped local read-next map from anchor names, related symbol/field names, optional path scope, and syntax/text candidates.",
+		promptSnippet: "Map a local subsystem into candidate files to read next; not an exact reference report.",
 		promptGuidelines: [
-			"Use code_intel_local_map when you would otherwise run rg with several function/type/field names to understand a local implementation area before editing.",
-			"Use code_intel_local_map for questions like: where is this implementation anchor, where are these fields/symbols used, and which scoped files should I read next?",
+			"Use code_intel_local_map when a scoped edit/review has a central anchor plus related fields/types/API terms and you need a candidate file list.",
+			"Use it to answer: which local files should I read next, and why are they candidates? Do not treat it as exhaustive usage proof.",
 			"Provide anchors for central functions/types and names for related fields/types/API terms; add paths to keep the map local.",
-			"Use code_intel_local_map detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or stale/empty backend results.",
+			"Use detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or stale/empty backend results.",
 		],
 		renderCall: renderToolCall("code_intel_local_map", (args) => {
 			const anchors = asArray(args.anchors).length;
@@ -667,15 +677,15 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_impact_map",
 		label: "Code Intelligence Impact Map",
-		description: "Build a compact Cymbal-backed candidate file map from edited files, queried symbols, or a git base ref.",
-		promptSnippet: "List likely caller/consumer files to read before non-trivial edits or reviews of edited files/symbols.",
+		description: "Build the primary read-next impact map from edited files, queried symbols, or a git base ref.",
+		promptSnippet: "Primary code-intel entry point: list candidate caller/consumer/test files to read before edits or reviews.",
 		promptGuidelines: [
-			"Use code_intel_impact_map after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
-			"Use code_intel_impact_map to answer: which unchanged caller, consumer, or test files should I read before changing or reviewing this code?",
-			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, and truncation.",
-			"Use code_intel_impact_map detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
-			"Impact maps are a candidate file list, not exhaustive proof of all callers or safe compatibility.",
-			"Follow up by reading returned files and running project-native validation when relevant.",
+			"Use code_intel_impact_map as the default code-intel tool after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
+			"Use it to answer: which unchanged caller, consumer, or test files should I read before changing or reviewing this code, and what evidence made them candidates?",
+			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, truncation, and backend limitations.",
+			"Use detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
+			"Impact maps are a candidate read list, not exhaustive proof of all callers or safe compatibility.",
+			"When delegating review, run this in the parent and pass the candidate files/reasons to subagents unless the subagent is explicitly configured with code-intel tools.",
 		],
 		renderCall: renderToolCall("code_intel_impact_map", (args) => {
 			const parts = [];
@@ -709,12 +719,13 @@ function registerSyntaxSearchTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_syntax_search",
 		label: "Code Intelligence Syntax Search",
-		description: "Run a read-only ast-grep syntax-pattern search with scoped, normalized candidate results.",
-		promptSnippet: "Use ast/ast-grep for narrow, explicit syntax-shape searches with scoped paths; no rewrites.",
+		description: "Run a read-only ast-grep syntax-pattern search for explicit scoped shapes, with normalized candidate locations.",
+		promptSnippet: "Use for narrow current-source syntax shapes that impact/local maps cannot express; no rewrites.",
 		promptGuidelines: [
-			"Provide a concrete pattern and language when possible; scope paths/globs to avoid broad noisy scans.",
-			"Use code_intel_syntax_search detail:'locations' when matches are just read/edit targets; default snippets are for judging match relevance.",
-			"Use this for candidate matching, API-shape checks, or pattern-specific review, not general linting.",
+			"Provide a concrete pattern and language; scope paths/globs to avoid broad noisy scans.",
+			"Use selector when the searchable node is inside a wrapper pattern, such as Go selector_expression inside a dummy function.",
+			"Use detail:'locations' when matches are read/edit targets; default snippets are for judging match relevance.",
+			"Use this for candidate matching, API-shape checks, or pattern-specific review, not general linting or exact semantic references.",
 			"Matches are not defects by themselves; inspect source and validate behavior before reporting.",
 		],
 		renderCall: renderToolCall("code_intel_syntax_search", (args) => `${asString(args.language) ?? ""} ${asString(args.pattern) ? "pattern" : ""}`.trim()),
@@ -726,6 +737,7 @@ function registerSyntaxSearchTool(pi: ExtensionAPI): void {
 			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files or directories to search. Defaults to '.'. Paths outside the repo are rejected." })),
 			includeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional ast-grep --globs include patterns." })),
 			excludeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional ast-grep --globs exclude patterns. Leading '!' is optional." })),
+			selector: Type.Optional(Type.String({ description: "Optional ast-grep --selector node kind to extract a sub-node from a wrapper pattern, e.g. selector_expression for Go field selections." })),
 			maxResults: maxResultsParam,
 			timeoutMs: timeoutParam,
 			strictness: Type.Optional(strictnessParam),
