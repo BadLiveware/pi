@@ -98,6 +98,17 @@ func caller(selector SelectorSourceGo) {
 	_ = SelectorSourceGo{NeedTags: true}
 }
 `);
+	fs.writeFileSync(path.join(dir, "flags.go"), `package main
+
+type csvList []string
+
+func (c *csvList) String() string { return "" }
+func (c *csvList) Set(value string) error { return nil }
+
+func BuildRoutingPolicy() {}
+func buildRoutingPolicyFallback() {}
+func applyRoutingPolicy() {}
+`);
 	return dir;
 }
 
@@ -217,6 +228,16 @@ test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasComma
 	assert.equal(localMap.sections.literalMatches.every((section: any) => section.command.command.endsWith("rg")), true);
 	assert.equal(localMap.summary.suggestedFiles.some((file: any) => file.file === "main.ts"), true);
 	assert.equal(localMap.detail, "locations");
+});
+
+test("impact map ranks common interface method roots after domain functions", async () => {
+	const repo = fixtureRepo();
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["flags.go"], maxRootSymbols: 3, maxResults: 5 }, undefined, undefined, ctx));
+	assert.deepEqual(impact.rootSymbols, ["BuildRoutingPolicy", "buildRoutingPolicyFallback", "applyRoutingPolicy"]);
+	assert.equal(impact.coverage.rootSymbolsDiscovered > impact.coverage.rootSymbolsUsed, true);
+	assert.equal(impact.coverage.truncated, true);
 });
 
 test("impact map caps changed-file roots to higher-signal roots first", async () => {

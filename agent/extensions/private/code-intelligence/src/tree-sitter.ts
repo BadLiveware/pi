@@ -462,12 +462,18 @@ function fileRank(record: SymbolRecord): number {
 	return isTestFile(record.file) ? 1 : 0;
 }
 
+const LOW_SIGNAL_METHOD_NAMES = new Set(["String", "Set", "Error", "Unwrap", "MarshalJSON", "UnmarshalJSON", "Len", "Less", "Swap"]);
+
+function nameSignalRank(record: SymbolRecord): number {
+	return record.kind.startsWith("method_") && LOW_SIGNAL_METHOD_NAMES.has(record.name) ? 1 : 0;
+}
+
 function exportRank(record: SymbolRecord): number {
 	return record.exported === true ? 0 : 1;
 }
 
 function compareDefinitions(left: SymbolRecord, right: SymbolRecord): number {
-	return fileRank(left) - fileRank(right) || definitionRank(left) - definitionRank(right) || exportRank(left) - exportRank(right) || left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.name.localeCompare(right.name);
+	return fileRank(left) - fileRank(right) || definitionRank(left) - definitionRank(right) || nameSignalRank(left) - nameSignalRank(right) || exportRank(left) - exportRank(right) || left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.name.localeCompare(right.name);
 }
 
 export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRoot: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
