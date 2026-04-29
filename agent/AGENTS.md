@@ -46,6 +46,7 @@ Approach software development work with understanding, correctness, testability,
 
 ### 6. Measure performance when it matters
 - Benchmark hot paths and architectural changes before and after instead of guessing.
+- Before coding scale-sensitive paths—loops over files/results, parsers/searches, external calls, frequent rendering, batch/background work—name the scaling variables and bounds. Prefer simple batching, streaming, scoping, cancellation, and caps that limit internal work; measure when performance matters.
 
 ### 7. Control scope deliberately
 - Prefer the smallest sufficient change and avoid unrelated cleanup unless it materially reduces risk.

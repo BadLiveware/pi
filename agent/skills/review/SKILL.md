@@ -13,6 +13,7 @@ Review code as a high-signal risk assessment: scale effort to risk, retrieve the
 - Prefer impact mapping and deterministic evidence before adding reviewers. More agents do not compensate for missing callers, configs, tests, or contract context.
 - For `standard` and `full`, build a compact impact map before delegation or final ranking: changed symbols, impacted callers/callees, relevant tests, config/schema/docs, public contract risks, and unchanged consumers worth inspecting.
 - Use deterministic tool lanes as a menu, not a checklist. Prefer project-native commands and existing configs; do not install tools, run broad noisy scans, or surface unrelated analyzer output unless the user asked for that scope.
+- For performance-sensitive changes, review the cost shape: scaling variables, nested loops, repeated scans/parses/shell-outs/queries, caps that only trim output, synchronous interactive work, cache growth, cancellation, and timeouts.
 - Keep candidate generation, clustering/dedupe, verification, and final comments separate. Triage and scouts produce candidates, not user-facing comments.
 - Label every retained candidate as `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`. Final findings should normally be `supported-deterministic` or `supported-trace`.
 - Require evidence for each finding. If a claim depends on unavailable runtime evidence, mark it uncertain, put it in a separate risk/gap section, or omit it.

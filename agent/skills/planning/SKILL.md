@@ -44,6 +44,7 @@ A non-trivial plan should be executable by a future agent without guessing. Incl
 - affected files/areas when knowable
 - ordered leaf tasks with coherent outcomes, acceptance criteria, and validation
 - risks, rollback points, side effects, approval gates, and compatibility/data-safety concerns
+- for scale-sensitive work, a performance shape: work units, expected scale, caps/cancellation, repeated work to avoid, and measurement or smoke validation
 - exact validation commands or inspection checks with expected signals; if unknown, add discovery work
 - targeted comment/docs work for non-obvious, compatibility-driven, or required-by-X code
 
@@ -69,12 +70,13 @@ Detailed templates live in `output-templates.md`.
 3. Inspect affected code, generated artifacts, local guidance, and project-sanctioned validation commands.
 4. For source-sensitive or evidence-heavy subjects, run focused Feynman research before freezing scope: `session-search`, `alpha-research`, `literature-review`, `source-comparison`, or `deep-research` as appropriate.
 5. If working from an existing plan, isolate the current referenced document and immediate prerequisites.
-6. Order independently validatable steps, separating preparatory refactors, behavior changes, validation, docs, migration, cleanup, and delegation points.
-7. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
-8. Decide bounded/unbounded and simple/split shape. For unbounded work, read `unbounded-work.md` and write a loop charter instead of a finite plan.
-9. For bounded work, decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
-10. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
-11. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks for bounded work or 1-3 active attempts for unbounded work; keep the rest in the plan/loop file.
+6. For scale-sensitive paths, include a concise performance-shape note before task sequencing: what scales, what bounds it, and what representative validation will show.
+7. Order independently validatable steps, separating preparatory refactors, behavior changes, validation, docs, migration, cleanup, and delegation points.
+8. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
+9. Decide bounded/unbounded and simple/split shape. For unbounded work, read `unbounded-work.md` and write a loop charter instead of a finite plan.
+10. For bounded work, decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
+11. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
+12. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks for bounded work or 1-3 active attempts for unbounded work; keep the rest in the plan/loop file.
 
 ## Task and Handoff Guidance
 - Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` for meaningful multi-step work.
