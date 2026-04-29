@@ -240,6 +240,17 @@ test("impact map ranks common interface method roots after domain functions", as
 	assert.equal(impact.coverage.truncated, true);
 });
 
+test("impact map spreads changed-file root budget across files", async () => {
+	const repo = fixtureRepo();
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["main.ts", "flags.go", "selector.go"], maxRootSymbols: 3, maxResults: 5 }, undefined, undefined, ctx));
+	assert.deepEqual(impact.rootSymbols, ["authenticate", "BuildRoutingPolicy", "buildMatchedSeriesSQL"]);
+	assert.deepEqual(impact.roots.map((root: any) => root.file), ["main.ts", "flags.go", "selector.go"]);
+	assert.equal(impact.coverage.rootSymbolsDiscovered > impact.coverage.rootSymbolsUsed, true);
+	assert.equal(impact.coverage.truncated, true);
+});
+
 test("impact map caps changed-file roots to higher-signal roots first", async () => {
 	const repo = fixtureRepo();
 	const tools = loadTools();

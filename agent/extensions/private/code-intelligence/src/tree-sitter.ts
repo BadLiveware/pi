@@ -476,6 +476,37 @@ function compareDefinitions(left: SymbolRecord, right: SymbolRecord): number {
 	return fileRank(left) - fileRank(right) || definitionRank(left) - definitionRank(right) || nameSignalRank(left) - nameSignalRank(right) || exportRank(left) - exportRank(right) || left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.name.localeCompare(right.name);
 }
 
+function changedFileDefinitions(definitions: SymbolRecord[], changedFiles: string[]): SymbolRecord[] {
+	const changedFileSet = new Set(changedFiles);
+	const changedFileOrder = new Map(changedFiles.map((file, index) => [file, index]));
+	const byFile = new Map<string, SymbolRecord[]>();
+	for (const definition of definitions) {
+		if (!changedFileSet.has(definition.file)) continue;
+		const bucket = byFile.get(definition.file) ?? [];
+		bucket.push(definition);
+		byFile.set(definition.file, bucket);
+	}
+	const groups = [...byFile.entries()]
+		.map(([file, records]) => ({ file, records: records.sort(compareDefinitions), rank: Math.min(...records.map(fileRank)) }))
+		.sort((left, right) => left.rank - right.rank || (changedFileOrder.get(left.file) ?? Number.MAX_SAFE_INTEGER) - (changedFileOrder.get(right.file) ?? Number.MAX_SAFE_INTEGER) || left.file.localeCompare(right.file));
+	const ordered: SymbolRecord[] = [];
+	const ranks = [...new Set(groups.map((group) => group.rank))].sort((left, right) => left - right);
+	for (const rank of ranks) {
+		const rankedGroups = groups.filter((group) => group.rank === rank);
+		for (let index = 0; ; index++) {
+			let added = false;
+			for (const group of rankedGroups) {
+				const record = group.records[index];
+				if (!record) continue;
+				ordered.push(record);
+				added = true;
+			}
+			if (!added) break;
+		}
+	}
+	return ordered;
+}
+
 export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRoot: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
 	const started = Date.now();
 	const parsed = await parseFiles(repoRoot, IMPACT_LANGUAGES, normalizeStringArray(params.paths), [], [], params.timeoutMs, signal);
@@ -510,8 +541,8 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 		addRoot(symbol, definition ? { ...definition, reason: "explicit symbol matched current-source Tree-sitter definition" } : { kind: "queried_symbol", name: symbol, symbol, file: "", evidence: "user", reason: "explicit symbol", line: 0, column: 0, endLine: 0, endColumn: 0 });
 	}
 
-	const changedFiles = new Set(safeChangedFiles(repoRoot, normalizeStringArray(params.changedFiles)));
-	for (const definition of definitions.filter((record) => changedFiles.has(record.file)).sort(compareDefinitions)) {
+	const changedFiles = safeChangedFiles(repoRoot, normalizeStringArray(params.changedFiles));
+	for (const definition of changedFileDefinitions(definitions, changedFiles)) {
 		addRoot(definition.name, { ...definition, reason: `current-source symbol defined in changed file ${definition.file}` });
 	}
 
@@ -554,7 +585,7 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 			filesParsed: parsed.parsedFiles.length,
 			filesByLanguage: parsed.filesByLanguage,
 			parsedByLanguage: parsed.parsedByLanguage,
-			changedFiles: [...changedFiles],
+			changedFiles,
 			truncated: related.length >= params.maxResults || discoveredRootNames.size > rootSymbols.length,
 			rootSymbolsDiscovered: discoveredRootNames.size,
 			rootSymbolsUsed: rootSymbols.length,
