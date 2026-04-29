@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
@@ -19,6 +20,7 @@ import { commandDiagnostic, findExecutable, firstLine, parseJson, runCommand, su
 import { realPathOrSelf } from "./repo.ts";
 
 async function versionFor(binary: BackendName, executable: string, repoRoot: string, config: CodeIntelConfig): Promise<{ version?: string; diagnostic?: string }> {
+	if (binary === "tree-sitter") return { version: undefined };
 	if (binary === "cymbal") {
 		const result = await runCommand(executable, ["version", "--json"], { cwd: repoRoot, timeoutMs: 10_000, maxOutputBytes: config.maxOutputBytes });
 		const parsed = parseJson<{ results?: { version?: string }; version?: string }>(result.stdout);
@@ -26,6 +28,32 @@ async function versionFor(binary: BackendName, executable: string, repoRoot: str
 	}
 	const result = await runCommand(executable, ["--version"], { cwd: repoRoot, timeoutMs: 10_000, maxOutputBytes: config.maxOutputBytes });
 	return { version: firstLine(result.stdout || result.stderr), diagnostic: commandDiagnostic(result) };
+}
+
+function treeSitterStatus(): BackendStatus {
+	try {
+		const require = createRequire(import.meta.url);
+		const packageJson = require("@vscode/tree-sitter-wasm/package.json") as { version?: string };
+		return {
+			backend: "tree-sitter",
+			available: "available",
+			version: packageJson.version,
+			indexStatus: "not-required",
+			writesToRepo: false,
+			artifacts: [],
+			diagnostics: [],
+			details: { runtime: "@vscode/tree-sitter-wasm", languages: ["go", "typescript", "tsx", "javascript", "rust", "python", "java", "c", "cpp", "csharp", "ruby", "php", "bash", "css"] },
+		};
+	} catch (error) {
+		return {
+			backend: "tree-sitter",
+			available: "error",
+			indexStatus: "error",
+			writesToRepo: false,
+			artifacts: [],
+			diagnostics: [error instanceof Error ? error.message : String(error)],
+		};
+	}
 }
 
 async function cymbalStatus(repoRoot: string, config: CodeIntelConfig): Promise<BackendStatus> {
@@ -133,24 +161,24 @@ export async function artifactPolicyState(repoRoot: string, policy: RepoArtifact
 
 export async function backendStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<BackendName, BackendStatus>> {
 	const [cymbal, astGrep, sqry] = await Promise.all([cymbalStatus(repoRoot, config), astGrepStatus(repoRoot, config), sqryStatus(repoRoot, config)]);
-	return { cymbal, "ast-grep": astGrep, sqry };
+	return { "tree-sitter": treeSitterStatus(), cymbal, "ast-grep": astGrep, sqry };
 }
 
 export function requestedUpdateBackend(value: unknown): UpdateBackend | undefined {
-	return value === "auto" || value === "cymbal" || value === "ast-grep" || value === "sqry" ? value : undefined;
+	return value === "auto" || value === "tree-sitter" || value === "cymbal" || value === "ast-grep" || value === "sqry" ? value : undefined;
 }
 
 export function chooseUpdateBackend(requested: UpdateBackend | undefined, statuses: Record<BackendName, BackendStatus>, config: CodeIntelConfig): BackendName {
 	if (requested && requested !== "auto") return requested;
 	for (const backend of config.backendOrder) {
-		if (backend === "ast-grep") continue;
+		if (backend === "tree-sitter" || backend === "ast-grep") continue;
 		if (statuses[backend].available === "available") return backend;
 	}
 	return "cymbal";
 }
 
 export async function runIndexUpdate(backend: BackendName, repoRoot: string, force: boolean, timeoutMs: number, config: CodeIntelConfig, signal?: AbortSignal): Promise<CommandResult | undefined> {
-	if (backend === "ast-grep") return undefined;
+	if (backend === "tree-sitter" || backend === "ast-grep") return undefined;
 	const executable = findExecutable(backend);
 	if (!executable) return { command: backend, args: [], cwd: repoRoot, exitCode: null, signal: null, stdout: "", stderr: "", timedOut: false, outputTruncated: false, error: "ENOENT" };
 	if (backend === "cymbal") {
@@ -173,8 +201,8 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		backends: statuses,
 		sqryArtifactPolicy: sqryArtifacts,
 		limitations: [
-			"Results from code-intelligence backends are advisory read-next routing evidence, not exact references or proof of complete impact.",
-			"Backend indexes can be stale or best-effort; verify important candidates against current source files.",
+			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
+			"Legacy Cymbal/sqry rows, when explicitly requested, are best-effort and should be verified against current source files.",
 		],
 	};
 	if (includeDiagnostics) payload.diagnostics = [...roots.diagnostics, ...loadedConfig.diagnostics, ...Object.values(statuses).flatMap((status) => status.diagnostics), ...sqryArtifacts.artifacts.flatMap((entry) => entry.diagnostic ? [entry.diagnostic] : [])];

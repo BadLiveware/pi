@@ -1,5 +1,5 @@
 import type { CodeIntelConfig, CodeIntelLocalMapParams, CommandResult, ResultDetail } from "./types.ts";
-import { runReferences, runSymbolContext } from "./cymbal.ts";
+import { runTreeSitterImpact } from "./tree-sitter.ts";
 import { findExecutable, runCommand, summarizeCommandBrief } from "./exec.ts";
 import { pathArgsForRepo } from "./repo.ts";
 import { runSyntaxSearch } from "./syntax.ts";
@@ -22,32 +22,7 @@ function unique(items: string[]): string[] {
 	return output;
 }
 
-function compactCommandRecord(record: Record<string, unknown>): Record<string, unknown> {
-	const output = { ...record };
-	delete output.source;
-	delete output.typeReferences;
-	delete output.fileImports;
-	return output;
-}
-
-function contextForDetail(payload: Record<string, unknown>, detail: ResultDetail): Record<string, unknown> {
-	const output = compactCommandRecord(payload);
-	if (detail === "locations") delete output.source;
-	const callers = Array.isArray(output.callers) ? output.callers.filter(isRecord) : [];
-	output.callers = callers.slice(0, 6).map((caller) => {
-		const compact = { ...caller };
-		if (detail === "locations") {
-			delete compact.context;
-			delete compact.source;
-			delete compact.text;
-			delete compact.snippet;
-		}
-		return compact;
-	});
-	return output;
-}
-
-function rowsFromSection(section: Record<string, unknown>, key: "results" | "matches" | "callers"): Record<string, unknown>[] {
+function rowsFromSection(section: Record<string, unknown>, key: "results" | "matches" | "callers" | "related"): Record<string, unknown>[] {
 	return Array.isArray(section[key]) ? section[key].filter(isRecord) : [];
 }
 
@@ -66,7 +41,7 @@ function suggestedFilesFromSections(sections: Record<string, unknown>[]): Array<
 		const name = typeof section.name === "string" ? section.name : typeof section.query === "string" ? section.query : typeof section.pattern === "string" ? section.pattern : "unknown";
 		const resolved = isRecord(section.resolved) ? section.resolved : undefined;
 		addFileReason(files, resolved?.file, `${sectionKind}:${name}`);
-		for (const key of ["callers", "results", "matches"] as const) {
+		for (const key of ["callers", "results", "matches", "related"] as const) {
 			for (const row of rowsFromSection(section, key)) addFileReason(files, row.file, `${sectionKind}:${name}`);
 		}
 	}
@@ -178,17 +153,12 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		};
 	}
 
-	const symbolContexts: Record<string, unknown>[] = [];
-	for (const anchor of anchors) {
-		const context = await safely({ kind: "symbol_context", name: anchor }, () => runSymbolContext({ symbol: anchor, maxCallers: Math.min(maxPerName, 6), timeoutMs }, repoRoot, config, signal));
-		symbolContexts.push({ kind: "symbol_context", name: anchor, ...contextForDetail(context, detail) });
-	}
+	const treeSitterMaps: Record<string, unknown>[] = [];
+	const treeSitterMap = await safely({ kind: "tree_sitter_map", name: names.join(",") }, () => runTreeSitterImpact({ symbols: names, paths, changedFiles: [], maxRootSymbols: names.length, maxResults: Math.min(maxResults * maxPerName, 200), timeoutMs, detail }, repoRoot, signal));
+	treeSitterMaps.push({ kind: "tree_sitter_map", name: names.join(","), ok: treeSitterMap.ok, rootSymbols: treeSitterMap.rootSymbols, roots: treeSitterMap.roots, results: Array.isArray(treeSitterMap.related) ? treeSitterMap.related : [], summary: treeSitterMap.summary, coverage: treeSitterMap.coverage, diagnostics: treeSitterMap.diagnostics });
 
+	const symbolContexts: Record<string, unknown>[] = [];
 	const references: Record<string, unknown>[] = [];
-	for (const name of names) {
-		const refs = await safely({ kind: "references", name }, () => runReferences({ query: name, relation: "refs", paths, maxResults: maxPerName, timeoutMs, detail }, repoRoot, config, signal));
-		references.push({ kind: "references", name, ...refs });
-	}
 
 	const syntaxMatches: Record<string, unknown>[] = [];
 	if (includeSyntax) {
@@ -206,7 +176,7 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		literalMatches.push(literal);
 	}
 
-	const sections = [...symbolContexts, ...references, ...syntaxMatches, ...literalMatches];
+	const sections = [...treeSitterMaps, ...syntaxMatches, ...literalMatches];
 	const suggestedFiles = suggestedFilesFromSections(sections).slice(0, maxResults);
 	const distributionRows = suggestedFiles.map((file) => ({ file: file.file }));
 	const truncated = anchors.length < normalizeStringArray(params.anchors).length || names.length < unique([...anchors, ...explicitNames]).length || suggestedFiles.length >= maxResults;
@@ -214,7 +184,7 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 	return {
 		ok: sections.some(sectionOk),
 		backend: "mixed",
-		backends: includeSyntax ? ["cymbal", "ast-grep", "rg"] : ["cymbal", "rg"],
+		backends: ["tree-sitter", "rg"],
 		repoRoot,
 		detail,
 		anchors,
@@ -222,6 +192,7 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		paths,
 		language,
 		sections: {
+			treeSitterMaps,
 			symbolContexts,
 			references,
 			syntaxMatches,
@@ -230,7 +201,7 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		summary: {
 			...summarizeFileDistribution(distributionRows),
 			suggestedFiles,
-			basis: "symbolContexts+references+syntaxMatches+literalMatches",
+			basis: "treeSitterMaps+syntaxMatches+literalMatches",
 		},
 		coverage: {
 			maxNames: LOCAL_MAP_MAX_NAMES,
@@ -241,9 +212,9 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 			truncated,
 		},
 		limitations: [
-			"Local maps are candidate read-next maps built from mixed backend evidence, not exact reference reports.",
+			"Local maps are candidate read-next maps built from Tree-sitter current-source syntax and bounded literal fallback, not exact reference reports.",
 			"Results are routing evidence, not proof of complete usage or safe compatibility.",
-			"Use rg afterward for literal text, comments/docs, generated files, or empty/stale backend results.",
+			"Use rg afterward for literal text, comments/docs, generated files, or unsupported-language gaps.",
 		],
 	};
 }

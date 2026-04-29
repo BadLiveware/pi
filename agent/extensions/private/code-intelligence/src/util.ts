@@ -14,7 +14,7 @@ export function normalizeRepoArtifactPolicy(value: unknown, fallback: RepoArtifa
 }
 
 export function normalizeBackend(value: unknown): BackendName | undefined {
-	return value === "cymbal" || value === "ast-grep" || value === "sqry" ? value : undefined;
+	return value === "tree-sitter" || value === "cymbal" || value === "ast-grep" || value === "sqry" ? value : undefined;
 }
 
 export function normalizeBackendOrder(value: unknown, fallback: BackendName[]): BackendName[] {

@@ -13,9 +13,9 @@ Use code-intel when you need a bounded candidate file list before a non-trivial 
 - You have a scoped subsystem with central anchors plus related field/type/API names.
 - You need to find an explicit AST shape or API call pattern in current source.
 
-Do **not** use this extension as a general exact-reference engine. Cymbal and sqry rows can be useful routing evidence, but they are not authoritative semantic references. Use language servers such as `gopls`, TypeScript language services, or Rust Analyzer when exact references matter.
+Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. Use language servers such as `gopls`, TypeScript language services, or Rust Analyzer when exact references matter.
 
-Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or empty/stale backend results.
+Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or unsupported-language gaps.
 
 Use returned locations to choose files to read next; do not treat the result as exhaustive proof.
 
@@ -23,9 +23,11 @@ Use returned locations to choose files to read next; do not treat the result as 
 
 | Backend | Used for | Artifact behavior |
 | --- | --- | --- |
-| Cymbal | low-level source/context and candidate caller rows used by maps | OS cache per repo by default |
-| ast-grep | scoped read-only syntax-pattern candidates | no index |
-| sqry | graph status/update and experimental routing evidence; not trusted for line-exact refs | repo-local artifacts such as `.sqry/` |
+| Tree-sitter WASM | default current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search | no index |
+| Cymbal | legacy low-level source/context/reference experiments only | OS cache per repo by default |
+| sqry | legacy graph status/update experiment only; not used by default maps | repo-local artifacts such as `.sqry/` |
+
+ast-grep is no longer used by the default syntax-search lane; supported structural searches run in-process through Tree-sitter queries/pattern adapters.
 
 ## Design Rationale
 
@@ -33,45 +35,48 @@ The extension is optimized for agent routing, not replacing source reads or proj
 
 | Decision | Rationale |
 | --- | --- |
-| Role labels (`sem`, `nav`, `ast`) instead of backend-as-fallback wording | sqry, Cymbal, and ast-grep answer different questions; one healthy backend does not make another irrelevant. |
-| Auto-index configured role backends on session start | Agents should not need to remember an indexing ritual before using navigation tools. sqry still obeys repo-artifact policy. |
+| Tree-sitter first (`syn`) | Current-source syntax maps gave the useful read-next evidence without stale indexes, shelling out, or repo-local artifacts. |
+| Keep legacy lanes explicit | Cymbal/sqry remain available for low-level experiments/debugging, but normal maps no longer depend on them. |
 | Keep `includeDiagnostics` opt-in | Normal state checks stay small; detailed runtime logs are for footer errors, stale state, or failed update/debug paths. |
 | Make `impact_map` and `local_map` the normal entry points | Agents need a read-next queue more than raw backend rows. Low-level tools are kept available for debugging/refinement but are not the product promise. |
+| Use Tree-sitter for current-source evidence | The previous Cymbal/sqry lanes were useful but uneven for line-exact routing. Tree-sitter gives deterministic syntax locations for calls, selectors, keyed fields, object-literal fields, and definitions without claiming semantic exactness. |
 | Default broad map tools to `detail: "locations"` | Agents usually read/edit returned files next, so inline snippets would duplicate source context. Use `detail: "snippets"` only for triage. |
 | Summaries before pagination | `fileCount` and `topFiles` show distribution and hidden breadth without encouraging agents to browse pages mechanically. |
 | Compact TUI cards, full structured JSON for the agent | The UI stays readable while agent-facing content remains available for reasoning and follow-up tool calls. |
 | Passive usage logs, no agent-facing usage tool | We can evaluate natural adoption without adding a tool that changes normal agent behavior. |
 
-## Why Wrap the CLIs in Pi Tools
+## Why Keep This as a Pi Tool
 
-Cymbal, ast-grep, and sqry remain the underlying engines. The Pi extension adds value by making them agent-operable:
+Tree-sitter WASM is now the default in-process engine. The Pi extension adds value by making it agent-operable:
 
 - **Stable task-level interface:** agents normally choose `impact_map`, `local_map`, or `syntax_search` without learning backend CLI flags; low-level tools are available for focused refinement/debugging.
 - **Promptable guardrails:** tool snippets and guidelines teach when to use each lane, when to prefer locations over snippets, and why results are advisory.
 - **Context control:** detail modes, grouped summaries, compact command summaries, and TUI cards prevent raw CLI output from filling model and UI context.
-- **Operational policy:** sqry artifact checks, auto-indexing, footer status, and runtime diagnostics are handled consistently instead of by ad hoc shell commands.
-- **Backend independence:** the agent sees roles (`sem`, `nav`, `ast`) rather than being coupled to a specific CLI or future replacement.
+- **Operational policy:** legacy sqry artifact checks, optional indexing, footer status, and runtime diagnostics are handled consistently instead of by ad hoc shell commands.
+- **Backend independence:** the agent sees roles such as `syn` rather than being coupled to a specific CLI or future replacement.
 - **Evaluation loop:** passive per-session usage logs let us tune prompts and defaults without adding an agent-facing analytics tool that would bias normal behavior.
 
-Using the CLIs directly is still useful for debugging. The extension exists to make the common agent workflow safer, smaller, and more repeatable.
+Using backend CLIs directly can still be useful for debugging legacy lanes. The extension exists to make the common agent workflow safer, smaller, and more repeatable.
 
 ## Evaluation Notes
 
 - 2026-04-28: In a promshim review session, an agent naturally read the code-intelligence skill, checked state, and used parallel Cymbal reference queries before reading files. This suggests the prompt surface is discoverable.
 - 2026-04-28: Micro-action prompt tests on a tiny fixture and `~/code/external/pi-mono` showed agents naturally chose code-intel tools. They initially overused `includeDiagnostics:true`; guidance was tightened so diagnostics are for error/debug paths.
 - 2026-04-28: Large-repo testing showed `detail:"locations"` was useful for routing to follow-up reads, reinforcing the default for references and impact maps.
-- 2026-04-29: promshim and pi-processes review experiments showed Cymbal/sqry are too uneven to expose as general semantic-reference tools. The intended workflow narrowed to parent-run `impact_map`/`local_map` context prep plus optional ast-grep syntax candidates before source reads or reviewer delegation.
+- 2026-04-29: promshim and pi-processes review experiments showed Cymbal/sqry are too uneven to expose as general semantic-reference tools. The intended workflow narrowed to parent-run `impact_map`/`local_map` context prep plus optional syntax candidates before source reads or reviewer delegation.
+- 2026-04-29: A `@vscode/tree-sitter-wasm` prototype on promshim parsed 267 Go files in under a second and produced correct current-source locations for `buildMatchedSeriesSQL` calls plus `NeedTags` field declarations, selector expressions, and keyed literals. This became the current-source Go evidence lane for `impact_map`.
+- 2026-04-29: Tree-sitter became the default map/search engine. `impact_map`, `local_map`, and `syntax_search` no longer shell out to Cymbal/sqry/ast-grep for the normal path; those tools remain legacy low-level experiments only.
 
 ## Footer Status
 
 The extension sets Pi extension status under the key `code-intel`:
 
 - `ci:checking` while probing on session start.
-- `ci sem:ok · nav:noidx · ast:ok` style summaries after state checks. `sem` is sqry semantic graph state, `nav` is Cymbal navigation/context state, and `ast` is ast-grep syntax search availability. Backend order follows `backendOrder`, with ast-grep appended for syntax search.
-- `ci:idx sem…` or `ci:idx nav…` while auto-indexing or explicit indexing runs.
-- `ci:<backend> fail` or `ci:sqry blocked` when an update fails or artifact policy blocks sqry.
+- `ci syn:ok` style summaries after state checks. `syn` is the in-process Tree-sitter parser lane. Legacy `sem`/`nav` entries appear only when included in `backendOrder`.
+- `ci:idx sem…` or `ci:idx nav…` while explicit legacy indexing runs.
+- `ci:<backend> fail` or `ci:sqry blocked` when a legacy update fails or artifact policy blocks sqry.
 
-Status words: `ok` means available/indexed, `noidx` means available but no index, `stale` means stale, `missing` means the CLI is missing, `blocked` means sqry repo artifacts are not allowed, and `err` means the status probe failed.
+Status words: `ok` means available/indexed or index-free, `noidx` means available but no legacy index, `stale` means stale, `missing` means the runtime/CLI is missing, `blocked` means sqry repo artifacts are not allowed, and `err` means the status probe failed.
 
 Footer-framework can show it by adapting extension status `code-intel`, for example:
 
@@ -83,7 +88,7 @@ Footer-framework can show it by adapting extension status `code-intel`, for exam
 
 Tool results use compact TUI cards: the default view shows a short status/count summary, while expanded rows show bounded file/caller/match details. The full JSON content is still returned to the agent.
 
-This shows active indexing, but not backend-native percent/file progress yet. To show granular progress later, the command runner would need to stream and parse Cymbal/sqry progress output.
+This shows active legacy indexing when requested, but normal Tree-sitter parsing is on-demand and index-free.
 
 ## Inspecting Errors
 
@@ -123,17 +128,18 @@ tail -n 40 ~/.cache/pi-code-intelligence/usage/*.jsonl
 
 ### `code_intel_state`
 
-Inspect backend availability, versions, index status, config paths, and sqry artifact policy.
+Inspect Tree-sitter availability, config paths, legacy backend status, and sqry artifact policy.
 
-Use this first when freshness, missing tools, or repo-local artifacts matter. It also refreshes the `code-intel` footer status. Omit `includeDiagnostics` for routine checks; use `includeDiagnostics: true` for footer errors, stale output, or failed auto-index/update commands.
+Use this first when parser availability, missing legacy tools, or repo-local artifacts matter. It also refreshes the `code-intel` footer status. Omit `includeDiagnostics` for routine checks; use `includeDiagnostics: true` for footer errors, stale output, or failed legacy update commands.
 
 ### `code_intel_update`
 
-Explicitly build or refresh indexes.
+Explicitly build or refresh legacy indexes. Normal Tree-sitter operation does not require this tool.
 
-- `backend: "auto"` updates all configured indexed role backends, normally sqry and Cymbal.
-- `backend: "cymbal"` runs `cymbal index .`.
-- `backend: "ast-grep"` reports that no index is required.
+- `backend: "auto"` updates configured legacy indexed backends, if any.
+- `backend: "tree-sitter"` reports that no index is required.
+- `backend: "cymbal"` runs `cymbal index .` for legacy experiments.
+- `backend: "ast-grep"` reports that no index is required; ast-grep is no longer used by default syntax search.
 - `backend: "sqry"` refuses repo-local artifacts unless policy allows them.
 
 During indexing, the `code-intel` footer status switches to `ci:idx <role>…` until the command finishes.
@@ -211,25 +217,27 @@ Example:
 }
 ```
 
-The tool combines symbol context, relationship candidates, optional selector syntax matches like `$X.RequiredTagLabels`, and bounded literal fallback, then returns suggested files to read next. Use standalone `rg` afterward for comments/docs, generated text beyond the returned cap, or empty/stale backend results.
+The tool combines Tree-sitter current-source map rows, optional selector syntax matches like `$X.RequiredTagLabels`, and bounded literal fallback, then returns suggested files to read next. Use standalone `rg` afterward for comments/docs, generated text beyond the returned cap, or unsupported-language gaps.
 
 ### `code_intel_impact_map`
 
 Build the primary candidate read-next impact map from:
 
 - explicit `symbols`
-- `changedFiles` expanded through Cymbal `outline`
+- `changedFiles` expanded through current-source Tree-sitter definitions
 - optional `baseRef` using `git diff --name-only <baseRef> --`
 
 The output groups roots and related caller/consumer candidates, with truncation and limitation metadata. Defaults are intentionally tighter than other nav queries: up to 20 root symbols after changed-file expansion and 25 related rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context. Use `detail: "snippets"` only when inline context helps triage without immediate reads. Returned impact rows omit absolute paths and cap context text; use `repoRoot` plus relative `file` paths for follow-up reads. The `summary` section reports related-file distribution (`relatedFileCount`, `topRelatedFiles`) so hidden breadth is visible without paging.
+
+Impact maps add current-source Tree-sitter evidence rows such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. These rows have correct file/line/column locations and enclosing function names where available, but they are syntax candidates, not type-resolved references.
 
 When delegating review, run this in the parent and pass the roots, candidate files, reasons, coverage limits, and validation gaps to the reviewer. Builtin subagents may not have code-intel tools.
 
 ### `code_intel_syntax_search`
 
-Run read-only ast-grep search for an explicit pattern. Results include a `summary` over all parsed matches, including `fileCount`, `topFiles`, and `returnedFileCount`.
+Run a read-only in-process Tree-sitter search for an explicit pattern. Results include a `summary` over all parsed matches, including `fileCount`, `topFiles`, and `returnedFileCount`.
 
-Use `selector` when the node you want is nested inside a wrapper pattern. For example, Go field selections often need a valid wrapper plus `selector: "selector_expression"`.
+Supported convenience patterns currently include calls such as `authenticate($A)`, selectors/properties such as `$OBJ.NeedTags`, keyed fields/object-literal properties such as `NeedTags: $VALUE`, wrapper patterns containing those shapes, and raw Tree-sitter S-expression queries with captures. Use `selector` when you want a specific node kind or capture.
 
 `detail: "snippets"` is the default because syntax matches often need the matched text to judge relevance. Use `detail: "locations"` when matches are just read/edit targets.
 
@@ -255,7 +263,7 @@ Examples:
 }
 ```
 
-The extension never passes rewrite/update flags to ast-grep.
+The extension never rewrites files through syntax search and does not shell out to ast-grep in the normal path.
 
 ## Evidence Model
 
@@ -279,9 +287,9 @@ Defaults:
 
 ```json
 {
-  "backendOrder": ["cymbal", "sqry"],
+  "backendOrder": ["tree-sitter"],
   "autoIndexOnSessionStart": true,
-  "autoIndexBackends": ["sqry", "cymbal"],
+  "autoIndexBackends": [],
   "allowRepoArtifacts": "ifIgnored",
   "maxResults": 50,
   "queryTimeoutMs": 30000,

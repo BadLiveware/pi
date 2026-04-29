@@ -25,7 +25,7 @@ function normalizeConfigPatch(input: unknown, base: CodeIntelConfig, source: str
 	return {
 		backendOrder: normalizeBackendOrder(input.backendOrder, base.backendOrder),
 		autoIndexOnSessionStart: typeof input.autoIndexOnSessionStart === "boolean" ? input.autoIndexOnSessionStart : base.autoIndexOnSessionStart,
-		autoIndexBackends: normalizeBackendOrder(input.autoIndexBackends, base.autoIndexBackends).filter((backend) => backend !== "ast-grep"),
+		autoIndexBackends: normalizeBackendOrder(input.autoIndexBackends, base.autoIndexBackends).filter((backend) => backend !== "tree-sitter" && backend !== "ast-grep"),
 		allowRepoArtifacts: normalizeRepoArtifactPolicy(input.allowRepoArtifacts, base.allowRepoArtifacts),
 		maxResults: normalizePositiveInteger(input.maxResults, base.maxResults, 1, 500),
 		queryTimeoutMs: normalizePositiveInteger(input.queryTimeoutMs, base.queryTimeoutMs, 1_000, 600_000),

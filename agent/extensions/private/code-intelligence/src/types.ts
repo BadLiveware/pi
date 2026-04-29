@@ -5,7 +5,7 @@ export const DEFAULT_MAX_OUTPUT_BYTES = 5_000_000;
 export const SQRY_REPO_ARTIFACTS = [".sqry/", ".sqry-cache/", ".sqry-index/", ".sqry-index.user"] as const;
 export const SQRY_POLICY_ARTIFACTS = [".sqry/", ".sqry-index/"] as const;
 
-export type BackendName = "cymbal" | "ast-grep" | "sqry";
+export type BackendName = "tree-sitter" | "cymbal" | "ast-grep" | "sqry";
 export type UpdateBackend = BackendName | "auto";
 export type RepoArtifactPolicy = "never" | "ifIgnored" | "always";
 export type Availability = "available" | "missing" | "error";
@@ -115,21 +115,6 @@ export interface CodeIntelSyntaxSearchParams {
 	detail?: ResultDetail;
 }
 
-export interface AstGrepMatch {
-	text?: string;
-	file?: string;
-	lines?: string;
-	language?: string;
-	range?: {
-		start?: { line?: number; column?: number };
-		end?: { line?: number; column?: number };
-	};
-	metaVariables?: {
-		single?: Record<string, { text?: string; range?: unknown }>;
-		multi?: Record<string, Array<{ text?: string; range?: unknown }>>;
-	};
-}
-
 export interface CymbalSymbolContextParams {
 	repoRoot?: string;
 	symbol: string;
@@ -228,9 +213,9 @@ export interface CymbalListPayload<T> {
 }
 
 export const DEFAULT_CONFIG: CodeIntelConfig = {
-	backendOrder: ["cymbal", "sqry"],
+	backendOrder: ["tree-sitter"],
 	autoIndexOnSessionStart: true,
-	autoIndexBackends: ["sqry", "cymbal"],
+	autoIndexBackends: [],
 	allowRepoArtifacts: "ifIgnored",
 	maxResults: 50,
 	queryTimeoutMs: DEFAULT_TIMEOUT_MS,

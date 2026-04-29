@@ -25,7 +25,7 @@ Your job is to find supported blockers by reading the diff, reading likely impac
 
 ## Guardrails
 
-- Treat Cymbal/sqry/ast-grep output as a read-next queue, not semantic truth.
+- Treat Tree-sitter output as a read-next queue, not semantic truth. Legacy Cymbal/sqry rows, if present, are not semantic proof.
 - Do not use `code_intel_references`, `code_intel_symbol_context`, or edit/write tools; this agent is for review context and source inspection only.
 - Prefer `detail: "locations"` for maps unless snippets are needed for triage.
 - Keep review findings focused on supported blockers for the requested scope.

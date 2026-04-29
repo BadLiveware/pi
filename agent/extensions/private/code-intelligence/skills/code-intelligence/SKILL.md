@@ -30,11 +30,11 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 
 ## Tool Selection
 
-- `code_intel_impact_map`: primary tool. Builds a candidate read-next map from changed files, root symbols, or a base ref. Use this before non-trivial edits/reviews and before delegating review.
-- `code_intel_local_map`: scoped subsystem map. Use when you have anchors plus related fields/types/API names and want suggested local files to read.
-- `code_intel_syntax_search`: explicit ast-grep candidate search. Use for precise shapes such as Go selector expressions or struct literal fields. Use `selector` when the matched node is inside a wrapper pattern.
-- `code_intel_state`: inspect availability, config, footer status, or sqry artifact policy when that matters.
-- `code_intel_update`: explicit index refresh; sqry obeys artifact policy.
+- `code_intel_impact_map`: primary tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use this before non-trivial edits/reviews and before delegating review.
+- `code_intel_local_map`: scoped subsystem map. Uses Tree-sitter current-source rows plus bounded literal fallback when you have anchors plus related fields/types/API names and want suggested local files to read.
+- `code_intel_syntax_search`: explicit in-process Tree-sitter candidate search. Use supported patterns such as `foo($A)`, `$OBJ.Field`, `Field: $VALUE`, wrapper patterns containing those shapes, or raw Tree-sitter queries with captures.
+- `code_intel_state`: inspect Tree-sitter availability, config, footer status, or legacy sqry artifact policy when that matters.
+- `code_intel_update`: explicit legacy index refresh; Tree-sitter needs no index and sqry obeys artifact policy.
 
 Low-level tools are secondary:
 
@@ -45,11 +45,11 @@ Low-level tools are secondary:
 
 ## Guardrails
 
-- Treat Cymbal/sqry/ast-grep output as a read-next queue, not semantic truth.
+- Treat Tree-sitter output as a read-next queue, not semantic truth. Legacy Cymbal/sqry rows are even less authoritative and should be used only for focused experiments/debugging.
 - Do not turn tool output directly into a review finding; inspect current source first.
 - Do not use low-level references as a substitute for `gopls`, TypeScript language services, Rust Analyzer, or project-native checks when exact references matter.
 - Do not run broad rule scans by default.
 - Do not perform rewrites through syntax search.
 - Keep result sets bounded. Prefer `detail: "locations"` when files will be read next; use `detail: "snippets"` only for inline triage.
-- Use standalone `rg` for comments/docs/generated text, literal fallback beyond caps, or when indexed backends are stale/empty.
+- Use standalone `rg` for comments/docs/generated text, literal fallback beyond caps, or unsupported-language gaps.
 - If sqry would create repo-local artifacts, require ignored artifacts or explicit policy approval.

@@ -2,7 +2,6 @@ import * as path from "node:path";
 import type {
 	CodeIntelConfig,
 	CymbalContextPayload,
-	CymbalImpactMapParams,
 	CymbalListPayload,
 	CymbalReferencesParams,
 	CymbalSymbol,
@@ -11,13 +10,8 @@ import type {
 	ResultDetail,
 } from "./types.ts";
 import { commandDiagnostic, findExecutable, parseJson, runCommand, summarizeCommandBrief } from "./exec.ts";
-import { changedFilesFromBase, ensureInsideRoot, pathArgsForRepo } from "./repo.ts";
+import { pathArgsForRepo } from "./repo.ts";
 import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
-
-const IMPACT_DEFAULT_MAX_RESULTS = 25;
-const IMPACT_DEFAULT_MAX_ROOT_SYMBOLS = 20;
-const IMPACT_CONTEXT_LINES = 2;
-const IMPACT_CONTEXT_LINE_CHARS = 160;
 
 function normalizeCymbalSymbol(symbol: CymbalSymbol | undefined, repoRoot: string): Record<string, unknown> | undefined {
 	if (!symbol) return undefined;
@@ -46,10 +40,6 @@ function normalizeCymbalLocation(row: unknown, repoRoot: string): Record<string,
 	};
 }
 
-function truncateText(text: string, maxChars: number): string {
-	return text.length > maxChars ? `${text.slice(0, Math.max(0, maxChars - 1))}…` : text;
-}
-
 function normalizeCymbalTextMatch(row: unknown, repoRoot: string, detail: ResultDetail): Record<string, unknown> {
 	const normalized = normalizeCymbalLocation(row, repoRoot);
 	const compact: Record<string, unknown> = { ...normalized, kind: "text_fallback" };
@@ -74,17 +64,6 @@ async function runTextReferenceFallback(params: CymbalReferencesParams, query: s
 		command: summarizeCommandBrief(response.result),
 		diagnostic: response.diagnostic,
 	};
-}
-
-function compactImpactRecord(record: Record<string, unknown>): Record<string, unknown> {
-	const compact = { ...record };
-	delete compact.absoluteFile;
-	delete compact.rel_path;
-	if (Array.isArray(compact.context)) compact.context = compact.context.slice(0, IMPACT_CONTEXT_LINES).map((line) => typeof line === "string" ? truncateText(line, IMPACT_CONTEXT_LINE_CHARS) : line);
-	for (const key of ["source", "text", "snippet"] as const) {
-		if (typeof compact[key] === "string") compact[key] = truncateText(compact[key], IMPACT_CONTEXT_LINE_CHARS);
-	}
-	return compact;
 }
 
 function applyLocationDetail(record: Record<string, unknown>, detail: ResultDetail): Record<string, unknown> {
@@ -208,88 +187,5 @@ export async function runReferences(params: CymbalReferencesParams, repoRoot: st
 			"Reference results are index-supported routing evidence, not exact references or proof of complete usage.",
 			...(usedFallback ? ["Rows marked kind=text_fallback come from Cymbal text search, not symbol-resolved references; read returned files before treating them as code relationships."] : []),
 		],
-	};
-}
-
-async function outlineFile(repoRoot: string, file: string, config: CodeIntelConfig, timeoutMs: number, signal?: AbortSignal): Promise<{ symbols: CymbalSymbol[]; diagnostic?: string }> {
-	const response = await runCymbalJson<CymbalListPayload<CymbalSymbol>>(repoRoot, ["outline", file], config, timeoutMs, signal);
-	return { symbols: Array.isArray(response.parsed?.results) ? response.parsed.results : [], diagnostic: response.diagnostic };
-}
-
-export async function runImpactMap(params: CymbalImpactMapParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {
-	const maxResults = normalizePositiveInteger(params.maxResults, Math.min(config.maxResults, IMPACT_DEFAULT_MAX_RESULTS), 1, 500);
-	const maxDepth = normalizePositiveInteger(params.maxDepth, 2, 1, 5);
-	const maxRootSymbols = normalizePositiveInteger(params.maxRootSymbols, IMPACT_DEFAULT_MAX_ROOT_SYMBOLS, 1, 500);
-	const timeoutMs = normalizePositiveInteger(params.timeoutMs, config.queryTimeoutMs, 1_000, 600_000);
-	const detail: ResultDetail = params.detail === "snippets" ? "snippets" : "locations";
-	const diagnostics: string[] = [];
-	const base = await changedFilesFromBase(repoRoot, params.baseRef, config.queryTimeoutMs, config.maxOutputBytes);
-	if (base.diagnostic) diagnostics.push(base.diagnostic);
-	const changedFiles = [...new Set([...normalizeStringArray(params.changedFiles), ...base.files])];
-	const roots: Record<string, unknown>[] = [];
-	const rootNames: string[] = [];
-	const discoveredRootNames = new Set<string>();
-	const addRoot = (symbolName: string | undefined, root: Record<string, unknown>) => {
-		if (!symbolName || discoveredRootNames.has(symbolName)) return;
-		discoveredRootNames.add(symbolName);
-		if (rootNames.length >= maxRootSymbols) return;
-		rootNames.push(symbolName);
-		roots.push(compactImpactRecord(root));
-	};
-	for (const symbol of normalizeStringArray(params.symbols)) addRoot(symbol, { kind: "queried_symbol", symbol });
-	for (const file of changedFiles) {
-		let safeFile: string;
-		try {
-			safeFile = ensureInsideRoot(repoRoot, file);
-		} catch (error) {
-			diagnostics.push(error instanceof Error ? error.message : String(error));
-			continue;
-		}
-		const outline = await outlineFile(repoRoot, safeFile, config, timeoutMs, signal);
-		if (outline.diagnostic) diagnostics.push(outline.diagnostic);
-		for (const symbol of outline.symbols) {
-			const normalized = normalizeCymbalSymbol(symbol, repoRoot);
-			if (!normalized || typeof symbol.name !== "string") continue;
-			addRoot(symbol.name, { kind: "changed_file_symbol", ...normalized, reason: `symbol defined in changed file ${safeFile}` });
-		}
-	}
-	if (rootNames.length === 0) {
-		return { ok: false, backend: "cymbal", repoRoot, roots, related: [], diagnostics, reason: "No symbols or changed-file symbols were available for impact mapping." };
-	}
-	const usedNames = rootNames;
-	const response = await runCymbalJson<CymbalListPayload<unknown>>(repoRoot, ["impact", ...usedNames, "-D", String(maxDepth), "-n", String(maxResults)], config, timeoutMs, signal);
-	if (response.diagnostic) diagnostics.push(response.diagnostic);
-	const rows = cymbalResultRows(response.parsed);
-	const related = rows.map((row) => {
-		const normalized = applyLocationDetail(compactImpactRecord(normalizeCymbalLocation(row, repoRoot)), detail);
-		const hitSymbols = isRecord(row) && Array.isArray(row.hit_symbols) ? row.hit_symbols : undefined;
-		const symbol = isRecord(row) && typeof row.symbol === "string" ? row.symbol : undefined;
-		return { kind: "caller", reason: `calls impacted symbol ${symbol ?? (hitSymbols ? hitSymbols.join(", ") : "(unknown)")}`, ...normalized };
-	}).slice(0, maxResults);
-	return {
-		ok: response.ok,
-		backend: "cymbal",
-		repoRoot,
-		detail,
-		roots,
-		rootSymbols: usedNames,
-		related,
-		summary: {
-			rootFileCount: summarizeFileDistribution(roots).fileCount,
-			relatedFileCount: summarizeFileDistribution(related).fileCount,
-			topRelatedFiles: summarizeFileDistribution(related).topFiles,
-			basis: "returnedRows",
-		},
-		coverage: {
-			backendsUsed: ["cymbal"],
-			truncated: response.result.outputTruncated || rows.length > related.length || discoveredRootNames.size > usedNames.length,
-			rootSymbolsDiscovered: discoveredRootNames.size,
-			rootSymbolsUsed: usedNames.length,
-			defaultMaxResults: IMPACT_DEFAULT_MAX_RESULTS,
-			defaultMaxRootSymbols: IMPACT_DEFAULT_MAX_ROOT_SYMBOLS,
-			limitations: ["Impact maps are candidate read-next maps, not proof of complete blast radius or exact references."],
-		}, 
-		diagnostics,
-		command: summarizeCommandBrief(response.result),
 	};
 }

@@ -1,6 +1,6 @@
 {
-  "backendOrder": ["sqry", "cymbal"],
+  "backendOrder": ["tree-sitter"],
   "autoIndexOnSessionStart": true,
-  "autoIndexBackends": ["sqry", "cymbal"],
+  "autoIndexBackends": [],
   "allowRepoArtifacts": "ifIgnored"
 }

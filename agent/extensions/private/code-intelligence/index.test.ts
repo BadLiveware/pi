@@ -108,12 +108,14 @@ function renderText(component: { render: (width: number) => string[] }): string 
 	return component.render(120).join("\n");
 }
 
-test("syntax search returns bounded ast-grep candidates", { skip: !hasCommand("ast-grep") }, async () => {
+test("syntax search returns bounded Tree-sitter candidates", async () => {
 	const repo = fixtureRepo();
 	const tools = loadTools();
 	const { ctx } = mockContext(repo);
 	const payload = parseToolResult(await tools.get("code_intel_syntax_search")!.execute("test", { pattern: "authenticate($A)", language: "ts", maxResults: 1 }, undefined, undefined, ctx));
 	assert.equal(payload.ok, true);
+	assert.equal(payload.backend, "tree-sitter");
+	assert.equal("command" in payload, false);
 	assert.equal(payload.matchCount, 2);
 	assert.equal(payload.returned, 1);
 	assert.equal(payload.truncated, true);
@@ -131,17 +133,57 @@ test("syntax search returns bounded ast-grep candidates", { skip: !hasCommand("a
 
 	fs.writeFileSync(path.join(repo, "selector.go"), `package main
 
-func needsTags(selector SelectorSource) bool {
+type SelectorSourceGo struct { NeedTags bool }
+
+func needsTags(selector SelectorSourceGo) bool {
   if selector.NeedTags { return true }
+  _ = SelectorSourceGo{NeedTags: true}
   return false
 }
 `);
 	const selected = parseToolResult(await tools.get("code_intel_syntax_search")!.execute("test", { pattern: "func _() { if $OBJ.NeedTags {} }", language: "go", selector: "selector_expression", paths: ["selector.go"], detail: "snippets" }, undefined, undefined, ctx));
 	assert.equal(selected.ok, true);
+	assert.equal(selected.backend, "tree-sitter");
 	assert.equal(selected.selector, "selector_expression");
 	assert.equal(selected.matchCount, 1);
 	assert.equal(selected.matches[0].text, "selector.NeedTags");
 	assert.equal(selected.matches[0].metaVariables.single.OBJ, "selector");
+
+	const keyed = parseToolResult(await tools.get("code_intel_syntax_search")!.execute("test", { pattern: "SelectorSourceGo{NeedTags: $VALUE}", language: "go", selector: "keyed_element", paths: ["selector.go"], detail: "snippets" }, undefined, undefined, ctx));
+	assert.equal(keyed.ok, true);
+	assert.equal(keyed.matchCount, 1);
+	assert.equal(keyed.matches[0].text, "NeedTags: true");
+	assert.equal(keyed.matches[0].metaVariables.single.VALUE, "true");
+});
+
+test("impact map includes current-source Go syntax candidates", async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-go-"));
+	execFileSync("git", ["init", "-q"], { cwd: repo });
+	fs.writeFileSync(path.join(repo, "main.go"), `package main
+
+type SelectorSource struct {
+	NeedTags bool
+}
+
+func buildMatchedSeriesSQL() {}
+
+func caller(selector SelectorSource) {
+	buildMatchedSeriesSQL()
+	if selector.NeedTags {}
+	_ = SelectorSource{NeedTags: true}
+}
+`);
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["buildMatchedSeriesSQL", "NeedTags"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+	assert.equal(impact.ok, true);
+	assert.deepEqual(impact.backends, ["tree-sitter"]);
+	assert.equal(impact.summary.basis, "currentSourceSyntax");
+	assert.equal(impact.related.length, 3);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "buildMatchedSeriesSQL()" && row.line === 10), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.NeedTags" && row.line === 11), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags: true" && row.line === 12), true);
+	assert.match(impact.coverage.limitations.join("\n"), /current-source syntax/);
 });
 
 test("cymbal tools return context, references, and impact maps", { skip: !hasCommand("cymbal") }, async () => {
@@ -208,7 +250,7 @@ test("symbol source and guarded replacement edit exactly one symbol", { skip: !h
 	assert.match(stale.reason, /hash/);
 });
 
-test("local map combines symbol context and scoped references", { skip: !hasCommand("cymbal") }, async () => {
+test("local map combines Tree-sitter and bounded literal evidence", async () => {
 	const repo = fixtureRepo();
 	execFileSync("cymbal", ["index", "."], { cwd: repo, stdio: "ignore" });
 	const tools = loadTools();
@@ -217,15 +259,16 @@ test("local map combines symbol context and scoped references", { skip: !hasComm
 	assert.equal(localMap.ok, true);
 	assert.deepEqual(localMap.anchors, ["authenticate"]);
 	assert.deepEqual(localMap.names, ["authenticate", "loginHandler"]);
-	assert.equal(localMap.sections.symbolContexts.length, 1);
-	assert.equal(localMap.sections.references.length, 2);
+	assert.equal(localMap.sections.treeSitterMaps.length, 1);
+	assert.equal(localMap.sections.symbolContexts.length, 0);
+	assert.equal(localMap.sections.references.length, 0);
 	assert.equal(localMap.sections.syntaxMatches.length, 0);
 	assert.equal(localMap.sections.literalMatches.length, 2);
 	assert.equal(localMap.summary.suggestedFiles.some((file: any) => file.file === "main.ts"), true);
 	assert.equal(localMap.detail, "locations");
 });
 
-test("impact map caps changed-file roots to queried roots", { skip: !hasCommand("cymbal") }, async () => {
+test("impact map caps changed-file roots to queried roots", async () => {
 	const repo = fixtureRepo();
 	execFileSync("cymbal", ["index", "."], { cwd: repo, stdio: "ignore" });
 	const tools = loadTools();
@@ -233,7 +276,7 @@ test("impact map caps changed-file roots to queried roots", { skip: !hasCommand(
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["main.ts"], maxRootSymbols: 1, maxResults: 5 }, undefined, undefined, ctx));
 	assert.equal(impact.roots.length, 1);
 	assert.equal(impact.rootSymbols.length, 1);
-	assert.equal(impact.coverage.rootSymbolsDiscovered, 5);
+	assert.equal(impact.coverage.rootSymbolsDiscovered > impact.coverage.rootSymbolsUsed, true);
 	assert.equal(impact.coverage.rootSymbolsUsed, 1);
 	assert.equal(impact.coverage.truncated, true);
 	assert.equal("absoluteFile" in impact.roots[0], false);
@@ -263,21 +306,20 @@ test("sqry artifact policy allows directory ignore patterns", async () => {
 	assert.equal(state.sqryArtifactPolicy.allowed, true);
 });
 
-test("auto update indexes configured role backends", { skip: !hasCommand("sqry") || !hasCommand("cymbal") }, async () => {
+test("auto update skips index-free Tree-sitter backend", async () => {
 	const repo = fixtureRepo();
 	fs.appendFileSync(path.join(repo, ".git", "info", "exclude"), "\n.sqry/\n.sqry-index/\n");
 	const tools = loadTools();
 	const { ctx } = mockContext(repo);
 	const update = parseToolResult(await tools.get("code_intel_update")!.execute("test", { backend: "auto" }, undefined, undefined, ctx));
 	assert.equal(update.ok, true);
-	assert.deepEqual(update.backends, ["sqry", "cymbal"]);
-	assert.equal(update.state.backends.sqry.indexStatus, "fresh");
-	assert.equal(update.state.backends.cymbal.indexStatus, "present");
+	assert.deepEqual(update.backends, []);
+	assert.equal(update.state.backends["tree-sitter"].indexStatus, "not-required");
 
 	const state = parseToolResult(await tools.get("code_intel_state")!.execute("test", { includeDiagnostics: true }, undefined, undefined, ctx));
 	assert.match(state.runtimeDiagnostics.logPath, /pi-code-intel-runtime-test-/);
 	assert.equal(state.runtimeDiagnostics.recentOperations.at(-1).operation, "update");
-	assert.deepEqual(state.runtimeDiagnostics.recentOperations.at(-1).backends, ["sqry", "cymbal"]);
+	assert.deepEqual(state.runtimeDiagnostics.recentOperations.at(-1).backends, []);
 });
 
 test("usage tracking records sanitized symbol replacement followups", { skip: !hasCommand("cymbal") }, async () => {

@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { Type } from "@mariozechner/pi-ai";
 import { withFileMutationQueue, type ExtensionAPI, type ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { runImpactMap, runReferences, runSymbolContext } from "./src/cymbal.ts";
+import { runReferences, runSymbolContext } from "./src/cymbal.ts";
+import { runImpactMap } from "./src/impact.ts";
 import { loadConfig } from "./src/config.ts";
 import { summarizeCommand } from "./src/exec.ts";
 import { runLocalMap } from "./src/local-map.ts";
@@ -22,9 +23,9 @@ const extensionDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRootParam = Type.Optional(Type.String({ description: "Repository or directory to inspect. Defaults to the current working directory." }));
 const timeoutParam = Type.Optional(Type.Number({ description: "Command timeout in milliseconds. Defaults to config queryTimeoutMs." }));
 const maxResultsParam = Type.Optional(Type.Number({ description: "Maximum results returned. Defaults to config maxResults." }));
-const repoArtifactPolicyParam = Type.Union([Type.Literal("never"), Type.Literal("ifIgnored"), Type.Literal("always")], { description: "Repo-local artifact policy for sqry. Default comes from config." });
+const repoArtifactPolicyParam = Type.Union([Type.Literal("never"), Type.Literal("ifIgnored"), Type.Literal("always")], { description: "Repo-local artifact policy for legacy sqry. Default comes from config." });
 const relationParam = Type.Union([Type.Literal("refs"), Type.Literal("callers"), Type.Literal("callees"), Type.Literal("impact"), Type.Literal("implementers"), Type.Literal("implementedBy"), Type.Literal("importers")], { description: "Relationship to query. Default refs." });
-const strictnessParam = Type.Union([Type.Literal("cst"), Type.Literal("smart"), Type.Literal("ast"), Type.Literal("relaxed"), Type.Literal("signature"), Type.Literal("template")], { description: "ast-grep pattern strictness." });
+const strictnessParam = Type.Union([Type.Literal("cst"), Type.Literal("smart"), Type.Literal("ast"), Type.Literal("relaxed"), Type.Literal("signature"), Type.Literal("template")], { description: "Compatibility hint for ast-grep-style patterns; ignored by the in-process Tree-sitter runner." });
 const detailParam = Type.Optional(Type.Union([Type.Literal("locations"), Type.Literal("snippets")], { description: "Output detail. Use 'locations' when you plan to read/edit returned files; use 'snippets' for small inline context." }));
 
 type StatusStyle = "dim" | "muted" | "accent" | "success" | "warning" | "error";
@@ -188,20 +189,22 @@ function appendExpandHint(lines: string[], expanded: boolean, theme: any): void 
 
 function renderStateResult(details: Record<string, unknown>, expanded: boolean, theme: any): Text {
 	const backends = asRecord(details.backends);
+	const treeSitter = asRecord(backends["tree-sitter"]);
 	const sqry = asRecord(backends.sqry);
 	const cymbal = asRecord(backends.cymbal);
 	const ast = asRecord(backends["ast-grep"]);
 	const policy = asRecord(details.sqryArtifactPolicy);
-	const sem = `${renderColor(theme, "muted", "sem:")}${renderColor(theme, sqry.indexStatus === "fresh" ? "success" : "warning", String(sqry.indexStatus ?? "?"))}`;
-	const nav = `${renderColor(theme, "muted", "nav:")}${renderColor(theme, cymbal.indexStatus === "present" ? "success" : "warning", String(cymbal.indexStatus ?? "?"))}`;
-	const astText = `${renderColor(theme, "muted", "ast:")}${renderColor(theme, ast.available === "available" ? "success" : "error", ast.available === "available" ? "ok" : String(ast.available ?? "?"))}`;
-	const lines = [`${renderStatus(theme, true)} ${renderBold(theme, "code-intel state")} ${sem} · ${nav} · ${astText}`];
+	const syn = `${renderColor(theme, "muted", "syn:")}${renderColor(theme, treeSitter.available === "available" ? "success" : "error", treeSitter.available === "available" ? "ok" : String(treeSitter.available ?? "?"))}`;
+	const legacy = `${renderColor(theme, "muted", "legacy:")}${renderColor(theme, cymbal.available === "available" || sqry.available === "available" || ast.available === "available" ? "dim" : "muted", [cymbal.available === "available" ? "nav" : undefined, sqry.available === "available" ? "sem" : undefined, ast.available === "available" ? "ast" : undefined].filter(Boolean).join("/") || "none")}`;
+	const lines = [`${renderStatus(theme, treeSitter.available === "available")} ${renderBold(theme, "code-intel state")} ${syn} · ${legacy}`];
 	if (expanded) {
+		const treeDetails = asRecord(treeSitter.details);
 		const sqryDetails = asRecord(sqry.details);
 		const cymDetails = asRecord(cymbal.details);
 		lines.push(`${renderColor(theme, "muted", "repo")} ${compactPath(details.repoRoot)}`);
-		lines.push(`${renderColor(theme, "muted", "sqry")} files ${compactNumber(sqryDetails.fileCount) ?? "?"} · symbols ${compactNumber(sqryDetails.symbolCount) ?? "?"} · artifacts ${policy.allowed === true ? renderColor(theme, "success", "allowed") : renderColor(theme, "warning", "blocked")}`);
-		lines.push(`${renderColor(theme, "muted", "cymbal")} files ${compactNumber(cymDetails.fileCount) ?? "?"} · symbols ${compactNumber(cymDetails.symbolCount) ?? "?"}`);
+		lines.push(`${renderColor(theme, "muted", "tree-sitter")} ${String(treeDetails.runtime ?? "wasm")} · languages ${Array.isArray(treeDetails.languages) ? treeDetails.languages.length : "?"}`);
+		lines.push(`${renderColor(theme, "muted", "sqry legacy")} files ${compactNumber(sqryDetails.fileCount) ?? "?"} · symbols ${compactNumber(sqryDetails.symbolCount) ?? "?"} · artifacts ${policy.allowed === true ? renderColor(theme, "success", "allowed") : renderColor(theme, "warning", "blocked")}`);
+		lines.push(`${renderColor(theme, "muted", "cymbal legacy")} files ${compactNumber(cymDetails.fileCount) ?? "?"} · symbols ${compactNumber(cymDetails.symbolCount) ?? "?"}`);
 		const diagnostics = asArray(details.diagnostics);
 		if (diagnostics.length > 0) lines.push(`${renderColor(theme, "warning", "diagnostics")} ${diagnostics.length}`);
 		const runtime = asRecord(details.runtimeDiagnostics);
@@ -338,12 +341,13 @@ function renderLocalMapResult(details: Record<string, unknown>, expanded: boolea
 	const coverage = asRecord(details.coverage);
 	const suggestedFiles = asArray(summary.suggestedFiles).map(asRecord);
 	const sections = asRecord(details.sections);
+	const treeCount = asArray(sections.treeSitterMaps).length;
 	const contextCount = asArray(sections.symbolContexts).length;
 	const refsCount = asArray(sections.references).length;
 	const syntaxCount = asArray(sections.syntaxMatches).length;
 	const literalCount = asArray(sections.literalMatches).length;
 	const truncated = coverage.truncated === true ? renderColor(theme, "warning", " truncated") : "";
-	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "local map")} names ${asArray(details.names).length} · files ${suggestedFiles.length} · ctx/ref/syn/lit ${contextCount}/${refsCount}/${syntaxCount}/${literalCount}${truncated}`];
+	const lines = [`${renderStatus(theme, details.ok)} ${renderBold(theme, "local map")} names ${asArray(details.names).length} · files ${suggestedFiles.length} · tree/syn/lit ${treeCount}/${syntaxCount}/${literalCount}${contextCount || refsCount ? ` · legacy ${contextCount}/${refsCount}` : ""}${truncated}`];
 	if (expanded) {
 		for (const file of suggestedFiles.slice(0, 10)) {
 			const reasons = asArray(file.reasons).map((reason) => String(reason)).slice(0, 2).join(", ");
@@ -373,7 +377,7 @@ function renderGenericCodeIntelResult(kind: "state" | "update" | "symbol" | "sou
 function backendStatusText(backend: BackendName, status: BackendStatus, sqryArtifacts?: ArtifactPolicyState): { text: string; style: StatusStyle } {
 	if (status.available === "missing") return { text: "missing", style: "error" };
 	if (status.available === "error" || status.indexStatus === "error") return { text: "err", style: "error" };
-	if (backend === "ast-grep") return { text: "ok", style: "success" };
+	if (backend === "tree-sitter" || backend === "ast-grep") return { text: "ok", style: "success" };
 	if (backend === "sqry" && !sqryArtifacts?.allowed && (status.indexStatus === "missing" || status.indexStatus === "unknown")) return { text: "blocked", style: "warning" };
 	if (status.indexStatus === "fresh" || status.indexStatus === "present") return { text: "ok", style: "success" };
 	if (status.indexStatus === "stale") return { text: "stale", style: "warning" };
@@ -386,11 +390,12 @@ function statusBackendOrder(config: CodeIntelConfig): BackendName[] {
 	for (const backend of config.backendOrder) {
 		if (!order.includes(backend)) order.push(backend);
 	}
-	if (!order.includes("ast-grep")) order.push("ast-grep");
+	if (!order.includes("tree-sitter")) order.unshift("tree-sitter");
 	return order;
 }
 
 function backendRoleLabel(backend: BackendName): string {
+	if (backend === "tree-sitter") return "syn";
 	if (backend === "sqry") return "sem";
 	if (backend === "cymbal") return "nav";
 	return "ast";
@@ -411,12 +416,12 @@ function setStatusSummary(ctx: ExtensionContext, statuses: Record<BackendName, B
 }
 
 function indexedBackendsForUpdate(requested: ReturnType<typeof requestedUpdateBackend>, config: CodeIntelConfig): BackendName[] {
-	if (requested && requested !== "auto") return requested === "ast-grep" ? [] : [requested];
-	return config.backendOrder.filter((backend) => backend !== "ast-grep");
+	if (requested && requested !== "auto") return requested === "tree-sitter" || requested === "ast-grep" ? [] : [requested];
+	return config.backendOrder.filter((backend) => backend !== "tree-sitter" && backend !== "ast-grep");
 }
 
 function shouldAutoIndex(backend: BackendName, status: BackendStatus, sqryArtifacts: ArtifactPolicyState): boolean {
-	if (backend === "ast-grep" || status.available !== "available") return false;
+	if (backend === "tree-sitter" || backend === "ast-grep" || status.available !== "available") return false;
 	if (backend === "sqry" && !sqryArtifacts.allowed) return false;
 	return status.indexStatus === "missing" || status.indexStatus === "stale" || status.indexStatus === "unknown";
 }
@@ -425,8 +430,8 @@ async function runIndexBackends(ctx: ExtensionContext, repoRoot: string, backend
 	const results: Record<string, unknown>[] = [];
 	let ok = true;
 	for (const backend of backends) {
-		if (backend === "ast-grep") {
-			results.push({ backend, ok: true, message: "ast-grep does not require an index." });
+		if (backend === "tree-sitter" || backend === "ast-grep") {
+			results.push({ backend, ok: true, message: `${backend} does not require an index.` });
 			continue;
 		}
 		if (backend === "sqry" && !sqryArtifacts.allowed) {
@@ -472,12 +477,12 @@ function registerStateTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_state",
 		label: "Code Intelligence State",
-		description: "Inspect local code-intelligence backend availability, config, artifact policy, and index status.",
-		promptSnippet: "Inspect code-intel role status before relying on indexes: sem/sqry, nav/Cymbal, ast/ast-grep.",
+		description: "Inspect local code-intelligence parser availability, config, legacy backend status, and artifact policy.",
+		promptSnippet: "Inspect code-intel status before debugging parser availability, legacy backends, artifact policy, or footer errors.",
 		promptGuidelines: [
 			"Treat code_intel output as advisory routing evidence for deciding what to read next, not proof of complete impact or exact references.",
-			"Normal use should start from code_intel_impact_map for diffs/changed symbols or code_intel_local_map for a scoped subsystem; use lower-level tools only to explain or refine that map.",
-			"Do not use Cymbal/sqry-backed rows as authoritative semantic truth; verify important candidates by reading current source and running project-native validation.",
+			"Normal use should start from code_intel_impact_map for diffs/changed symbols or code_intel_local_map for a scoped subsystem; both are Tree-sitter/current-source first.",
+			"Do not use legacy Cymbal/sqry-backed rows as authoritative semantic truth; verify important candidates by reading current source and running project-native validation.",
 			"Call code_intel_state before relying on availability, freshness, sqry artifact policy, or footer error state.",
 			"For normal freshness checks, omit includeDiagnostics; use includeDiagnostics:true only to debug footer errors, stale output, or failed auto-index/update commands.",
 		],
@@ -643,7 +648,7 @@ function registerLocalMapTool(pi: ExtensionAPI): void {
 			"Use code_intel_local_map when a scoped edit/review has a central anchor plus related fields/types/API terms and you need a candidate file list.",
 			"Use it to answer: which local files should I read next, and why are they candidates? Do not treat it as exhaustive usage proof.",
 			"Provide anchors for central functions/types and names for related fields/types/API terms; add paths to keep the map local.",
-			"Use detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or stale/empty backend results.",
+			"Use detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or unsupported-language gaps.",
 		],
 		renderCall: renderToolCall("code_intel_local_map", (args) => {
 			const anchors = asArray(args.anchors).length;
@@ -682,6 +687,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use code_intel_impact_map as the default code-intel tool after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
 			"Use it to answer: which unchanged caller, consumer, or test files should I read before changing or reviewing this code, and what evidence made them candidates?",
+			"Rows like syntax_call, syntax_selector, and syntax_keyed_field are current-source Tree-sitter candidates with real locations, not type-resolved references.",
 			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, truncation, and backend limitations.",
 			"Use detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
 			"Impact maps are a candidate read list, not exhaustive proof of all callers or safe compatibility.",
@@ -719,11 +725,11 @@ function registerSyntaxSearchTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_syntax_search",
 		label: "Code Intelligence Syntax Search",
-		description: "Run a read-only ast-grep syntax-pattern search for explicit scoped shapes, with normalized candidate locations.",
+		description: "Run a read-only in-process Tree-sitter syntax search for explicit scoped shapes, with normalized candidate locations.",
 		promptSnippet: "Use for narrow current-source syntax shapes that impact/local maps cannot express; no rewrites.",
 		promptGuidelines: [
 			"Provide a concrete pattern and language; scope paths/globs to avoid broad noisy scans.",
-			"Use selector when the searchable node is inside a wrapper pattern, such as Go selector_expression inside a dummy function.",
+			"Use supported ast-grep-style patterns such as foo($A), $OBJ.Field, Field: $VALUE, or wrapper patterns containing those shapes; advanced users can pass raw Tree-sitter S-expression queries.",
 			"Use detail:'locations' when matches are read/edit targets; default snippets are for judging match relevance.",
 			"Use this for candidate matching, API-shape checks, or pattern-specific review, not general linting or exact semantic references.",
 			"Matches are not defects by themselves; inspect source and validate behavior before reporting.",
@@ -732,12 +738,12 @@ function registerSyntaxSearchTool(pi: ExtensionAPI): void {
 		renderResult: renderGenericCodeIntelResult("syntax"),
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
-			pattern: Type.String({ description: "Explicit ast-grep pattern, e.g. 'foo($A)' or 'if ($COND) { $BODY }'. Required and read-only." }),
-			language: Type.Optional(Type.String({ description: "ast-grep language, e.g. ts, javascript, go, python, rust. If omitted, ast-grep infers from searched files when possible." })),
+			pattern: Type.String({ description: "Explicit Tree-sitter query or supported ast-grep-style pattern, e.g. 'foo($A)', '$OBJ.Field', or 'Field: $VALUE'. Required and read-only." }),
+			language: Type.Optional(Type.String({ description: "Tree-sitter language, e.g. ts, javascript, go, python, rust. If omitted, Go is used when paths are Go-scoped; otherwise provide a language." })),
 			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files or directories to search. Defaults to '.'. Paths outside the repo are rejected." })),
-			includeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional ast-grep --globs include patterns." })),
-			excludeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional ast-grep --globs exclude patterns. Leading '!' is optional." })),
-			selector: Type.Optional(Type.String({ description: "Optional ast-grep --selector node kind to extract a sub-node from a wrapper pattern, e.g. selector_expression for Go field selections." })),
+			includeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional glob-like include patterns." })),
+			excludeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional glob-like exclude patterns. Leading '!' is optional." })),
+			selector: Type.Optional(Type.String({ description: "Optional node kind or capture name to extract, e.g. selector_expression for Go field selections." })),
 			maxResults: maxResultsParam,
 			timeoutMs: timeoutParam,
 			strictness: Type.Optional(strictnessParam),
@@ -757,16 +763,16 @@ function registerUpdateTool(pi: ExtensionAPI): void {
 		name: "code_intel_update",
 		label: "Code Intelligence Update",
 		description: "Explicitly build or refresh local code-intelligence backend indexes with artifact-policy checks.",
-		promptSnippet: "Refresh role indexes when needed: auto updates sem/sqry and nav/Cymbal; ast/ast-grep needs no index.",
+		promptSnippet: "Refresh legacy role indexes only when debugging explicit Cymbal/sqry fallback; Tree-sitter needs no index.",
 		promptGuidelines: [
-			"Usually unnecessary during normal work because session start auto-indexes missing or stale role backends.",
-			"sqry writes repo-local artifacts; keep allowRepoArtifacts governed by policy unless the user approves otherwise.",
+			"Usually unnecessary during normal work because Tree-sitter parses current source and needs no index.",
+			"sqry is legacy and writes repo-local artifacts; keep allowRepoArtifacts governed by policy unless the user approves otherwise.",
 			"Use returned per-backend command summaries, or state with includeDiagnostics:true, to inspect failures.",
 		],
 		renderCall: renderToolCall("code_intel_update", (args) => asString(args.backend) ?? "auto"),
 		renderResult: renderGenericCodeIntelResult("update"),
 		parameters: Type.Object({
-			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("cymbal"), Type.Literal("ast-grep"), Type.Literal("sqry")], { description: "Backend to update. Default auto updates all configured indexed role backends from backendOrder." })),
+			backend: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("tree-sitter"), Type.Literal("cymbal"), Type.Literal("ast-grep"), Type.Literal("sqry")], { description: "Backend to update. Default auto updates configured legacy indexed backends; tree-sitter needs no index." })),
 			repoRoot: repoRootParam,
 			allowRepoArtifacts: Type.Optional(repoArtifactPolicyParam),
 			force: Type.Optional(Type.Boolean({ description: "Force rebuild when the backend supports it. Default false." })),
@@ -782,9 +788,9 @@ function registerUpdateTool(pi: ExtensionAPI): void {
 			const timeoutMs = normalizePositiveInteger(params.timeoutMs, loadedConfig.config.indexTimeoutMs, 1_000, 1_800_000);
 			const backends = indexedBackendsForUpdate(requested, loadedConfig.config);
 
-			if (requested === "ast-grep") {
+			if (requested === "tree-sitter" || requested === "ast-grep") {
 				setStatusSummary(ctx, statuses, loadedConfig.config, sqryArtifacts);
-				const payload: Record<string, unknown> = { ok: true, backend: "ast-grep", repoRoot: roots.repoRoot, message: "ast-grep does not require an index.", state: statePayload(roots, loadedConfig, statuses, sqryArtifacts, true) };
+				const payload: Record<string, unknown> = { ok: true, backend: requested, repoRoot: roots.repoRoot, message: `${requested} does not require an index.`, state: statePayload(roots, loadedConfig, statuses, sqryArtifacts, true) };
 				return { content: [{ type: "text", text: String(payload.message) }], details: payload };
 			}
 
