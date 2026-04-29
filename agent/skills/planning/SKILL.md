@@ -10,7 +10,7 @@ Use this skill to turn explicit requirements into an executable, validated plan 
 ## When to Use
 Use when work is large, risky, multi-step, needs sequencing, separates refactors from behavior changes, needs validation design, depends on prior/external evidence, or would benefit from task tracking/delegation.
 
-If purpose, scope, or requirements are ambiguous, use `requirements-discovery` first.
+If purpose, scope, or requirements are ambiguous, use `requirements-discovery` first. If task sequencing depends on a new or revised system shape, use `architecture-decision` before writing the implementation plan.
 
 ## Shape Decision
 Infer the work shape from the user's intent and success semantics; do not wait for the user to say "bounded" or "unbounded".
