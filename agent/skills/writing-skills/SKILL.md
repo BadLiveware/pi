@@ -82,6 +82,11 @@ Testing strategy by skill type:
 | Pattern | recognition and counterexample scenarios | agent knows when to use or avoid it |
 | Reference | retrieval and usage scenarios | agent finds and applies the right facts |
 
+For trigger-sensitive skills, test both directions by default:
+- positive trigger: a natural scenario where the skill should be selected and applied
+- negative trigger: a nearby scenario where the skill should not be selected, should defer to another skill, or should stay lightweight/internal
+Passing means the agent distinguishes the boundary without relying on the exact skill name or trigger words.
+
 ## Deployment Workflow
 1. Confirm this skill applies whenever creating or editing a skill, changing agent instructions, or changing guidance that future agents will follow.
 2. Inspect current guidance and identify the failure being prevented.

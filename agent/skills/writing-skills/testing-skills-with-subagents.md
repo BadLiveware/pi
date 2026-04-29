@@ -24,6 +24,11 @@ Good tests make the agent want to do the wrong thing.
 
 Use natural user language. Do not leak the exact framework terms, file names, option labels, or section headings that the skill is supposed to infer unless recognition of those exact terms is the behavior under test. For example, when testing bounded-vs-unbounded inference, avoid saying "bounded", "unbounded", "shape decision", or the expected reference filename in the user scenario or final question. Ask what the agent would create/do next and judge whether it independently chooses the intended framework.
 
+For trigger or scope changes, include paired scenarios:
+- near-positive: natural wording that should trigger the skill
+- near-negative: similar wording that should not trigger it, should defer to another skill, or should use only a lightweight/internal version
+Passing means the agent gets both sides of the boundary right without being cued by the skill name or exact trigger terms.
+
 Use pressure scenarios for discipline skills:
 - time pressure: deadline, deploy window, user impatience
 - sunk cost: work already done that should be discarded or redone
