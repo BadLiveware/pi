@@ -42,6 +42,7 @@ interface ParsedFile {
 	file: string;
 	absoluteFile: string;
 	source: string;
+	sourceLines?: string[];
 	language: string;
 	root: TreeSitterNode;
 	bundle: ParserBundle;
@@ -201,8 +202,9 @@ function compactText(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 
-function firstSourceLine(source: string, node: TreeSitterNode): string {
-	const line = source.split(/\r?\n/)[node.startPosition.row] ?? nodeText(source, node);
+function firstSourceLine(parsed: ParsedFile, node: TreeSitterNode): string {
+	parsed.sourceLines ??= parsed.source.split(/\r?\n/);
+	const line = parsed.sourceLines[node.startPosition.row] ?? nodeText(parsed.source, node);
 	return line.trimEnd();
 }
 
@@ -385,12 +387,18 @@ function keyedName(node: TreeSitterNode, source: string): string | undefined {
 	return keyNode ? nodeText(source, keyNode).replace(/^['"]|['"]$/g, "") : undefined;
 }
 
-function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; candidates: SymbolRecord[] } {
+function extractFileRecords(parsed: ParsedFile, detail: ResultDetail): { definitions: SymbolRecord[]; candidates: SymbolRecord[] } {
 	const definitions: SymbolRecord[] = [];
 	const candidates: SymbolRecord[] = [];
+	const includeSnippets = detail === "snippets";
+
+	function snippetFields(node: TreeSitterNode): Partial<SymbolRecord> {
+		if (!includeSnippets) return {};
+		return { text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed, node) };
+	}
 
 	function addDefinition(node: TreeSitterNode, name: string, kind = node.type, currentType?: string): void {
-		definitions.push({ kind, name, symbol: name, file: parsed.file, language: parsed.language, evidence: "tree-sitter:def", owner: currentType, type: typeSummary(node, parsed.source), text: functionHeader(node, parsed.source, name), exported: isExportedDefinition(node, parsed.source, name), ...location(node) });
+		definitions.push({ kind, name, symbol: name, file: parsed.file, language: parsed.language, evidence: "tree-sitter:def", owner: currentType, type: typeSummary(node, parsed.source), exported: isExportedDefinition(node, parsed.source, name), ...(includeSnippets ? { text: functionHeader(node, parsed.source, name) } : {}), ...location(node) });
 	}
 
 	function visit(node: TreeSitterNode, currentFunction?: string, currentType?: string, parent?: TreeSitterNode): void {
@@ -422,18 +430,21 @@ function extractFileRecords(parsed: ParsedFile): { definitions: SymbolRecord[]; 
 			const typeNode = namedChildren(node).find((child) => !["field_identifier", "property_identifier", "identifier", "tag"].includes(child.type));
 			for (const fieldName of fieldNames.slice(0, 1)) {
 				const name = nodeText(parsed.source, fieldName);
-				definitions.push({ kind: "field_declaration", name, symbol: name, owner: currentType, file: parsed.file, language: parsed.language, evidence: "tree-sitter:field_declaration", type: typeNode ? nodeText(parsed.source, typeNode) : undefined, text: compactText(nodeText(parsed.source, node)), ...location(node) });
+				definitions.push({ kind: "field_declaration", name, symbol: name, owner: currentType, file: parsed.file, language: parsed.language, evidence: "tree-sitter:field_declaration", type: typeNode ? nodeText(parsed.source, typeNode) : undefined, ...(includeSnippets ? { text: compactText(nodeText(parsed.source, node)) } : {}), ...location(node) });
 			}
 		} else if (node.type === "call_expression" || node.type === "call") {
 			const functionNode = callFunctionNode(node);
 			const callee = functionNode ? nodeText(parsed.source, functionNode) : undefined;
-			if (callee) candidates.push({ kind: "syntax_call", name: simpleName(callee) ?? callee, symbol: simpleName(callee) ?? callee, file: parsed.file, language: parsed.language, evidence: "tree-sitter:call_expression", inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
+			if (callee) {
+				const name = simpleName(callee) ?? callee;
+				candidates.push({ kind: "syntax_call", name, symbol: name, file: parsed.file, language: parsed.language, evidence: "tree-sitter:call_expression", inFunction: currentFunction, ...snippetFields(node), ...location(node) });
+			}
 		} else if (node.type === "selector_expression" || node.type === "member_expression" || node.type === "attribute") {
 			const name = selectorName(node, parsed.source);
-			if (name && !(parent?.type === "call_expression" && isCallFunctionPart(node, parent))) candidates.push({ kind: "syntax_selector", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
+			if (name && !(parent?.type === "call_expression" && isCallFunctionPart(node, parent))) candidates.push({ kind: "syntax_selector", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, ...snippetFields(node), ...location(node) });
 		} else if (node.type === "keyed_element" || node.type === "pair") {
 			const name = keyedName(node, parsed.source);
-			if (name) candidates.push({ kind: "syntax_keyed_field", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, text: compactText(nodeText(parsed.source, node)), snippet: firstSourceLine(parsed.source, node), ...location(node) });
+			if (name) candidates.push({ kind: "syntax_keyed_field", name, symbol: name, file: parsed.file, language: parsed.language, evidence: `tree-sitter:${node.type}`, inFunction: currentFunction, ...snippetFields(node), ...location(node) });
 		}
 
 		for (const child of namedChildren(node)) visit(child, nextFunction, nextType, node);
@@ -579,7 +590,7 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 	const definitions: SymbolRecord[] = [];
 	const candidates: SymbolRecord[] = [];
 	for (const file of parsed.parsedFiles) {
-		const records = extractFileRecords(file);
+		const records = extractFileRecords(file, params.detail);
 		definitions.push(...records.definitions);
 		candidates.push(...records.candidates);
 	}
@@ -726,7 +737,7 @@ function normalizeSyntaxMatch(parsed: ParsedFile, node: TreeSitterNode, detail: 
 	};
 	if (detail === "snippets") {
 		row.text = nodeText(parsed.source, node);
-		row.snippet = firstSourceLine(parsed.source, node);
+		row.snippet = firstSourceLine(parsed, node);
 		if (metaVariables && Object.keys(metaVariables).length > 0) row.metaVariables = { single: metaVariables };
 	}
 	return row;
@@ -740,9 +751,12 @@ function syntaxMatchesForCall(parsed: ParsedFile, pattern: { callee: string; var
 		const callee = nodeText(parsed.source, functionNode);
 		const matchesCallee = pattern.callee.includes(".") ? callee === pattern.callee : simpleName(callee) === pattern.callee;
 		if (!matchesCallee) continue;
-		const args = argumentNodes(node);
-		const variables: Record<string, string> = {};
-		for (let index = 0; index < Math.min(pattern.variables.length, args.length); index++) variables[pattern.variables[index]] = nodeText(parsed.source, args[index]);
+		let variables: Record<string, string> | undefined;
+		if (detail === "snippets" && pattern.variables.length > 0) {
+			const args = argumentNodes(node);
+			variables = {};
+			for (let index = 0; index < Math.min(pattern.variables.length, args.length); index++) variables[pattern.variables[index]] = nodeText(parsed.source, args[index]);
+		}
 		matches.push(normalizeSyntaxMatch(parsed, node, detail, variables));
 	}
 	return matches;
@@ -755,9 +769,11 @@ function syntaxMatchesForSelector(parsed: ParsedFile, pattern: { variable: strin
 		const field = selectorName(node, parsed.source);
 		if (field !== pattern.field) continue;
 		if (selector && selector !== node.type) continue;
-		const objectNode = selectorObject(node);
-		const variables: Record<string, string> = {};
-		if (objectNode) variables[pattern.variable] = nodeText(parsed.source, objectNode);
+		let variables: Record<string, string> | undefined;
+		if (detail === "snippets") {
+			const objectNode = selectorObject(node);
+			if (objectNode) variables = { [pattern.variable]: nodeText(parsed.source, objectNode) };
+		}
 		matches.push(normalizeSyntaxMatch(parsed, node, detail, variables));
 	}
 	return matches;
@@ -770,9 +786,11 @@ function syntaxMatchesForKeyed(parsed: ParsedFile, pattern: { key: string; value
 		const key = keyedName(node, parsed.source);
 		if (key !== pattern.key) continue;
 		if (selector && selector !== node.type) continue;
-		const valueNode = childForField(node, "value") ?? namedChildren(node).at(-1);
-		const variables: Record<string, string> = {};
-		if (pattern.valueVariable && valueNode) variables[pattern.valueVariable] = nodeText(parsed.source, valueNode);
+		let variables: Record<string, string> | undefined;
+		if (detail === "snippets" && pattern.valueVariable) {
+			const valueNode = childForField(node, "value") ?? namedChildren(node).at(-1);
+			if (valueNode) variables = { [pattern.valueVariable]: nodeText(parsed.source, valueNode) };
+		}
 		matches.push(normalizeSyntaxMatch(parsed, node, detail, variables));
 	}
 	return matches;
@@ -789,7 +807,7 @@ function syntaxMatchesForRawQuery(parsed: ParsedFile, querySource: string, selec
 			const selected = selector
 				? captures.filter((capture) => capture.name === selector.replace(/^@/, "") || capture.node.type === selector)
 				: captures;
-			for (const capture of selected.length > 0 ? selected : captures.slice(0, 1)) rows.push(normalizeSyntaxMatch(parsed, capture.node, detail, { [capture.name]: nodeText(parsed.source, capture.node) }));
+			for (const capture of selected.length > 0 ? selected : captures.slice(0, 1)) rows.push(normalizeSyntaxMatch(parsed, capture.node, detail, detail === "snippets" ? { [capture.name]: nodeText(parsed.source, capture.node) } : undefined));
 		}
 		return rows;
 	} finally {
@@ -842,9 +860,11 @@ export async function runTreeSitterSelectorBatchSearch(params: TreeSitterSelecto
 			bucket.matchCount += 1;
 			bucket.fileCounts.set(file.file, (bucket.fileCounts.get(file.file) ?? 0) + 1);
 			if (bucket.matches.length >= maxPerName) continue;
-			const objectNode = selectorObject(node);
-			const variables: Record<string, string> = {};
-			if (objectNode) variables.X = nodeText(file.source, objectNode);
+			let variables: Record<string, string> | undefined;
+			if (detail === "snippets") {
+				const objectNode = selectorObject(node);
+				if (objectNode) variables = { X: nodeText(file.source, objectNode) };
+			}
 			bucket.matches.push(normalizeSyntaxMatch(file, node, detail, variables));
 		}
 	}

@@ -248,7 +248,8 @@ test("impact map includes current-source syntax candidates", async () => {
 	assert.equal(impact.backend, "tree-sitter");
 	assert.deepEqual(impact.backends, ["tree-sitter"]);
 	assert.equal(impact.summary.basis, "currentSourceSyntax");
-	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "buildMatchedSeriesSQL()" && row.line === 9), true);
+	assert.equal(impact.roots.some((row: any) => row.name === "buildMatchedSeriesSQL" && typeof row.text === "string"), true);
+	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "buildMatchedSeriesSQL()" && row.snippet === "\tbuildMatchedSeriesSQL()" && row.line === 9), true);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.NeedTags" && row.line === 10), true);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags: true" && row.line === 12), true);
 	assert.match(impact.coverage.limitations.join("\n"), /current-source syntax/);
@@ -385,9 +386,15 @@ test("impact map caps changed-file roots to higher-signal roots first", async ()
 	assert.equal(capped.coverage.rootSymbolsDiscovered > capped.coverage.rootSymbolsUsed, true);
 	assert.equal(capped.coverage.truncated, true);
 	assert.equal("file" in capped.roots[0], true);
+	assert.equal("text" in capped.roots[0], false);
+	assert.equal("snippet" in capped.roots[0], false);
 	assert.equal(typeof capped.summary.relatedFileCount, "number");
 	assert.equal(capped.detail, "locations");
-	if (capped.related.length > 0) assert.equal("context" in capped.related[0], false);
+	if (capped.related.length > 0) {
+		assert.equal("context" in capped.related[0], false);
+		assert.equal("text" in capped.related[0], false);
+		assert.equal("snippet" in capped.related[0], false);
+	}
 
 	const broad = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["main.test.ts", "main.ts"], maxRootSymbols: 10, maxResults: 5 }, undefined, undefined, ctx));
 	assert.deepEqual(broad.rootSymbols.slice(0, 2), ["authenticate", "loginHandler"]);
