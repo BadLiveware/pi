@@ -414,6 +414,88 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 	}
 });
 
+test("stardock_brief records explicit governor-selected brief source", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const govern = tools.get("stardock_govern");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		const done = tools.get("stardock_done");
+		assert.ok(start);
+		assert.ok(govern);
+		assert.ok(ledger);
+		assert.ok(brief);
+		assert.ok(done);
+
+		await start.execute(
+			"tool-governor-brief-start",
+			{
+				name: "Governor Brief Loop",
+				mode: "recursive",
+				taskContent: "# Governor brief task\n\nFull task text should not replay when the governor brief is active.\n",
+				objective: "Route governor-selected context explicitly.",
+				maxIterations: 4,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await ledger.execute(
+			"tool-governor-brief-criteria",
+			{
+				action: "upsertCriteria",
+				loopName: "Governor_Brief_Loop",
+				criteria: [
+					{ id: "c-governor", description: "Governor brief carries selected context.", passCondition: "Prompt names the governor brief source." },
+					{ id: "c-unselected", description: "Unselected criteria stay out of brief prompts.", passCondition: "Prompt omits this criterion." },
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const governor = await govern.execute("tool-governor-brief-govern", { loopName: "Governor_Brief_Loop" }, undefined, undefined, ctx);
+		assert.equal(governor.details.request.id, "governor-manual-1");
+
+		const created = await brief.execute(
+			"tool-governor-brief-upsert",
+			{
+				action: "upsert",
+				loopName: "Governor_Brief_Loop",
+				id: "b-governor-next",
+				source: "governor",
+				requestId: "governor-manual-1",
+				objective: "Follow the governor-selected bounded context.",
+				task: "Work only the selected criterion and report evidence.",
+				criterionIds: ["c-governor"],
+				verificationRequired: ["Inspect the next prompt."],
+				requiredContext: ["Governor request governor-manual-1 selected this brief."],
+				activate: true,
+				includeState: true,
+				includePromptPreview: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(created.content[0].text, /Created brief b-governor-next and activated it/);
+		assert.equal(created.details.brief.source, "governor");
+		assert.equal(created.details.brief.requestId, "governor-manual-1");
+		assert.equal(created.details.loop.briefs.current.source, "governor");
+		assert.match(created.details.promptPreview, /Source: governor \(governor-manual-1\)/);
+		assert.match(created.details.promptPreview, /c-governor \[pending\]/);
+		assert.equal(created.details.promptPreview.includes("c-unselected"), false);
+		assert.equal(created.details.promptPreview.includes("Full task text should not replay"), false);
+
+		await done.execute("tool-governor-brief-done", {}, undefined, undefined, ctx);
+		assert.equal(messages.at(-1)?.content.includes("Source: governor (governor-manual-1)"), true);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_brief routes bounded prompt context from selected criteria", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

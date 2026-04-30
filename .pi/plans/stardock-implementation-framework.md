@@ -128,8 +128,9 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views provide the first operational "what is happening" visualization for a run.
 - The active-run widget now provides an at-a-glance companion with loop identity, mode/status/iteration, recursive attempt progress, outside request count, latest attempt, and latest governor steer.
 - Initial schema v3 ledger state now stores `criterionLedger` and `verificationArtifacts`; `stardock_ledger` can list/upsert criteria and record compact artifact refs, and `stardock_state` reports criteria/artifact progress without reading `.stardock/` files.
-- Initial IterationBrief v1 state now stores manual `briefs` and `currentBriefId`; `stardock_brief` can list/upsert/activate/clear/complete briefs, and active briefs add bounded selected context to prompts without replaying the full ledger or long artifacts.
+- Initial IterationBrief v1 state now stores `briefs` and `currentBriefId`; `stardock_brief` can list/upsert/activate/clear/complete briefs, and active briefs add bounded selected context to prompts without replaying the full ledger or long artifacts.
 - Agent-operability refinements reduce common serial workflows: `stardock_ledger` supports batch criteria/artifact updates and opt-in state/overview details, while `stardock_brief` can create-and-activate a brief plus return optional state or prompt preview details in one call.
+- Governor-selected brief v1 is explicit metadata, not automation: `stardock_brief` can record `source: "governor"` and an optional governor-review `requestId`, while activation still requires `activate: true` or a separate `activate` action.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -175,6 +176,8 @@ interface GovernorState {
 
 interface IterationBrief {
   id: string;
+  source: "manual" | "governor";
+  requestId?: string;
   objective: string;
   task: string;
   criterionIds: string[];
@@ -733,9 +736,10 @@ Do not restart the completed implementation path. Future implementation should b
    - Keep long logs/screenshots outside state and include only compact summaries in prompts.
    - Add final-report support for artifact lists and unresolved validation gaps.
 3. **Criteria-aware context packet expansion**
-   - Initial manual IterationBrief v1 state and `stardock_brief` update/list/activation support exists.
+   - Initial IterationBrief v1 state and `stardock_brief` update/list/activation support exists.
    - Manual brief dogfood found the data shape usable; agent-operability refinement added `activate: true`, optional `includeState`, and capped `includePromptPreview` for create-and-use workflows.
-   - Later, add governor-selected brief creation and stronger policy for when a brief supersedes full task replay.
+   - Governor-selected brief v1 exists as explicit `source: "governor"` plus optional `requestId` metadata linked to a governor-review outside request; no hidden model call, auto-distillation, or silent activation is performed.
+   - Later, add stronger policy for when a governor-sourced brief supersedes full task replay and when it should be cleared or completed.
    - Continue keeping selected `criterionIds`, required context, and verification requirements bounded; keep large artifacts referenced.
 4. **Auditor oversight workflow**
    - Add `auditor_review` request creation and ready-to-copy auditor payloads.

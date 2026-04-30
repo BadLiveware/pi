@@ -147,10 +147,13 @@ interface VerificationArtifact {
 }
 
 type IterationBriefStatus = "draft" | "active" | "completed" | "dismissed";
+type IterationBriefSource = "manual" | "governor";
 
 interface IterationBrief {
 	id: string;
 	status: IterationBriefStatus;
+	source: IterationBriefSource;
+	requestId?: string;
 	objective: string;
 	task: string;
 	criterionIds: string[];
@@ -423,6 +426,10 @@ export default function (pi: ExtensionAPI) {
 		return ["draft", "active", "completed", "dismissed"].includes(String(value));
 	}
 
+	function isBriefSource(value: unknown): value is IterationBriefSource {
+		return ["manual", "governor"].includes(String(value));
+	}
+
 	function migrateBriefs(value: unknown): IterationBrief[] {
 		if (!Array.isArray(value)) return [];
 		return value
@@ -436,6 +443,8 @@ export default function (pi: ExtensionAPI) {
 				return {
 					id: normalizeId(brief.id, `b${index + 1}`),
 					status: isBriefStatus(brief.status) ? brief.status : "draft",
+					source: isBriefSource(brief.source) ? brief.source : "manual",
+					requestId: typeof brief.requestId === "string" && brief.requestId.trim() ? brief.requestId.trim() : undefined,
 					objective,
 					task,
 					criterionIds: normalizeStringList(brief.criterionIds),
@@ -935,10 +944,20 @@ export default function (pi: ExtensionAPI) {
 		const task = typeof input.task === "string" && input.task.trim() ? input.task.trim() : existing?.task;
 		if (!objective || !task) return { ok: false, error: "Iteration brief requires objective and task." };
 
+		const source = isBriefSource(input.source) ? input.source : existing?.source ?? "manual";
+		const requestId = typeof input.requestId === "string" && input.requestId.trim() ? input.requestId.trim() : existing?.requestId;
+		if (source === "governor" && requestId) {
+			const request = state.outsideRequests.find((item) => item.id === requestId);
+			if (!request) return { ok: false, error: `Outside request "${requestId}" not found in loop "${loopName}".` };
+			if (request.kind !== "governor_review") return { ok: false, error: `Outside request "${requestId}" is not a governor review.` };
+		}
+
 		const now = new Date().toISOString();
 		const brief: IterationBrief = {
 			id,
 			status: existing?.status ?? "draft",
+			source,
+			requestId: source === "governor" ? requestId : undefined,
 			objective,
 			task,
 			criterionIds: input.criterionIds !== undefined ? normalizeStringList(input.criterionIds) : existing?.criterionIds ?? [],
@@ -1021,7 +1040,8 @@ export default function (pi: ExtensionAPI) {
 			lines.push("");
 			for (const brief of state.briefs.slice(0, 12)) {
 				const current = active?.id === brief.id ? " · current" : "";
-				lines.push(`- ${brief.id} [${brief.status}]${current} ${compactText(brief.objective, 120)}`);
+				const source = brief.source === "governor" ? ` · governor${brief.requestId ? `:${brief.requestId}` : ""}` : "";
+				lines.push(`- ${brief.id} [${brief.status}]${current}${source} ${compactText(brief.objective, 120)}`);
 				lines.push(`  Task: ${compactText(brief.task, 120)}`);
 				if (brief.criterionIds.length) lines.push(`  Criteria: ${brief.criterionIds.join(",")}`);
 			}
@@ -1056,6 +1076,7 @@ export default function (pi: ExtensionAPI) {
 
 		parts.push("## Active Iteration Brief");
 		parts.push(`- Brief: ${brief.id}`);
+		parts.push(`- Source: ${brief.source}${brief.requestId ? ` (${brief.requestId})` : ""}`);
 		parts.push(`- Objective: ${compactText(brief.objective, 220)}`);
 		parts.push(`- Task: ${compactText(brief.task, 260)}`);
 
@@ -1213,6 +1234,8 @@ export default function (pi: ExtensionAPI) {
 					? {
 							id: activeBrief.id,
 							status: activeBrief.status,
+							source: activeBrief.source,
+							requestId: activeBrief.requestId,
 							objective: activeBrief.objective,
 							task: activeBrief.task,
 							criterionIds: activeBrief.criterionIds,
@@ -2387,6 +2410,8 @@ Examples:
 			id: Type.Optional(Type.String({ description: "Brief id. Generated for upsert when omitted; required for activate." })),
 			objective: Type.Optional(Type.String({ description: "Brief objective. Required for new briefs." })),
 			task: Type.Optional(Type.String({ description: "Bounded task text. Required for new briefs." })),
+			source: Type.Optional(Type.Union([Type.Literal("manual"), Type.Literal("governor")], { description: "Brief source. Defaults to manual; governor records a governor-selected brief." })),
+			requestId: Type.Optional(Type.String({ description: "Optional governor_review outside request id that selected this brief." })),
 			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids selected for this brief." })),
 			acceptanceCriteria: Type.Optional(Type.Array(Type.String(), { description: "Brief-specific acceptance criteria." })),
 			verificationRequired: Type.Optional(Type.Array(Type.String(), { description: "Validation or verification required for this brief." })),
@@ -2418,6 +2443,8 @@ Examples:
 					id: params.id,
 					objective: params.objective,
 					task: params.task,
+					source: params.source,
+					requestId: params.requestId,
 					criterionIds: params.criterionIds,
 					acceptanceCriteria: params.acceptanceCriteria,
 					verificationRequired: params.verificationRequired,
