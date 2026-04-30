@@ -52,7 +52,6 @@ interface WatchdogNudgeDetails {
 }
 
 interface WatchdogNudgeRequest {
-	key: string;
 	content: string;
 	details: WatchdogNudgeDetails;
 	entry: Record<string, unknown>;
@@ -63,7 +62,6 @@ const RECOVERY_DELAY_MS = 1_000;
 const RALPH_IDLE_DELAY_MS = 2_000;
 const MAX_RALPH_IDLE_RECOVERIES_PER_PROMPT = 1;
 const MESSAGE_TYPE_WATCHDOG_NUDGE = "compaction-continue:watchdog-nudge";
-const WIDGET_WATCHDOG_NUDGE = "compaction-continue-watchdog-nudge";
 export const WATCHDOG_NUDGE_PROMPT = [
 	"Automated watchdog nudge: Pi became idle after compaction or an active Ralph-loop turn.",
 	"This is not a new user request and does not mean more work is required.",
@@ -350,7 +348,6 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 	let enabled = true;
 	let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 	let pendingRalphIdleTimer: ReturnType<typeof setTimeout> | undefined;
-	let pendingNudge: WatchdogNudgeRequest | undefined;
 	let lastRecoveredCompactionId: string | undefined;
 	let lastPreCompactionAnalysis: CompactionRecoveryAnalysis | undefined;
 	let lastRalphPrompt: RalphPromptInfo | undefined;
@@ -359,27 +356,9 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 
 	registerWatchdogMessageRenderer(pi);
 
-	function updatePendingNudgeCard(ctx: ExtensionContext): void {
-		if (!pendingNudge) {
-			ctx.ui.setWidget(WIDGET_WATCHDOG_NUDGE, undefined);
-			return;
-		}
-
-		const details = pendingNudge.details;
-		const target = details.loop
-			? ` · ${details.loop}${details.iteration ? ` iter ${details.iteration}` : ""}`
-			: "";
-		ctx.ui.setWidget(WIDGET_WATCHDOG_NUDGE, [
-			`${ctx.ui.theme.fg("warning", "Watchdog nudge pending")} ${ctx.ui.theme.fg("muted", details.title)}`,
-			`${ctx.ui.theme.fg("muted", "Will notify agent when idle ·")} ${details.recoveryKind}${target}`,
-		]);
-	}
-
 	function updateStatus(ctx: ExtensionContext): void {
 		const state = enabled ? ctx.ui.theme.fg("success", "on") : ctx.ui.theme.fg("error", "off");
-		const pending = pendingNudge ? ctx.ui.theme.fg("warning", " ✦pending") : "";
-		ctx.ui.setStatus("compaction-continue", `${ctx.ui.theme.fg("muted", "watchdog:")}${state}${pending}`);
-		updatePendingNudgeCard(ctx);
+		ctx.ui.setStatus("compaction-continue", `${ctx.ui.theme.fg("muted", "watchdog:")}${state}`);
 	}
 
 	function clearRalphIdleTimer(): void {
@@ -387,22 +366,11 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 		pendingRalphIdleTimer = undefined;
 	}
 
-	function clearPendingNudge(ctx?: ExtensionContext): void {
-		pendingNudge = undefined;
-		if (ctx) updateStatus(ctx);
-	}
-
 	function canSendNudge(ctx: ExtensionContext): boolean {
 		return enabled && ctx.isIdle() && !ctx.hasPendingMessages();
 	}
 
-	function sendOrDeferNudge(ctx: ExtensionContext, request: WatchdogNudgeRequest): boolean {
-		if (!canSendNudge(ctx)) {
-			pendingNudge = request;
-			updateStatus(ctx);
-			return false;
-		}
-
+	function sendNudge(ctx: ExtensionContext, request: WatchdogNudgeRequest): void {
 		pi.appendEntry("compaction-continue", request.entry);
 		ctx.ui.notify(request.notification, "info");
 		pi.sendMessage(
@@ -414,13 +382,6 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 			},
 			{ triggerTurn: true },
 		);
-		clearPendingNudge(ctx);
-		return true;
-	}
-
-	function deliverPendingNudge(ctx: ExtensionContext): boolean {
-		if (!pendingNudge) return false;
-		return sendOrDeferNudge(ctx, pendingNudge);
 	}
 
 	function noteRalphPromptFromText(text: string, timestamp = Date.now()): void {
@@ -448,6 +409,10 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 			if (!enabled) return;
 			if (lastRecoveredCompactionId === compactionId) return;
 
+			// The watchdog only recovers idle gaps. If Pi is busy or another message
+			// is queued, there is no idle gap to recover.
+			if (!canSendNudge(ctx)) return;
+
 			const activeLoop = findMostRecentActiveLoop(ctx);
 			const isOverflow = isOverflowCompaction(ctx, compactionId);
 			const analysis = analyzeCompactionRecovery(branchBeforeCompaction(ctx, compactionId), {
@@ -462,8 +427,7 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 			const title = recoveryKind === "ralph" ? "Unresolved Ralph loop after compaction" : "Context overflow compaction finished";
 			const loop = activeLoop?.name ?? recovery.ralph?.prompt?.loop;
 			const iteration = activeLoop?.iteration || recovery.ralph?.prompt?.iteration;
-			sendOrDeferNudge(ctx, {
-				key: `compaction:${compactionId}`,
+			sendNudge(ctx, {
 				content: WATCHDOG_NUDGE_PROMPT,
 				details: {
 					kind: "watchdog_nudge",
@@ -497,6 +461,7 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 		pendingRalphIdleTimer = setTimeout(() => {
 			pendingRalphIdleTimer = undefined;
 			if (!enabled) return;
+			if (!canSendNudge(ctx)) return;
 
 			const activeLoop = findMostRecentActiveLoop(ctx);
 			if (!activeLoop) return;
@@ -508,8 +473,7 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 
 			const loop = activeLoop.name ?? prompt.loop;
 			const iteration = activeLoop.iteration || prompt.iteration;
-			sendOrDeferNudge(ctx, {
-				key: `ralph-stall:${scheduledPromptKey}`,
+			sendNudge(ctx, {
 				content: WATCHDOG_NUDGE_PROMPT,
 				details: {
 					kind: "watchdog_nudge",
@@ -545,10 +509,7 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 	function reportStatus(args: string, ctx: ExtensionContext): void {
 		const value = args.trim().toLowerCase();
 		if (value === "on" || value === "enable") enabled = true;
-		else if (value === "off" || value === "disable") {
-			enabled = false;
-			clearPendingNudge(ctx);
-		}
+		else if (value === "off" || value === "disable") enabled = false;
 
 		updateStatus(ctx);
 		const activeLoop = findMostRecentActiveLoop(ctx);
@@ -594,15 +555,13 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 		if (messageRole(event.message) === "user") noteRalphPromptFromText(messageText(event.message));
 	});
 
-	pi.on("tool_result", async (event, ctx) => {
+	pi.on("tool_result", async (event) => {
 		if (event.toolName !== "ralph_done" || event.isError) return;
 		ralphDoneAfterLastPrompt = true;
 		clearRalphIdleTimer();
-		clearPendingNudge(ctx);
 	});
 
 	pi.on("turn_end", async (event, ctx) => {
-		deliverPendingNudge(ctx);
 		if (messageRole(event.message) !== "assistant") return;
 		maybeWatchRalphStall(ctx, event.message);
 	});
@@ -632,7 +591,6 @@ export default function compactionContinue(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", async () => {
 		if (pendingTimer) clearTimeout(pendingTimer);
 		pendingTimer = undefined;
-		pendingNudge = undefined;
 		clearRalphIdleTimer();
 	});
 }
