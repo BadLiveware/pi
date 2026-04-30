@@ -146,6 +146,26 @@ interface VerificationArtifact {
 	createdAt: string;
 }
 
+type IterationBriefStatus = "draft" | "active" | "completed" | "dismissed";
+
+interface IterationBrief {
+	id: string;
+	status: IterationBriefStatus;
+	objective: string;
+	task: string;
+	criterionIds: string[];
+	acceptanceCriteria: string[];
+	verificationRequired: string[];
+	requiredContext: string[];
+	constraints: string[];
+	avoid: string[];
+	outputContract: string;
+	sourceRefs: string[];
+	createdAt: string;
+	updatedAt: string;
+	completedAt?: string;
+}
+
 interface LoopModeHandler {
 	mode: LoopMode;
 	buildPrompt(state: LoopState, taskContent: string, reason: PromptReason): string;
@@ -173,6 +193,8 @@ interface LoopState {
 	outsideRequests: OutsideRequest[];
 	criterionLedger: CriterionLedger;
 	verificationArtifacts: VerificationArtifact[];
+	briefs: IterationBrief[];
+	currentBriefId?: string;
 }
 
 const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
@@ -316,10 +338,15 @@ export default function (pi: ExtensionAPI) {
 		return ["test", "smoke", "curl", "browser", "screenshot", "walkthrough", "benchmark", "log", "other"].includes(String(value));
 	}
 
+	function normalizeStringList(value: unknown): string[] {
+		if (!Array.isArray(value)) return [];
+		const items = value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
+		return [...new Set(items)];
+	}
+
 	function normalizeIds(value: unknown): string[] | undefined {
-		if (!Array.isArray(value)) return undefined;
-		const ids = value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
-		return ids.length > 0 ? [...new Set(ids)] : undefined;
+		const ids = normalizeStringList(value);
+		return ids.length > 0 ? ids : undefined;
 	}
 
 	function normalizeId(value: unknown, fallback: string): string {
@@ -392,12 +419,54 @@ export default function (pi: ExtensionAPI) {
 			.filter((artifact): artifact is VerificationArtifact => artifact !== null);
 	}
 
+	function isBriefStatus(value: unknown): value is IterationBriefStatus {
+		return ["draft", "active", "completed", "dismissed"].includes(String(value));
+	}
+
+	function migrateBriefs(value: unknown): IterationBrief[] {
+		if (!Array.isArray(value)) return [];
+		return value
+			.map((item, index): IterationBrief | null => {
+				if (!item || typeof item !== "object") return null;
+				const brief = item as Partial<IterationBrief> & Record<string, unknown>;
+				const objective = typeof brief.objective === "string" ? brief.objective.trim() : "";
+				const task = typeof brief.task === "string" ? brief.task.trim() : "";
+				if (!objective || !task) return null;
+				const now = new Date().toISOString();
+				return {
+					id: normalizeId(brief.id, `b${index + 1}`),
+					status: isBriefStatus(brief.status) ? brief.status : "draft",
+					objective,
+					task,
+					criterionIds: normalizeStringList(brief.criterionIds),
+					acceptanceCriteria: normalizeStringList(brief.acceptanceCriteria),
+					verificationRequired: normalizeStringList(brief.verificationRequired),
+					requiredContext: normalizeStringList(brief.requiredContext),
+					constraints: normalizeStringList(brief.constraints),
+					avoid: normalizeStringList(brief.avoid),
+					outputContract: typeof brief.outputContract === "string" && brief.outputContract.trim() ? brief.outputContract.trim() : "Record changed files, validation evidence, risks, and the suggested next move.",
+					sourceRefs: normalizeStringList(brief.sourceRefs),
+					createdAt: typeof brief.createdAt === "string" ? brief.createdAt : now,
+					updatedAt: typeof brief.updatedAt === "string" ? brief.updatedAt : now,
+					completedAt: typeof brief.completedAt === "string" ? brief.completedAt : undefined,
+				};
+			})
+			.filter((brief): brief is IterationBrief => brief !== null);
+	}
+
+	function migrateCurrentBriefId(value: unknown, briefs: IterationBrief[]): string | undefined {
+		const id = typeof value === "string" ? value.trim() : "";
+		if (id && briefs.some((brief) => brief.id === id && brief.status === "active")) return id;
+		return briefs.find((brief) => brief.status === "active")?.id;
+	}
+
 	function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 		const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 		const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
 		const status = raw.status === "active" || raw.status === "completed" || raw.status === "paused" ? raw.status : raw.active ? "active" : "paused";
 		const mode = normalizeMode(raw.mode);
 		const name = stringOrDefault(raw.name, "stardock");
+		const briefs = migrateBriefs(raw.briefs);
 		return {
 			schemaVersion: 3,
 			name,
@@ -417,6 +486,8 @@ export default function (pi: ExtensionAPI) {
 			outsideRequests: migrateOutsideRequests(raw.outsideRequests),
 			criterionLedger: migrateCriterionLedger(raw.criterionLedger),
 			verificationArtifacts: migrateVerificationArtifacts(raw.verificationArtifacts),
+			briefs,
+			currentBriefId: migrateCurrentBriefId(raw.currentBriefId, briefs),
 		};
 	}
 
@@ -758,7 +829,7 @@ export default function (pi: ExtensionAPI) {
 		return { ok: true, state, attempt };
 	}
 
-	// --- Criterion ledger and verification artifacts ---
+	// --- Criterion ledger, verification artifacts, and iteration briefs ---
 
 	function nextSequentialId(prefix: string, existing: Array<{ id: string }>): string {
 		let index = existing.length + 1;
@@ -845,6 +916,191 @@ export default function (pi: ExtensionAPI) {
 		return { ok: true, state, artifact, created: existingIndex < 0 };
 	}
 
+	function currentBrief(state: LoopState): IterationBrief | undefined {
+		return state.briefs.find((brief) => brief.id === state.currentBriefId && brief.status === "active");
+	}
+
+	function upsertBrief(
+		ctx: ExtensionContext,
+		loopName: string,
+		input: Partial<IterationBrief> & { id?: string; objective?: string; task?: string },
+	): { ok: true; state: LoopState; brief: IterationBrief; created: boolean } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+
+		const id = normalizeId(input.id, nextSequentialId("b", state.briefs));
+		const existingIndex = state.briefs.findIndex((brief) => brief.id === id);
+		const existing = existingIndex >= 0 ? state.briefs[existingIndex] : undefined;
+		const objective = typeof input.objective === "string" && input.objective.trim() ? input.objective.trim() : existing?.objective;
+		const task = typeof input.task === "string" && input.task.trim() ? input.task.trim() : existing?.task;
+		if (!objective || !task) return { ok: false, error: "Iteration brief requires objective and task." };
+
+		const now = new Date().toISOString();
+		const brief: IterationBrief = {
+			id,
+			status: existing?.status ?? "draft",
+			objective,
+			task,
+			criterionIds: input.criterionIds !== undefined ? normalizeStringList(input.criterionIds) : existing?.criterionIds ?? [],
+			acceptanceCriteria: input.acceptanceCriteria !== undefined ? normalizeStringList(input.acceptanceCriteria) : existing?.acceptanceCriteria ?? [],
+			verificationRequired: input.verificationRequired !== undefined ? normalizeStringList(input.verificationRequired) : existing?.verificationRequired ?? [],
+			requiredContext: input.requiredContext !== undefined ? normalizeStringList(input.requiredContext) : existing?.requiredContext ?? [],
+			constraints: input.constraints !== undefined ? normalizeStringList(input.constraints) : existing?.constraints ?? [],
+			avoid: input.avoid !== undefined ? normalizeStringList(input.avoid) : existing?.avoid ?? [],
+			outputContract: typeof input.outputContract === "string" && input.outputContract.trim() ? input.outputContract.trim() : existing?.outputContract ?? "Record changed files, validation evidence, risks, and the suggested next move.",
+			sourceRefs: input.sourceRefs !== undefined ? normalizeStringList(input.sourceRefs) : existing?.sourceRefs ?? [],
+			createdAt: existing?.createdAt ?? now,
+			updatedAt: now,
+			completedAt: existing?.completedAt,
+		};
+
+		if (existingIndex >= 0) state.briefs[existingIndex] = brief;
+		else state.briefs.push(brief);
+		state.briefs.sort((a, b) => a.id.localeCompare(b.id));
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, brief, created: existingIndex < 0 };
+	}
+
+	function setCurrentBrief(ctx: ExtensionContext, loopName: string, briefId: string): { ok: true; state: LoopState; brief: IterationBrief } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		const brief = state.briefs.find((item) => item.id === briefId);
+		if (!brief) return { ok: false, error: `Brief "${briefId}" not found in loop "${loopName}".` };
+		const now = new Date().toISOString();
+		for (const item of state.briefs) {
+			if (item.status === "active" && item.id !== brief.id) {
+				item.status = "draft";
+				item.updatedAt = now;
+			}
+		}
+		brief.status = "active";
+		brief.completedAt = undefined;
+		brief.updatedAt = now;
+		state.currentBriefId = brief.id;
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, brief };
+	}
+
+	function clearCurrentBrief(ctx: ExtensionContext, loopName: string): { ok: true; state: LoopState; brief?: IterationBrief } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		const brief = currentBrief(state);
+		if (brief) {
+			brief.status = "draft";
+			brief.updatedAt = new Date().toISOString();
+		}
+		state.currentBriefId = undefined;
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, brief };
+	}
+
+	function completeBrief(ctx: ExtensionContext, loopName: string, briefId?: string): { ok: true; state: LoopState; brief: IterationBrief } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		const id = briefId ?? state.currentBriefId;
+		if (!id) return { ok: false, error: "No current brief to complete." };
+		const brief = state.briefs.find((item) => item.id === id);
+		if (!brief) return { ok: false, error: `Brief "${id}" not found in loop "${loopName}".` };
+		const now = new Date().toISOString();
+		brief.status = "completed";
+		brief.updatedAt = now;
+		brief.completedAt = now;
+		if (state.currentBriefId === brief.id) state.currentBriefId = undefined;
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, brief };
+	}
+
+	function formatBriefOverview(state: LoopState): string {
+		const active = currentBrief(state);
+		const lines = [`Briefs for ${state.name}`, `Current brief: ${active?.id ?? "none"}`, `Briefs: ${state.briefs.length} total`];
+		if (state.briefs.length > 0) {
+			lines.push("");
+			for (const brief of state.briefs.slice(0, 12)) {
+				const current = active?.id === brief.id ? " · current" : "";
+				lines.push(`- ${brief.id} [${brief.status}]${current} ${compactText(brief.objective, 120)}`);
+				lines.push(`  Task: ${compactText(brief.task, 120)}`);
+				if (brief.criterionIds.length) lines.push(`  Criteria: ${brief.criterionIds.join(",")}`);
+			}
+			if (state.briefs.length > 12) lines.push(`... ${state.briefs.length - 12} more briefs`);
+		}
+		return lines.join("\n");
+	}
+
+	function selectedCriteria(state: LoopState, brief: IterationBrief): Criterion[] {
+		const ids = new Set(brief.criterionIds);
+		return state.criterionLedger.criteria.filter((criterion) => ids.has(criterion.id));
+	}
+
+	function linkedArtifactIds(state: LoopState, brief: IterationBrief): string[] {
+		const ids = new Set(brief.criterionIds);
+		return state.verificationArtifacts
+			.filter((artifact) => artifact.criterionIds?.some((criterionId) => ids.has(criterionId)))
+			.map((artifact) => artifact.id)
+			.slice(0, 8);
+	}
+
+	function appendBriefList(parts: string[], title: string, items: string[], maxItems = 8, maxLength = 180): void {
+		if (items.length === 0) return;
+		parts.push(title);
+		for (const item of items.slice(0, maxItems)) parts.push(`- ${compactText(item, maxLength)}`);
+		if (items.length > maxItems) parts.push(`- ... ${items.length - maxItems} more`);
+	}
+
+	function appendActiveBriefPromptSection(parts: string[], state: LoopState): void {
+		const brief = currentBrief(state);
+		if (!brief) return;
+
+		parts.push("## Active Iteration Brief");
+		parts.push(`- Brief: ${brief.id}`);
+		parts.push(`- Objective: ${compactText(brief.objective, 220)}`);
+		parts.push(`- Task: ${compactText(brief.task, 260)}`);
+
+		const criteria = selectedCriteria(state, brief);
+		if (brief.criterionIds.length > 0) {
+			parts.push("", "### Selected Criteria");
+			for (const criterionId of brief.criterionIds.slice(0, 8)) {
+				const criterion = criteria.find((item) => item.id === criterionId);
+				if (!criterion) {
+					parts.push(`- ${criterionId}: not found in criterion ledger`);
+					continue;
+				}
+				parts.push(`- ${criterion.id} [${criterion.status}]: ${compactText(criterion.description, 160)}`);
+				parts.push(`  Pass: ${compactText(criterion.passCondition, 180)}`);
+				if (criterion.testMethod) parts.push(`  Verify: ${compactText(criterion.testMethod, 160)}`);
+			}
+			if (brief.criterionIds.length > 8) parts.push(`- ... ${brief.criterionIds.length - 8} more selected criteria`);
+		}
+
+		appendBriefList(parts, "### Acceptance Criteria", brief.acceptanceCriteria);
+		appendBriefList(parts, "### Verification Required", brief.verificationRequired);
+		appendBriefList(parts, "### Required Context", brief.requiredContext);
+		appendBriefList(parts, "### Constraints", brief.constraints);
+		appendBriefList(parts, "### Avoid", brief.avoid);
+		appendBriefList(parts, "### Source Refs", brief.sourceRefs, 8, 160);
+		const artifacts = linkedArtifactIds(state, brief);
+		if (artifacts.length > 0) parts.push("### Linked Artifact Refs", `- ${artifacts.join(", ")}`);
+		parts.push("### Output Contract", compactText(brief.outputContract, 240) ?? "Record changed files, validation evidence, risks, and the suggested next move.", "");
+	}
+
+	function appendTaskSourceSection(parts: string[], state: LoopState, taskContent: string): void {
+		const brief = currentBrief(state);
+		if (!brief) {
+			parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
+			return;
+		}
+		parts.push(
+			"## Task Source",
+			`Active brief ${brief.id} is the selected context for this iteration.`,
+			`Task file: ${state.taskFile}`,
+			"Full task content is omitted from this prompt; read the task file if additional source context is needed.",
+			"---",
+		);
+	}
+
 	function formatCriterionCounts(ledger: CriterionLedger): string {
 		const counts = criterionCounts(ledger);
 		return `Criteria: ${counts.total} total, ${counts.passed} passed, ${counts.failed} failed, ${counts.blocked} blocked, ${counts.skipped} skipped, ${counts.pending} pending`;
@@ -887,6 +1143,7 @@ export default function (pi: ExtensionAPI) {
 		const outsideRequests = state.outsideRequests;
 		const pendingRequests = pendingOutsideRequests(state);
 		const latestAttempt = attempts.at(-1);
+		const activeBrief = currentBrief(state);
 		const criteria = criterionCounts(state.criterionLedger);
 		const artifactsByKind = state.verificationArtifacts.reduce<Record<string, number>>((counts, artifact) => {
 			counts[artifact.kind] = (counts[artifact.kind] ?? 0) + 1;
@@ -935,8 +1192,21 @@ export default function (pi: ExtensionAPI) {
 				total: state.verificationArtifacts.length,
 				byKind: artifactsByKind,
 			},
+			briefs: {
+				total: state.briefs.length,
+				currentBriefId: state.currentBriefId,
+				current: activeBrief
+					? {
+							id: activeBrief.id,
+							status: activeBrief.status,
+							objective: activeBrief.objective,
+							task: activeBrief.task,
+							criterionIds: activeBrief.criterionIds,
+						}
+					: undefined,
+			},
 			...(includeDetails
-				? { modeState: state.modeState, requests: state.outsideRequests, criterionLedger: state.criterionLedger, artifacts: state.verificationArtifacts }
+				? { modeState: state.modeState, requests: state.outsideRequests, criterionLedger: state.criterionLedger, artifacts: state.verificationArtifacts, briefList: state.briefs }
 				: {}),
 		};
 	}
@@ -948,7 +1218,8 @@ export default function (pi: ExtensionAPI) {
 		const attemptText = attempts.length > 0 ? `, attempts ${reported}/${attempts.length} reported` : "";
 		const criteriaText = state.criterionLedger.criteria.length > 0 ? `, criteria ${criterionCounts(state.criterionLedger).passed}/${state.criterionLedger.criteria.length} passed` : "";
 		const artifactsText = state.verificationArtifacts.length > 0 ? `, artifacts ${state.verificationArtifacts.length}` : "";
-		return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}`;
+		const briefText = state.currentBriefId ? `, brief ${state.currentBriefId}` : "";
+		return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}${briefText}`;
 	}
 
 	function compactText(value: string | undefined, maxLength = 160): string | undefined {
@@ -1021,6 +1292,7 @@ export default function (pi: ExtensionAPI) {
 		const reported = attempts.filter((attempt) => attempt.status === "reported").length;
 		const pending = pendingOutsideRequests(state).length;
 		const latestDecision = latestGovernorDecision(state);
+		const activeBrief = currentBrief(state);
 		const lines = [
 			`Stardock run: ${state.name}`,
 			`Status: ${STATUS_ICONS[state.status]} ${state.status} · ${state.mode} · iteration ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
@@ -1035,7 +1307,11 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
-		lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`);
+		lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
+		if (activeBrief) {
+			lines.push("", "Active brief", `  ${activeBrief.id}: ${compactText(activeBrief.objective, 180)}`, `  Task: ${compactText(activeBrief.task, 180)}`);
+			if (activeBrief.criterionIds.length) lines.push(`  Criteria: ${activeBrief.criterionIds.join(", ")}`);
+		}
 		if (latestDecision) {
 			lines.push("", "Latest governor decision", `  Verdict: ${latestDecision.verdict}`, `  Rationale: ${compactText(latestDecision.rationale, 220) ?? "none"}`);
 			if (latestDecision.requiredNextMove) lines.push(`  Required next move: ${latestDecision.requiredNextMove}`);
@@ -1107,7 +1383,8 @@ export default function (pi: ExtensionAPI) {
 		const parts = [header, ""];
 		if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
 
-		parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
+		appendActiveBriefPromptSection(parts, state);
+		appendTaskSourceSection(parts, state, taskContent);
 		parts.push(`\n## Instructions\n`);
 		parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /stardock-stop when idle to stop the loop.\n");
 		parts.push(
@@ -1209,7 +1486,8 @@ export default function (pi: ExtensionAPI) {
 			const recentAttempts = formatRecentAttemptReports(modeState);
 			if (recentAttempts.length > 0) parts.push("## Recent Attempt Reports", ...recentAttempts, "");
 			appendOutsideRequestPromptSections(parts, state);
-			parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
+			appendActiveBriefPromptSection(parts, state);
+			appendTaskSourceSection(parts, state, taskContent);
 			parts.push("\n## Attempt Instructions\n");
 			parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
 			parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
@@ -1498,6 +1776,7 @@ export default function (pi: ExtensionAPI) {
 				outsideRequests: [],
 				criterionLedger: defaultCriterionLedger(),
 				verificationArtifacts: [],
+				briefs: [],
 			};
 
 			saveState(ctx, state);
@@ -1939,6 +2218,7 @@ Examples:
 				outsideRequests: [],
 				criterionLedger: defaultCriterionLedger(),
 				verificationArtifacts: [],
+				briefs: [],
 			};
 
 			saveState(ctx, state);
@@ -2044,6 +2324,7 @@ Examples:
 				if (!state) return { content: [{ type: "text", text: `Loop "${params.loopName}" not found.` }], details: { loopName: params.loopName, archived } };
 				const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
 				const latestDecision = latestGovernorDecision(state);
+				const activeBrief = currentBrief(state);
 				const lines = [
 					`Loop: ${state.name}`,
 					`Status: ${state.status}`,
@@ -2056,6 +2337,8 @@ Examples:
 					`Outside requests: ${pendingOutsideRequests(state).length}/${state.outsideRequests.length} pending`,
 					formatCriterionCounts(state.criterionLedger),
 					`Verification artifacts: ${state.verificationArtifacts.length}`,
+					`Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`,
+					activeBrief ? `Current brief task: ${activeBrief.task}` : undefined,
 					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
 				].filter((line): line is string => Boolean(line));
 				const text = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : lines.join("\n");
@@ -2074,6 +2357,89 @@ Examples:
 					currentLoop,
 					loops: loops.map((state) => summarizeLoopState(ctx, state, archived, includeDetails)),
 				},
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "stardock_brief",
+		label: "Manage Stardock Iteration Brief",
+		description: "Inspect or update the current Stardock IterationBrief context packet.",
+		parameters: Type.Object({
+			action: Type.Union([Type.Literal("list"), Type.Literal("upsert"), Type.Literal("activate"), Type.Literal("clear"), Type.Literal("complete")], {
+				description: "list returns briefs; upsert creates/updates a brief; activate selects one; clear removes the active brief; complete marks one complete.",
+			}),
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+			id: Type.Optional(Type.String({ description: "Brief id. Generated for upsert when omitted; required for activate." })),
+			objective: Type.Optional(Type.String({ description: "Brief objective. Required for new briefs." })),
+			task: Type.Optional(Type.String({ description: "Bounded task text. Required for new briefs." })),
+			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids selected for this brief." })),
+			acceptanceCriteria: Type.Optional(Type.Array(Type.String(), { description: "Brief-specific acceptance criteria." })),
+			verificationRequired: Type.Optional(Type.Array(Type.String(), { description: "Validation or verification required for this brief." })),
+			requiredContext: Type.Optional(Type.Array(Type.String(), { description: "Relevant plan excerpts, files, decisions, or constraints." })),
+			constraints: Type.Optional(Type.Array(Type.String(), { description: "Constraints the worker should preserve." })),
+			avoid: Type.Optional(Type.Array(Type.String(), { description: "Moves or scopes to avoid for this brief." })),
+			outputContract: Type.Optional(Type.String({ description: "Expected report/evidence from the worker." })),
+			sourceRefs: Type.Optional(Type.Array(Type.String(), { description: "Source refs for this brief." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
+			const state = loadState(ctx, loopName);
+			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
+
+			if (params.action === "list") {
+				return {
+					content: [{ type: "text", text: formatBriefOverview(state) }],
+					details: { loopName, currentBriefId: state.currentBriefId, currentBrief: currentBrief(state), briefs: state.briefs },
+				};
+			}
+
+			if (params.action === "upsert") {
+				const result = upsertBrief(ctx, loopName, {
+					id: params.id,
+					objective: params.objective,
+					task: params.task,
+					criterionIds: params.criterionIds,
+					acceptanceCriteria: params.acceptanceCriteria,
+					verificationRequired: params.verificationRequired,
+					requiredContext: params.requiredContext,
+					constraints: params.constraints,
+					avoid: params.avoid,
+					outputContract: params.outputContract,
+					sourceRefs: params.sourceRefs,
+				});
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				return {
+					content: [{ type: "text", text: `${result.created ? "Created" : "Updated"} brief ${result.brief.id} in loop "${loopName}".` }],
+					details: { loopName, brief: result.brief, briefs: result.state.briefs, currentBriefId: result.state.currentBriefId },
+				};
+			}
+
+			if (params.action === "activate") {
+				if (!params.id) return { content: [{ type: "text", text: "Brief id is required for activate." }], details: { loopName } };
+				const result = setCurrentBrief(ctx, loopName, params.id);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
+				return {
+					content: [{ type: "text", text: `Activated brief ${result.brief.id} in loop "${loopName}".` }],
+					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId },
+				};
+			}
+
+			if (params.action === "clear") {
+				const result = clearCurrentBrief(ctx, loopName);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				return {
+					content: [{ type: "text", text: result.brief ? `Cleared current brief ${result.brief.id} in loop "${loopName}".` : `No current brief in loop "${loopName}".` }],
+					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId },
+				};
+			}
+
+			const result = completeBrief(ctx, loopName, params.id);
+			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
+			return {
+				content: [{ type: "text", text: `Completed brief ${result.brief.id} in loop "${loopName}".` }],
+				details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId },
 			};
 		},
 	});

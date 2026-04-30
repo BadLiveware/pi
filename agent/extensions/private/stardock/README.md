@@ -26,8 +26,9 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | --- | --- |
 | `stardock_start` | Create `.stardock/runs/<name>/task.md`, write task content, save loop state, and queue iteration 1. |
 | `stardock_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
-| `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. Includes criteria and verification artifact counts. |
+| `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. Includes criteria, active brief, and verification artifact counts. |
 | `stardock_ledger` | Inspect or update the loop's criterion ledger and compact verification artifact refs. Supports `list`, `upsertCriterion`, and `recordArtifact`. |
+| `stardock_brief` | Inspect or update manual IterationBrief context packets. Supports `list`, `upsert`, `activate`, `clear`, and `complete`. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
@@ -80,6 +81,8 @@ While a loop is active, Stardock also shows an at-a-glance widget with loop name
 Use `/stardock view [loop]` when you want to know what is happening in more detail. It summarizes the run status, objective, attempts, outside requests, criteria, verification artifact counts, latest governor decision, and a chronological timeline. Use `/stardock timeline [loop]` when you only want the event sequence.
 
 Use `stardock_ledger` when a loop needs explicit acceptance criteria or compact evidence refs. Criteria keep stable IDs, source/requirement context, pass conditions, status, and compact evidence. Verification artifacts store summaries plus optional commands, paths, and linked criterion IDs; put long logs, screenshots, and benchmark output in files and reference them rather than pasting them into state.
+
+Use `stardock_brief` when a loop needs a manually selected context packet for the next bounded attempt. A brief carries objective/task text, selected criterion IDs, acceptance criteria, verification requirements, required context, constraints, avoid-list items, source refs, and an output contract. Prompts include the active brief only when one is activated; loops without an active brief keep the normal checklist or recursive prompt shape.
 
 Agents can request the same views through `stardock_state`:
 

@@ -87,6 +87,7 @@ Implemented behavior:
   - `stardock_done`
   - `stardock_state`
   - `stardock_ledger`
+  - `stardock_brief`
   - `stardock_attempt_report`
   - `stardock_govern`
   - `stardock_outside_requests`
@@ -127,6 +128,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views provide the first operational "what is happening" visualization for a run.
 - The active-run widget now provides an at-a-glance companion with loop identity, mode/status/iteration, recursive attempt progress, outside request count, latest attempt, and latest governor steer.
 - Initial schema v3 ledger state now stores `criterionLedger` and `verificationArtifacts`; `stardock_ledger` can list/upsert criteria and record compact artifact refs, and `stardock_state` reports criteria/artifact progress without reading `.stardock/` files.
+- Initial IterationBrief v1 state now stores manual `briefs` and `currentBriefId`; `stardock_brief` can list/upsert/activate/clear/complete briefs, and active briefs add bounded selected context to prompts without replaying the full ledger or long artifacts.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -445,7 +447,7 @@ type LoopMode = "checklist" | "recursive" | "evolve";
 type LoopStatus = "active" | "paused" | "completed";
 
 interface LoopState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   name: string;
   taskFile: string;
   mode: LoopMode;
@@ -461,12 +463,16 @@ interface LoopState {
   lastReflectionAt: number;
   modeState: ChecklistModeState | RecursiveModeState | EvolveModeState;
   outsideRequests: OutsideRequest[];
+  criterionLedger: CriterionLedger;
+  verificationArtifacts: VerificationArtifact[];
+  briefs: IterationBrief[];
+  currentBriefId?: string;
 }
 ```
 
 Private Stardock schema rule: current `.stardock/runs/<name>/state.json` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, and legacy flat `.stardock/<name>.state.json` files remain readable enough to resume and rewrite into the run-folder layout. `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
 
-Future schema revisions may add `criterionLedger`, `governorState`, auditor reviews, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/audit lists.
+Future schema revisions may add `governorState`, auditor reviews, baseline validation, compound-learning proposals, handoff explanations, final verification records, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/brief/audit lists.
 
 ### Mode interface
 
@@ -725,11 +731,11 @@ Do not restart the completed implementation path. Future implementation should b
    - Initial artifact refs exist for tests, smoke commands, `curl`, browser/screenshot checks, walkthroughs, benchmarks, logs, and other refs.
    - Keep long logs/screenshots outside state and include only compact summaries in prompts.
    - Add final-report support for artifact lists and unresolved validation gaps.
-3. **Criteria-aware context packet routing**
-   - Add `GovernorState` and `IterationBrief` after dogfooding confirms the needed fields.
-   - Change recursive prompt generation so a governor-selected brief, not the full canonical plan, becomes the normal worker prompt.
-   - Include selected `criterionIds`, required context, and verification requirements; keep large artifacts referenced.
-   - Add tests that the prompt includes only selected context and still preserves required constraints.
+3. **Criteria-aware context packet expansion**
+   - Initial manual IterationBrief v1 state and `stardock_brief` update/list/activation support exists.
+   - Dogfood manually selected briefs before adding `GovernorState`; keep prompts normal when no active brief exists.
+   - Later, add governor-selected brief creation and stronger policy for when a brief supersedes full task replay.
+   - Continue keeping selected `criterionIds`, required context, and verification requirements bounded; keep large artifacts referenced.
 4. **Auditor oversight workflow**
    - Add `auditor_review` request creation and ready-to-copy auditor payloads.
    - Add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.

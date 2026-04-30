@@ -83,6 +83,7 @@ test("stardock registers tools and commands", () => {
 		assert.ok(tools.has("stardock_done"));
 		assert.ok(tools.has("stardock_state"));
 		assert.ok(tools.has("stardock_ledger"));
+		assert.ok(tools.has("stardock_brief"));
 		assert.ok(tools.has("stardock_attempt_report"));
 		assert.ok(tools.has("stardock_govern"));
 		assert.ok(tools.has("stardock_outside_payload"));
@@ -135,6 +136,8 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		assert.deepEqual(state.modeState, { kind: "checklist" });
 		assert.deepEqual(state.criterionLedger, { criteria: [], requirementTrace: [] });
 		assert.deepEqual(state.verificationArtifacts, []);
+		assert.deepEqual(state.briefs, []);
+		assert.equal(state.currentBriefId, undefined);
 		assert.equal(state.iteration, 1);
 		assert.equal(state.itemsPerIteration, 1);
 
@@ -189,6 +192,7 @@ test("stardock_state lists and inspects loop summaries", async () => {
 		assert.equal(inspectResult.details.loop.modeState.kind, "recursive");
 		assert.equal(inspectResult.details.loop.criteria.total, 0);
 		assert.equal(inspectResult.details.loop.verificationArtifacts.total, 0);
+		assert.equal(inspectResult.details.loop.briefs.total, 0);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -303,6 +307,162 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 		assert.equal(messages.length, 2);
 		assert.equal(messages[1].content.includes("c-build"), false);
 		assert.equal(messages[1].content.includes(longSummary), false);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_brief routes bounded prompt context from selected criteria", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		const stateTool = tools.get("stardock_state");
+		assert.ok(start);
+		assert.ok(done);
+		assert.ok(ledger);
+		assert.ok(brief);
+		assert.ok(stateTool);
+
+		await start.execute(
+			"tool-brief-start",
+			{
+				name: "Brief Loop",
+				mode: "checklist",
+				taskContent: "# Brief task\n\n## Checklist\n- [ ] Preserve no-brief defaults\n",
+				maxIterations: 4,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.equal(messages.length, 1);
+		assert.equal(messages[0].content.includes("## Active Iteration Brief"), false);
+
+		await ledger.execute(
+			"tool-brief-selected-criterion",
+			{
+				action: "upsertCriterion",
+				loopName: "Brief_Loop",
+				id: "c-selected",
+				description: "The prompt includes selected criterion details.",
+				passCondition: "The next prompt names c-selected and its pass condition.",
+				testMethod: "Inspect the queued prompt text.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await ledger.execute(
+			"tool-brief-unselected-criterion",
+			{
+				action: "upsertCriterion",
+				loopName: "Brief_Loop",
+				id: "c-unselected",
+				description: "This criterion should not appear in active brief prompts.",
+				passCondition: "The active brief prompt omits this criterion.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const longArtifactSummary = `${"verbose artifact summary ".repeat(60)}must not be pasted`;
+		await ledger.execute(
+			"tool-brief-artifact",
+			{
+				action: "recordArtifact",
+				loopName: "Brief_Loop",
+				id: "a-selected",
+				kind: "log",
+				summary: longArtifactSummary,
+				criterionIds: ["c-selected"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const upsertBrief = await brief.execute(
+			"tool-brief-upsert",
+			{
+				action: "upsert",
+				loopName: "Brief_Loop",
+				id: "b-implement",
+				objective: "Implement the smallest criteria-aware prompt packet.",
+				task: "Wire one active brief into the next queued Stardock prompt.",
+				criterionIds: ["c-selected"],
+				acceptanceCriteria: ["Only selected criteria are included in the brief section."],
+				verificationRequired: ["Run the focused Stardock test file."],
+				requiredContext: ["agent/extensions/private/stardock/index.ts prompt builders"],
+				constraints: ["No automatic plan distillation."],
+				avoid: ["Do not paste artifact logs into prompts."],
+				outputContract: "Report changed files, validation, risks, and next move.",
+				sourceRefs: [".pi/plans/stardock-implementation-framework.md#context-routing"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(upsertBrief.content[0].text, /Created brief b-implement/);
+		assert.equal(upsertBrief.details.brief.status, "draft");
+
+		const activateBrief = await brief.execute(
+			"tool-brief-activate",
+			{ action: "activate", loopName: "Brief_Loop", id: "b-implement" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(activateBrief.content[0].text, /Activated brief b-implement/);
+		assert.equal(activateBrief.details.currentBriefId, "b-implement");
+
+		const listBriefs = await brief.execute("tool-brief-list", { action: "list", loopName: "Brief_Loop" }, undefined, undefined, ctx);
+		assert.match(listBriefs.content[0].text, /Current brief: b-implement/);
+		assert.match(listBriefs.content[0].text, /b-implement \[active\]/);
+
+		const inspect = await stateTool.execute("tool-brief-state", { loopName: "Brief_Loop", includeDetails: true }, undefined, undefined, ctx);
+		assert.match(inspect.content[0].text, /Briefs: 1 \(current b-implement\)/);
+		assert.equal(inspect.details.loop.briefs.currentBriefId, "b-implement");
+		assert.equal(inspect.details.loop.briefs.current.task, "Wire one active brief into the next queued Stardock prompt.");
+		assert.equal(inspect.details.loop.briefList[0].id, "b-implement");
+
+		await done.execute("tool-brief-done", {}, undefined, undefined, ctx);
+		assert.equal(messages.length, 2);
+		const prompt = messages[1].content;
+		assert.match(prompt, /## Active Iteration Brief/);
+		assert.match(prompt, /Brief: b-implement/);
+		assert.match(prompt, /c-selected \[pending\]/);
+		assert.match(prompt, /Pass: The next prompt names c-selected and its pass condition\./);
+		assert.match(prompt, /Verify: Inspect the queued prompt text\./);
+		assert.match(prompt, /Only selected criteria are included/);
+		assert.match(prompt, /Run the focused Stardock test file/);
+		assert.match(prompt, /agent\/extensions\/private\/stardock\/index\.ts prompt builders/);
+		assert.match(prompt, /No automatic plan distillation/);
+		assert.match(prompt, /Do not paste artifact logs into prompts/);
+		assert.match(prompt, /a-selected/);
+		assert.match(prompt, /Full task content is omitted from this prompt/);
+		assert.equal(prompt.includes("Preserve no-brief defaults"), false);
+		assert.equal(prompt.includes("c-unselected"), false);
+		assert.equal(prompt.includes(longArtifactSummary), false);
+
+		await brief.execute("tool-brief-clear", { action: "clear", loopName: "Brief_Loop" }, undefined, undefined, ctx);
+		await done.execute("tool-brief-done-no-current", {}, undefined, undefined, ctx);
+		assert.equal(messages.length, 3);
+		assert.equal(messages[2].content.includes("## Active Iteration Brief"), false);
+		assert.match(messages[2].content, /Preserve no-brief defaults/);
+
+		const completeBrief = await brief.execute(
+			"tool-brief-complete",
+			{ action: "complete", loopName: "Brief_Loop", id: "b-implement" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(completeBrief.content[0].text, /Completed brief b-implement/);
+		assert.equal(completeBrief.details.brief.status, "completed");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -613,6 +773,8 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 		assert.deepEqual(migrated.modeState, { kind: "checklist" });
 		assert.deepEqual(migrated.criterionLedger, { criteria: [], requirementTrace: [] });
 		assert.deepEqual(migrated.verificationArtifacts, []);
+		assert.deepEqual(migrated.briefs, []);
+		assert.equal(migrated.currentBriefId, undefined);
 		assert.equal(migrated.reflectEvery, 3);
 		assert.equal(migrated.iteration, 2);
 		assert.equal(migrated.status, "active");

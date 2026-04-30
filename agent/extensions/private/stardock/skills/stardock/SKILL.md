@@ -5,7 +5,7 @@ description: Use when starting, driving, or inspecting private Stardock implemen
 
 # Stardock
 
-Stardock is a private Pi implementation framework for governed agentic work. Current capabilities are checklist and recursive loops, plus a minimal criterion ledger and compact verification artifact refs; future work will add compact context packets, auditor oversight, final verification reports, and bounded worker handoffs.
+Stardock is a private Pi implementation framework for governed agentic work. Current capabilities are checklist and recursive loops, a minimal criterion ledger, compact verification artifact refs, and manual IterationBrief context packets; future work will add auditor oversight, final verification reports, and bounded worker handoffs.
 
 Use `stardock_start` to begin a loop. Choose `mode: "checklist"` for finite known work or `mode: "recursive"` for bounded try/test/reset attempts on open-ended objectives:
 
@@ -34,6 +34,8 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
 8. Output `<promise>COMPLETE</promise>` only when the scoped work is done.
 
 Use `stardock_ledger` when criteria or evidence need to be durable: `upsertCriterion` records stable acceptance criteria with pass conditions and compact evidence, `recordArtifact` stores compact refs to tests/smoke checks/screenshots/logs/benchmarks, and `list` shows the ledger without reading `.stardock/` files. Keep long logs and screenshots outside state; store paths and concise summaries.
+
+Use `stardock_brief` when the next iteration should follow a manually selected context packet: `upsert` creates or updates a brief, `activate` makes it appear in subsequent loop prompts, `clear` returns the loop to the normal prompt shape, and `complete` records that the brief is done. Briefs are data-only routing hints; they do not spawn subagents, distill plans automatically, or replace validation.
 
 If outside-help/governor requests appear, inspect them with `stardock_outside_requests`, fetch ready-to-copy work with `stardock_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `stardock_outside_answer`. Use `stardock_govern` for an immediate manual governor review request and payload without spawning subagents. Stardock keeps governor requests to one per iteration, so a manual governor request/decision suppresses the automatic cadence request for that same iteration.
 
