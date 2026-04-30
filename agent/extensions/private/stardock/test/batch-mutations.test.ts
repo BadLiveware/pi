@@ -82,6 +82,24 @@ test("Stardock evidence tools accept batch mutation inputs", async () => {
 		assert.match(completeBriefs.content[0].text, /Completed 2 briefs/);
 		assert.equal(completeBriefs.details.completedBriefs.length, 2);
 
+		const failedReports = await finalReport.execute(
+			"batch-final-reports-failure",
+			{
+				action: "record",
+				loopName: "Batch_Loop",
+				reports: [
+					{ id: "fr-missing", status: "failed", summary: "Bad report refs.", criterionIds: ["missing-criterion"] },
+					{ id: "fr-should-not-run", status: "passed", summary: "This report should not be recorded." },
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(failedReports.content[0].text, /Criterion "missing-criterion" not found/);
+		assert.equal(failedReports.details.failedIndex, 0);
+		assert.equal(failedReports.details.failedInput.id, "fr-missing");
+
 		const reports = await finalReport.execute(
 			"batch-final-reports",
 			{
@@ -186,6 +204,7 @@ test("Stardock evidence tools accept batch mutation inputs", async () => {
 		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Batch_Loop"), "utf-8"));
 		assert.equal(state.briefs.length, 2);
 		assert.equal(state.finalVerificationReports.length, 2);
+		assert.equal(state.finalVerificationReports.some((report: { id: string }) => report.id === "fr-should-not-run"), false);
 		assert.equal(state.auditorReviews.length, 2);
 		assert.equal(state.advisoryHandoffs.length, 2);
 		assert.equal(state.workerReports.length, 2);

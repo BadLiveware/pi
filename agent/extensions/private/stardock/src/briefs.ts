@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { runBriefActivate, runBriefClear, runBriefComplete, runBriefUpsert } from "./app/brief-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
 import { type BriefLifecycleAction, compactText, type Criterion, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
@@ -292,60 +292,16 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 				};
 			}
 
-			if (params.action === "upsert") {
-				const inputs = normalizeBatchInputs({ id: params.id, objective: params.objective, task: params.task, source: params.source, requestId: params.requestId, criterionIds: params.criterionIds, acceptanceCriteria: params.acceptanceCriteria, verificationRequired: params.verificationRequired, requiredContext: params.requiredContext, constraints: params.constraints, avoid: params.avoid, outputContract: params.outputContract, sourceRefs: params.sourceRefs }, params.briefs);
-				const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
-					const result = upsertBrief(ctx, loopName, input, deps.updateUI);
-					return result.ok ? { state: result.state, item: result.brief, created: result.created } : result;
-				});
-				if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
-				let updatedState = batch.lastState;
-				let brief = batch.items[batch.items.length - 1];
-				if (params.activate === true) {
-					const activateResult = setCurrentBrief(ctx, loopName, brief.id, deps.updateUI);
-					if (!activateResult.ok) return { content: [{ type: "text", text: activateResult.error }], details: { loopName, brief } };
-					updatedState = activateResult.state;
-					brief = activateResult.brief;
-				}
-				const response = describeBatchMutation(batch, { verb: "Upserted", singularName: "brief", pluralName: "briefs", pluralDetailKey: "upsertedBriefs", singleItemText: (item, result) => `${result.created ? "Created" : "Updated"} brief ${item.id}${params.activate === true ? " and activated it" : ""}` });
-				if (batch.isBatch && params.activate === true) response.contentText += ` and activated ${brief.id}`;
-				return withFollowupTool({
-					content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
-					details: { loopName, [response.detailKey]: response.detailValue, brief, briefs: updatedState.briefs, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
-				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
-			}
-
-			if (params.action === "activate") {
-				if (!params.id) return { content: [{ type: "text", text: "Brief id is required for activate." }], details: { loopName } };
-				const result = setCurrentBrief(ctx, loopName, params.id, deps.updateUI);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
-				return withFollowupTool({
-					content: [{ type: "text", text: `Activated brief ${result.brief.id} in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, detailsParams) },
-				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
-			}
-
-			if (params.action === "clear") {
-				const result = clearCurrentBrief(ctx, loopName, deps.updateUI);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-				return withFollowupTool({
-					content: [{ type: "text", text: result.brief ? `Cleared current brief ${result.brief.id} in loop "${loopName}".` : `No current brief in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, detailsParams) },
-				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
-			}
-
-			const inputs = normalizeBatchInputs(params.id, params.ids);
-			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (id) => {
-				const result = completeBrief(ctx, loopName, deps.updateUI, id);
-				return result.ok ? { state: result.state, item: result.brief } : result;
-			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
-			const updatedState = batch.lastState;
-			const response = describeBatchMutation(batch, { verb: "Completed", singularName: "brief", pluralName: "briefs", pluralDetailKey: "completedBriefs", singleItemText: (brief) => `Completed brief ${brief.id}` });
-			return withFollowupTool({
-				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
-				details: { loopName, [response.detailKey]: response.detailValue, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
-			}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
+			const operations = {
+				upsert: (input: Parameters<typeof upsertBrief>[2]) => upsertBrief(ctx, loopName, input, deps.updateUI),
+				activate: (id: string) => setCurrentBrief(ctx, loopName, id, deps.updateUI),
+				clear: () => clearCurrentBrief(ctx, loopName, deps.updateUI),
+				complete: (id?: string) => completeBrief(ctx, loopName, deps.updateUI, id),
+			};
+			const response = params.action === "upsert" ? runBriefUpsert(loopName, params, operations) : params.action === "activate" ? runBriefActivate(loopName, params.id, operations) : params.action === "clear" ? runBriefClear(loopName, operations) : runBriefComplete(loopName, params, operations);
+			const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, detailsParams) } : response.details;
+			if (response.error) return { content: [{ type: "text", text: response.contentText }], details };
+			return withFollowupTool({ content: [{ type: "text", text: response.contentText }], details }, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 		},
 	});
 }
