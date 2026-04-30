@@ -18,7 +18,11 @@
       "./public/pr-upstream-status/index.ts",
       "./public/footer-framework/index.ts",
       "./public/model-catalog/index.ts",
+      "./public/ralph-loop/index.ts",
       "./private/code-intelligence/index.ts"
+    ],
+    "skills": [
+      "./public/ralph-loop/skills"
     ]
   },
   "scripts": {
