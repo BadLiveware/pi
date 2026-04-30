@@ -2,6 +2,7 @@
 
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { attachFollowup, booleanArg, cyclicFollowup, followupEffect, type FollowupOutput, type FollowupToolRequest, stringArg, type StardockTextResult, unsupportedFollowup } from "../app/tool-kernel.ts";
 import { formatAdvisoryHandoffOverview } from "../advisory-handoffs.ts";
 import { formatAuditorReviewOverview } from "../auditor-reviews.ts";
 import { formatBreakoutPackageOverview } from "../breakout-packages.ts";
@@ -14,13 +15,7 @@ import { existingStatePath } from "../state/paths.ts";
 import { listLoops, loadState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
 
-export type FollowupAttachMode = "content" | "details" | "both";
-
-export interface FollowupToolRequest {
-	name: string;
-	args?: Record<string, unknown>;
-	attachAs?: FollowupAttachMode;
-}
+export type { FollowupAttachMode, FollowupOutput, FollowupToolRequest } from "../app/tool-kernel.ts";
 
 export const FollowupToolParameter = Type.Optional(
 	Type.Object({
@@ -29,27 +24,6 @@ export const FollowupToolParameter = Type.Optional(
 		attachAs: Type.Optional(Type.Union([Type.Literal("content"), Type.Literal("details"), Type.Literal("both")], { description: "Where to attach the followup output. Default details." })),
 	}),
 );
-
-interface FollowupOutput {
-	name: string;
-	args: Record<string, unknown>;
-	content: string;
-	details: Record<string, unknown>;
-}
-
-interface ToolResultLike {
-	content: Array<{ type: "text"; text: string }>;
-	details?: Record<string, unknown>;
-}
-
-function stringArg(args: Record<string, unknown>, key: string): string | undefined {
-	const value = args[key];
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function booleanArg(args: Record<string, unknown>, key: string): boolean {
-	return args[key] === true;
-}
 
 function runStateFollowup(ctx: ExtensionContext, currentLoop: string | null, args: Record<string, unknown>): FollowupOutput {
 	const archived = booleanArg(args, "archived");
@@ -102,22 +76,14 @@ function runPolicyFollowup(ctx: ExtensionContext, currentLoop: string | null, ar
 
 export function runFollowupTool(ctx: ExtensionContext, currentLoop: string | null, request: FollowupToolRequest | undefined, stack: string[] = []): FollowupOutput | undefined {
 	if (!request) return undefined;
-	if (stack.includes(request.name)) {
-		return { name: request.name, args: request.args ?? {}, content: `Rejected cyclic followupTool: ${[...stack, request.name].join(" -> ")}`, details: { ok: false, reason: "cycle", stack: [...stack, request.name] } };
-	}
 	const args = request.args ?? {};
+	if (stack.includes(request.name)) return cyclicFollowup(request.name, args, stack);
+	if (followupEffect(request.name, args) !== "read") return unsupportedFollowup(request.name, args);
 	if (request.name === "stardock_state") return runStateFollowup(ctx, currentLoop, args);
 	if (request.name === "stardock_policy") return runPolicyFollowup(ctx, currentLoop, args);
-	if (["stardock_brief", "stardock_ledger", "stardock_final_report", "stardock_auditor", "stardock_breakout", "stardock_handoff", "stardock_worker_report"].includes(request.name)) return runListFollowup(ctx, currentLoop, args, request.name);
-	return { name: request.name, args, content: `Unsupported or mutating Stardock followupTool: ${request.name}. Followups must be read-only Stardock tools.`, details: { ok: false, reason: "unsupported_or_mutating" } };
+	return runListFollowup(ctx, currentLoop, args, request.name);
 }
 
-export function withFollowupTool<T extends ToolResultLike>(result: T, ctx: ExtensionContext, currentLoop: string | null, request: FollowupToolRequest | undefined, stack: string[] = []): T {
-	const followup = runFollowupTool(ctx, currentLoop, request, stack);
-	if (!followup) return result;
-	const attachAs = request?.attachAs ?? "details";
-	const details = { ...(result.details ?? {}) };
-	if (attachAs === "details" || attachAs === "both") details.followupTool = followup;
-	if (attachAs === "content" || attachAs === "both") result.content = [...result.content, { type: "text", text: `\nFollowup ${followup.name}:\n${followup.content}` }];
-	return { ...result, details };
+export function withFollowupTool<T extends StardockTextResult>(result: T, ctx: ExtensionContext, currentLoop: string | null, request: FollowupToolRequest | undefined, stack: string[] = []): T {
+	return attachFollowup(result, request, runFollowupTool(ctx, currentLoop, request, stack));
 }

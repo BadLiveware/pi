@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
+import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
 import { type BriefLifecycleAction, compactText, type Criterion, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
@@ -261,6 +261,7 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();
+			const detailsParams = { ...params, followupTool: undefined };
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
@@ -284,37 +285,37 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 					brief = activateResult.brief;
 				}
 				const actionText = `${result.created ? "Created" : "Updated"} brief ${brief.id}${params.activate === true ? " and activated it" : ""} in loop "${loopName}".`;
-				return {
+				return withFollowupTool({
 					content: [{ type: "text", text: actionText }],
-					details: { loopName, brief, briefs: state.briefs, currentBriefId: state.currentBriefId, ...deps.optionalLoopDetails(ctx, state, params) },
-				};
+					details: { loopName, brief, briefs: state.briefs, currentBriefId: state.currentBriefId, ...deps.optionalLoopDetails(ctx, state, detailsParams) },
+				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 			}
 
 			if (params.action === "activate") {
 				if (!params.id) return { content: [{ type: "text", text: "Brief id is required for activate." }], details: { loopName } };
 				const result = setCurrentBrief(ctx, loopName, params.id, deps.updateUI);
 				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
-				return {
+				return withFollowupTool({
 					content: [{ type: "text", text: `Activated brief ${result.brief.id} in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, params) },
-				};
+					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, detailsParams) },
+				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 			}
 
 			if (params.action === "clear") {
 				const result = clearCurrentBrief(ctx, loopName, deps.updateUI);
 				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-				return {
+				return withFollowupTool({
 					content: [{ type: "text", text: result.brief ? `Cleared current brief ${result.brief.id} in loop "${loopName}".` : `No current brief in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, params) },
-				};
+					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, detailsParams) },
+				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 			}
 
 			const result = completeBrief(ctx, loopName, deps.updateUI, params.id);
 			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
-			return {
+			return withFollowupTool({
 				content: [{ type: "text", text: `Completed brief ${result.brief.id} in loop "${loopName}".` }],
-				details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, params) },
-			};
+				details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...deps.optionalLoopDetails(ctx, result.state, detailsParams) },
+			}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 		},
 	});
 }

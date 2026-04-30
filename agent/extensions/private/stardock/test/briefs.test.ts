@@ -130,13 +130,15 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 				id: "b-three",
 				objective: "Use read-only list followups.",
 				task: "Attach brief list output without bespoke include flags.",
-				followupTool: { name: "stardock_brief", args: { action: "list", loopName: "Ergonomics_Loop" } },
+				followupTool: { name: "stardock_brief", args: { action: "list", loopName: "Ergonomics_Loop" }, attachAs: "both" },
 			},
 			undefined,
 			undefined,
 			ctx,
 		);
 		assert.match(listFollowup.content[0].text, /Created brief b-three/);
+		assert.match(listFollowup.content[1].text, /Followup stardock_brief:/);
+		assert.match(listFollowup.content[1].text, /Briefs for Ergonomics_Loop/);
 		assert.equal(listFollowup.details.followupTool.name, "stardock_brief");
 		assert.match(listFollowup.details.followupTool.content, /Briefs for Ergonomics_Loop/);
 		assert.equal(listFollowup.details.followupTool.details.briefs.length, 3);
