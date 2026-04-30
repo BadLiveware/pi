@@ -414,6 +414,91 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 	}
 });
 
+test("stardock_done supports explicit active brief lifecycle actions", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		const done = tools.get("stardock_done");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(brief);
+		assert.ok(done);
+
+		await start.execute(
+			"tool-lifecycle-start",
+			{
+				name: "Lifecycle Loop",
+				mode: "checklist",
+				taskContent: "# Lifecycle task\n\n## Checklist\n- [ ] Default task text returns after brief completion\n",
+				maxIterations: 5,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await ledger.execute(
+			"tool-lifecycle-criterion",
+			{
+				action: "upsertCriterion",
+				loopName: "Lifecycle_Loop",
+				id: "c-lifecycle",
+				description: "Active brief can be completed after an iteration.",
+				passCondition: "stardock_done completes and clears the current brief when requested.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await brief.execute(
+			"tool-lifecycle-brief",
+			{
+				action: "upsert",
+				loopName: "Lifecycle_Loop",
+				id: "b-lifecycle",
+				objective: "Avoid stale active briefs.",
+				task: "Complete this brief when the bounded iteration is done.",
+				criterionIds: ["c-lifecycle"],
+				activate: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const completed = await done.execute("tool-lifecycle-done-complete", { briefLifecycle: "complete", includeState: true }, undefined, undefined, ctx);
+		assert.match(completed.content[0].text, /Completed brief b-lifecycle/);
+		assert.equal(completed.details.brief.status, "completed");
+		assert.equal(completed.details.loop.briefs.currentBriefId, undefined);
+		assert.equal(messages.at(-1)?.content.includes("## Active Iteration Brief"), false);
+		assert.match(messages.at(-1)?.content ?? "", /Default task text returns after brief completion/);
+
+		await brief.execute(
+			"tool-lifecycle-brief-clear",
+			{
+				action: "upsert",
+				loopName: "Lifecycle_Loop",
+				id: "b-lifecycle-clear",
+				objective: "Clear stale active briefs.",
+				task: "Clear this brief without marking it complete.",
+				criterionIds: ["c-lifecycle"],
+				activate: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const cleared = await done.execute("tool-lifecycle-done-clear", { briefLifecycle: "clear", includeState: true }, undefined, undefined, ctx);
+		assert.match(cleared.content[0].text, /Cleared brief b-lifecycle-clear/);
+		assert.equal(cleared.details.brief.status, "draft");
+		assert.equal(cleared.details.loop.briefs.currentBriefId, undefined);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_brief records explicit governor-selected brief source", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

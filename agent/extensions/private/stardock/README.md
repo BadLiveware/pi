@@ -25,7 +25,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | Tool | What it does |
 | --- | --- |
 | `stardock_start` | Create `.stardock/runs/<name>/task.md`, write task content, save loop state, and queue iteration 1. |
-| `stardock_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
+| `stardock_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. Accepts opt-in `briefLifecycle` cleanup for the active brief. |
 | `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. Includes criteria, active brief, and verification artifact counts. |
 | `stardock_ledger` | Inspect or update the loop's criterion ledger and compact verification artifact refs. Supports `list`, `upsertCriterion`, `upsertCriteria`, `recordArtifact`, and `recordArtifacts`, with optional post-mutation state/overview details. |
 | `stardock_brief` | Inspect or update manual or governor-sourced IterationBrief context packets. Supports `list`, `upsert`, `activate`, `clear`, and `complete`; `upsert` can also activate the brief and return optional state or prompt preview details. |
@@ -85,6 +85,8 @@ Use `stardock_ledger` when a loop needs explicit acceptance criteria or compact 
 Use `stardock_brief` when a loop needs a selected context packet for the next bounded attempt. A brief carries objective/task text, selected criterion IDs, acceptance criteria, verification requirements, required context, constraints, avoid-list items, source refs, and an output contract. Prompts include the active brief only when one is activated; loops without an active brief keep the normal checklist or recursive prompt shape. For the common create-and-use workflow, call `stardock_brief({ action: "upsert", activate: true, includeState: true })`; add `includePromptPreview: true` when you need to inspect the next prompt shape without waiting for another loop turn.
 
 Briefs default to `source: "manual"`. Use `source: "governor"` plus an optional `requestId` that points at a `governor_review` outside request when a governor decision selected the bounded context. Governor-sourced briefs are still explicit data records: Stardock does not call a model, distill plans automatically, spawn workers, or activate a brief unless the tool call uses `activate: true` or a separate `activate` action.
+
+When finishing an iteration, `stardock_done` keeps the active brief by default. Pass `briefLifecycle: "complete"` to mark the active brief completed and return the next prompt to the normal task shape, or `briefLifecycle: "clear"` to deactivate it back to draft without marking it done. Add `includeState: true` when you want the lifecycle result and compact loop summary in the same tool response.
 
 Agents can request the same views through `stardock_state`:
 

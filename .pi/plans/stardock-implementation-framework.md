@@ -131,6 +131,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - Initial IterationBrief v1 state now stores `briefs` and `currentBriefId`; `stardock_brief` can list/upsert/activate/clear/complete briefs, and active briefs add bounded selected context to prompts without replaying the full ledger or long artifacts.
 - Agent-operability refinements reduce common serial workflows: `stardock_ledger` supports batch criteria/artifact updates and opt-in state/overview details, while `stardock_brief` can create-and-activate a brief plus return optional state or prompt preview details in one call.
 - Governor-selected brief v1 is explicit metadata, not automation: `stardock_brief` can record `source: "governor"` and an optional governor-review `requestId`, while activation still requires `activate: true` or a separate `activate` action.
+- Brief lifecycle policy v1 is explicit cleanup, not hidden automation: `stardock_done` keeps active briefs by default and accepts opt-in `briefLifecycle: "complete" | "clear"` when an iteration should finish or deactivate the current brief.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -739,7 +740,8 @@ Do not restart the completed implementation path. Future implementation should b
    - Initial IterationBrief v1 state and `stardock_brief` update/list/activation support exists.
    - Manual brief dogfood found the data shape usable; agent-operability refinement added `activate: true`, optional `includeState`, and capped `includePromptPreview` for create-and-use workflows.
    - Governor-selected brief v1 exists as explicit `source: "governor"` plus optional `requestId` metadata linked to a governor-review outside request; no hidden model call, auto-distillation, or silent activation is performed.
-   - Later, add stronger policy for when a governor-sourced brief supersedes full task replay and when it should be cleared or completed.
+   - Brief lifecycle policy v1 adds opt-in `stardock_done` cleanup with `briefLifecycle: "complete" | "clear"`, while default behavior keeps the active brief.
+   - Later, add stronger policy or reports for when a governor-sourced brief should supersede full task replay across multiple attempts.
    - Continue keeping selected `criterionIds`, required context, and verification requirements bounded; keep large artifacts referenced.
 4. **Auditor oversight workflow**
    - Add `auditor_review` request creation and ready-to-copy auditor payloads.

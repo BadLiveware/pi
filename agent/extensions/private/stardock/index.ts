@@ -148,6 +148,7 @@ interface VerificationArtifact {
 
 type IterationBriefStatus = "draft" | "active" | "completed" | "dismissed";
 type IterationBriefSource = "manual" | "governor";
+type BriefLifecycleAction = "keep" | "complete" | "clear";
 
 interface IterationBrief {
 	id: string;
@@ -1031,6 +1032,23 @@ export default function (pi: ExtensionAPI) {
 		saveState(ctx, state);
 		updateUI(ctx);
 		return { ok: true, state, brief };
+	}
+
+	function applyActiveBriefLifecycle(state: LoopState, action: BriefLifecycleAction): IterationBrief | undefined {
+		if (action === "keep") return undefined;
+		const brief = currentBrief(state);
+		if (!brief) return undefined;
+		const now = new Date().toISOString();
+		brief.updatedAt = now;
+		if (action === "complete") {
+			brief.status = "completed";
+			brief.completedAt = now;
+		} else {
+			brief.status = "draft";
+			brief.completedAt = undefined;
+		}
+		state.currentBriefId = undefined;
+		return brief;
 	}
 
 	function formatBriefOverview(state: LoopState): string {
@@ -2281,8 +2299,15 @@ Examples:
 			"Call this after making real iteration progress so Stardock can queue the next prompt.",
 			"Do not call this if there is no active loop, if pending messages are already queued, or if the completion marker has already been emitted.",
 		],
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+		parameters: Type.Object({
+			briefLifecycle: Type.Optional(
+				Type.Union([Type.Literal("keep"), Type.Literal("complete"), Type.Literal("clear")], {
+					description: "Opt-in active brief lifecycle action after the completed iteration. Default keep preserves existing behavior.",
+				}),
+			),
+			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!currentLoop) {
 				return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			}
@@ -2300,6 +2325,8 @@ Examples:
 			}
 
 			getModeHandler(state.mode).onIterationDone(state);
+			const briefLifecycle = (params.briefLifecycle ?? "keep") as BriefLifecycleAction;
+			const lifecycleBrief = applyActiveBriefLifecycle(state, briefLifecycle);
 
 			// Increment iteration
 			state.iteration++;
@@ -2331,9 +2358,10 @@ Examples:
 			// Queue next iteration - use followUp so user can still interrupt
 			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"), { deliverAs: "followUp" });
 
+			const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
 			return {
-				content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.` }],
-				details: {},
+				content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }],
+				details: { briefLifecycle, brief: lifecycleBrief, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) },
 			};
 		},
 	});
