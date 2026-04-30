@@ -67,7 +67,8 @@ Recursive example:
   "resetPolicy": "keep_best_only",
   "stopWhen": ["target_reached", "idea_exhaustion", "max_iterations"],
   "maxIterations": 10,
-  "outsideHelpEvery": 3
+  "governEvery": 3,
+  "outsideHelpOnStagnation": true
 }
 ```
 
@@ -103,12 +104,13 @@ Options for `/ralph start`:
 | `--reset-policy manual\|revert_failed_attempts\|keep_best_only` | Recursive reset policy. Default: `manual`. |
 | `--stop-when A,B` | Recursive stop criteria. Defaults to target reached, idea exhaustion, or max iterations. |
 | `--max-failed-attempts N` | Recursive failed-attempt budget. |
-| `--outside-help-every N` | Recursive cue interval for requesting outside help. |
-| `--outside-help-on-stagnation` | Cue outside help when attempts stagnate. |
+| `--outside-help-every N` | Recursive cue interval for requesting outside help. Also acts as governor cadence when `governEvery` is omitted. |
+| `--govern-every N` | Recursive interval for governor review requests. |
+| `--outside-help-on-stagnation` | Cue outside help when structured attempt results stagnate or show scaffolding drift. |
 
 Recursive attempts can be reported with `ralph_attempt_report`, including kind (`candidate_change`, `setup`, `refactor`, `instrumentation`, `benchmark_scaffold`, `research`, or `other`), hypothesis, action summary, validation, result (`improved`, `neutral`, `worse`, `invalid`, or `blocked`), keep/reset decision, evidence, and follow-up ideas. Recent reports are summarized in the next recursive prompt.
 
-Recursive loops with `outsideHelpEvery` create data-only `governor_review` requests at the configured interval. The extension does not spawn subagents; a parent/orchestrator agent can inspect requests, fetch a ready-to-copy task with `ralph_outside_payload` or `/ralph outside payload`, run whatever research or review is appropriate, then record the result with `ralph_outside_answer` or `/ralph outside answer`. Structured governor answers can include a verdict, rationale, required next move, forbidden next moves, and evidence gaps; the next recursive prompt includes the latest steer.
+Recursive loops create data-only `governor_review` requests at `governEvery`; when `governEvery` is omitted, `outsideHelpEvery` preserves the same governor-cadence behavior. With `outsideHelpOnStagnation`, repeated non-improving structured attempt results create a `failure_analysis` request, and repeated setup/refactor/instrumentation/benchmark-scaffold attempts create a `mutation_suggestions` request. The extension does not spawn subagents; a parent/orchestrator agent can inspect requests, fetch a ready-to-copy task with `ralph_outside_payload` or `/ralph outside payload`, run whatever research or review is appropriate, then record the result with `ralph_outside_answer` or `/ralph outside answer`. Structured governor answers can include a verdict, rationale, required next move, forbidden next moves, and evidence gaps; the next recursive prompt includes the latest steer.
 
 Press Esc to interrupt a running assistant turn. Send a normal message or use `/ralph resume <name>` to continue. Use `/ralph-stop` when idle to end the loop.
 

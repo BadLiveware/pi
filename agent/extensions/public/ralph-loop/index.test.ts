@@ -482,3 +482,74 @@ test("ralph_attempt_report records structured recursive attempt data", async () 
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("recursive triggers create governor and stagnation requests from structured attempts", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		const done = tools.get("ralph_done");
+		const report = tools.get("ralph_attempt_report");
+		assert.ok(start);
+		assert.ok(done);
+		assert.ok(report);
+
+		await start.execute(
+			"tool-recursive",
+			{
+				name: "Trigger Loop",
+				mode: "recursive",
+				taskContent: "# Trigger task\n",
+				objective: "Escape stagnation",
+				maxIterations: 5,
+				governEvery: 2,
+				outsideHelpOnStagnation: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await report.execute(
+			"tool-report-1",
+			{
+				loopName: "Trigger_Loop",
+				iteration: 1,
+				kind: "setup",
+				hypothesis: "Setup may reveal the issue.",
+				actionSummary: "Added more scaffolding.",
+				validation: "No improvement measured.",
+				result: "neutral",
+				kept: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done-1", {}, undefined, undefined, ctx);
+		await report.execute(
+			"tool-report-2",
+			{
+				loopName: "Trigger_Loop",
+				iteration: 2,
+				kind: "instrumentation",
+				hypothesis: "More instrumentation may help.",
+				actionSummary: "Added another measurement hook.",
+				validation: "Still no improvement.",
+				result: "blocked",
+				kept: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done-2", {}, undefined, undefined, ctx);
+
+		assert.match(messages[2].content, /governor-2/);
+		assert.match(messages[2].content, /research-stagnation-2/);
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Trigger_Loop.state.json"), "utf-8"));
+		assert.ok(state.outsideRequests.some((request: any) => request.id === "governor-2" && request.kind === "governor_review"));
+		assert.ok(state.outsideRequests.some((request: any) => request.id === "research-stagnation-2" && request.kind === "failure_analysis"));
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});

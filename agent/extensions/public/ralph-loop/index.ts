@@ -77,6 +77,7 @@ interface RecursiveModeState {
 	stopWhen: RecursiveStopCriterion[];
 	maxFailedAttempts?: number;
 	outsideHelpEvery?: number;
+	governEvery?: number;
 	outsideHelpOnStagnation: boolean;
 	attempts: RecursiveAttempt[];
 }
@@ -356,21 +357,65 @@ export default function (pi: ExtensionAPI) {
 		return next;
 	}
 
+	function buildRecentAttemptSummary(modeState: RecursiveModeState, count = 3): string {
+		const attempts = modeState.attempts.slice(-count);
+		return attempts.length > 0 ? attempts.map(formatAttemptForPayload).join("\n") : "- No structured attempt reports yet.";
+	}
+
 	function maybeCreateRecursiveOutsideRequests(state: LoopState, modeState: RecursiveModeState): void {
-		if (!modeState.outsideHelpEvery || state.iteration % modeState.outsideHelpEvery !== 0) return;
-		addOutsideRequest(state, {
-			id: `governor-${state.iteration}`,
-			kind: "governor_review",
-			requestedByIteration: state.iteration,
-			trigger: "every_n_iterations",
-			prompt: [
-				`Review recursive loop "${state.name}" after attempt ${state.iteration}.`,
-				`Objective: ${modeState.objective}`,
-				`Attempts recorded: ${modeState.attempts.length}`,
-				"Decide whether the next move should continue, pivot, stop, measure, exploit scaffold, or ask the user.",
-				"If useful, provide requiredNextMove, forbiddenNextMoves, and evidenceGaps.",
-			].join("\n"),
-		});
+		const governorCadence = modeState.governEvery ?? modeState.outsideHelpEvery;
+		if (governorCadence && state.iteration % governorCadence === 0) {
+			addOutsideRequest(state, {
+				id: `governor-${state.iteration}`,
+				kind: "governor_review",
+				requestedByIteration: state.iteration,
+				trigger: "every_n_iterations",
+				prompt: [
+					`Review recursive loop "${state.name}" after attempt ${state.iteration}.`,
+					`Objective: ${modeState.objective}`,
+					`Attempts recorded: ${modeState.attempts.length}`,
+					"Decide whether the next move should continue, pivot, stop, measure, exploit scaffold, or ask the user.",
+					"If useful, provide requiredNextMove, forbiddenNextMoves, and evidenceGaps.",
+				].join("\n"),
+			});
+		}
+
+		if (!modeState.outsideHelpOnStagnation) return;
+		const reported = modeState.attempts.filter((attempt) => attempt.status === "reported");
+		const recentTwo = reported.slice(-2);
+		if (recentTwo.length === 2 && recentTwo.every((attempt) => attempt.result && ["neutral", "worse", "invalid", "blocked"].includes(attempt.result))) {
+			addOutsideRequest(state, {
+				id: `research-stagnation-${state.iteration}`,
+				kind: "failure_analysis",
+				requestedByIteration: state.iteration,
+				trigger: "stagnation",
+				prompt: [
+					`Analyze why recursive loop "${state.name}" appears stagnant after attempt ${state.iteration}.`,
+					`Objective: ${modeState.objective}`,
+					"Recent attempts:",
+					buildRecentAttemptSummary(modeState),
+					"Suggest discriminating checks or a different next attempt.",
+				].join("\n"),
+			});
+		}
+
+		const recentThree = reported.slice(-3);
+		const scaffoldKinds: Array<RecursiveAttemptKind | undefined> = ["setup", "refactor", "instrumentation", "benchmark_scaffold"];
+		if (recentThree.length === 3 && recentThree.every((attempt) => scaffoldKinds.includes(attempt.kind)) && recentThree.every((attempt) => attempt.result !== "improved")) {
+			addOutsideRequest(state, {
+				id: `research-scaffold-${state.iteration}`,
+				kind: "mutation_suggestions",
+				requestedByIteration: state.iteration,
+				trigger: "scaffolding_drift",
+				prompt: [
+					`Suggest candidate changes for recursive loop "${state.name}" after repeated scaffold/setup attempts.`,
+					`Objective: ${modeState.objective}`,
+					"Recent attempts:",
+					buildRecentAttemptSummary(modeState),
+					"Focus on measured candidate changes that use the scaffold rather than more setup.",
+				].join("\n"),
+			});
+		}
 	}
 
 	function formatAttemptForPayload(attempt: RecursiveAttempt): string {
@@ -608,6 +653,7 @@ export default function (pi: ExtensionAPI) {
 		lines.push(`- Reset policy: ${modeState.resetPolicy}`);
 		lines.push(`- Stop when: ${modeState.stopWhen.join(", ")}`);
 		if (modeState.maxFailedAttempts) lines.push(`- Max failed attempts: ${modeState.maxFailedAttempts}`);
+		if (modeState.governEvery) lines.push(`- Governor review cue: every ${modeState.governEvery} iterations`);
 		if (modeState.outsideHelpEvery) lines.push(`- Outside help cue: every ${modeState.outsideHelpEvery} iterations`);
 		if (modeState.outsideHelpOnStagnation) lines.push("- Outside help cue: stagnation or repeated low-value attempts");
 		return lines;
@@ -692,7 +738,7 @@ export default function (pi: ExtensionAPI) {
 			parts.push(`5. Apply reset policy: ${modeState.resetPolicy}.`);
 			parts.push(`6. When the objective is met or stop criteria apply, respond with: ${COMPLETE_MARKER}`);
 			parts.push("7. Otherwise, call the ralph_done tool to proceed to the next bounded attempt.");
-			if (modeState.outsideHelpEvery || modeState.outsideHelpOnStagnation) {
+			if (modeState.governEvery || modeState.outsideHelpEvery || modeState.outsideHelpOnStagnation) {
 				parts.push("\nOutside-help cues are configured. If this attempt is blocked, stagnant, or out of ideas, record the needed help in the task file before calling ralph_done.");
 			}
 			return parts.join("\n");
@@ -719,14 +765,15 @@ export default function (pi: ExtensionAPI) {
 		},
 		onIterationDone(state) {
 			const modeState = requireRecursiveState(state);
-			if (modeState.attempts.some((attempt) => attempt.iteration === state.iteration)) return;
-			modeState.attempts.push({
-				id: `attempt-${state.iteration}`,
-				iteration: state.iteration,
-				createdAt: new Date().toISOString(),
-				status: "pending_report",
-				summary: "Agent should record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
-			});
+			if (!modeState.attempts.some((attempt) => attempt.iteration === state.iteration)) {
+				modeState.attempts.push({
+					id: `attempt-${state.iteration}`,
+					iteration: state.iteration,
+					createdAt: new Date().toISOString(),
+					status: "pending_report",
+					summary: "Agent should record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
+				});
+			}
 			maybeCreateRecursiveOutsideRequests(state, modeState);
 			state.modeState = modeState;
 		},
@@ -808,6 +855,7 @@ export default function (pi: ExtensionAPI) {
 			stopWhen: parseStopWhen(input.stopWhen),
 			maxFailedAttempts: numberOrDefault(input.maxFailedAttempts, 0) > 0 ? numberOrDefault(input.maxFailedAttempts, 0) : undefined,
 			outsideHelpEvery: numberOrDefault(input.outsideHelpEvery, 0) > 0 ? numberOrDefault(input.outsideHelpEvery, 0) : undefined,
+			governEvery: numberOrDefault(input.governEvery, 0) > 0 ? numberOrDefault(input.governEvery, 0) : undefined,
 			outsideHelpOnStagnation: input.outsideHelpOnStagnation === true,
 		};
 		return { modeState: state };
@@ -825,6 +873,7 @@ export default function (pi: ExtensionAPI) {
 			stopWhen: undefined as string | undefined,
 			maxFailedAttempts: undefined as number | undefined,
 			outsideHelpEvery: undefined as number | undefined,
+			governEvery: undefined as number | undefined,
 			outsideHelpOnStagnation: false,
 			maxIterations: 50,
 			itemsPerIteration: 0,
@@ -861,6 +910,9 @@ export default function (pi: ExtensionAPI) {
 				i++;
 			} else if (tok === "--outside-help-every" && next) {
 				result.outsideHelpEvery = parseInt(next, 10) || undefined;
+				i++;
+			} else if (tok === "--govern-every" && next) {
+				result.governEvery = parseInt(next, 10) || undefined;
 				i++;
 			} else if (tok === "--outside-help-on-stagnation") {
 				result.outsideHelpOnStagnation = true;
@@ -1289,6 +1341,7 @@ Examples:
 			),
 			maxFailedAttempts: Type.Optional(Type.Number({ description: "Stop criterion budget for failed recursive attempts." })),
 			outsideHelpEvery: Type.Optional(Type.Number({ description: "Recursive mode prompt cue interval for outside help." })),
+			governEvery: Type.Optional(Type.Number({ description: "Recursive mode interval for governor review requests. Defaults to outsideHelpEvery when omitted." })),
 			outsideHelpOnStagnation: Type.Optional(Type.Boolean({ description: "Cue outside help when recursive attempts stagnate." })),
 			itemsPerIteration: Type.Optional(Type.Number({ description: "Suggest N items per turn (0 = no limit)" })),
 			reflectEvery: Type.Optional(Type.Number({ description: "Reflect every N iterations" })),
