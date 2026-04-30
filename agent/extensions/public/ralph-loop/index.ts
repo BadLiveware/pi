@@ -373,13 +373,71 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
+	function formatAttemptForPayload(attempt: RecursiveAttempt): string {
+		return [
+			`- Attempt ${attempt.iteration} (${attempt.status}${attempt.kind ? `, ${attempt.kind}` : ""}${attempt.result ? `, ${attempt.result}` : ""})`,
+			attempt.hypothesis ? `  - Hypothesis: ${attempt.hypothesis}` : undefined,
+			attempt.actionSummary ? `  - Action: ${attempt.actionSummary}` : undefined,
+			attempt.validation ? `  - Validation: ${attempt.validation}` : undefined,
+			attempt.evidence ? `  - Evidence: ${attempt.evidence}` : undefined,
+			attempt.followupIdeas?.length ? `  - Follow-up ideas: ${attempt.followupIdeas.join("; ")}` : undefined,
+		]
+			.filter((line): line is string => Boolean(line))
+			.join("\n");
+	}
+
+	function buildOutsideRequestPayload(state: LoopState, request: OutsideRequest): string {
+		const modeState = state.modeState.kind === "recursive" ? state.modeState : undefined;
+		const attempts = modeState?.attempts.slice(-5).map(formatAttemptForPayload).join("\n") || "- No structured attempt reports yet.";
+		const common = [
+			`Loop: ${state.name}`,
+			`Mode: ${state.mode}`,
+			`Iteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
+			modeState ? `Objective: ${modeState.objective}` : undefined,
+			modeState?.baseline ? `Baseline/current best: ${modeState.baseline}` : undefined,
+			modeState?.validationCommand ? `Validation command/check: ${modeState.validationCommand}` : undefined,
+			`Request: ${request.id} (${request.kind}, ${request.trigger})`,
+			"",
+			"Request prompt:",
+			request.prompt,
+			"",
+			"Recent structured attempts:",
+			attempts,
+		]
+			.filter((line): line is string => line !== undefined)
+			.join("\n");
+
+		if (request.kind === "governor_review") {
+			return `${common}\n\nGovernor task:\nReview the trajectory and decide the next move. Look for scaffolding drift, low-value lanes, missing measurements, and whether to continue, pivot, stop, measure, exploit existing scaffold, request research, or ask the user.\n\nReturn a concise answer plus structured decision fields:\n- verdict: continue | pivot | stop | measure | exploit_scaffold | ask_user\n- rationale\n- requiredNextMove, if any\n- forbiddenNextMoves, if any\n- evidenceGaps, if any`;
+		}
+
+		const researcherTasks: Record<OutsideRequestKind, string> = {
+			ideas: "Generate fresh plausible next hypotheses or implementation strategies. Prefer diverse, testable ideas over generic advice.",
+			research: "Find relevant prior art, examples, docs, or external evidence that can inform the next bounded attempt.",
+			mutation_suggestions: "Suggest concrete mutations to the current approach that can be tested in one bounded attempt.",
+			failure_analysis: "Analyze why recent attempts may have failed or stalled and propose discriminating checks.",
+			governor_review: "Review the trajectory and decide the next move.",
+		};
+		return `${common}\n\nResearcher task:\n${researcherTasks[request.kind]}\n\nReturn concise, actionable findings with suggested next attempts and any evidence or sources used.`;
+	}
+
 	function formatOutsideRequest(request: OutsideRequest): string {
 		return `${request.id} [${request.status}] ${request.kind} from iteration ${request.requestedByIteration}: ${request.prompt}`;
 	}
 
 	function formatOutsideRequests(state: LoopState): string {
 		if (state.outsideRequests.length === 0) return `No outside requests for ${state.name}.`;
-		return state.outsideRequests.map(formatOutsideRequest).join("\n\n");
+		return state.outsideRequests
+			.map((request) => `${formatOutsideRequest(request)}\nPayload: run ralph_outside_payload for a ready-to-copy task.`)
+			.join("\n\n");
+	}
+
+	function getOutsideRequestPayload(ctx: ExtensionContext, loopName: string, requestId: string): { ok: true; payload: string; request: OutsideRequest } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		const request = state.outsideRequests.find((item) => item.id === requestId);
+		if (!request) return { ok: false, error: `Outside request "${requestId}" not found in loop "${loopName}".` };
+		return { ok: true, payload: buildOutsideRequestPayload(state, request), request };
 	}
 
 	function answerOutsideRequest(
@@ -1052,6 +1110,15 @@ export default function (pi: ExtensionAPI) {
 
 		outside(rest, ctx) {
 			const [action, loopArg, requestId, ...answerParts] = rest.trim().split(/\s+/).filter(Boolean);
+			if (action === "payload") {
+				if (!loopArg || !requestId) {
+					ctx.ui.notify("Usage: /ralph outside payload <loop> <request-id>", "warning");
+					return;
+				}
+				const result = getOutsideRequestPayload(ctx, loopArg, requestId);
+				ctx.ui.notify(result.ok ? result.payload : result.error, result.ok ? "info" : "error");
+				return;
+			}
 			if (action === "answer") {
 				if (!loopArg || !requestId || answerParts.length === 0) {
 					ctx.ui.notify("Usage: /ralph outside answer <loop> <request-id> <answer>", "warning");
@@ -1119,6 +1186,7 @@ Commands:
   /ralph clean [--all]                Clean completed loops
   /ralph list --archived              Show archived loops
   /ralph outside [loop]               Show outside requests
+  /ralph outside payload <loop> <id>  Show ready-to-copy request payload
   /ralph outside answer <loop> <id> <answer>
                                       Record outside request answer
   /ralph nuke [--yes]                 Delete all .ralph data
@@ -1397,6 +1465,26 @@ Examples:
 			return {
 				content: [{ type: "text", text: `Recorded report for attempt ${result.attempt.iteration} in loop "${loopName}".` }],
 				details: { loopName, attempt: result.attempt },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "ralph_outside_payload",
+		label: "Build Ralph Outside Request Payload",
+		description: "Return a ready-to-copy governor or researcher task payload for a pending Ralph outside request.",
+		parameters: Type.Object({
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+			requestId: Type.String({ description: "Outside request id." }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			const result = getOutsideRequestPayload(ctx, loopName, params.requestId);
+			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, requestId: params.requestId } };
+			return {
+				content: [{ type: "text", text: result.payload }],
+				details: { loopName, request: result.request, payload: result.payload },
 			};
 		},
 	});

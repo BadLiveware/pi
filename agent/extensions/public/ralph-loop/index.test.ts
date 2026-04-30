@@ -70,6 +70,7 @@ test("ralph_loop registers current-compatible tools and commands", () => {
 		assert.ok(tools.has("ralph_start"));
 		assert.ok(tools.has("ralph_done"));
 		assert.ok(tools.has("ralph_attempt_report"));
+		assert.ok(tools.has("ralph_outside_payload"));
 		assert.ok(tools.has("ralph_outside_requests"));
 		assert.ok(tools.has("ralph_outside_answer"));
 		assert.ok(commands.has("ralph"));
@@ -350,10 +351,12 @@ test("recursive outside requests can be listed, answered, and included as govern
 		const start = tools.get("ralph_start");
 		const done = tools.get("ralph_done");
 		const listOutside = tools.get("ralph_outside_requests");
+		const payloadOutside = tools.get("ralph_outside_payload");
 		const answerOutside = tools.get("ralph_outside_answer");
 		assert.ok(start);
 		assert.ok(done);
 		assert.ok(listOutside);
+		assert.ok(payloadOutside);
 		assert.ok(answerOutside);
 
 		await start.execute(
@@ -381,6 +384,18 @@ test("recursive outside requests can be listed, answered, and included as govern
 
 		const listResult = await listOutside.execute("tool-list", { loopName: "Governor_Loop" }, undefined, undefined, ctx);
 		assert.match(listResult.content[0].text, /governor-1/);
+		assert.match(listResult.content[0].text, /ralph_outside_payload/);
+
+		const payloadResult = await payloadOutside.execute(
+			"tool-payload",
+			{ loopName: "Governor_Loop", requestId: "governor-1" },
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(payloadResult.content[0].text, /Governor task/);
+		assert.match(payloadResult.content[0].text, /verdict: continue \| pivot \| stop \| measure \| exploit_scaffold \| ask_user/);
+		assert.match(payloadResult.content[0].text, /Recent structured attempts/);
 
 		await answerOutside.execute(
 			"tool-answer",
