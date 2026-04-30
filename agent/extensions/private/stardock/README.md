@@ -4,6 +4,8 @@ Private Pi implementation framework for governed agentic work. Stardock currentl
 
 This extension is private to this repository. It is not packaged for public install.
 
+Architecture diagrams: see [`docs/architecture-diagrams.md`](docs/architecture-diagrams.md).
+
 ## Local layout
 
 - Extension source: `agent/extensions/private/stardock/`
