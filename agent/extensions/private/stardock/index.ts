@@ -1,6 +1,5 @@
 /**
- * Ralph Loop - local long-running agent loops for iterative development.
- * First-pass compatibility implementation based on the Ralph Wiggum behavior.
+ * Stardock - private governed implementation loops for Pi.
  */
 
 import * as fs from "node:fs";
@@ -8,7 +7,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
 
-const RALPH_DIR = ".ralph";
+const STARDOCK_DIR = ".stardock";
 const COMPLETE_MARKER = "<promise>COMPLETE</promise>";
 
 const DEFAULT_TEMPLATE = `# Task
@@ -147,12 +146,12 @@ export default function (pi: ExtensionAPI) {
 
 	// --- File helpers ---
 
-	const ralphDir = (ctx: ExtensionContext) => path.resolve(ctx.cwd, RALPH_DIR);
-	const archiveDir = (ctx: ExtensionContext) => path.join(ralphDir(ctx), "archive");
+	const stardockDir = (ctx: ExtensionContext) => path.resolve(ctx.cwd, STARDOCK_DIR);
+	const archiveDir = (ctx: ExtensionContext) => path.join(stardockDir(ctx), "archive");
 	const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_");
 
 	function getPath(ctx: ExtensionContext, name: string, ext: string, archived = false): string {
-		const dir = archived ? archiveDir(ctx) : ralphDir(ctx);
+		const dir = archived ? archiveDir(ctx) : stardockDir(ctx);
 		return path.join(dir, `${sanitize(name)}${ext}`);
 	}
 
@@ -252,11 +251,11 @@ export default function (pi: ExtensionAPI) {
 		const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
 		const status = raw.status === "active" || raw.status === "completed" || raw.status === "paused" ? raw.status : raw.active ? "active" : "paused";
 		const mode = normalizeMode(raw.mode);
-		const name = stringOrDefault(raw.name, "ralph-loop");
+		const name = stringOrDefault(raw.name, "stardock");
 		return {
 			schemaVersion: 2,
 			name,
-			taskFile: stringOrDefault(raw.taskFile, path.join(RALPH_DIR, `${sanitize(name)}.md`)),
+			taskFile: stringOrDefault(raw.taskFile, path.join(STARDOCK_DIR, `${sanitize(name)}.md`)),
 			mode,
 			iteration: numberOrDefault(raw.iteration, 0),
 			maxIterations: numberOrDefault(raw.maxIterations, 50),
@@ -286,7 +285,7 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function listLoops(ctx: ExtensionContext, archived = false): LoopState[] {
-		const dir = archived ? archiveDir(ctx) : ralphDir(ctx);
+		const dir = archived ? archiveDir(ctx) : stardockDir(ctx);
 		if (!fs.existsSync(dir)) return [];
 		return fs
 			.readdirSync(dir)
@@ -316,7 +315,7 @@ export default function (pi: ExtensionAPI) {
 		saveState(ctx, state);
 		currentLoop = null;
 		updateUI(ctx);
-		pi.appendEntry("ralph-loop", {
+		pi.appendEntry("stardock", {
 			kind: "completed",
 			name: state.name,
 			iteration: state.iteration,
@@ -482,7 +481,7 @@ export default function (pi: ExtensionAPI) {
 	function formatOutsideRequests(state: LoopState): string {
 		if (state.outsideRequests.length === 0) return `No outside requests for ${state.name}.`;
 		return state.outsideRequests
-			.map((request) => `${formatOutsideRequest(request)}\nPayload: run ralph_outside_payload for a ready-to-copy task.`)
+			.map((request) => `${formatOutsideRequest(request)}\nPayload: run stardock_outside_payload for a ready-to-copy task.`)
 			.join("\n\n");
 	}
 
@@ -603,18 +602,18 @@ export default function (pi: ExtensionAPI) {
 
 		const state = currentLoop ? loadState(ctx, currentLoop) : null;
 		if (!state) {
-			ctx.ui.setStatus("ralph", undefined);
-			ctx.ui.setWidget("ralph", undefined);
+			ctx.ui.setStatus("stardock", undefined);
+			ctx.ui.setWidget("stardock", undefined);
 			return;
 		}
 
 		const { theme } = ctx.ui;
 		const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 
-		ctx.ui.setStatus("ralph", theme.fg("accent", `🔄 ${state.name} (${state.iteration}${maxStr})`));
+		ctx.ui.setStatus("stardock", theme.fg("accent", `🔄 ${state.name} (${state.iteration}${maxStr})`));
 
 		const lines = [
-			theme.fg("accent", theme.bold("Ralph Wiggum")),
+			theme.fg("accent", theme.bold("Stardock")),
 			theme.fg("muted", `Loop: ${state.name}`),
 			theme.fg("dim", `Mode: ${state.mode}`),
 			theme.fg("dim", `Status: ${STATUS_ICONS[state.status]} ${state.status}`),
@@ -627,8 +626,8 @@ export default function (pi: ExtensionAPI) {
 		// Warning about stopping
 		lines.push("");
 		lines.push(theme.fg("warning", "ESC pauses the assistant"));
-		lines.push(theme.fg("warning", "Send a message to resume; /ralph-stop ends the loop"));
-		ctx.ui.setWidget("ralph", lines);
+		lines.push(theme.fg("warning", "Send a message to resume; /stardock-stop ends the loop"));
+		ctx.ui.setWidget("stardock", lines);
 	}
 
 	// --- Prompt building ---
@@ -637,7 +636,7 @@ export default function (pi: ExtensionAPI) {
 		const isReflection = reason === "reflection";
 		const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 		const header = `───────────────────────────────────────────────────────────────────────
-🔄 RALPH LOOP: ${state.name} | Iteration ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
+🔄 STARDOCK LOOP: ${state.name} | Iteration ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
 ───────────────────────────────────────────────────────────────────────`;
 
 		const parts = [header, ""];
@@ -645,20 +644,20 @@ export default function (pi: ExtensionAPI) {
 
 		parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
 		parts.push(`\n## Instructions\n`);
-		parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /ralph-stop when idle to stop the loop.\n");
+		parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /stardock-stop when idle to stop the loop.\n");
 		parts.push(
-			`You are in a Ralph loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`,
+			`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`,
 		);
 
 		if (state.itemsPerIteration > 0) {
-			parts.push(`**THIS ITERATION: Process approximately ${state.itemsPerIteration} items, then call ralph_done.**\n`);
+			parts.push(`**THIS ITERATION: Process approximately ${state.itemsPerIteration} items, then call stardock_done.**\n`);
 			parts.push(`1. Work on the next ~${state.itemsPerIteration} items from your checklist`);
 		} else {
 			parts.push(`1. Continue working on the task`);
 		}
 		parts.push(`2. Update the task file (${state.taskFile}) with your progress`);
 		parts.push(`3. When FULLY COMPLETE, respond with: ${COMPLETE_MARKER}`);
-		parts.push(`4. Otherwise, call the ralph_done tool to proceed to next iteration`);
+		parts.push(`4. Otherwise, call the stardock_done tool to proceed to next iteration`);
 
 		return parts.join("\n");
 	}
@@ -697,7 +696,7 @@ export default function (pi: ExtensionAPI) {
 			for (const request of pending.slice(0, 5)) {
 				parts.push(`- ${request.id} (${request.kind}, ${request.trigger}): ${request.prompt}`);
 			}
-			parts.push("Use parent/orchestrator help if needed, then record answers with ralph_outside_answer or /ralph outside answer.", "");
+			parts.push("Use parent/orchestrator help if needed, then record answers with stardock_outside_answer or /stardock outside answer.", "");
 		}
 
 		const decision = latestGovernorDecision(state);
@@ -714,13 +713,13 @@ export default function (pi: ExtensionAPI) {
 		mode: "checklist",
 		buildPrompt: buildChecklistPrompt,
 		buildSystemInstructions(state) {
-			let instructions = `You are in a Ralph loop working on: ${state.taskFile}\n`;
+			let instructions = `You are in a Stardock loop working on: ${state.taskFile}\n`;
 			if (state.itemsPerIteration > 0) {
 				instructions += `- Work on ~${state.itemsPerIteration} items this iteration\n`;
 			}
 			instructions += `- Update the task file as you progress\n`;
 			instructions += `- When FULLY COMPLETE: ${COMPLETE_MARKER}\n`;
-			instructions += `- Otherwise, call ralph_done tool to proceed to next iteration`;
+			instructions += `- Otherwise, call stardock_done tool to proceed to next iteration`;
 			return instructions;
 		},
 		onIterationDone() {},
@@ -737,7 +736,7 @@ export default function (pi: ExtensionAPI) {
 			const isReflection = reason === "reflection";
 			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 			const header = `───────────────────────────────────────────────────────────────────────
-🔁 RALPH RECURSIVE LOOP: ${state.name} | Attempt ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
+🔁 STARDOCK RECURSIVE LOOP: ${state.name} | Attempt ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
 ───────────────────────────────────────────────────────────────────────`;
 			const parts = [header, ""];
 			if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
@@ -755,12 +754,12 @@ export default function (pi: ExtensionAPI) {
 			} else {
 				parts.push("3. Run or describe the most relevant validation available for this attempt.");
 			}
-			parts.push("4. Record the hypothesis, action summary, validation, result, and keep/reset decision in the task file; use ralph_attempt_report when available.");
+			parts.push("4. Record the hypothesis, action summary, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.");
 			parts.push(`5. Apply reset policy: ${modeState.resetPolicy}.`);
 			parts.push(`6. When the objective is met or stop criteria apply, respond with: ${COMPLETE_MARKER}`);
-			parts.push("7. Otherwise, call the ralph_done tool to proceed to the next bounded attempt.");
+			parts.push("7. Otherwise, call the stardock_done tool to proceed to the next bounded attempt.");
 			if (modeState.governEvery || modeState.outsideHelpEvery || modeState.outsideHelpOnStagnation) {
-				parts.push("\nOutside-help cues are configured. If this attempt is blocked, stagnant, or out of ideas, record the needed help in the task file before calling ralph_done.");
+				parts.push("\nOutside-help cues are configured. If this attempt is blocked, stagnant, or out of ideas, record the needed help in the task file before calling stardock_done.");
 			}
 			return parts.join("\n");
 		},
@@ -769,7 +768,7 @@ export default function (pi: ExtensionAPI) {
 			const pending = pendingOutsideRequests(state).length;
 			const decision = latestGovernorDecision(state);
 			return [
-				"You are in a Ralph recursive loop.",
+				"You are in a Stardock recursive loop.",
 				`- Objective: ${modeState.objective}`,
 				"- Work on one bounded hypothesis/attempt this iteration.",
 				modeState.validationCommand
@@ -777,9 +776,9 @@ export default function (pi: ExtensionAPI) {
 					: "- Run or describe relevant validation for the attempt.",
 				pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,
 				decision?.requiredNextMove ? `- Governor required next move: ${decision.requiredNextMove}` : undefined,
-				"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use ralph_attempt_report when available.",
+				"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.",
 				`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
-				"- Otherwise, call ralph_done tool to proceed to next iteration.",
+				"- Otherwise, call stardock_done tool to proceed to next iteration.",
 			]
 				.filter((line): line is string => Boolean(line))
 				.join("\n");
@@ -830,8 +829,8 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function unsupportedModeMessage(mode: string): string {
-		if (mode === "evolve") return `Ralph mode "${mode}" is planned but not implemented yet.`;
-		return `Unsupported Ralph mode "${mode}". Supported modes: checklist, recursive.`;
+		if (mode === "evolve") return `Stardock mode "${mode}" is planned but not implemented yet.`;
+		return `Unsupported Stardock mode "${mode}". Supported modes: checklist, recursive.`;
 	}
 
 	function isResetPolicy(value: unknown): value is RecursiveResetPolicy {
@@ -864,7 +863,7 @@ export default function (pi: ExtensionAPI) {
 		if (mode === "checklist") return { modeState: defaultModeState("checklist") };
 
 		const objective = typeof input.objective === "string" ? input.objective.trim() : "";
-		if (!objective) return { error: 'Recursive Ralph mode requires an "objective".' };
+		if (!objective) return { error: 'Recursive Stardock mode requires an "objective".' };
 
 		const resetPolicy = isResetPolicy(input.resetPolicy) ? input.resetPolicy : "manual";
 		const state: RecursiveModeState = {
@@ -960,7 +959,7 @@ export default function (pi: ExtensionAPI) {
 			const args = parseArgs(rest);
 			if (!args.name) {
 				ctx.ui.notify(
-					"Usage: /ralph start <name|path> [--mode checklist|recursive] [--objective TEXT] [--items-per-iteration N] [--reflect-every N] [--max-iterations N]",
+					"Usage: /stardock start <name|path> [--mode checklist|recursive] [--objective TEXT] [--items-per-iteration N] [--reflect-every N] [--max-iterations N]",
 					"warning",
 				);
 				return;
@@ -973,17 +972,17 @@ export default function (pi: ExtensionAPI) {
 			const mode = args.mode;
 			const modeResult = createModeState(mode, args);
 			if (modeResult.error || !modeResult.modeState) {
-				ctx.ui.notify(modeResult.error ?? "Could not create Ralph mode state.", "warning");
+				ctx.ui.notify(modeResult.error ?? "Could not create Stardock mode state.", "warning");
 				return;
 			}
 
 			const isPath = args.name.includes("/") || args.name.includes("\\");
 			const loopName = isPath ? sanitize(path.basename(args.name, path.extname(args.name))) : args.name;
-			const taskFile = isPath ? args.name : path.join(RALPH_DIR, `${loopName}.md`);
+			const taskFile = isPath ? args.name : path.join(STARDOCK_DIR, `${loopName}.md`);
 
 			const existing = loadState(ctx, loopName);
 			if (existing?.status === "active") {
-				ctx.ui.notify(`Loop "${loopName}" is already active. Use /ralph resume ${loopName}`, "warning");
+				ctx.ui.notify(`Loop "${loopName}" is already active. Use /stardock resume ${loopName}`, "warning");
 				return;
 			}
 
@@ -1029,22 +1028,22 @@ export default function (pi: ExtensionAPI) {
 				// Check persisted state for any active loop
 				const active = listLoops(ctx).find((l) => l.status === "active");
 				if (active) {
-					pauseLoop(ctx, active, `Paused Ralph loop: ${active.name} (iteration ${active.iteration})`);
+					pauseLoop(ctx, active, `Paused Stardock loop: ${active.name} (iteration ${active.iteration})`);
 				} else {
-					ctx.ui.notify("No active Ralph loop", "warning");
+					ctx.ui.notify("No active Stardock loop", "warning");
 				}
 				return;
 			}
 			const state = loadState(ctx, currentLoop);
 			if (state) {
-				pauseLoop(ctx, state, `Paused Ralph loop: ${currentLoop} (iteration ${state.iteration})`);
+				pauseLoop(ctx, state, `Paused Stardock loop: ${currentLoop} (iteration ${state.iteration})`);
 			}
 		},
 
 		resume(rest, ctx) {
 			const loopName = rest.trim();
 			if (!loopName) {
-				ctx.ui.notify("Usage: /ralph resume <name>", "warning");
+				ctx.ui.notify("Usage: /stardock resume <name>", "warning");
 				return;
 			}
 
@@ -1054,7 +1053,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (state.status === "completed") {
-				ctx.ui.notify(`Loop "${loopName}" is completed. Use /ralph start ${loopName} to restart`, "warning");
+				ctx.ui.notify(`Loop "${loopName}" is completed. Use /stardock start ${loopName} to restart`, "warning");
 				return;
 			}
 
@@ -1087,16 +1086,16 @@ export default function (pi: ExtensionAPI) {
 		status(_rest, ctx) {
 			const loops = listLoops(ctx);
 			if (loops.length === 0) {
-				ctx.ui.notify("No Ralph loops found.", "info");
+				ctx.ui.notify("No Stardock loops found.", "info");
 				return;
 			}
-			ctx.ui.notify(`Ralph loops:\n${loops.map((l) => formatLoop(l)).join("\n")}`, "info");
+			ctx.ui.notify(`Stardock loops:\n${loops.map((l) => formatLoop(l)).join("\n")}`, "info");
 		},
 
 		cancel(rest, ctx) {
 			const loopName = rest.trim();
 			if (!loopName) {
-				ctx.ui.notify("Usage: /ralph cancel <name>", "warning");
+				ctx.ui.notify("Usage: /stardock cancel <name>", "warning");
 				return;
 			}
 			if (!loadState(ctx, loopName)) {
@@ -1112,7 +1111,7 @@ export default function (pi: ExtensionAPI) {
 		archive(rest, ctx) {
 			const loopName = rest.trim();
 			if (!loopName) {
-				ctx.ui.notify("Usage: /ralph archive <name>", "warning");
+				ctx.ui.notify("Usage: /stardock archive <name>", "warning");
 				return;
 			}
 			const state = loadState(ctx, loopName);
@@ -1133,7 +1132,7 @@ export default function (pi: ExtensionAPI) {
 			if (fs.existsSync(srcState)) fs.renameSync(srcState, dstState);
 
 			const srcTask = path.resolve(ctx.cwd, state.taskFile);
-			if (srcTask.startsWith(ralphDir(ctx)) && !srcTask.startsWith(archiveDir(ctx))) {
+			if (srcTask.startsWith(stardockDir(ctx)) && !srcTask.startsWith(archiveDir(ctx))) {
 				const dstTask = getPath(ctx, loopName, ".md", true);
 				if (fs.existsSync(srcTask)) fs.renameSync(srcTask, dstTask);
 			}
@@ -1171,20 +1170,20 @@ export default function (pi: ExtensionAPI) {
 
 			if (loops.length === 0) {
 				ctx.ui.notify(
-					archived ? "No archived loops" : "No loops found. Use /ralph list --archived for archived.",
+					archived ? "No archived loops" : "No loops found. Use /stardock list --archived for archived.",
 					"info",
 				);
 				return;
 			}
 
-			const label = archived ? "Archived loops" : "Ralph loops";
+			const label = archived ? "Archived loops" : "Stardock loops";
 			ctx.ui.notify(`${label}:\n${loops.map((l) => formatLoop(l)).join("\n")}`, "info");
 		},
 
 		govern(rest, ctx) {
 			const loopName = rest.trim() || currentLoop;
 			if (!loopName) {
-				ctx.ui.notify("Usage: /ralph govern [loop]", "warning");
+				ctx.ui.notify("Usage: /stardock govern [loop]", "warning");
 				return;
 			}
 			const result = createManualGovernorPayload(ctx, loopName);
@@ -1195,7 +1194,7 @@ export default function (pi: ExtensionAPI) {
 			const [action, loopArg, requestId, ...answerParts] = rest.trim().split(/\s+/).filter(Boolean);
 			if (action === "payload") {
 				if (!loopArg || !requestId) {
-					ctx.ui.notify("Usage: /ralph outside payload <loop> <request-id>", "warning");
+					ctx.ui.notify("Usage: /stardock outside payload <loop> <request-id>", "warning");
 					return;
 				}
 				const result = getOutsideRequestPayload(ctx, loopArg, requestId);
@@ -1204,7 +1203,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			if (action === "answer") {
 				if (!loopArg || !requestId || answerParts.length === 0) {
-					ctx.ui.notify("Usage: /ralph outside answer <loop> <request-id> <answer>", "warning");
+					ctx.ui.notify("Usage: /stardock outside answer <loop> <request-id> <answer>", "warning");
 					return;
 				}
 				const result = answerOutsideRequest(ctx, loopArg, requestId, answerParts.join(" "));
@@ -1214,7 +1213,7 @@ export default function (pi: ExtensionAPI) {
 
 			const loopName = action || currentLoop;
 			if (!loopName) {
-				ctx.ui.notify("Usage: /ralph outside [loop]", "warning");
+				ctx.ui.notify("Usage: /stardock outside [loop]", "warning");
 				return;
 			}
 			const state = loadState(ctx, loopName);
@@ -1224,30 +1223,30 @@ export default function (pi: ExtensionAPI) {
 		nuke(rest, ctx) {
 			const force = rest.trim() === "--yes";
 			const warning =
-				"This deletes all .ralph state, task, and archive files. External task files are not removed.";
+				"This deletes all .stardock state, task, and archive files. External task files are not removed.";
 
 			const run = () => {
-				const dir = ralphDir(ctx);
+				const dir = stardockDir(ctx);
 				if (!fs.existsSync(dir)) {
-					if (ctx.hasUI) ctx.ui.notify("No .ralph directory found.", "info");
+					if (ctx.hasUI) ctx.ui.notify("No .stardock directory found.", "info");
 					return;
 				}
 
 				currentLoop = null;
 				const ok = tryRemoveDir(dir);
 				if (ctx.hasUI) {
-					ctx.ui.notify(ok ? "Removed .ralph directory." : "Failed to remove .ralph directory.", ok ? "info" : "error");
+					ctx.ui.notify(ok ? "Removed .stardock directory." : "Failed to remove .stardock directory.", ok ? "info" : "error");
 				}
 				updateUI(ctx);
 			};
 
 			if (!force) {
 				if (ctx.hasUI) {
-					void ctx.ui.confirm("Delete all Ralph loop files?", warning).then((confirmed) => {
+					void ctx.ui.confirm("Delete all Stardock loop files?", warning).then((confirmed) => {
 						if (confirmed) run();
 					});
 				} else {
-					ctx.ui.notify(`Run /ralph nuke --yes to confirm. ${warning}`, "warning");
+					ctx.ui.notify(`Run /stardock nuke --yes to confirm. ${warning}`, "warning");
 				}
 				return;
 			}
@@ -1257,24 +1256,24 @@ export default function (pi: ExtensionAPI) {
 		},
 	};
 
-	const HELP = `Ralph Wiggum - Long-running development loops
+	const HELP = `Stardock - Governed implementation loops
 
 Commands:
-  /ralph start <name|path> [options]  Start a new loop
-  /ralph stop                         Pause current loop
-  /ralph resume <name>                Resume a paused loop
-  /ralph status                       Show all loops
-  /ralph cancel <name>                Delete loop state
-  /ralph archive <name>               Move loop to archive
-  /ralph clean [--all]                Clean completed loops
-  /ralph list --archived              Show archived loops
-  /ralph govern [loop]                Create governor request payload
-  /ralph outside [loop]               Show outside requests
-  /ralph outside payload <loop> <id>  Show ready-to-copy request payload
-  /ralph outside answer <loop> <id> <answer>
+  /stardock start <name|path> [options]  Start a new loop
+  /stardock stop                         Pause current loop
+  /stardock resume <name>                Resume a paused loop
+  /stardock status                       Show all loops
+  /stardock cancel <name>                Delete loop state
+  /stardock archive <name>               Move loop to archive
+  /stardock clean [--all]                Clean completed loops
+  /stardock list --archived              Show archived loops
+  /stardock govern [loop]                Create governor request payload
+  /stardock outside [loop]               Show outside requests
+  /stardock outside payload <loop> <id>  Show ready-to-copy request payload
+  /stardock outside answer <loop> <id> <answer>
                                       Record outside request answer
-  /ralph nuke [--yes]                 Delete all .ralph data
-  /ralph-stop                         Stop active loop (idle only)
+  /stardock nuke [--yes]                 Delete all .stardock data
+  /stardock-stop                         Stop active loop (idle only)
 
 Options:
   --items-per-iteration N  Suggest N items per turn (prompt hint)
@@ -1284,14 +1283,14 @@ Options:
                             Select loop mode
   --objective TEXT         Required for recursive mode
 
-To stop: press ESC to interrupt, then run /ralph-stop when idle
+To stop: press ESC to interrupt, then run /stardock-stop when idle
 
 Examples:
-  /ralph start my-feature
-  /ralph start review --items-per-iteration 5 --reflect-every 10`;
+  /stardock start my-feature
+  /stardock start review --items-per-iteration 5 --reflect-every 10`;
 
-	pi.registerCommand("ralph", {
-		description: "Ralph Wiggum - long-running development loops",
+	pi.registerCommand("stardock", {
+		description: "Stardock - governed implementation loops",
 		handler: async (args, ctx) => {
 			const [cmd] = args.trim().split(/\s+/);
 			const handler = commands[cmd];
@@ -1303,12 +1302,12 @@ Examples:
 		},
 	});
 
-	pi.registerCommand("ralph-stop", {
-		description: "Stop active Ralph loop (idle only)",
+	pi.registerCommand("stardock-stop", {
+		description: "Stop active Stardock loop (idle only)",
 		handler: async (_args, ctx) => {
 			if (!ctx.isIdle()) {
 				if (ctx.hasUI) {
-					ctx.ui.notify("Agent is busy. Press ESC to interrupt, then run /ralph-stop.", "warning");
+					ctx.ui.notify("Agent is busy. Press ESC to interrupt, then run /stardock-stop.", "warning");
 				}
 				return;
 			}
@@ -1317,7 +1316,7 @@ Examples:
 			if (!state) {
 				const active = listLoops(ctx).find((l) => l.status === "active");
 				if (!active) {
-					if (ctx.hasUI) ctx.ui.notify("No active Ralph loop", "warning");
+					if (ctx.hasUI) ctx.ui.notify("No active Stardock loop", "warning");
 					return;
 				}
 				state = active;
@@ -1328,20 +1327,20 @@ Examples:
 				return;
 			}
 
-			stopLoop(ctx, state, `Stopped Ralph loop: ${state.name} (iteration ${state.iteration})`);
+			stopLoop(ctx, state, `Stopped Stardock loop: ${state.name} (iteration ${state.iteration})`);
 		},
 	});
 
 	// --- Tool for agent self-invocation ---
 
 	pi.registerTool({
-		name: "ralph_start",
-		label: "Start Ralph Loop",
+		name: "stardock_start",
+		label: "Start Stardock Loop",
 		description: "Start a long-running development loop. Use for complex multi-iteration tasks.",
 		promptSnippet: "Start a persistent multi-iteration development loop with pacing and reflection controls.",
 		promptGuidelines: [
 			"Use this tool when the user explicitly wants an iterative loop, autonomous repeated passes, or paced multi-step execution.",
-			"After starting a loop, continue each finished iteration with ralph_done unless the completion marker has already been emitted.",
+			"After starting a loop, continue each finished iteration with stardock_done unless the completion marker has already been emitted.",
 		],
 		parameters: Type.Object({
 			name: Type.String({ description: "Loop name (e.g., 'refactor-auth')" }),
@@ -1386,11 +1385,11 @@ Examples:
 			}
 			const modeResult = createModeState(mode, params);
 			if (modeResult.error || !modeResult.modeState) {
-				return { content: [{ type: "text", text: modeResult.error ?? "Could not create Ralph mode state." }], details: { mode } };
+				return { content: [{ type: "text", text: modeResult.error ?? "Could not create Stardock mode state." }], details: { mode } };
 			}
 
 			const loopName = sanitize(params.name);
-			const taskFile = path.join(RALPH_DIR, `${loopName}.md`);
+			const taskFile = path.join(STARDOCK_DIR, `${loopName}.md`);
 
 			if (loadState(ctx, loopName)?.status === "active") {
 				return { content: [{ type: "text", text: `Loop "${loopName}" already active.` }], details: {} };
@@ -1433,28 +1432,28 @@ Examples:
 
 	// Tool for agent to signal iteration complete and request next
 	pi.registerTool({
-		name: "ralph_done",
-		label: "Ralph Iteration Done",
-		description: "Signal that you've completed this iteration of the Ralph loop. Call this after making progress to get the next iteration prompt. Do NOT call this if you've output the completion marker.",
-		promptSnippet: "Advance an active Ralph loop after completing the current iteration.",
+		name: "stardock_done",
+		label: "Stardock Iteration Done",
+		description: "Signal that you've completed this iteration of the Stardock loop. Call this after making progress to get the next iteration prompt. Do NOT call this if you've output the completion marker.",
+		promptSnippet: "Advance an active Stardock loop after completing the current iteration.",
 		promptGuidelines: [
-			"Call this after making real iteration progress so Ralph can queue the next prompt.",
+			"Call this after making real iteration progress so Stardock can queue the next prompt.",
 			"Do not call this if there is no active loop, if pending messages are already queued, or if the completion marker has already been emitted.",
 		],
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (!currentLoop) {
-				return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+				return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			}
 
 			const state = loadState(ctx, currentLoop);
 			if (!state || state.status !== "active") {
-				return { content: [{ type: "text", text: "Ralph loop is not active." }], details: {} };
+				return { content: [{ type: "text", text: "Stardock loop is not active." }], details: {} };
 			}
 
 			if (ctx.hasPendingMessages()) {
 				return {
-					content: [{ type: "text", text: "Pending messages already queued. Skipping ralph_done." }],
+					content: [{ type: "text", text: "Pending messages already queued. Skipping stardock_done." }],
 					details: {},
 				};
 			}
@@ -1470,7 +1469,7 @@ Examples:
 					ctx,
 					state,
 					`───────────────────────────────────────────────────────────────────────
-⚠️ RALPH LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
+⚠️ STARDOCK LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
 ───────────────────────────────────────────────────────────────────────`,
 				);
 				return { content: [{ type: "text", text: "Max iterations reached. Loop stopped." }], details: {} };
@@ -1499,9 +1498,9 @@ Examples:
 	});
 
 	pi.registerTool({
-		name: "ralph_attempt_report",
-		label: "Record Ralph Attempt Report",
-		description: "Record a structured report for one bounded recursive Ralph attempt.",
+		name: "stardock_attempt_report",
+		label: "Record Stardock Attempt Report",
+		description: "Record a structured report for one bounded recursive Stardock attempt.",
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			iteration: Type.Optional(Type.Number({ description: "Attempt iteration. Defaults to the most recently completed attempt." })),
@@ -1534,7 +1533,7 @@ Examples:
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
-			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const result = recordAttemptReport(ctx, loopName, {
 				iteration: params.iteration,
 				kind: isAttemptKind(params.kind) ? params.kind : undefined,
@@ -1555,15 +1554,15 @@ Examples:
 	});
 
 	pi.registerTool({
-		name: "ralph_govern",
-		label: "Create Ralph Governor Payload",
+		name: "stardock_govern",
+		label: "Create Stardock Governor Payload",
 		description: "Create or reuse a manual governor review request and return a ready-to-copy payload. Does not spawn subagents or call a model.",
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
-			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const result = createManualGovernorPayload(ctx, loopName);
 			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
 			return {
@@ -1574,16 +1573,16 @@ Examples:
 	});
 
 	pi.registerTool({
-		name: "ralph_outside_payload",
-		label: "Build Ralph Outside Request Payload",
-		description: "Return a ready-to-copy governor or researcher task payload for a pending Ralph outside request.",
+		name: "stardock_outside_payload",
+		label: "Build Stardock Outside Request Payload",
+		description: "Return a ready-to-copy governor or researcher task payload for a pending Stardock outside request.",
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			requestId: Type.String({ description: "Outside request id." }),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
-			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const result = getOutsideRequestPayload(ctx, loopName, params.requestId);
 			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, requestId: params.requestId } };
 			return {
@@ -1594,15 +1593,15 @@ Examples:
 	});
 
 	pi.registerTool({
-		name: "ralph_outside_requests",
-		label: "List Ralph Outside Requests",
-		description: "List pending or answered outside help/governor requests for a Ralph loop.",
+		name: "stardock_outside_requests",
+		label: "List Stardock Outside Requests",
+		description: "List pending or answered outside help/governor requests for a Stardock loop.",
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
-			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 			return {
@@ -1613,9 +1612,9 @@ Examples:
 	});
 
 	pi.registerTool({
-		name: "ralph_outside_answer",
-		label: "Answer Ralph Outside Request",
-		description: "Record an answer or governor decision for a Ralph outside request without editing state files manually.",
+		name: "stardock_outside_answer",
+		label: "Answer Stardock Outside Request",
+		description: "Record an answer or governor decision for a Stardock outside request without editing state files manually.",
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			requestId: Type.String({ description: "Outside request id to answer." }),
@@ -1637,7 +1636,7 @@ Examples:
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
-			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const decision = params.verdict
 				? {
 						verdict: params.verdict,
@@ -1668,7 +1667,7 @@ Examples:
 		const instructions = getModeHandler(state.mode).buildSystemInstructions(state);
 
 		return {
-			systemPrompt: event.systemPrompt + `\n[RALPH LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}`,
+			systemPrompt: event.systemPrompt + `\n[STARDOCK LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}`,
 		};
 	});
 
@@ -1692,7 +1691,7 @@ Examples:
 				ctx,
 				state,
 				`───────────────────────────────────────────────────────────────────────
-✅ RALPH LOOP COMPLETE: ${state.name} | ${state.iteration} iterations
+✅ STARDOCK LOOP COMPLETE: ${state.name} | ${state.iteration} iterations
 ───────────────────────────────────────────────────────────────────────`,
 			);
 			return;
@@ -1704,13 +1703,13 @@ Examples:
 				ctx,
 				state,
 				`───────────────────────────────────────────────────────────────────────
-⚠️ RALPH LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
+⚠️ STARDOCK LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
 ───────────────────────────────────────────────────────────────────────`,
 			);
 			return;
 		}
 
-		// Don't auto-continue - let the agent call ralph_done to proceed
+		// Don't auto-continue - let the agent call stardock_done to proceed
 		// This allows user's "stop" message to be processed first
 	});
 
@@ -1719,7 +1718,7 @@ Examples:
 
 		// Rehydrate currentLoop from disk. The module is re-initialized on
 		// session reload (including auto-compaction and /compact), which would
-		// otherwise leave `currentLoop` null and silently break ralph_done,
+		// otherwise leave `currentLoop` null and silently break stardock_done,
 		// agent_end, and before_agent_start. Pick the most-recently-updated
 		// active loop when there are multiple, using the state file mtime.
 		if (!currentLoop && active.length > 0) {
@@ -1735,7 +1734,7 @@ Examples:
 			const lines = active.map(
 				(l) => `  • ${l.name} (iteration ${l.iteration}${l.maxIterations > 0 ? `/${l.maxIterations}` : ""})`,
 			);
-			ctx.ui.notify(`Active Ralph loops:\n${lines.join("\n")}\n\nUse /ralph resume <name> to continue`, "info");
+			ctx.ui.notify(`Active Stardock loops:\n${lines.join("\n")}\n\nUse /stardock resume <name> to continue`, "info");
 		}
 		updateUI(ctx);
 	});

@@ -12,9 +12,9 @@ The design should make room for an OpenEvolve-inspired mode, but should not jump
 
 - Framework name: **Stardock**.
 - Keep it private while it is experimental:
-  - future extension path: `agent/extensions/private/stardock/`
+  - extension path: `agent/extensions/private/stardock/`
   - do not publish or list as a public extension until the framework is proven.
-- Treat the existing public `agent/extensions/public/ralph-loop/` as implementation history/source material, not as the long-term home.
+- The former public Ralph loop implementation has been moved into `agent/extensions/private/stardock/`; there is no longer a public Ralph-loop extension in this repo.
 - New API namespace is still open, but the default proposal is:
   - commands: `/stardock` with a short alias `/sd` if ergonomics justify it;
   - tools: `stardock_*` or `sd_*`;
@@ -104,9 +104,9 @@ Future Stardock work should treat the canonical plan and task file as durable so
 
 1. **Specific job** — the one bounded action to perform now.
 2. **Acceptance criteria** — what makes this attempt complete.
-3. **Required context** — only the relevant plan excerpts, files, decisions, and constraints.
-4. **Future-preserving constraints** — invariants, compatibility notes, and what not to overbuild.
-5. **Output contract** — attempt report, changed files, validation evidence, risks, and suggested next move.
+2. **Required context** — only the relevant plan excerpts, files, decisions, and constraints.
+3. **Future-preserving constraints** — invariants, compatibility notes, and what not to overbuild.
+4. **Output contract** — attempt report, changed files, validation evidence, risks, and suggested next move.
 
 The governor should own context selection. Instead of the loop driver blindly queuing the same task content, the target architecture is:
 
@@ -393,11 +393,11 @@ The practical implementation path is complete through bounded recursive/governor
    - add `BreakoutPackage` for repeated failures, blocked criteria, or loops with no criterion movement;
    - add optional compound-learning proposals and cognitive-debt walkthrough requirements for large/complex changes;
    - keep quality-profile escalation optional and explicit.
-6. **Subagent-driven recursive mode**
+5. **Subagent-driven recursive mode**
    - use `.pi/plans/stardock-subagent-recursive-mode.md` as the design gate;
    - start with exploration and test-runner subagents before implementer subagents;
    - do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, and edit ownership are safe.
-7. **Evolve mode**
+6. **Evolve mode**
    - use `.pi/plans/stardock-evolve-mode.md` as the design gate;
    - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, auditor gate handling, and dogfood evidence are available.
 
@@ -674,46 +674,42 @@ Completed implementation is intentionally compacted here; use commit history and
 | Trigger mechanics | Done | `a233c34`; `governEvery`, stagnation, and scaffolding-drift request creation. |
 | Manual governor helper | Done | `a66512c`; `ralph_govern` creates/reuses a durable governor request and payload. |
 | Future automation design gates | Done | `417f768`; subagent and evolve plans written. |
+| Private Stardock extension shell | Done | Extension moved to `agent/extensions/private/stardock/`; public Ralph path removed; clean `stardock_*` and `/stardock` surface preferred. |
 
 ### Next implementation candidates
 
 Do not restart the completed implementation path. Future implementation should begin with one of these design-gated slices:
 
-1. **Private Stardock extension shell**
-   - Create `agent/extensions/private/stardock/` as the private framework home.
-   - Decide whether to extract shared code from `public/ralph-loop` or start clean and delete/disable the public extension.
-   - Prefer clean `stardock_*`/`sd_*` tools, `/stardock`/`/sd` commands, and a Stardock state path over compatibility aliases.
-   - Add README/skill copy that describes Stardock as private and experimental.
-2. **Criterion ledger prototype**
+1. **Criterion ledger prototype**
    - Add additive state for criteria, pass conditions, test methods, status, evidence, optional red/green evidence, and baseline validation.
    - Add a plan/task-file distillation path that can create or update criteria without replacing the canonical plan.
    - Add tests for migration, status updates, prompt caps, baseline evidence, and requirement-to-criterion traceability.
-3. **Verification artifact handling**
+2. **Verification artifact handling**
    - Add artifact refs for tests, smoke commands, `curl`, browser/screenshot checks, walkthroughs, and benchmarks.
    - Store long logs/screenshots outside state and include only compact summaries in prompts.
    - Add final-report support for artifact lists and unresolved validation gaps.
-4. **Criteria-aware context packet routing**
+3. **Criteria-aware context packet routing**
    - Add `GovernorState` and `IterationBrief` after dogfooding confirms the needed fields.
    - Change recursive prompt generation so a governor-selected brief, not the full canonical plan, becomes the normal worker prompt.
    - Include selected `criterionIds`, required context, and verification requirements; keep large artifacts referenced.
    - Add tests that the prompt includes only selected context and still preserves required constraints.
-5. **Auditor oversight workflow**
+4. **Auditor oversight workflow**
    - Add `auditor_review` request creation and ready-to-copy auditor payloads.
    - Add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.
    - Record auditor findings and require blocker findings to constrain, be explicitly rejected by, or escalate the next governor decision.
-6. **Worker report / selective review workflow**
+5. **Worker report / selective review workflow**
    - Define `WorkerReport` state and payload expectations, including evaluated criteria, artifact refs, and failure diagnoses.
    - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
    - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
-7. **Breakout, final verification, and compound learning reports**
+6. **Breakout, final verification, and compound learning reports**
    - Add `BreakoutPackage` for repeated criterion failures, blocked criteria, or no criterion movement.
    - Add `FinalVerificationReport` so completion summarizes criteria status, validation commands, artifacts, integration evidence, and unresolved gaps.
    - Add optional compound-learning proposals and cognitive-debt handoff explanations.
-8. **Advisory subagent workflow**
+7. **Advisory subagent workflow**
    - Start with exploration and test-runner subagents if a safe extension/subagent API exists.
    - Do not apply edits automatically.
    - Persist worker run payload, result, failure, artifact refs, and summaries.
-9. **Evolve mode**
+8. **Evolve mode**
    - Start only after `.pi/plans/stardock-evolve-mode.md` gates are satisfied.
    - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence/artifact handling, auditor gates, and isolation choice before implementation.
 
@@ -725,8 +721,8 @@ The original Ralph mode-aware/recursive plan is complete up to the safe boundary
 
 Per commit:
 - `npm run typecheck --prefix agent/extensions`
-- `npm test --prefix agent/extensions -- private/stardock/index.test.ts` once extracted; use `public/ralph-loop/index.test.ts` only while code still lives there
-- `git diff --check -- agent/extensions/private/stardock agent/extensions/public/ralph-loop` during extraction
+- `npm test --prefix agent/extensions -- private/stardock/index.test.ts`
+- `git diff --check -- agent/extensions/private/stardock`
 
 After behavior changes:
 - `./link-into-pi-agent.sh`

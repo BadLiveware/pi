@@ -1,29 +1,27 @@
 {
-  "name": "@badliveware/pi-ralph-loop",
+  "name": "@badliveware/pi-stardock",
   "version": "0.1.0",
-  "description": "Long-running iterative development loops for Pi.",
+  "description": "Private governed implementation framework for Pi.",
+  "private": true,
   "type": "module",
   "types": "./index.ts",
   "keywords": [
     "pi-package",
     "pi-extension",
-    "ralph",
-    "loop"
+    "stardock",
+    "implementation-framework"
   ],
   "license": "MIT",
   "author": "BadLiveware",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/BadLiveware/pi.git",
-    "directory": "agent/extensions/public/ralph-loop"
+    "directory": "agent/extensions/private/stardock"
   },
   "bugs": {
     "url": "https://github.com/BadLiveware/pi/issues"
   },
-  "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/public/ralph-loop#readme",
-  "publishConfig": {
-    "access": "public"
-  },
+  "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/private/stardock#readme",
   "files": [
     "README.md",
     "LICENSE",

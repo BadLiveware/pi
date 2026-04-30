@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import ralphLoop from "./index.ts";
+import stardockLoop from "./index.ts";
 
 function makeHarness(cwd: string) {
 	const tools = new Map<string, any>();
@@ -59,23 +59,23 @@ function makeHarness(cwd: string) {
 		},
 	} as any;
 
-	ralphLoop(pi);
+	stardockLoop(pi);
 	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, ctx };
 }
 
-test("ralph_loop registers current-compatible tools and commands", () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+test("stardock registers tools and commands", () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, commands, handlers } = makeHarness(cwd);
-		assert.ok(tools.has("ralph_start"));
-		assert.ok(tools.has("ralph_done"));
-		assert.ok(tools.has("ralph_attempt_report"));
-		assert.ok(tools.has("ralph_govern"));
-		assert.ok(tools.has("ralph_outside_payload"));
-		assert.ok(tools.has("ralph_outside_requests"));
-		assert.ok(tools.has("ralph_outside_answer"));
-		assert.ok(commands.has("ralph"));
-		assert.ok(commands.has("ralph-stop"));
+		assert.ok(tools.has("stardock_start"));
+		assert.ok(tools.has("stardock_done"));
+		assert.ok(tools.has("stardock_attempt_report"));
+		assert.ok(tools.has("stardock_govern"));
+		assert.ok(tools.has("stardock_outside_payload"));
+		assert.ok(tools.has("stardock_outside_requests"));
+		assert.ok(tools.has("stardock_outside_answer"));
+		assert.ok(commands.has("stardock"));
+		assert.ok(commands.has("stardock-stop"));
 		assert.ok((handlers.get("before_agent_start") ?? []).length > 0);
 		assert.ok((handlers.get("agent_end") ?? []).length > 0);
 	} finally {
@@ -83,12 +83,12 @@ test("ralph_loop registers current-compatible tools and commands", () => {
 	}
 });
 
-test("ralph_start writes task state and ralph_done queues next iteration", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+test("stardock_start writes task state and stardock_done queues next iteration", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
-		const done = tools.get("ralph_done");
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
 		assert.ok(start);
 		assert.ok(done);
 
@@ -107,11 +107,11 @@ test("ralph_start writes task state and ralph_done queues next iteration", async
 		);
 		assert.match(startResult.content[0].text, /Started loop "Demo_Loop"/);
 		assert.equal(messages.length, 1);
-		assert.match(messages[0].content, /RALPH LOOP: Demo_Loop \| Iteration 1\/3/);
+		assert.match(messages[0].content, /STARDOCK LOOP: Demo_Loop \| Iteration 1\/3/);
 		assert.deepEqual(messages[0].options, { deliverAs: "followUp" });
 
-		const statePath = path.join(cwd, ".ralph", "Demo_Loop.state.json");
-		const taskPath = path.join(cwd, ".ralph", "Demo_Loop.md");
+		const statePath = path.join(cwd, ".stardock", "Demo_Loop.state.json");
+		const taskPath = path.join(cwd, ".stardock", "Demo_Loop.md");
 		assert.equal(fs.readFileSync(taskPath, "utf-8"), "# Task\n\n## Checklist\n- [ ] First item\n");
 		const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
 		assert.equal(state.status, "active");
@@ -123,7 +123,7 @@ test("ralph_start writes task state and ralph_done queues next iteration", async
 		const doneResult = await done.execute("tool-2", {}, undefined, undefined, ctx);
 		assert.match(doneResult.content[0].text, /Iteration 1 complete/);
 		assert.equal(messages.length, 2);
-		assert.match(messages[1].content, /RALPH LOOP: Demo_Loop \| Iteration 2\/3/);
+		assert.match(messages[1].content, /STARDOCK LOOP: Demo_Loop \| Iteration 2\/3/);
 		const nextState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
 		assert.equal(nextState.iteration, 2);
 	} finally {
@@ -132,10 +132,10 @@ test("ralph_start writes task state and ralph_done queues next iteration", async
 });
 
 test("completion marker completes loop without queuing a user message", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, handlers, messages, entries, notifications, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
+		const start = tools.get("stardock_start");
 		assert.ok(start);
 
 		await start.execute(
@@ -166,11 +166,11 @@ test("completion marker completes loop without queuing a user message", async ()
 		);
 
 		assert.equal(messages.length, 1, "completion should not send a user message while agent_end is running");
-		assert.equal(entries.at(-1)?.customType, "ralph-loop");
-		assert.match(String((entries.at(-1)?.data as any).banner), /RALPH LOOP COMPLETE: Complete_Loop/);
-		assert.ok(notifications.some((message) => message.includes("RALPH LOOP COMPLETE: Complete_Loop")));
+		assert.equal(entries.at(-1)?.customType, "stardock");
+		assert.match(String((entries.at(-1)?.data as any).banner), /STARDOCK LOOP COMPLETE: Complete_Loop/);
+		assert.ok(notifications.some((message) => message.includes("STARDOCK LOOP COMPLETE: Complete_Loop")));
 
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Complete_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Complete_Loop.state.json"), "utf-8"));
 		assert.equal(state.status, "completed");
 		assert.equal(state.active, false);
 	} finally {
@@ -179,10 +179,10 @@ test("completion marker completes loop without queuing a user message", async ()
 });
 
 test("v1 state without mode migrates to checklist mode on resume", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { commands, messages, ctx } = makeHarness(cwd);
-		const loopDir = path.join(cwd, ".ralph");
+		const loopDir = path.join(cwd, ".stardock");
 		fs.mkdirSync(loopDir, { recursive: true });
 		fs.writeFileSync(path.join(loopDir, "legacy.md"), "# Legacy task\n", "utf-8");
 		fs.writeFileSync(
@@ -190,7 +190,7 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 			JSON.stringify(
 				{
 					name: "legacy",
-					taskFile: ".ralph/legacy.md",
+					taskFile: ".stardock/legacy.md",
 					iteration: 1,
 					maxIterations: 5,
 					itemsPerIteration: 2,
@@ -206,12 +206,12 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 			"utf-8",
 		);
 
-		const ralph = commands.get("ralph");
-		assert.ok(ralph);
-		await ralph.handler("resume legacy", ctx);
+		const stardock = commands.get("stardock");
+		assert.ok(stardock);
+		await stardock.handler("resume legacy", ctx);
 
 		assert.equal(messages.length, 1);
-		assert.match(messages[0].content, /RALPH LOOP: legacy \| Iteration 2\/5/);
+		assert.match(messages[0].content, /STARDOCK LOOP: legacy \| Iteration 2\/5/);
 		const migrated = JSON.parse(fs.readFileSync(path.join(loopDir, "legacy.state.json"), "utf-8"));
 		assert.equal(migrated.schemaVersion, 2);
 		assert.equal(migrated.mode, "checklist");
@@ -226,10 +226,10 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 });
 
 test("unsupported mode does not create a loop", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, commands, messages, notifications, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
+		const start = tools.get("stardock_start");
 		assert.ok(start);
 
 		const toolResult = await start.execute(
@@ -245,23 +245,23 @@ test("unsupported mode does not create a loop", async () => {
 		);
 		assert.match(toolResult.content[0].text, /planned but not implemented/);
 		assert.equal(messages.length, 0);
-		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "Evolve_Loop.state.json")), false);
+		assert.equal(fs.existsSync(path.join(cwd, ".stardock", "Evolve_Loop.state.json")), false);
 
-		const ralph = commands.get("ralph");
-		assert.ok(ralph);
-		await ralph.handler("start cmd-evolve --mode evolve", ctx);
-		assert.ok(notifications.some((message) => message.includes('Ralph mode "evolve" is planned but not implemented yet.')));
-		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "cmd-evolve.state.json")), false);
+		const stardock = commands.get("stardock");
+		assert.ok(stardock);
+		await stardock.handler("start cmd-evolve --mode evolve", ctx);
+		assert.ok(notifications.some((message) => message.includes('Stardock mode "evolve" is planned but not implemented yet.')));
+		assert.equal(fs.existsSync(path.join(cwd, ".stardock", "cmd-evolve.state.json")), false);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
 test("recursive mode start persists setup and queues bounded attempt prompt", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
+		const start = tools.get("stardock_start");
 		assert.ok(start);
 
 		await start.execute(
@@ -286,11 +286,11 @@ test("recursive mode start persists setup and queues bounded attempt prompt", as
 		);
 
 		assert.equal(messages.length, 1);
-		assert.match(messages[0].content, /RALPH RECURSIVE LOOP: Search_Loop \| Attempt 1\/4/);
+		assert.match(messages[0].content, /STARDOCK RECURSIVE LOOP: Search_Loop \| Attempt 1\/4/);
 		assert.match(messages[0].content, /Reduce query latency without hurting recall/);
 		assert.match(messages[0].content, /npm run bench:search/);
 		assert.match(messages[0].content, /one bounded implementer attempt/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Search_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Search_Loop.state.json"), "utf-8"));
 		assert.equal(state.mode, "recursive");
 		assert.equal(state.modeState.kind, "recursive");
 		assert.equal(state.modeState.objective, "Reduce query latency without hurting recall");
@@ -307,12 +307,12 @@ test("recursive mode start persists setup and queues bounded attempt prompt", as
 	}
 });
 
-test("ralph_done records recursive attempt placeholder before next prompt", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+test("stardock_done records recursive attempt placeholder before next prompt", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
-		const done = tools.get("ralph_done");
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
 		assert.ok(start);
 		assert.ok(done);
 
@@ -334,7 +334,7 @@ test("ralph_done records recursive attempt placeholder before next prompt", asyn
 
 		assert.equal(messages.length, 2);
 		assert.match(messages[1].content, /Attempt 2\/3/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Attempt_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Attempt_Loop.state.json"), "utf-8"));
 		assert.equal(state.iteration, 2);
 		assert.equal(state.modeState.attempts.length, 1);
 		assert.equal(state.modeState.attempts[0].id, "attempt-1");
@@ -346,14 +346,14 @@ test("ralph_done records recursive attempt placeholder before next prompt", asyn
 });
 
 test("recursive outside requests can be listed, answered, and included as governor steer", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
-		const done = tools.get("ralph_done");
-		const listOutside = tools.get("ralph_outside_requests");
-		const payloadOutside = tools.get("ralph_outside_payload");
-		const answerOutside = tools.get("ralph_outside_answer");
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
+		const listOutside = tools.get("stardock_outside_requests");
+		const payloadOutside = tools.get("stardock_outside_payload");
+		const answerOutside = tools.get("stardock_outside_answer");
 		assert.ok(start);
 		assert.ok(done);
 		assert.ok(listOutside);
@@ -378,14 +378,14 @@ test("recursive outside requests can be listed, answered, and included as govern
 
 		assert.match(messages[1].content, /Pending Outside Requests/);
 		assert.match(messages[1].content, /governor-1/);
-		let state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Governor_Loop.state.json"), "utf-8"));
+		let state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Governor_Loop.state.json"), "utf-8"));
 		assert.equal(state.outsideRequests.length, 1);
 		assert.equal(state.outsideRequests[0].kind, "governor_review");
 		assert.equal(state.outsideRequests[0].status, "requested");
 
 		const listResult = await listOutside.execute("tool-list", { loopName: "Governor_Loop" }, undefined, undefined, ctx);
 		assert.match(listResult.content[0].text, /governor-1/);
-		assert.match(listResult.content[0].text, /ralph_outside_payload/);
+		assert.match(listResult.content[0].text, /stardock_outside_payload/);
 
 		const payloadResult = await payloadOutside.execute(
 			"tool-payload",
@@ -418,7 +418,7 @@ test("recursive outside requests can be listed, answered, and included as govern
 
 		assert.match(messages[2].content, /Latest Governor Steer/);
 		assert.match(messages[2].content, /Run the benchmark before another implementation attempt/);
-		state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Governor_Loop.state.json"), "utf-8"));
+		state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Governor_Loop.state.json"), "utf-8"));
 		assert.equal(state.outsideRequests[0].status, "answered");
 		assert.equal(state.outsideRequests[0].decision.verdict, "measure");
 	} finally {
@@ -426,13 +426,13 @@ test("recursive outside requests can be listed, answered, and included as govern
 	}
 });
 
-test("ralph_attempt_report records structured recursive attempt data", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+test("stardock_attempt_report records structured recursive attempt data", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
-		const done = tools.get("ralph_done");
-		const report = tools.get("ralph_attempt_report");
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
+		const report = tools.get("stardock_attempt_report");
 		assert.ok(start);
 		assert.ok(done);
 		assert.ok(report);
@@ -473,7 +473,7 @@ test("ralph_attempt_report records structured recursive attempt data", async () 
 
 		assert.match(messages[2].content, /Recent Attempt Reports/);
 		assert.match(messages[2].content, /candidate_change · improved/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Report_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Report_Loop.state.json"), "utf-8"));
 		assert.equal(state.modeState.attempts[0].status, "reported");
 		assert.equal(state.modeState.attempts[0].kind, "candidate_change");
 		assert.equal(state.modeState.attempts[0].result, "improved");
@@ -485,12 +485,12 @@ test("ralph_attempt_report records structured recursive attempt data", async () 
 });
 
 test("recursive triggers create governor and stagnation requests from structured attempts", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
-		const done = tools.get("ralph_done");
-		const report = tools.get("ralph_attempt_report");
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
+		const report = tools.get("stardock_attempt_report");
 		assert.ok(start);
 		assert.ok(done);
 		assert.ok(report);
@@ -547,7 +547,7 @@ test("recursive triggers create governor and stagnation requests from structured
 
 		assert.match(messages[2].content, /governor-2/);
 		assert.match(messages[2].content, /research-stagnation-2/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Trigger_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Trigger_Loop.state.json"), "utf-8"));
 		assert.ok(state.outsideRequests.some((request: any) => request.id === "governor-2" && request.kind === "governor_review"));
 		assert.ok(state.outsideRequests.some((request: any) => request.id === "research-stagnation-2" && request.kind === "failure_analysis"));
 	} finally {
@@ -555,12 +555,12 @@ test("recursive triggers create governor and stagnation requests from structured
 	}
 });
 
-test("ralph_govern creates a manual governor request payload", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+test("stardock_govern creates a manual governor request payload", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, ctx } = makeHarness(cwd);
-		const start = tools.get("ralph_start");
-		const govern = tools.get("ralph_govern");
+		const start = tools.get("stardock_start");
+		const govern = tools.get("stardock_govern");
 		assert.ok(start);
 		assert.ok(govern);
 
@@ -582,7 +582,7 @@ test("ralph_govern creates a manual governor request payload", async () => {
 		assert.match(result.content[0].text, /Governor task/);
 		assert.match(result.content[0].text, /Trigger: manual/);
 		assert.equal(result.details.request.id, "governor-manual-1");
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Govern_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Govern_Loop.state.json"), "utf-8"));
 		assert.equal(state.outsideRequests[0].id, "governor-manual-1");
 		assert.equal(state.outsideRequests[0].trigger, "manual");
 	} finally {
