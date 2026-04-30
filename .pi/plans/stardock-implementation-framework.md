@@ -161,7 +161,7 @@ governor updates state and chooses the next packet
 
 The governor also has a one-shot/compaction problem. Do not assume the governor keeps infinite chat context. Preserve governor understanding in durable state and outsource bounded work to workers/subagents when useful.
 
-Future state shape to consider:
+Current and candidate future state shape:
 
 ```ts
 interface GovernorState {
@@ -227,7 +227,7 @@ canonical plan
 → governor chooses next brief or final verification
 ```
 
-Future state shape to consider:
+Current and candidate future evidence shape:
 
 ```ts
 interface Criterion {
@@ -363,7 +363,7 @@ Auditor reviews should run only at checkpoints:
 - before high-risk automation such as editing subagents, candidate patch application, or evolve mode;
 - when drift signals appear, such as repeated no-progress decisions, omitted context, or repeated worker duplication.
 
-Future state shape to consider:
+Current and candidate future auditor shape:
 
 ```ts
 interface AuditorFinding {
@@ -404,43 +404,36 @@ Two-key decisions should require governor plus auditor agreement, or explicit us
 - perform destructive operations;
 - declare a large/complex change done without walkthrough/evidence.
 
-First implementation should be data-only: create an `auditor_review` outside request and ready-to-copy payload, then record the answer like other outside requests. Do not add always-on auditor loops or direct model calls inside the extension.
+Current implementation is data-only: `stardock_auditor` creates ready-to-copy auditor payloads and records compact review results, while `stardock_policy({ action: "auditor" })` recommends when oversight is warranted. Do not add always-on auditor loops, direct model calls, or enforcing gates inside the extension until blocker-handling policy is explicit.
 
 ## Remaining future work summary
 
-The practical implementation path is complete through bounded recursive/governor workflow. Remaining work is design-gated and should be driven by dogfood evidence:
+The practical implementation path is complete through the safe manual/data-only framework boundary. Stardock now has durable state, checklist and recursive modes, governor/outside request workflows, criteria, artifacts, iteration briefs, final reports, auditor reviews, advisory handoffs, breakout packages, worker reports, read-only policy recommendations, batch evidence writes, and Pi-free app orchestration for the main write tools.
 
-1. **Verification-led context routing**
-   - add a `CriterionLedger` after dogfooding confirms the right criterion granularity;
-   - route `criterionIds`, pass conditions, and test methods into `IterationBrief` instead of replaying the full plan;
-   - record baseline validation and red/green evidence when a criterion is backed by new tests;
-   - update criterion status from worker evidence, verification artifacts, and failure diagnoses.
-2. **Context packet routing**
-   - add `GovernorState` and `IterationBrief` only after manual governor/payload workflows show what context is repeatedly needed;
-   - make prompts brief-by-default and source the canonical plan selectively;
-   - keep large artifacts referenced, not pasted.
-3. **Auditor oversight**
-   - add `auditor_review` requests and ready-to-copy auditor payloads;
-   - run auditor reviews at bounded checkpoints, pre-completion, scope changes, automation gates, and drift signals;
-   - require blocker findings to constrain or be explicitly rejected by the next governor decision;
-   - use two-key rules for unresolved completion, criteria relaxation, editing subagents, evolve execution, and destructive operations.
+Remaining work is design-gated and should be driven by dogfood evidence:
+
+1. **Criteria and evidence policy hardening**
+   - Initial `CriterionLedger`, verification artifact refs, task-file criterion distillation, red/green evidence fields, requirement traces, and compact artifact summaries exist.
+   - Still needed: baseline validation records as first-class evidence, stronger criteria review/update policy, and policy for when worker evidence can update criterion status without manual parent review.
+2. **Context packet routing policy**
+   - Initial `IterationBrief` state, prompt routing, governor-sourced brief metadata, lifecycle cleanup, and bounded criterion/context inclusion exist.
+   - Still needed: stronger policy for when a governor-sourced brief supersedes full task replay across multiple attempts, and optional durable `GovernorState` if dogfooding shows that decisions need more memory than outside requests/briefs currently provide.
+3. **Auditor oversight workflow**
+   - Initial manual/data-only `stardock_auditor` payload/list/record support exists, and `stardock_policy({ action: "auditor" })` recommends oversight from current evidence.
+   - Still needed: trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals; blocker findings should constrain, be explicitly rejected by, or escalate the next governor decision.
 4. **Worker/subagent handoff quality**
-   - define a durable `WorkerReport` contract with evaluated criteria, validation evidence, verification artifact refs, and failure diagnoses;
-   - add selective parent review policy so the governor does not duplicate worker work;
-   - implement advisory-only subagent flow before any editing flow.
+   - Initial provider-neutral `stardock_handoff` and `stardock_worker_report` support exists for advisory payloads/results, evaluated criteria, artifact refs, changed files, validation, risks, questions, suggested next moves, and review hints.
+   - Still needed: selective parent review policy so the governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints; keep this advisory-only before any editing flow.
 5. **Completion, breakout, and learning gates**
-   - initial read-only `stardock_policy` completion readiness support exists; it recommends final reports, auditor reviews, or breakout packages from current evidence without enforcing hidden gates;
-   - add `FinalVerificationReport` before making completion fully criteria-aware;
-   - add `BreakoutPackage` for repeated failures, blocked criteria, or loops with no criterion movement;
-   - add optional compound-learning proposals and cognitive-debt walkthrough requirements for large/complex changes;
-   - keep quality-profile escalation optional and explicit.
-5. **Subagent-driven recursive mode**
-   - use `.pi/plans/stardock-subagent-recursive-mode.md` as the design gate;
-   - start with exploration and test-runner subagents before implementer subagents;
-   - do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, and edit ownership are safe.
-6. **Evolve mode**
-   - use `.pi/plans/stardock-evolve-mode.md` as the design gate;
-   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, auditor gate handling, and dogfood evidence are available.
+   - Initial manual/data-only `FinalVerificationReport` and `BreakoutPackage` support exists, and `stardock_policy({ action: "completion" | "breakout" })` recommends final reports, auditor reviews, or breakout packages without enforcing hidden gates.
+   - Still needed: policy for when completion should require or recommend a final report/auditor review/breakout package, optional compound-learning proposals, and cognitive-debt walkthrough requirements for large or complex changes.
+6. **Subagent-driven recursive mode**
+   - Use `.pi/plans/stardock-subagent-recursive-mode.md` as the design gate.
+   - Start with exploration and test-runner providers before implementer providers.
+   - Do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, edit ownership, and parent review policy are safe.
+7. **Evolve mode**
+   - Use `.pi/plans/stardock-evolve-mode.md` as the design gate.
+   - Implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, auditor gate handling, and dogfood evidence are available.
 
 ## Architecture decision
 
@@ -476,12 +469,15 @@ interface LoopState {
   currentBriefId?: string;
   finalVerificationReports: FinalVerificationReport[];
   auditorReviews: AuditorReview[];
+  advisoryHandoffs: AdvisoryHandoff[];
+  breakoutPackages: BreakoutPackage[];
+  workerReports: WorkerReport[];
 }
 ```
 
 Private Stardock schema rule: current `.stardock/runs/<name>/state.json` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, and legacy flat `.stardock/<name>.state.json` files remain readable enough to resume and rewrite into the run-folder layout. `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
 
-Future schema revisions may add `governorState`, baseline validation, compound-learning proposals, handoff explanations, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/brief/final-report/auditor-review lists.
+Future schema revisions may add `governorState`, baseline validation, compound-learning proposals, handoff explanations, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized evidence and governance lists.
 
 ### Mode interface
 
@@ -727,6 +723,16 @@ Completed implementation is intentionally compacted here; use commit history and
 | Per-run Stardock storage | Done | Managed runs use `.stardock/runs/<name>/task.md` and `state.json`; archives use `.stardock/archive/<name>/`. |
 | Recursive dogfood stabilization | Done | Governor requests dedupe by iteration; `stardock_state` lists/inspects loop state without reading runtime files directly. |
 | Operational run visualization | Done | `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views show status, progress, latest governor decision, and event flow. |
+| Criterion ledger and artifacts | Done | `stardock_ledger` lists/upserts criteria, records compact verification artifact refs, supports batch writes, and can distill starter criteria from task-file checklist or goal bullets without rewriting the task. |
+| Iteration briefs | Done | `stardock_brief` manages manual/governor-sourced context packets, activation, lifecycle cleanup, bounded prompt routing, batch upsert/complete, and prompt preview details. |
+| Final reports | Done | `stardock_final_report` records compact manual final verification reports with criteria, artifacts, validation, unresolved gaps, and risk notes. |
+| Auditor reviews | Done | `stardock_auditor` builds ready-to-copy manual auditor payloads and records compact auditor review results; v1 is data-only and non-executing. |
+| Advisory handoffs | Done | `stardock_handoff` builds provider-neutral handoff payloads and records compact returned results without binding Stardock to provider execution. |
+| Breakout packages | Done | `stardock_breakout` builds and records manual decision packages for blocked/stuck loops; v1 is data-only and non-enforcing. |
+| Governance policies | Done | `stardock_policy` provides read-only advisory recommendations for completion, auditor, and breakout checks without mutating state or enforcing gates. |
+| Worker reports | Done | `stardock_worker_report` builds provider-neutral report contracts and records compact worker results for selective parent/governor review. |
+| Followup and batch ergonomics | Done | Mutating evidence tools support batch-first inputs; Stardock-local `followupTool` attaches approved read-only followups while rejecting unknown or mutating nested actions. |
+| App-layer extraction | Done | Main evidence-writing tools now route mutation orchestration through Pi-free `src/app/*-tool.ts` modules; Pi-facing files remain registration/schema/state-store/UI adapters. |
 
 ### Next implementation candidates
 
@@ -835,11 +841,12 @@ After behavior changes:
 
 ## Execution recommendation
 
-The initial mode-aware/recursive implementation path is complete. Next execution should not restart at task 1. Use this order instead:
+The initial mode-aware/recursive path and the safe manual/data-only governance/evidence layer are complete. Next execution should not restart earlier implementation tasks. Use this order instead:
 
-1. Dogfood recursive mode with the current attempt-report/governor tools on one or two real debugging or optimization tasks.
-2. Prototype the criterion ledger and baseline/red-green evidence only after dogfooding confirms the right granularity.
-3. Add verification artifacts and compact final reports.
-4. Add auditor review requests/payloads before adding any direct subagent automation.
-5. Add exploration/test-runner subagents before implementer subagents.
-6. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates and auditor checkpoints.
+1. Dogfood Stardock on real implementation work using criterion distillation, explicit artifacts, final reports, and read-only policy checks.
+2. Add first-class baseline validation records and criteria review/update policy only after dogfooding confirms the right granularity and update ownership.
+3. Strengthen context packet routing and governor memory only where briefs/outside requests are insufficient.
+4. Add auditor trigger handling and blocker-followup policy before adding direct provider execution.
+5. Add selective parent review policy for WorkerReports and advisory handoffs.
+6. Add exploration/test-runner provider adapters before implementer/editing adapters.
+7. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates and auditor checkpoints.
