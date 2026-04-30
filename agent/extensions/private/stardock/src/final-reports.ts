@@ -12,6 +12,7 @@ import {
 	isFinalVerificationStatus,
 	isValidationResult,
 	loadState,
+	nextSequentialId,
 	normalizeId,
 	normalizeIds,
 	normalizeStringList,
@@ -22,13 +23,6 @@ export interface FinalReportToolDeps {
 	getCurrentLoop(): string | null;
 	updateUI(ctx: ExtensionContext): void;
 	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean }): Record<string, unknown>;
-}
-
-function nextSequentialId(prefix: string, existing: Array<{ id: string }>): string {
-	let index = existing.length + 1;
-	const ids = new Set(existing.map((item) => item.id));
-	while (ids.has(`${prefix}${index}`)) index++;
-	return `${prefix}${index}`;
 }
 
 export function migrateFinalValidationRecords(value: unknown): FinalValidationRecord[] {

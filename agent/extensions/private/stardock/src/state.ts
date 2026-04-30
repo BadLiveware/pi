@@ -233,6 +233,13 @@ export function compactText(value: string | undefined, maxLength = 160): string 
 	return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
+export function nextSequentialId(prefix: string, existing: Array<{ id: string }>): string {
+	let index = existing.length + 1;
+	const ids = new Set(existing.map((item) => item.id));
+	while (ids.has(`${prefix}${index}`)) index++;
+	return `${prefix}${index}`;
+}
+
 // --- File helpers ---
 
 export const stardockDir = (ctx: ExtensionContext) => path.resolve(ctx.cwd, STARDOCK_DIR);
