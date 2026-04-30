@@ -36,6 +36,11 @@ Do not add tools for static behavior that has no meaningful state or user-tunabl
 
 ## Interface Design Rules
 
+- Design for the common agent workflow, not only for the smallest primitive operation. If agents routinely need `mutate → inspect`, `create → start`, `start → watch`, or another ordered sequence, prefer one structured tool call or an explicit option that returns the post-change state.
+- Avoid unnecessary round trips. Use batch inputs and opt-in response expansion flags such as `includeList`, `includeState`, `includePreview`, or `dryRun` when they let the agent safely avoid an immediate follow-up read/list call.
+- Do not rely on parallel or multi-tool dispatch for ordered workflows. Separate tool calls are only safe to parallelize when they are independent; if the second call must observe the first call's mutation, encode that ordering in a single tool action or response option.
+- Allow initial state in creation APIs when it matches real workflows. For example, a task-like extension should let a batch create mark the first item `in_progress` instead of requiring a separate create-then-update sequence.
+- Keep normal responses compact, and make larger post-mutation summaries opt-in so convenience does not make simple operations noisy.
 - Name tools with a stable extension prefix. Use names that describe capabilities, such as `<extension>_state`, `<extension>_sources`, `<extension>_config`, `<extension>_debug`, or a single `<extension>_manage` tool with explicit actions.
 - Keep tool descriptions action-specific; say what the tool returns or changes.
 - Return concise `content` for the model and richer structured `details` for rendering/debugging.
