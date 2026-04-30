@@ -154,6 +154,7 @@ export type AuditorReviewStatus = "draft" | "passed" | "concerns" | "blocked";
 export type AdvisoryHandoffRole = "explorer" | "test_runner" | "researcher" | "reviewer" | "governor" | "auditor" | "implementer";
 export type BreakoutPackageStatus = "draft" | "open" | "resolved" | "dismissed";
 export type AdvisoryHandoffStatus = "draft" | "requested" | "answered" | "failed" | "dismissed";
+export type WorkerReportStatus = "draft" | "submitted" | "accepted" | "needs_review" | "dismissed";
 
 export interface FinalValidationRecord {
 	command?: string;
@@ -233,6 +234,38 @@ export interface BreakoutPackage {
 	updatedAt: string;
 }
 
+export interface WorkerValidationRecord {
+	command?: string;
+	result: ValidationResult;
+	summary: string;
+	artifactIds?: string[];
+}
+
+export interface ChangedFileReport {
+	path: string;
+	summary: string;
+	reviewReason?: string;
+}
+
+export interface WorkerReport {
+	id: string;
+	status: WorkerReportStatus;
+	role: AdvisoryHandoffRole;
+	objective: string;
+	summary: string;
+	advisoryHandoffIds: string[];
+	evaluatedCriterionIds: string[];
+	artifactIds: string[];
+	changedFiles: ChangedFileReport[];
+	validation: WorkerValidationRecord[];
+	risks: string[];
+	openQuestions: string[];
+	suggestedNextMove?: string;
+	reviewHints: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
 export interface IterationBrief {
 	id: string;
 	status: IterationBriefStatus;
@@ -286,6 +319,7 @@ export interface LoopState {
 	auditorReviews: AuditorReview[];
 	advisoryHandoffs: AdvisoryHandoff[];
 	breakoutPackages: BreakoutPackage[];
+	workerReports: WorkerReport[];
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };

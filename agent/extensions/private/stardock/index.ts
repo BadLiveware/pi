@@ -86,6 +86,7 @@ import { criterionCounts, formatCriterionCounts, registerLedgerTool } from "./sr
 import { answerOutsideRequest, appendOutsideRequestPromptSections, createManualGovernorPayload, formatOutsideRequests, getOutsideRequestPayload, latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests, registerOutsideRequestTools } from "./src/outside-requests.ts";
 import { registerPolicyTool } from "./src/policy.ts";
 import { formatLoop, formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "./src/views.ts";
+import { registerWorkerReportTool } from "./src/worker-reports.ts";
 
 export default function (pi: ExtensionAPI) {
 	let currentLoop: string | null = null;
@@ -602,6 +603,7 @@ export default function (pi: ExtensionAPI) {
 				auditorReviews: [],
 				advisoryHandoffs: [],
 				breakoutPackages: [],
+				workerReports: [],
 			};
 
 			saveState(ctx, state);
@@ -1048,6 +1050,7 @@ Examples:
 				auditorReviews: [],
 				advisoryHandoffs: [],
 				breakoutPackages: [],
+				workerReports: [],
 			};
 
 			saveState(ctx, state);
@@ -1245,6 +1248,12 @@ Examples:
 
 	registerPolicyTool(pi, {
 		getCurrentLoop: () => currentLoop,
+	});
+
+	registerWorkerReportTool(pi, {
+		getCurrentLoop: () => currentLoop,
+		updateUI,
+		optionalLoopDetails,
 	});
 
 	registerAttemptReportTool(pi, {

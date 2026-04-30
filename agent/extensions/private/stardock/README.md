@@ -35,6 +35,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | `stardock_auditor` | Build ready-to-copy manual auditor review payloads and record compact auditor review results. Supports `list`, `payload`, and `record`; v1 is data-only and does not call models, spawn subagents, or block completion. |
 | `stardock_breakout` | Build manual breakout decision payloads and record compact breakout packages for stuck or blocked loops. Supports `list`, `payload`, and `record`; v1 is data-only and does not trigger escalation or block completion automatically. |
 | `stardock_policy` | Inspect read-only governance policy recommendations. V1 supports `completion` readiness checks that suggest final reports, auditor reviews, or breakout packages without enforcing gates. |
+| `stardock_worker_report` | Build provider-neutral WorkerReport payloads and record compact worker results with changed files, validation, risks, questions, next moves, and review hints. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
@@ -103,6 +104,8 @@ Use `stardock_handoff` when a future worker/reviewer/researcher/explorer handoff
 Use `stardock_breakout` when a loop is stuck, blocked, repeatedly failing criteria, or lacking enough evidence to continue honestly. `payload` builds a compact decision package for a user, governor, auditor, or advisor; `record` stores the compact package with linked criteria, attempts, artifacts, final reports, auditor reviews, advisory handoffs, outside requests, last errors, suspected root causes, requested decision, resume criteria, and recommended next actions; `list` inspects packages. Breakout packages are evidence and decision handoffs, not automation: v1 does not call models, spawn agents, run processes, trigger escalation, apply edits, or block completion automatically.
 
 Use `stardock_policy({ action: "completion" })` before claiming substantial work complete when you want a read-only readiness check. It inspects criteria, artifacts, final reports, auditor reviews, and breakout packages and returns advisory findings with linked evidence plus suggested tools such as `stardock_final_report`, `stardock_auditor`, or `stardock_breakout`. Policy findings do not mutate state, call models, spawn agents, run processes, apply edits, or hard-block completion; agents remain responsible for judgment and validation.
+
+Use `stardock_worker_report` when a human, agent, model, CLI, or future adapter returns work that should guide selective parent/governor review. `payload` builds a provider-neutral WorkerReport contract; `record` stores compact results with role, objective, summary, related advisory handoffs, evaluated criteria, artifacts, changed files, validation records, risks, open questions, suggested next move, and review hints; `list` inspects recorded reports. Worker reports are evidence records, not execution: Stardock does not run providers, assume output formats, apply patches, or force parent review automation in v1.
 
 Agents can request the same views through `stardock_state`:
 

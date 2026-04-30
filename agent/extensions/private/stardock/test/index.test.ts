@@ -19,6 +19,7 @@ test("stardock registers tools and commands", () => {
 		assert.ok(tools.has("stardock_auditor"));
 		assert.ok(tools.has("stardock_breakout"));
 		assert.ok(tools.has("stardock_policy"));
+		assert.ok(tools.has("stardock_worker_report"));
 		assert.ok(tools.has("stardock_attempt_report"));
 		assert.ok(tools.has("stardock_govern"));
 		assert.ok(tools.has("stardock_outside_payload"));

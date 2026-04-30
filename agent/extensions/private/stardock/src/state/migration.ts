@@ -11,6 +11,7 @@ import {
 	type BreakoutPackage,
 	type BreakoutPackageStatus,
 	type AuditorReviewStatus,
+	type ChangedFileReport,
 	type Criterion,
 	type CriterionLedger,
 	type CriterionStatus,
@@ -27,6 +28,9 @@ import {
 	type RecursiveModeState,
 	type ValidationResult,
 	type VerificationArtifact,
+	type WorkerReport,
+	type WorkerReportStatus,
+	type WorkerValidationRecord,
 	type VerificationArtifactKind,
 	compactText,
 } from "./core.ts";
@@ -200,6 +204,10 @@ export function isAdvisoryHandoffStatus(value: unknown): value is AdvisoryHandof
 
 export function isBreakoutPackageStatus(value: unknown): value is BreakoutPackageStatus {
 	return ["draft", "open", "resolved", "dismissed"].includes(String(value));
+}
+
+export function isWorkerReportStatus(value: unknown): value is WorkerReportStatus {
+	return ["draft", "submitted", "accepted", "needs_review", "dismissed"].includes(String(value));
 }
 
 function normalizeProviderMetadata(value: unknown): Record<string, unknown> | undefined {
@@ -388,6 +396,74 @@ export function migrateBreakoutPackages(value: unknown): BreakoutPackage[] {
 		.filter((breakout): breakout is BreakoutPackage => breakout !== null);
 }
 
+export function migrateWorkerValidationRecords(value: unknown): WorkerValidationRecord[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item): WorkerValidationRecord | null => {
+			if (!item || typeof item !== "object") return null;
+			const record = item as Partial<WorkerValidationRecord> & Record<string, unknown>;
+			const summary = typeof record.summary === "string" ? record.summary.trim() : "";
+			if (!summary) return null;
+			return {
+				command: typeof record.command === "string" && record.command.trim() ? compactText(record.command.trim(), 240) : undefined,
+				result: isValidationResult(record.result) ? record.result : "skipped",
+				summary: compactText(summary, 500) ?? summary,
+				artifactIds: normalizeIds(record.artifactIds),
+			};
+		})
+		.filter((record): record is WorkerValidationRecord => record !== null);
+}
+
+export function migrateChangedFileReports(value: unknown): ChangedFileReport[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item): ChangedFileReport | null => {
+			if (!item || typeof item !== "object") return null;
+			const file = item as Partial<ChangedFileReport> & Record<string, unknown>;
+			const filePath = typeof file.path === "string" ? file.path.trim() : "";
+			if (!filePath) return null;
+			const summary = typeof file.summary === "string" && file.summary.trim() ? file.summary.trim() : "Changed file requires parent review if relevant.";
+			return {
+				path: compactText(filePath, 240) ?? filePath,
+				summary: compactText(summary, 240) ?? summary,
+				reviewReason: typeof file.reviewReason === "string" && file.reviewReason.trim() ? compactText(file.reviewReason.trim(), 240) ?? file.reviewReason.trim() : undefined,
+			};
+		})
+		.filter((file): file is ChangedFileReport => file !== null);
+}
+
+export function migrateWorkerReports(value: unknown): WorkerReport[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item, index): WorkerReport | null => {
+			if (!item || typeof item !== "object") return null;
+			const report = item as Partial<WorkerReport> & Record<string, unknown>;
+			const objective = typeof report.objective === "string" ? report.objective.trim() : "";
+			const summary = typeof report.summary === "string" ? report.summary.trim() : "";
+			if (!objective && !summary) return null;
+			const now = new Date().toISOString();
+			return {
+				id: normalizeId(report.id, `wr${index + 1}`),
+				status: isWorkerReportStatus(report.status) ? report.status : "submitted",
+				role: isAdvisoryHandoffRole(report.role) ? report.role : "reviewer",
+				objective: objective ? compactText(objective, 500) ?? objective : compactText(summary, 500) ?? summary,
+				summary: summary ? compactText(summary, 500) ?? summary : compactText(objective, 500) ?? objective,
+				advisoryHandoffIds: normalizeStringList(report.advisoryHandoffIds),
+				evaluatedCriterionIds: normalizeStringList(report.evaluatedCriterionIds),
+				artifactIds: normalizeStringList(report.artifactIds),
+				changedFiles: migrateChangedFileReports(report.changedFiles),
+				validation: migrateWorkerValidationRecords(report.validation),
+				risks: normalizeStringList(report.risks).map((risk) => compactText(risk, 240) ?? risk),
+				openQuestions: normalizeStringList(report.openQuestions).map((question) => compactText(question, 240) ?? question),
+				suggestedNextMove: typeof report.suggestedNextMove === "string" && report.suggestedNextMove.trim() ? compactText(report.suggestedNextMove.trim(), 500) ?? report.suggestedNextMove.trim() : undefined,
+				reviewHints: normalizeStringList(report.reviewHints).map((hint) => compactText(hint, 240) ?? hint),
+				createdAt: typeof report.createdAt === "string" ? report.createdAt : now,
+				updatedAt: typeof report.updatedAt === "string" ? report.updatedAt : now,
+			};
+		})
+		.filter((report): report is WorkerReport => report !== null);
+}
+
 export function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 	const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 	const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
@@ -420,5 +496,6 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		auditorReviews: migrateAuditorReviews(raw.auditorReviews),
 		advisoryHandoffs: migrateAdvisoryHandoffs(raw.advisoryHandoffs),
 		breakoutPackages: migrateBreakoutPackages(raw.breakoutPackages),
+		workerReports: migrateWorkerReports(raw.workerReports),
 	};
 }

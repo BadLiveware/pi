@@ -752,9 +752,10 @@ Do not restart the completed implementation path. Future implementation should b
    - Later, add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.
    - Later, add policy for blocker findings to constrain, be explicitly rejected by, or escalate the next governor decision.
 5. **Worker report / selective review workflow**
-   - Define `WorkerReport` state and payload expectations, including evaluated criteria, artifact refs, and failure diagnoses.
-   - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
-   - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
+   - Initial manual/data-only `WorkerReport` support exists through `stardock_worker_report` for provider-neutral worker results, evaluated criteria, artifact refs, changed files, validation, risks, open questions, suggested next move, and review hints.
+   - Worker reports provide request payload guidance telling workers which files/symbols the parent should inspect and why.
+   - Worker reports do not execute providers, assume `pi-subagents` output, apply patches, or automate parent review in v1.
+   - Later, add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
 6. **Breakout, final verification, and compound learning reports**
    - Initial manual/data-only `BreakoutPackage` support exists through `stardock_breakout` for repeated criterion failures, blocked criteria, unresolved decisions, or no criterion movement.
    - Breakout packages store compact decision/evidence context: linked criteria, attempts, artifacts, final reports, auditor reviews, advisory handoffs, outside requests, last errors, suspected root causes, requested decision, resume criteria, and recommended next actions.
