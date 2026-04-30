@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { runAttemptReportRecord } from "./app/attempt-report-tool.ts";
 import { type LoopState, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveAttemptResult } from "./state/core.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -117,9 +117,8 @@ export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportD
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
-			const inputs = normalizeBatchInputs(params, params.reports);
-			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
-				const result = recordAttemptReport(
+			const response = runAttemptReportRecord(loopName, params, {
+				record: (input) => recordAttemptReport(
 					ctx,
 					loopName,
 					{
@@ -134,14 +133,11 @@ export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportD
 						followupIdeas: input.followupIdeas,
 					},
 					deps.updateUI,
-				);
-				return result.ok ? { state: result.state, item: result.attempt } : result;
+				),
 			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
-			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "attempt", pluralName: "attempt reports", pluralDetailKey: "attempts", singleItemText: (attempt) => `Recorded report for attempt ${attempt.iteration}` });
 			return {
-				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
-				details: { loopName, [response.detailKey]: response.detailValue },
+				content: [{ type: "text", text: response.contentText }],
+				details: response.details,
 			};
 		},
 	});
