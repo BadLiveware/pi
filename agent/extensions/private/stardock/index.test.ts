@@ -312,6 +312,108 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 	}
 });
 
+test("stardock tools support reduced-round-trip batch and activation workflows", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(brief);
+
+		await start.execute(
+			"tool-ergonomics-start",
+			{
+				name: "Ergonomics Loop",
+				mode: "checklist",
+				taskContent: "# Ergonomics task\n\n## Checklist\n- [ ] Keep default prompts compatible\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const criteriaResult = await ledger.execute(
+			"tool-ergonomics-criteria",
+			{
+				action: "upsertCriteria",
+				loopName: "Ergonomics_Loop",
+				includeState: true,
+				criteria: [
+					{
+						id: "c-one",
+						description: "First criterion can be seeded in a batch.",
+						passCondition: "Batch upsert returns the created criterion.",
+					},
+					{
+						id: "c-two",
+						description: "Second criterion can be seeded in the same call.",
+						passCondition: "Batch upsert returns refreshed state counts.",
+						status: "passed",
+						evidence: "Seeded through batch upsert.",
+					},
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(criteriaResult.content[0].text, /Upserted 2 criteria/);
+		assert.equal(criteriaResult.details.criteria.length, 2);
+		assert.equal(criteriaResult.details.loop.criteria.total, 2);
+		assert.equal(criteriaResult.details.loop.criteria.passed, 1);
+
+		const artifactsResult = await ledger.execute(
+			"tool-ergonomics-artifacts",
+			{
+				action: "recordArtifacts",
+				loopName: "Ergonomics_Loop",
+				includeState: true,
+				artifacts: [
+					{ id: "a-one", kind: "walkthrough", summary: "First compact artifact.", criterionIds: ["c-one"] },
+					{ id: "a-two", kind: "test", summary: "Second compact artifact.", criterionIds: ["c-two"] },
+				],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(artifactsResult.content[0].text, /Recorded 2 artifacts/);
+		assert.equal(artifactsResult.details.artifacts.length, 2);
+		assert.equal(artifactsResult.details.loop.verificationArtifacts.total, 2);
+
+		const briefResult = await brief.execute(
+			"tool-ergonomics-brief",
+			{
+				action: "upsert",
+				loopName: "Ergonomics_Loop",
+				id: "b-one",
+				objective: "Reduce serial tool calls.",
+				task: "Use one call to create and activate a bounded brief.",
+				criterionIds: ["c-one"],
+				activate: true,
+				includeState: true,
+				includePromptPreview: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(briefResult.content[0].text, /Created brief b-one and activated it/);
+		assert.equal(briefResult.details.currentBriefId, "b-one");
+		assert.equal(briefResult.details.brief.status, "active");
+		assert.equal(briefResult.details.loop.briefs.currentBriefId, "b-one");
+		assert.match(briefResult.details.promptPreview, /## Active Iteration Brief/);
+		assert.match(briefResult.details.promptPreview, /c-one \[pending\]/);
+		assert.equal(briefResult.details.promptPreview.includes("Keep default prompts compatible"), false);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_brief routes bounded prompt context from selected criteria", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

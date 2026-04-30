@@ -129,6 +129,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - The active-run widget now provides an at-a-glance companion with loop identity, mode/status/iteration, recursive attempt progress, outside request count, latest attempt, and latest governor steer.
 - Initial schema v3 ledger state now stores `criterionLedger` and `verificationArtifacts`; `stardock_ledger` can list/upsert criteria and record compact artifact refs, and `stardock_state` reports criteria/artifact progress without reading `.stardock/` files.
 - Initial IterationBrief v1 state now stores manual `briefs` and `currentBriefId`; `stardock_brief` can list/upsert/activate/clear/complete briefs, and active briefs add bounded selected context to prompts without replaying the full ledger or long artifacts.
+- Agent-operability refinements reduce common serial workflows: `stardock_ledger` supports batch criteria/artifact updates and opt-in state/overview details, while `stardock_brief` can create-and-activate a brief plus return optional state or prompt preview details in one call.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -733,7 +734,7 @@ Do not restart the completed implementation path. Future implementation should b
    - Add final-report support for artifact lists and unresolved validation gaps.
 3. **Criteria-aware context packet expansion**
    - Initial manual IterationBrief v1 state and `stardock_brief` update/list/activation support exists.
-   - Dogfood manually selected briefs before adding `GovernorState`; keep prompts normal when no active brief exists.
+   - Manual brief dogfood found the data shape usable; agent-operability refinement added `activate: true`, optional `includeState`, and capped `includePromptPreview` for create-and-use workflows.
    - Later, add governor-selected brief creation and stronger policy for when a brief supersedes full task replay.
    - Continue keeping selected `criterionIds`, required context, and verification requirements bounded; keep large artifacts referenced.
 4. **Auditor oversight workflow**

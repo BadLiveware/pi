@@ -1101,6 +1101,20 @@ export default function (pi: ExtensionAPI) {
 		);
 	}
 
+	function promptPreview(ctx: ExtensionContext, state: LoopState): string | undefined {
+		const content = tryRead(path.resolve(ctx.cwd, state.taskFile));
+		if (!content) return undefined;
+		return compactText(buildPrompt(state, content, "iteration"), 4000);
+	}
+
+	function optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; includePromptPreview?: boolean }): Record<string, unknown> {
+		return {
+			...(options.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}),
+			...(options.includeOverview ? { overview: formatRunOverview(ctx, state, false) } : {}),
+			...(options.includePromptPreview ? { promptPreview: promptPreview(ctx, state) } : {}),
+		};
+	}
+
 	function formatCriterionCounts(ledger: CriterionLedger): string {
 		const counts = criterionCounts(ledger);
 		return `Criteria: ${counts.total} total, ${counts.passed} passed, ${counts.failed} failed, ${counts.blocked} blocked, ${counts.skipped} skipped, ${counts.pending} pending`;
@@ -2381,6 +2395,10 @@ Examples:
 			avoid: Type.Optional(Type.Array(Type.String(), { description: "Moves or scopes to avoid for this brief." })),
 			outputContract: Type.Optional(Type.String({ description: "Expected report/evidence from the worker." })),
 			sourceRefs: Type.Optional(Type.Array(Type.String(), { description: "Source refs for this brief." })),
+			activate: Type.Optional(Type.Boolean({ description: "For upsert, activate the brief in the same call." })),
+			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
+			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
+			includePromptPreview: Type.Optional(Type.Boolean({ description: "Include a capped next-prompt preview in details after mutation." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
@@ -2410,9 +2428,18 @@ Examples:
 					sourceRefs: params.sourceRefs,
 				});
 				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				let state = result.state;
+				let brief = result.brief;
+				if (params.activate === true) {
+					const activateResult = setCurrentBrief(ctx, loopName, result.brief.id);
+					if (!activateResult.ok) return { content: [{ type: "text", text: activateResult.error }], details: { loopName, brief: result.brief } };
+					state = activateResult.state;
+					brief = activateResult.brief;
+				}
+				const actionText = `${result.created ? "Created" : "Updated"} brief ${brief.id}${params.activate === true ? " and activated it" : ""} in loop "${loopName}".`;
 				return {
-					content: [{ type: "text", text: `${result.created ? "Created" : "Updated"} brief ${result.brief.id} in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, briefs: result.state.briefs, currentBriefId: result.state.currentBriefId },
+					content: [{ type: "text", text: actionText }],
+					details: { loopName, brief, briefs: state.briefs, currentBriefId: state.currentBriefId, ...optionalLoopDetails(ctx, state, params) },
 				};
 			}
 
@@ -2422,7 +2449,7 @@ Examples:
 				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
 				return {
 					content: [{ type: "text", text: `Activated brief ${result.brief.id} in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId },
+					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...optionalLoopDetails(ctx, result.state, params) },
 				};
 			}
 
@@ -2431,7 +2458,7 @@ Examples:
 				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
 				return {
 					content: [{ type: "text", text: result.brief ? `Cleared current brief ${result.brief.id} in loop "${loopName}".` : `No current brief in loop "${loopName}".` }],
-					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId },
+					details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...optionalLoopDetails(ctx, result.state, params) },
 				};
 			}
 
@@ -2439,9 +2466,31 @@ Examples:
 			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id: params.id } };
 			return {
 				content: [{ type: "text", text: `Completed brief ${result.brief.id} in loop "${loopName}".` }],
-				details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId },
+				details: { loopName, brief: result.brief, currentBriefId: result.state.currentBriefId, ...optionalLoopDetails(ctx, result.state, params) },
 			};
 		},
+	});
+
+	const criterionInputSchema = Type.Object({
+		id: Type.Optional(Type.String()),
+		taskId: Type.Optional(Type.String()),
+		sourceRef: Type.Optional(Type.String()),
+		requirement: Type.Optional(Type.String()),
+		description: Type.Optional(Type.String()),
+		passCondition: Type.Optional(Type.String()),
+		testMethod: Type.Optional(Type.String()),
+		status: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped"), Type.Literal("blocked")])),
+		evidence: Type.Optional(Type.String()),
+		redEvidence: Type.Optional(Type.String()),
+		greenEvidence: Type.Optional(Type.String()),
+	});
+	const artifactInputSchema = Type.Object({
+		id: Type.Optional(Type.String()),
+		kind: Type.Optional(Type.Union([Type.Literal("test"), Type.Literal("smoke"), Type.Literal("curl"), Type.Literal("browser"), Type.Literal("screenshot"), Type.Literal("walkthrough"), Type.Literal("benchmark"), Type.Literal("log"), Type.Literal("other")])),
+		command: Type.Optional(Type.String()),
+		path: Type.Optional(Type.String()),
+		summary: Type.Optional(Type.String()),
+		criterionIds: Type.Optional(Type.Array(Type.String())),
 	});
 
 	pi.registerTool({
@@ -2449,8 +2498,8 @@ Examples:
 		label: "Manage Stardock Ledger",
 		description: "Inspect or update a Stardock criterion ledger and compact verification artifact refs.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("list"), Type.Literal("upsertCriterion"), Type.Literal("recordArtifact")], {
-				description: "list returns the ledger; upsertCriterion creates/updates a criterion; recordArtifact records a compact verification artifact ref.",
+			action: Type.Union([Type.Literal("list"), Type.Literal("upsertCriterion"), Type.Literal("upsertCriteria"), Type.Literal("recordArtifact"), Type.Literal("recordArtifacts")], {
+				description: "list returns the ledger; upsertCriterion/upsertCriteria create or update criteria; recordArtifact/recordArtifacts record compact verification artifact refs.",
 			}),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			id: Type.Optional(Type.String({ description: "Criterion or artifact id. Generated when omitted." })),
@@ -2488,6 +2537,10 @@ Examples:
 			path: Type.Optional(Type.String({ description: "Path or URL for an artifact." })),
 			summary: Type.Optional(Type.String({ description: "Compact artifact summary. Required for recordArtifact." })),
 			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids linked to an artifact." })),
+			criteria: Type.Optional(Type.Array(criterionInputSchema, { description: "Batch criteria for upsertCriteria." })),
+			artifacts: Type.Optional(Type.Array(artifactInputSchema, { description: "Batch artifacts for recordArtifacts." })),
+			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
+			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? currentLoop;
@@ -2502,8 +2555,8 @@ Examples:
 				};
 			}
 
-			if (params.action === "upsertCriterion") {
-				const result = upsertCriterion(ctx, loopName, {
+			if (params.action === "upsertCriterion" || params.action === "upsertCriteria") {
+				const inputs = params.action === "upsertCriteria" ? params.criteria ?? [] : [{
 					id: params.id,
 					taskId: params.taskId,
 					sourceRef: params.sourceRef,
@@ -2515,26 +2568,48 @@ Examples:
 					evidence: params.evidence,
 					redEvidence: params.redEvidence,
 					greenEvidence: params.greenEvidence,
-				});
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				}];
+				if (inputs.length === 0) return { content: [{ type: "text", text: "No criteria provided." }], details: { loopName } };
+				const criteria: Criterion[] = [];
+				let created = 0;
+				let stateAfter: LoopState | undefined;
+				for (const input of inputs) {
+					const result = upsertCriterion(ctx, loopName, input);
+					if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, criteria } };
+					criteria.push(result.criterion);
+					if (result.created) created++;
+					stateAfter = result.state;
+				}
+				const updatedState = stateAfter ?? loadState(ctx, loopName) ?? undefined;
 				return {
-					content: [{ type: "text", text: `${result.created ? "Created" : "Updated"} criterion ${result.criterion.id} in loop "${loopName}".` }],
-					details: { loopName, criterion: result.criterion, criterionLedger: result.state.criterionLedger },
+					content: [{ type: "text", text: inputs.length === 1 ? `${created === 1 ? "Created" : "Updated"} criterion ${criteria[0].id} in loop "${loopName}".` : `Upserted ${criteria.length} criteria in loop "${loopName}" (${created} created, ${criteria.length - created} updated).` }],
+					details: { loopName, criteria, criterion: criteria[0], criterionLedger: updatedState?.criterionLedger, ...(updatedState ? optionalLoopDetails(ctx, updatedState, params) : {}) },
 				};
 			}
 
-			const result = recordVerificationArtifact(ctx, loopName, {
+			const inputs = params.action === "recordArtifacts" ? params.artifacts ?? [] : [{
 				id: params.id,
 				kind: params.kind,
 				command: params.command,
 				path: params.path,
 				summary: params.summary,
 				criterionIds: params.criterionIds,
-			});
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			}];
+			if (inputs.length === 0) return { content: [{ type: "text", text: "No artifacts provided." }], details: { loopName } };
+			const artifacts: VerificationArtifact[] = [];
+			let created = 0;
+			let stateAfter: LoopState | undefined;
+			for (const input of inputs) {
+				const result = recordVerificationArtifact(ctx, loopName, input);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, artifacts } };
+				artifacts.push(result.artifact);
+				if (result.created) created++;
+				stateAfter = result.state;
+			}
+			const updatedState = stateAfter ?? loadState(ctx, loopName) ?? undefined;
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} artifact ${result.artifact.id} in loop "${loopName}".` }],
-				details: { loopName, artifact: result.artifact, verificationArtifacts: result.state.verificationArtifacts },
+				content: [{ type: "text", text: inputs.length === 1 ? `${created === 1 ? "Recorded" : "Updated"} artifact ${artifacts[0].id} in loop "${loopName}".` : `Recorded ${artifacts.length} artifacts in loop "${loopName}" (${created} created, ${artifacts.length - created} updated).` }],
+				details: { loopName, artifacts, artifact: artifacts[0], verificationArtifacts: updatedState?.verificationArtifacts, ...(updatedState ? optionalLoopDetails(ctx, updatedState, params) : {}) },
 			};
 		},
 	});
