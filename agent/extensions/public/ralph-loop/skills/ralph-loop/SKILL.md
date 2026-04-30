@@ -18,7 +18,7 @@ ralph_start({
 })
 ```
 
-Recursive mode requires an `objective` and may include `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, `outsideHelpEvery`, `governEvery`, and `outsideHelpOnStagnation`. Each recursive iteration should be one bounded hypothesis/attempt with evidence recorded in the task file. Use `ralph_attempt_report` to record structured attempt data when available. If outside-help/governor requests appear, inspect them with `ralph_outside_requests`, fetch ready-to-copy work with `ralph_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `ralph_outside_answer`.
+Recursive mode requires an `objective` and may include `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, `outsideHelpEvery`, `governEvery`, and `outsideHelpOnStagnation`. Each recursive iteration should be one bounded hypothesis/attempt with evidence recorded in the task file. Use `ralph_attempt_report` to record structured attempt data when available. If outside-help/governor requests appear, inspect them with `ralph_outside_requests`, fetch ready-to-copy work with `ralph_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `ralph_outside_answer`. Use `ralph_govern` for an immediate manual governor review request and payload without spawning subagents.
 
 ## Loop Behavior
 
@@ -38,6 +38,7 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
 - `/ralph-stop` - Stop active loop (idle only).
 - `/ralph status` - Show loops.
 - `/ralph list --archived` - Show archived loops.
+- `/ralph govern [loop]` - Create a manual governor review request and payload.
 - `/ralph outside [loop]` - Show outside-help/governor requests.
 - `/ralph outside payload <loop> <request-id>` - Show a ready-to-copy governor/researcher task payload.
 - `/ralph outside answer <loop> <request-id> <answer>` - Record a plain-text outside request answer.

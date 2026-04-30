@@ -362,22 +362,31 @@ export default function (pi: ExtensionAPI) {
 		return attempts.length > 0 ? attempts.map(formatAttemptForPayload).join("\n") : "- No structured attempt reports yet.";
 	}
 
+	function buildGovernorPrompt(state: LoopState, modeState: RecursiveModeState, trigger: OutsideRequestTrigger): string {
+		return [
+			`Review recursive loop "${state.name}" after attempt ${state.iteration}.`,
+			`Objective: ${modeState.objective}`,
+			`Attempts recorded: ${modeState.attempts.length}`,
+			`Trigger: ${trigger}`,
+			"Decide whether the next move should continue, pivot, stop, measure, exploit scaffold, or ask the user.",
+			"If useful, provide requiredNextMove, forbiddenNextMoves, and evidenceGaps.",
+		].join("\n");
+	}
+
+	function createGovernorRequest(state: LoopState, modeState: RecursiveModeState, trigger: OutsideRequestTrigger, idPrefix = "governor"): OutsideRequest {
+		return addOutsideRequest(state, {
+			id: `${idPrefix}-${state.iteration}`,
+			kind: "governor_review",
+			requestedByIteration: state.iteration,
+			trigger,
+			prompt: buildGovernorPrompt(state, modeState, trigger),
+		});
+	}
+
 	function maybeCreateRecursiveOutsideRequests(state: LoopState, modeState: RecursiveModeState): void {
 		const governorCadence = modeState.governEvery ?? modeState.outsideHelpEvery;
 		if (governorCadence && state.iteration % governorCadence === 0) {
-			addOutsideRequest(state, {
-				id: `governor-${state.iteration}`,
-				kind: "governor_review",
-				requestedByIteration: state.iteration,
-				trigger: "every_n_iterations",
-				prompt: [
-					`Review recursive loop "${state.name}" after attempt ${state.iteration}.`,
-					`Objective: ${modeState.objective}`,
-					`Attempts recorded: ${modeState.attempts.length}`,
-					"Decide whether the next move should continue, pivot, stop, measure, exploit scaffold, or ask the user.",
-					"If useful, provide requiredNextMove, forbiddenNextMoves, and evidenceGaps.",
-				].join("\n"),
-			});
+			createGovernorRequest(state, modeState, "every_n_iterations");
 		}
 
 		if (!modeState.outsideHelpOnStagnation) return;
@@ -503,6 +512,18 @@ export default function (pi: ExtensionAPI) {
 		saveState(ctx, state);
 		updateUI(ctx);
 		return { ok: true, state, request };
+	}
+
+	function createManualGovernorPayload(ctx: ExtensionContext, loopName: string): { ok: true; state: LoopState; request: OutsideRequest; payload: string } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		if (state.mode !== "recursive" || state.modeState.kind !== "recursive") {
+			return { ok: false, error: `Loop "${loopName}" is not a recursive loop.` };
+		}
+		const request = createGovernorRequest(state, state.modeState, "manual", "governor-manual");
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, request, payload: buildOutsideRequestPayload(state, request) };
 	}
 
 	// --- Attempt reports ---
@@ -1160,6 +1181,16 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(`${label}:\n${loops.map((l) => formatLoop(l)).join("\n")}`, "info");
 		},
 
+		govern(rest, ctx) {
+			const loopName = rest.trim() || currentLoop;
+			if (!loopName) {
+				ctx.ui.notify("Usage: /ralph govern [loop]", "warning");
+				return;
+			}
+			const result = createManualGovernorPayload(ctx, loopName);
+			ctx.ui.notify(result.ok ? result.payload : result.error, result.ok ? "info" : "error");
+		},
+
 		outside(rest, ctx) {
 			const [action, loopArg, requestId, ...answerParts] = rest.trim().split(/\s+/).filter(Boolean);
 			if (action === "payload") {
@@ -1237,6 +1268,7 @@ Commands:
   /ralph archive <name>               Move loop to archive
   /ralph clean [--all]                Clean completed loops
   /ralph list --archived              Show archived loops
+  /ralph govern [loop]                Create governor request payload
   /ralph outside [loop]               Show outside requests
   /ralph outside payload <loop> <id>  Show ready-to-copy request payload
   /ralph outside answer <loop> <id> <answer>
@@ -1518,6 +1550,25 @@ Examples:
 			return {
 				content: [{ type: "text", text: `Recorded report for attempt ${result.attempt.iteration} in loop "${loopName}".` }],
 				details: { loopName, attempt: result.attempt },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "ralph_govern",
+		label: "Create Ralph Governor Payload",
+		description: "Create or reuse a manual governor review request and return a ready-to-copy payload. Does not spawn subagents or call a model.",
+		parameters: Type.Object({
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			const result = createManualGovernorPayload(ctx, loopName);
+			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			return {
+				content: [{ type: "text", text: result.payload }],
+				details: { loopName, request: result.request, payload: result.payload },
 			};
 		},
 	});

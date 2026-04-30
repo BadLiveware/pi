@@ -70,6 +70,7 @@ test("ralph_loop registers current-compatible tools and commands", () => {
 		assert.ok(tools.has("ralph_start"));
 		assert.ok(tools.has("ralph_done"));
 		assert.ok(tools.has("ralph_attempt_report"));
+		assert.ok(tools.has("ralph_govern"));
 		assert.ok(tools.has("ralph_outside_payload"));
 		assert.ok(tools.has("ralph_outside_requests"));
 		assert.ok(tools.has("ralph_outside_answer"));
@@ -549,6 +550,41 @@ test("recursive triggers create governor and stagnation requests from structured
 		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Trigger_Loop.state.json"), "utf-8"));
 		assert.ok(state.outsideRequests.some((request: any) => request.id === "governor-2" && request.kind === "governor_review"));
 		assert.ok(state.outsideRequests.some((request: any) => request.id === "research-stagnation-2" && request.kind === "failure_analysis"));
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("ralph_govern creates a manual governor request payload", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		const govern = tools.get("ralph_govern");
+		assert.ok(start);
+		assert.ok(govern);
+
+		await start.execute(
+			"tool-recursive",
+			{
+				name: "Govern Loop",
+				mode: "recursive",
+				taskContent: "# Govern task\n",
+				objective: "Choose next move",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const result = await govern.execute("tool-govern", { loopName: "Govern_Loop" }, undefined, undefined, ctx);
+
+		assert.match(result.content[0].text, /Governor task/);
+		assert.match(result.content[0].text, /Trigger: manual/);
+		assert.equal(result.details.request.id, "governor-manual-1");
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Govern_Loop.state.json"), "utf-8"));
+		assert.equal(state.outsideRequests[0].id, "governor-manual-1");
+		assert.equal(state.outsideRequests[0].trigger, "manual");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

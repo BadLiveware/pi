@@ -37,6 +37,7 @@ The extension preserves top-level Ralph state fields for compatibility with exis
 | `ralph_start` | Create `.ralph/<name>.md`, write the task content, save loop state, and queue iteration 1. |
 | `ralph_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
 | `ralph_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
+| `ralph_govern` | Create or reuse a manual governor review request and return its payload. |
 | `ralph_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
 | `ralph_outside_payload` | Return a ready-to-copy governor or researcher task payload for one outside request. |
 | `ralph_outside_answer` | Record an outside-help answer or structured governor decision without editing state files manually. |
@@ -82,6 +83,7 @@ Recursive example:
 | `/ralph-stop` | Stop the active loop when the agent is idle. |
 | `/ralph status` | Show active and paused loops. |
 | `/ralph list --archived` | Show archived loops. |
+| `/ralph govern [loop]` | Create or reuse a manual governor review request and show its payload. |
 | `/ralph outside [loop]` | Show outside-help/governor requests for a loop. |
 | `/ralph outside payload <loop> <request-id>` | Show a ready-to-copy governor or researcher task payload. |
 | `/ralph outside answer <loop> <request-id> <answer>` | Record a plain-text answer for an outside request. |
@@ -110,7 +112,7 @@ Options for `/ralph start`:
 
 Recursive attempts can be reported with `ralph_attempt_report`, including kind (`candidate_change`, `setup`, `refactor`, `instrumentation`, `benchmark_scaffold`, `research`, or `other`), hypothesis, action summary, validation, result (`improved`, `neutral`, `worse`, `invalid`, or `blocked`), keep/reset decision, evidence, and follow-up ideas. Recent reports are summarized in the next recursive prompt.
 
-Recursive loops create data-only `governor_review` requests at `governEvery`; when `governEvery` is omitted, `outsideHelpEvery` preserves the same governor-cadence behavior. With `outsideHelpOnStagnation`, repeated non-improving structured attempt results create a `failure_analysis` request, and repeated setup/refactor/instrumentation/benchmark-scaffold attempts create a `mutation_suggestions` request. The extension does not spawn subagents; a parent/orchestrator agent can inspect requests, fetch a ready-to-copy task with `ralph_outside_payload` or `/ralph outside payload`, run whatever research or review is appropriate, then record the result with `ralph_outside_answer` or `/ralph outside answer`. Structured governor answers can include a verdict, rationale, required next move, forbidden next moves, and evidence gaps; the next recursive prompt includes the latest steer.
+Recursive loops create data-only `governor_review` requests at `governEvery`; when `governEvery` is omitted, `outsideHelpEvery` preserves the same governor-cadence behavior. With `outsideHelpOnStagnation`, repeated non-improving structured attempt results create a `failure_analysis` request, and repeated setup/refactor/instrumentation/benchmark-scaffold attempts create a `mutation_suggestions` request. The extension does not spawn subagents; a parent/orchestrator agent can inspect requests, fetch a ready-to-copy task with `ralph_outside_payload` or `/ralph outside payload`, run whatever research or review is appropriate, then record the result with `ralph_outside_answer` or `/ralph outside answer`. Use `ralph_govern` or `/ralph govern` to create an immediate manual governor review request and payload without waiting for a cadence trigger. Structured governor answers can include a verdict, rationale, required next move, forbidden next moves, and evidence gaps; the next recursive prompt includes the latest steer.
 
 Press Esc to interrupt a running assistant turn. Send a normal message or use `/ralph resume <name>` to continue. Use `/ralph-stop` when idle to end the loop.
 
