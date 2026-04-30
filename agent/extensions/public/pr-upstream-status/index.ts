@@ -154,6 +154,19 @@ interface PrUpstreamStateEvent {
 	};
 }
 
+interface PrAutoSolveMessageDetails {
+	kind: "auto_solve";
+	pr: {
+		number: number;
+		title: string;
+		url: string;
+		checks: ChecksState;
+		headSha?: string;
+	};
+	feedbackCount: number;
+	ciFailureCount: number;
+}
+
 interface CodeHostProvider {
 	id: string;
 	parseRepo(remoteUrl: string): RepoRef | undefined;
@@ -173,6 +186,7 @@ const AUTO_SOLVE_MIN_GAP_MS = 120_000;
 const FRESH_SESSION_AUTO_SOLVE_GRACE_MS = 300_000;
 const SUPPRESSION_NOTICE_GAP_MS = 300_000;
 const CONFIG_FILE_NAME = "pr-upstream-status.json";
+const MESSAGE_TYPE_PR_AUTO_SOLVE = "pr-upstream:auto-solve";
 const DEFAULT_SETTINGS: PrUpstreamSettings = {
 	autoSolveEnabled: true,
 };
@@ -949,6 +963,31 @@ function renderCheck(theme: ExtensionContext["ui"]["theme"], checks: ChecksState
 	return theme.fg("muted", "•");
 }
 
+function countLabel(count: number, singular: string, plural: string): string {
+	return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
+}
+
+function registerAutoSolveMessageRenderer(pi: ExtensionAPI): void {
+	pi.registerMessageRenderer<PrAutoSolveMessageDetails>(MESSAGE_TYPE_PR_AUTO_SOLVE, (message, _options, theme) => {
+		const details = message.details;
+		if (!details || details.kind !== "auto_solve") return undefined;
+
+		const prLabel = osc8(theme.fg("accent", `#${details.pr.number}`), details.pr.url);
+		const feedback = countLabel(details.feedbackCount, "comment", "comments");
+		const ciFailures = countLabel(details.ciFailureCount, "CI failure", "CI failures");
+		const text =
+			theme.fg("warning", "✦ ") +
+			theme.fg("warning", "auto-solve queued ") +
+			prLabel +
+			theme.fg("muted", ` ${feedback}, ${ciFailures}`);
+
+		return {
+			render: () => [text],
+			invalidate: () => {},
+		};
+	});
+}
+
 export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	const provider = githubProvider;
 	let token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
@@ -968,6 +1007,8 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let promptedFeedbackKeys = new Set<string>();
 	let promptedCiFailureKeys = new Set<string>();
 	let lastRefreshAt = 0;
+
+	registerAutoSolveMessageRenderer(pi);
 
 	function loadSettings(): void {
 		settings = { ...DEFAULT_SETTINGS, ...readConfigFile(userConfigPath()) };
@@ -1134,10 +1175,29 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 				promptParts.push("", "CI failure context:", summarizeCiFailures(targetCiFailures));
 			}
 
-			const commentText = targetFeedback.length === 1 ? "1 PR comment" : `${targetFeedback.length} PR comments`;
-			const ciText = targetCiFailures.length === 1 ? "1 CI failure" : `${targetCiFailures.length} CI failures`;
+			const commentText = countLabel(targetFeedback.length, "PR comment", "PR comments");
+			const ciText = countLabel(targetCiFailures.length, "CI failure", "CI failures");
 			ctx.ui.notify(`Auto-solve queued for ${commentText} and ${ciText}.`, "info");
-			pi.sendUserMessage(promptParts.join("\n"));
+			pi.sendMessage(
+				{
+					customType: MESSAGE_TYPE_PR_AUTO_SOLVE,
+					content: promptParts.join("\n"),
+					display: true,
+					details: {
+						kind: "auto_solve",
+						pr: {
+							number: pr.number,
+							title: pr.title,
+							url: pr.url,
+							checks: pr.checks,
+							headSha: pr.headSha,
+						},
+						feedbackCount: targetFeedback.length,
+						ciFailureCount: targetCiFailures.length,
+					} satisfies PrAutoSolveMessageDetails,
+				},
+				{ triggerTurn: true },
+			);
 			return true;
 		} finally {
 			autoSolvePromptInFlight = false;

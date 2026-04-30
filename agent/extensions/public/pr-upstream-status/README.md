@@ -46,7 +46,7 @@ Auto-solve is on by default. Turn it off if you only want passive status:
 
 The extension detects the current branch, finds the matching open GitHub PR, refreshes status periodically, and updates Pi's footer/status primitives.
 
-When auto-solve is enabled and Pi is idle, it can fetch new issue comments, unresolved review-thread comments, and failing CI context. It then sends the agent a prompt to verify the feedback, fix relevant issues, run validation, and summarize what happened.
+When auto-solve is enabled and Pi is idle, it can fetch new issue comments, unresolved review-thread comments, and failing CI context. It then queues a structured auto-solve message that gives the agent a turn to verify the feedback, fix relevant issues, run validation, and summarize what happened.
 
 Guardrails prevent automatic auto-solve from starting immediately in fresh sessions, before checks complete, or when an older Pi process is already active in the same workspace. `/pr-autosolve now` runs a one-shot solve even when auto-solve is off or checks are still running; CI failure context is included once failures are available.
 
@@ -78,3 +78,11 @@ pr-upstream:state
 ```
 
 Payload includes the current branch, PR number/title/url, comment count, check state, head SHA, base repo, and auto-solve state.
+
+Auto-solve prompts are delivered as Pi custom messages with:
+
+```text
+pr-upstream:auto-solve
+```
+
+The message content contains the actionable instructions and summarized PR/CI context for the agent; structured details include the PR identity and feedback/CI counts for rendering or debugging.
