@@ -84,6 +84,7 @@ import { registerBreakoutTool } from "./src/breakout-packages.ts";
 import { registerFinalReportTool } from "./src/final-reports.ts";
 import { criterionCounts, formatCriterionCounts, registerLedgerTool } from "./src/ledger.ts";
 import { answerOutsideRequest, appendOutsideRequestPromptSections, createManualGovernorPayload, formatOutsideRequests, getOutsideRequestPayload, latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests, registerOutsideRequestTools } from "./src/outside-requests.ts";
+import { registerPolicyTool } from "./src/policy.ts";
 import { formatLoop, formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "./src/views.ts";
 
 export default function (pi: ExtensionAPI) {
@@ -1242,6 +1243,9 @@ Examples:
 		optionalLoopDetails,
 	});
 
+	registerPolicyTool(pi, {
+		getCurrentLoop: () => currentLoop,
+	});
 
 	registerAttemptReportTool(pi, {
 		getCurrentLoop: () => currentLoop,

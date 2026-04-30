@@ -429,6 +429,7 @@ The practical implementation path is complete through bounded recursive/governor
    - add selective parent review policy so the governor does not duplicate worker work;
    - implement advisory-only subagent flow before any editing flow.
 5. **Completion, breakout, and learning gates**
+   - initial read-only `stardock_policy` completion readiness support exists; it recommends final reports, auditor reviews, or breakout packages from current evidence without enforcing hidden gates;
    - add `FinalVerificationReport` before making completion fully criteria-aware;
    - add `BreakoutPackage` for repeated failures, blocked criteria, or loops with no criterion movement;
    - add optional compound-learning proposals and cognitive-debt walkthrough requirements for large/complex changes;
