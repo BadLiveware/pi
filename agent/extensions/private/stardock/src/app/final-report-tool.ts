@@ -1,22 +1,15 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { FinalVerificationReport, LoopState } from "../state/core.ts";
 
 export interface FinalReportMutationParams extends Partial<FinalVerificationReport> {
 	reports?: Array<Partial<FinalVerificationReport> & { summary?: string }>;
 }
 
-export interface FinalReportRecordResponse {
-	contentText: string;
-	details: Record<string, unknown>;
-	state?: LoopState;
-	error?: string;
-}
-
 export interface FinalReportOperations {
 	record(input: Partial<FinalVerificationReport> & { summary?: string }): { ok: true; state: LoopState; report: FinalVerificationReport; created: boolean } | { ok: false; error: string };
 }
 
-export function runFinalReportRecord(loopName: string, params: FinalReportMutationParams, operations: FinalReportOperations): FinalReportRecordResponse {
+export function runFinalReportRecord(loopName: string, params: FinalReportMutationParams, operations: FinalReportOperations): AppToolMutationResponse<LoopState> {
 	const inputs = normalizeBatchInputs(params, params.reports);
 	const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 		const result = operations.record(input);

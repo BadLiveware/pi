@@ -1,5 +1,12 @@
 /** Pi-free ordered batch helpers for Stardock tool mutations. */
 
+export interface AppToolMutationResponse<TState = unknown> {
+	contentText: string;
+	details: Record<string, unknown>;
+	state?: TState;
+	error?: string;
+}
+
 export interface BatchMutationResult<TState, TItem> {
 	state: TState;
 	item: TItem;

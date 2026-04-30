@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { IterationBrief, LoopState } from "../state/core.ts";
 
 export interface BriefMutationParams {
@@ -22,13 +22,6 @@ export interface BriefMutationParams {
 
 export type BriefMutationInput = Omit<BriefMutationParams, "activate" | "briefs" | "ids">;
 
-export interface BriefToolMutationResponse {
-	contentText: string;
-	details: Record<string, unknown>;
-	state?: LoopState;
-	error?: string;
-}
-
 export interface BriefToolOperations {
 	upsert(input: BriefMutationInput): { ok: true; state: LoopState; brief: IterationBrief; created: boolean } | { ok: false; error: string };
 	activate(id: string): { ok: true; state: LoopState; brief: IterationBrief } | { ok: false; error: string };
@@ -36,7 +29,7 @@ export interface BriefToolOperations {
 	complete(id?: string): { ok: true; state: LoopState; brief: IterationBrief } | { ok: false; error: string };
 }
 
-export function runBriefUpsert(loopName: string, params: BriefMutationParams, operations: BriefToolOperations): BriefToolMutationResponse {
+export function runBriefUpsert(loopName: string, params: BriefMutationParams, operations: BriefToolOperations): AppToolMutationResponse<LoopState> {
 	const inputs = normalizeBatchInputs({ id: params.id, objective: params.objective, task: params.task, source: params.source, requestId: params.requestId, criterionIds: params.criterionIds, acceptanceCriteria: params.acceptanceCriteria, verificationRequired: params.verificationRequired, requiredContext: params.requiredContext, constraints: params.constraints, avoid: params.avoid, outputContract: params.outputContract, sourceRefs: params.sourceRefs }, params.briefs);
 	const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 		const result = operations.upsert(input);
@@ -60,7 +53,7 @@ export function runBriefUpsert(loopName: string, params: BriefMutationParams, op
 	};
 }
 
-export function runBriefActivate(loopName: string, id: string | undefined, operations: BriefToolOperations): BriefToolMutationResponse {
+export function runBriefActivate(loopName: string, id: string | undefined, operations: BriefToolOperations): AppToolMutationResponse<LoopState> {
 	if (!id) return { contentText: "Brief id is required for activate.", details: { loopName }, error: "Brief id is required for activate." };
 	const result = operations.activate(id);
 	if (!result.ok) return { contentText: result.error, details: { loopName, id }, error: result.error };
@@ -71,7 +64,7 @@ export function runBriefActivate(loopName: string, id: string | undefined, opera
 	};
 }
 
-export function runBriefClear(loopName: string, operations: BriefToolOperations): BriefToolMutationResponse {
+export function runBriefClear(loopName: string, operations: BriefToolOperations): AppToolMutationResponse<LoopState> {
 	const result = operations.clear();
 	if (!result.ok) return { contentText: result.error, details: { loopName }, error: result.error };
 	return {
@@ -81,7 +74,7 @@ export function runBriefClear(loopName: string, operations: BriefToolOperations)
 	};
 }
 
-export function runBriefComplete(loopName: string, params: Pick<BriefMutationParams, "id" | "ids">, operations: BriefToolOperations): BriefToolMutationResponse {
+export function runBriefComplete(loopName: string, params: Pick<BriefMutationParams, "id" | "ids">, operations: BriefToolOperations): AppToolMutationResponse<LoopState> {
 	const inputs = normalizeBatchInputs(params.id, params.ids);
 	const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (id) => {
 		const result = operations.complete(id);

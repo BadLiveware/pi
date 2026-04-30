@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { LoopState, WorkerReport } from "../state/core.ts";
 
 export type WorkerReportMutationInput = Omit<Partial<WorkerReport>, "changedFiles"> & { changedFiles?: unknown };
@@ -7,18 +7,11 @@ export interface WorkerReportMutationParams extends WorkerReportMutationInput {
 	reports?: WorkerReportMutationInput[];
 }
 
-export interface WorkerReportRecordResponse {
-	contentText: string;
-	details: Record<string, unknown>;
-	state?: LoopState;
-	error?: string;
-}
-
 export interface WorkerReportOperations {
 	record(input: WorkerReportMutationInput): { ok: true; state: LoopState; report: WorkerReport; created: boolean } | { ok: false; error: string };
 }
 
-export function runWorkerReportRecord(loopName: string, params: WorkerReportMutationParams, operations: WorkerReportOperations): WorkerReportRecordResponse {
+export function runWorkerReportRecord(loopName: string, params: WorkerReportMutationParams, operations: WorkerReportOperations): AppToolMutationResponse<LoopState> {
 	const inputs = normalizeBatchInputs(params, params.reports);
 	const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 		const result = operations.record(input);
