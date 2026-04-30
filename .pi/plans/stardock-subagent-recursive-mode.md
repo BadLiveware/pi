@@ -2,7 +2,7 @@
 
 ## Status
 
-Design gate, not implementation-ready. The current Ralph implementation owns durable loop state, attempt reports, outside requests, and ready-to-copy governor/researcher payloads. Subagent execution should remain parent/orchestrator-driven until Pi exposes an extension API that can safely run and supervise subagents with inspectable ownership boundaries.
+Design gate, not implementation-ready. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, and ready-to-copy governor/researcher payloads. Subagent execution should remain parent/orchestrator-driven until Pi exposes an extension API that can safely run and supervise subagents with inspectable ownership boundaries.
 
 ## Decision
 
@@ -59,12 +59,12 @@ Worker briefs should be verification-led when criteria exist: route selected cri
 ## Context and constraints
 
 - Current safe boundary: extension state and prompts are deterministic and inspectable.
-- Current Ralph tools already prove the equivalent concepts:
-  - `ralph_govern`
-  - `ralph_outside_payload`
-  - `ralph_outside_answer`
-  - `ralph_attempt_report`
-- Future Stardock tools can use clean `stardock_*`/`sd_*` names without preserving the Ralph names.
+- Current Stardock tools already prove the equivalent concepts:
+  - `stardock_govern`
+  - `stardock_outside_payload`
+  - `stardock_outside_answer`
+  - `stardock_attempt_report`
+- `sd_*` aliases remain optional future ergonomics only; they are not implemented now.
 - Extension-side automatic subagent execution risks hidden edits, unclear ownership, interruption ambiguity, and hard-to-review agent fanout.
 - User must be able to inspect and interrupt between attempts.
 - Implementer attempts must stay bounded: one decision, one attempt, one report.

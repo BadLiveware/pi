@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Evolve the current local `ralph-loop` work into **Stardock**, a private Pi implementation framework for governed agentic work. Stardock turns plans into criteria, routes compact context to bounded workers, records evidence, and uses governor/auditor checkpoints to prevent drift before completion.
+Evolve the local loop work that started as `ralph-loop` into **Stardock**, a private Pi implementation framework for governed agentic work. Stardock turns plans into criteria, routes compact context to bounded workers, records evidence, and uses governor/auditor checkpoints to prevent drift before completion.
 
-The existing Ralph loop implementation is useful source material, but it is not a compatibility contract. Future framework work should happen in a private Stardock extension, and it may replace, rename, or drop the old Ralph commands/state whenever that makes the design cleaner.
+The former Ralph loop implementation is useful source material and history, but it is not a compatibility contract. New framework work happens in the private Stardock extension with clean commands, tools, and state.
 
 The design should make room for an OpenEvolve-inspired mode, but should not jump directly to full evolutionary search until the engine, criterion ledger, verification artifacts, governor/auditor workflow, and recursive attempt logging are stable.
 
@@ -15,16 +15,18 @@ The design should make room for an OpenEvolve-inspired mode, but should not jump
   - extension path: `agent/extensions/private/stardock/`
   - do not publish or list as a public extension until the framework is proven.
 - The former public Ralph loop implementation has been moved into `agent/extensions/private/stardock/`; there is no longer a public Ralph-loop extension in this repo.
-- New API namespace is still open, but the default proposal is:
-  - commands: `/stardock` with a short alias `/sd` if ergonomics justify it;
-  - tools: `stardock_*` or `sd_*`;
-  - no compatibility aliases are required unless they make local use more convenient.
+- Current live API namespace:
+  - commands: `/stardock` and `/stardock-stop`;
+  - tools: `stardock_*`;
+  - state path: `.stardock/`.
+- `/sd` and `sd_*` aliases remain optional future ergonomics only; they are not implemented yet.
 - Prefer a clean Stardock API and state path over preserving `.ralph/`, `/ralph`, or `ralph_*`. One-shot import/reset of old local state is acceptable because this is private.
+- Architecture diagrams live at `agent/extensions/private/stardock/docs/architecture-diagrams.md`.
 
 ## Desired end state
 
 - Stardock is a private implementation framework extension, not a public Ralph-loop package.
-- Existing `ralph_*` callers do not need to keep working after Stardock extraction unless we intentionally keep temporary aliases for convenience.
+- Existing `ralph_*` callers do not need to keep working after Stardock extraction unless temporary aliases are intentionally added for convenience.
 - A loop can declare a `mode` that changes setup requirements, prompt shape, state tracking, stop conditions, and UI summaries.
 - Supported initial modes:
   - `checklist`: current behavior, for known finite work.
@@ -50,7 +52,7 @@ The design should make room for an OpenEvolve-inspired mode, but should not jump
 
 Last updated: 2026-04-30.
 
-Implemented and committed:
+Implemented and committed before the private Stardock move:
 
 - `6eccd8e refactor: add Ralph checklist mode state`
 - `251732e feat: validate Ralph loop modes`
@@ -63,37 +65,51 @@ Implemented and committed:
 - `a66512c feat: add manual Ralph governor helper`
 - `417f768 docs: gate future Ralph automation`
 
+Implemented and committed as private Stardock:
+
+- `fceb41d feat: move Stardock extension private`
+- `8a52d2d docs: add Stardock architecture diagrams`
+
 Implemented behavior:
 
 - Modes:
   - `checklist`: default finite-work loop behavior.
   - `recursive`: bounded attempts with objective/setup state, attempt reports, outside requests, governor decisions, and trigger support.
   - `evolve`: reserved; design-gated in `.pi/plans/stardock-evolve-mode.md`.
-- Legacy migration behavior currently implemented in Ralph:
-  - v1 state files without mode metadata migrate to `schemaVersion: 2` checklist state.
-  - top-level compatibility fields are currently saved, but Stardock does not need to preserve them.
+- State behavior:
+  - private loop files live in `.stardock/`;
+  - state remains schema-versioned and mode-aware;
+  - legacy `.ralph/` compatibility is not required, though a one-shot importer can be added if useful.
 - Tools:
-  - `ralph_start`
-  - `ralph_done`
-  - `ralph_attempt_report`
-  - `ralph_govern`
-  - `ralph_outside_requests`
-  - `ralph_outside_payload`
-  - `ralph_outside_answer`
+  - `stardock_start`
+  - `stardock_done`
+  - `stardock_attempt_report`
+  - `stardock_govern`
+  - `stardock_outside_requests`
+  - `stardock_outside_payload`
+  - `stardock_outside_answer`
 - Commands:
-  - `/ralph ...`
-  - `/ralph govern [loop]`
-  - `/ralph outside [loop]`
-  - `/ralph outside payload <loop> <request-id>`
-  - `/ralph outside answer <loop> <request-id> <answer>`
-  - `/ralph-stop`
+  - `/stardock start <name|path> [options]`
+  - `/stardock stop`
+  - `/stardock resume <name>`
+  - `/stardock status`
+  - `/stardock cancel <name>`
+  - `/stardock archive <name>`
+  - `/stardock clean [--all]`
+  - `/stardock list --archived`
+  - `/stardock govern [loop]`
+  - `/stardock outside [loop]`
+  - `/stardock outside payload <loop> <request-id>`
+  - `/stardock outside answer <loop> <request-id> <answer>`
+  - `/stardock nuke [--yes]`
+  - `/stardock-stop`
 - Recursive behavior:
   - structured attempt reports carry hypothesis, kind, action summary, validation, result, keep/reset, evidence, and follow-up ideas;
   - `outsideHelpEvery` preserves interval governor reviews;
   - `governEvery` provides independent governor cadence;
   - stagnation creates `failure_analysis` requests;
   - scaffolding drift creates `mutation_suggestions` requests;
-  - `ralph_govern` creates a manual governor request and payload without calling a model or spawning subagents;
+  - `stardock_govern` creates a manual governor request and payload without calling a model or spawning subagents;
   - recorded governor decisions appear as constraints in subsequent recursive prompts.
 
 ## Updated design direction: context routing, not prompt replay
@@ -432,9 +448,9 @@ interface LoopState {
 }
 ```
 
-Legacy Ralph compatibility rule: missing `schemaVersion` or `mode` means `schemaVersion: 1`, `mode: "checklist"`, and `modeState` is synthesized from the existing fields. Stardock can start with a clean private schema and only import legacy state if useful.
+Private Stardock schema rule: current `.stardock/` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, but `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
 
-Future schema revisions may add `criterionLedger`, `governorState`, auditor reviews, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/audit lists.
+Future schema revisions may add `criterionLedger`, `governorState`, auditor reviews, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/audit lists.
 
 ### Mode interface
 
@@ -552,6 +568,7 @@ Behavior:
 Acceptance:
 - Existing tests still pass.
 - Local legacy `.ralph/*.state.json` files may be imported or ignored; compatibility is not required.
+- Current private `.stardock/*.state.json` files remain valid across additive schema revisions.
 
 ### `recursive` mode
 
@@ -669,12 +686,12 @@ Completed implementation is intentionally compacted here; use commit history and
 | Mode parameter + validation | Done | `251732e`; `checklist` default, unsupported modes fail cleanly. |
 | Recursive setup + prompt | Done | `a8fe4f1`; objective/setup state, bounded-attempt prompt, attempt placeholders. |
 | Outside request queue + governor decisions | Done | `3088421`; data-only requests and answer recording. |
-| Structured attempt reports | Done | `945b100`; `ralph_attempt_report` records hypothesis/action/validation/result/evidence. |
+| Structured attempt reports | Done | `945b100`; now surfaced as `stardock_attempt_report` for hypothesis/action/validation/result/evidence. |
 | Request payloads/templates | Done | `bf22925`; ready-to-copy governor/researcher payloads. |
 | Trigger mechanics | Done | `a233c34`; `governEvery`, stagnation, and scaffolding-drift request creation. |
-| Manual governor helper | Done | `a66512c`; `ralph_govern` creates/reuses a durable governor request and payload. |
+| Manual governor helper | Done | `a66512c`; now surfaced as `stardock_govern` to create/reuse a durable governor request and payload. |
 | Future automation design gates | Done | `417f768`; subagent and evolve plans written. |
-| Private Stardock extension shell | Done | Extension moved to `agent/extensions/private/stardock/`; public Ralph path removed; clean `stardock_*` and `/stardock` surface preferred. |
+| Private Stardock extension shell | Done | `fceb41d`; extension moved to `agent/extensions/private/stardock/`; public Ralph path removed; clean `stardock_*`, `/stardock`, and `.stardock/` surface implemented. |
 
 ### Next implementation candidates
 
@@ -715,7 +732,7 @@ Do not restart the completed implementation path. Future implementation should b
 
 ### Completion boundary
 
-The original Ralph mode-aware/recursive plan is complete up to the safe boundary. Direct subagent execution and evolve candidate execution are intentionally not implemented because they require design approval and safety proof points.
+The original mode-aware/recursive implementation path is complete up to the safe boundary and has been moved under private Stardock naming. Direct subagent execution and evolve candidate execution are intentionally not implemented because they require design approval and safety proof points.
 
 ## Validation strategy
 
