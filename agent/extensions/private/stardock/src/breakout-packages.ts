@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { runBreakoutPackageRecord } from "./app/breakout-package-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type BreakoutPackage, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
@@ -232,18 +232,13 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
 				return { content: [{ type: "text", text: payload.payload }], details: { loopName, breakoutPackages: state.breakoutPackages } };
 			}
-			const inputs = normalizeBatchInputs(params, params.packages);
-			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
-				const result = recordBreakoutPackage(ctx, loopName, input);
-				return result.ok ? { state: result.state, item: result.breakout, created: result.created } : result;
-			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
+			const response = runBreakoutPackageRecord(loopName, params, { record: (input) => recordBreakoutPackage(ctx, loopName, input) });
+			if (response.error) return { content: [{ type: "text", text: response.contentText }], details: response.details };
 			deps.updateUI(ctx);
-			const updatedState = batch.lastState;
-			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "breakout", pluralName: "breakout packages", pluralDetailKey: "packages", singleItemText: (breakout, result) => `${result.created ? "Recorded" : "Updated"} breakout package ${breakout.id}` });
+			const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
 			return {
-				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
-				details: { loopName, [response.detailKey]: response.detailValue, breakoutPackages: updatedState.breakoutPackages, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: response.contentText }],
+				details,
 			};
 		},
 	});
