@@ -169,7 +169,15 @@ export default function (pi: ExtensionAPI) {
 		saveState(ctx, state);
 		currentLoop = null;
 		updateUI(ctx);
-		pi.sendUserMessage(banner);
+		pi.appendEntry("ralph-loop", {
+			kind: "completed",
+			name: state.name,
+			iteration: state.iteration,
+			maxIterations: state.maxIterations,
+			completedAt: state.completedAt,
+			banner,
+		});
+		if (ctx.hasUI) ctx.ui.notify(banner, "info");
 	}
 
 	function stopLoop(ctx: ExtensionContext, state: LoopState, message?: string): void {

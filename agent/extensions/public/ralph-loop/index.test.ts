@@ -10,6 +10,7 @@ function makeHarness(cwd: string) {
 	const commands = new Map<string, any>();
 	const handlers = new Map<string, any[]>();
 	const messages: Array<{ content: string; options?: unknown }> = [];
+	const entries: Array<{ customType: string; data?: unknown }> = [];
 	const notifications: string[] = [];
 	const statuses = new Map<string, string | undefined>();
 	const widgets = new Map<string, string[] | undefined>();
@@ -27,7 +28,9 @@ function makeHarness(cwd: string) {
 		sendUserMessage(content: string, options?: unknown) {
 			messages.push({ content, options });
 		},
-		appendEntry() {},
+		appendEntry(customType: string, data?: unknown) {
+			entries.push({ customType, data });
+		},
 	} as any;
 
 	const ctx = {
@@ -57,7 +60,7 @@ function makeHarness(cwd: string) {
 	} as any;
 
 	ralphLoop(pi);
-	return { tools, commands, handlers, messages, notifications, statuses, widgets, ctx };
+	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, ctx };
 }
 
 test("ralph_loop registers current-compatible tools and commands", () => {
@@ -115,6 +118,53 @@ test("ralph_start writes task state and ralph_done queues next iteration", async
 		assert.match(messages[1].content, /RALPH LOOP: Demo_Loop \| Iteration 2\/3/);
 		const nextState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
 		assert.equal(nextState.iteration, 2);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("completion marker completes loop without queuing a user message", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, handlers, messages, entries, notifications, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		assert.ok(start);
+
+		await start.execute(
+			"tool-1",
+			{
+				name: "Complete Loop",
+				taskContent: "# Task\n\n## Checklist\n- [x] Done\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.equal(messages.length, 1);
+
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+		await agentEnd(
+			{
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
+					},
+				],
+			},
+			ctx,
+		);
+
+		assert.equal(messages.length, 1, "completion should not send a user message while agent_end is running");
+		assert.equal(entries.at(-1)?.customType, "ralph-loop");
+		assert.match(String((entries.at(-1)?.data as any).banner), /RALPH LOOP COMPLETE: Complete_Loop/);
+		assert.ok(notifications.some((message) => message.includes("RALPH LOOP COMPLETE: Complete_Loop")));
+
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Complete_Loop.state.json"), "utf-8"));
+		assert.equal(state.status, "completed");
+		assert.equal(state.active, false);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
