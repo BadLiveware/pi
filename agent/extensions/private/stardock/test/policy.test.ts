@@ -105,3 +105,76 @@ test("stardock_policy reports ready when criteria and evidence are complete", as
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("stardock_policy recommends auditor review for risky worker reports", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Worker Auditor");
+	try {
+		const ledger = tools.get("stardock_ledger");
+		const worker = tools.get("stardock_worker_report");
+		const policy = tools.get("stardock_policy");
+		assert.ok(ledger);
+		assert.ok(worker);
+		assert.ok(policy);
+		await ledger.execute("criteria", { action: "upsertCriterion", loopName: "Policy_Worker_Auditor", id: "c-worker", description: "Worker result needs review.", passCondition: "Parent reviews hinted file.", status: "passed" }, undefined, undefined, ctx);
+		await ledger.execute("artifact", { action: "recordArtifact", loopName: "Policy_Worker_Auditor", id: "a-worker", kind: "log", summary: "Worker transcript path.", criterionIds: ["c-worker"] }, undefined, undefined, ctx);
+		await worker.execute("worker", { action: "record", loopName: "Policy_Worker_Auditor", id: "wr-risk", status: "needs_review", role: "reviewer", objective: "Review risky change.", summary: "Worker found a risk.", evaluatedCriterionIds: ["c-worker"], artifactIds: ["a-worker"], validation: [{ result: "skipped", summary: "Worker skipped validation.", artifactIds: ["a-worker"] }], risks: ["Potential contract drift."], openQuestions: ["Should parent inspect file?"], reviewHints: ["Read changed file before accepting."] }, undefined, undefined, ctx);
+
+		const result = await policy.execute("policy", { action: "auditor", loopName: "Policy_Worker_Auditor" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, true);
+		assert.equal(result.details.policy.status, "review_recommended");
+		assert.match(result.content[0].text, /worker-report-review/);
+		assert.match(result.content[0].text, /Suggested tool: stardock_auditor/);
+		assert.match(result.content[0].text, /workerReports=wr-risk/);
+		assert.match(result.content[0].text, /does not create auditor reviews/);
+		const finding = result.details.policy.findings.find((item: any) => item.id === "worker-report-review");
+		assert.deepEqual(finding.workerReportIds, ["wr-risk"]);
+		assert.deepEqual(finding.artifactIds, ["a-worker"]);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_policy recommends auditor review for automation and breakout gates", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Gate Auditor");
+	try {
+		const handoff = tools.get("stardock_handoff");
+		const breakout = tools.get("stardock_breakout");
+		const policy = tools.get("stardock_policy");
+		assert.ok(handoff);
+		assert.ok(breakout);
+		assert.ok(policy);
+		await handoff.execute("handoff", { action: "record", loopName: "Policy_Gate_Auditor", id: "ah-impl", role: "implementer", status: "answered", objective: "Implement a risky patch.", summary: "Implementer returned patch guidance." }, undefined, undefined, ctx);
+		await breakout.execute("breakout", { action: "record", loopName: "Policy_Gate_Auditor", id: "bp-open", status: "open", summary: "Loop needs a decision.", requestedDecision: "Decide whether to continue." }, undefined, undefined, ctx);
+
+		const result = await policy.execute("policy", { action: "auditor", loopName: "Policy_Gate_Auditor" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, true);
+		assert.equal(result.details.policy.status, "review_strongly_recommended");
+		assert.match(result.content[0].text, /automation-gate-review/);
+		assert.match(result.content[0].text, /open-breakout-review/);
+		assert.match(result.content[0].text, /advisoryHandoffs=ah-impl/);
+		assert.match(result.content[0].text, /breakoutPackages=bp-open/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_policy reports no auditor trigger for clean evidence", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Auditor Clean");
+	try {
+		const ledger = tools.get("stardock_ledger");
+		const finalReport = tools.get("stardock_final_report");
+		const policy = tools.get("stardock_policy");
+		assert.ok(ledger);
+		assert.ok(finalReport);
+		assert.ok(policy);
+		await ledger.execute("criteria", { action: "upsertCriterion", loopName: "Policy_Auditor_Clean", id: "c-pass", description: "Clean check", passCondition: "Passed.", status: "passed" }, undefined, undefined, ctx);
+		await finalReport.execute("report", { action: "record", loopName: "Policy_Auditor_Clean", id: "fr-pass", status: "passed", summary: "Clean evidence.", criterionIds: ["c-pass"], validation: [{ result: "passed", summary: "All checks passed." }] }, undefined, undefined, ctx);
+
+		const result = await policy.execute("policy", { action: "auditor", loopName: "Policy_Auditor_Clean" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, false);
+		assert.equal(result.details.policy.status, "no_review_needed");
+		assert.match(result.content[0].text, /no-auditor-trigger/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});

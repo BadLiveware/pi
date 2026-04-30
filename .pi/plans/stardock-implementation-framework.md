@@ -749,6 +749,7 @@ Do not restart the completed implementation path. Future implementation should b
    - Continue keeping selected `criterionIds`, required context, and verification requirements bounded; keep large artifacts referenced.
 4. **Auditor oversight workflow**
    - Initial manual/data-only `stardock_auditor` support exists for ready-to-copy auditor payloads plus compact review records linked to criteria, artifacts, and final reports.
+   - Initial read-only `stardock_policy({ action: "auditor" })` trigger support exists for criteria risk, final-report gaps, risky WorkerReports, implementer handoffs, and open breakout packages.
    - Later, add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.
    - Later, add policy for blocker findings to constrain, be explicitly rejected by, or escalate the next governor decision.
 5. **Worker report / selective review workflow**
