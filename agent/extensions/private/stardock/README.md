@@ -74,7 +74,9 @@ Options for `/stardock start`:
 
 ## Understanding a run
 
-Use `/stardock view [loop]` when you want to know what is happening. It summarizes the run status, objective, attempts, outside requests, latest governor decision, and a chronological timeline. Use `/stardock timeline [loop]` when you only want the event sequence.
+While a loop is active, Stardock also shows an at-a-glance widget with loop name, mode/status/iteration, recursive attempt progress, outside request count, and the latest governor steer when present.
+
+Use `/stardock view [loop]` when you want to know what is happening in more detail. It summarizes the run status, objective, attempts, outside requests, latest governor decision, and a chronological timeline. Use `/stardock timeline [loop]` when you only want the event sequence.
 
 Agents can request the same views through `stardock_state`:
 

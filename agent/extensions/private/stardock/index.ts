@@ -789,7 +789,7 @@ export default function (pi: ExtensionAPI) {
 		if (!ctx.hasUI) return;
 
 		const state = currentLoop ? loadState(ctx, currentLoop) : null;
-		if (!state) {
+		if (!state || state.status !== "active") {
 			ctx.ui.setStatus("stardock", undefined);
 			ctx.ui.setWidget("stardock", undefined);
 			return;
@@ -797,24 +797,42 @@ export default function (pi: ExtensionAPI) {
 
 		const { theme } = ctx.ui;
 		const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
+		const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
+		const reportedAttempts = attempts.filter((attempt) => attempt.status === "reported").length;
+		const latestAttempt = attempts.at(-1);
+		const pendingRequests = pendingOutsideRequests(state).length;
+		const latestDecision = latestGovernorDecision(state);
 
-		ctx.ui.setStatus("stardock", theme.fg("accent", `🔄 ${state.name} (${state.iteration}${maxStr})`));
+		ctx.ui.setStatus("stardock", theme.fg("accent", `🔄 ${state.name} · ${state.iteration}${maxStr}`));
 
 		const lines = [
 			theme.fg("accent", theme.bold("Stardock")),
 			theme.fg("muted", `Loop: ${state.name}`),
-			theme.fg("dim", `Mode: ${state.mode}`),
-			theme.fg("dim", `Status: ${STATUS_ICONS[state.status]} ${state.status}`),
-			...getModeHandler(state.mode).summarize(state).map((line) => theme.fg("dim", line)),
+			theme.fg("dim", `${STATUS_ICONS[state.status]} ${state.status} · ${state.mode} · iteration ${state.iteration}${maxStr}`),
 		];
+
+		if (state.modeState.kind === "recursive") {
+			lines.push(theme.fg("dim", `Objective: ${compactText(state.modeState.objective, 72)}`));
+			lines.push(theme.fg("dim", `Attempts: ${reportedAttempts}/${attempts.length} reported`));
+			if (latestAttempt) {
+				const attemptKind = latestAttempt.kind ? ` · ${latestAttempt.kind}` : "";
+				const attemptResult = latestAttempt.result ? ` · ${latestAttempt.result}` : "";
+				lines.push(theme.fg("dim", `Last: #${latestAttempt.iteration}${attemptKind}${attemptResult}`));
+			}
+		}
+
+		lines.push(theme.fg("dim", `Outside: ${pendingRequests}/${state.outsideRequests.length} pending`));
+		if (latestDecision?.requiredNextMove) {
+			lines.push(theme.fg("warning", `Governor: ${compactText(latestDecision.requiredNextMove, 88)}`));
+		} else if (latestDecision?.verdict) {
+			lines.push(theme.fg("dim", `Governor: ${latestDecision.verdict}`));
+		}
 		if (state.reflectEvery > 0) {
 			const next = state.reflectEvery - ((state.iteration - 1) % state.reflectEvery);
 			lines.push(theme.fg("dim", `Next reflection in: ${next} iterations`));
 		}
-		// Warning about stopping
 		lines.push("");
-		lines.push(theme.fg("warning", "ESC pauses the assistant"));
-		lines.push(theme.fg("warning", "Send a message to resume; /stardock-stop ends the loop"));
+		lines.push(theme.fg("warning", "ESC pauses · /stardock view for details · /stardock-stop ends"));
 		ctx.ui.setWidget("stardock", lines);
 	}
 

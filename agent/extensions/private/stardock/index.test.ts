@@ -188,6 +188,98 @@ test("stardock_state lists and inspects loop summaries", async () => {
 	}
 });
 
+test("active widget summarizes recursive run progress and clears on completion", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, handlers, statuses, widgets, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const report = tools.get("stardock_attempt_report");
+		const govern = tools.get("stardock_govern");
+		const answerOutside = tools.get("stardock_outside_answer");
+		assert.ok(start);
+		assert.ok(report);
+		assert.ok(govern);
+		assert.ok(answerOutside);
+
+		await start.execute(
+			"tool-widget-start",
+			{
+				name: "Widget Loop",
+				mode: "recursive",
+				taskContent: "# Widget task\n",
+				objective: "Show a compact live summary of what Stardock is doing",
+				maxIterations: 4,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		assert.match(statuses.get("stardock") ?? "", /Widget_Loop · 1\/4/);
+		let widget = widgets.get("stardock") ?? [];
+		assert.ok(widget.some((line) => line.includes("Widget_Loop")));
+		assert.ok(widget.some((line) => line.includes("active · recursive · iteration 1/4")));
+		assert.ok(widget.some((line) => line.includes("Attempts: 0/0 reported")));
+		assert.ok(widget.some((line) => line.includes("Outside: 0/0 pending")));
+
+		await report.execute(
+			"tool-widget-report",
+			{
+				loopName: "Widget_Loop",
+				iteration: 1,
+				kind: "other",
+				hypothesis: "A compact widget helps users see workflow progress.",
+				actionSummary: "Added live widget assertions.",
+				validation: "Focused widget checks passed.",
+				result: "improved",
+				kept: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await govern.execute("tool-widget-govern", { loopName: "Widget_Loop" }, undefined, undefined, ctx);
+		await answerOutside.execute(
+			"tool-widget-answer",
+			{
+				loopName: "Widget_Loop",
+				requestId: "governor-manual-1",
+				answer: "Continue with docs and validation.",
+				verdict: "continue",
+				rationale: "Widget now shows useful state.",
+				requiredNextMove: "Use the widget as an at-a-glance companion and /stardock view for details.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		widget = widgets.get("stardock") ?? [];
+		assert.ok(widget.some((line) => line.includes("Attempts: 1/1 reported")));
+		assert.ok(widget.some((line) => line.includes("Last: #1 · other · improved")));
+		assert.ok(widget.some((line) => line.includes("Outside: 0/1 pending")));
+		assert.ok(widget.some((line) => line.includes("Governor: Use the widget as an at-a-glance companion")));
+
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+		await agentEnd(
+			{
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
+					},
+				],
+			},
+			ctx,
+		);
+		assert.equal(statuses.get("stardock"), undefined);
+		assert.equal(widgets.get("stardock"), undefined);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock view and timeline show operational run flow", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

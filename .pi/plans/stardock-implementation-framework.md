@@ -124,6 +124,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - `governEvery: 1` originally created an automatic governor request for the same iteration immediately after a manual governor request was answered. This was noisy and is now suppressed by keeping governor requests to one per iteration.
 - `stardock_state` now gives agents a compact read-only state/list surface so dogfood runs do not require direct reads of ignored `.stardock/` files.
 - `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views provide the first operational "what is happening" visualization for a run.
+- The active-run widget now provides an at-a-glance companion with loop identity, mode/status/iteration, recursive attempt progress, outside request count, latest attempt, and latest governor steer.
 
 ## Updated design direction: context routing, not prompt replay
 

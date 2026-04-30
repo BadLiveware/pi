@@ -26,7 +26,7 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
 
 1. Prepare clear task content with goals, checklist/criteria, and validation expectations.
 2. Start the loop with `stardock_start`; it creates `.stardock/runs/<name>/task.md` from `taskContent`.
-3. Use `/stardock view [loop]` or `stardock_state({ loopName, view: "overview" })` when the user asks what is happening in a run; use `view: "timeline"` or `/stardock timeline [loop]` when they want the event sequence.
+3. While a loop is active, use the Stardock widget for at-a-glance status; use `/stardock view [loop]` or `stardock_state({ loopName, view: "overview" })` when the user asks what is happening in more detail; use `view: "timeline"` or `/stardock timeline [loop]` when they want the event sequence.
 4. Work one bounded iteration.
 5. Record progress and verification evidence in the task file.
 6. For recursive loops, use `stardock_attempt_report` when available.
