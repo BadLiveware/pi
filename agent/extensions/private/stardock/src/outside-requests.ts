@@ -2,20 +2,10 @@
  * Outside help and governor request slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type GovernorDecision,
-	type LoopState,
-	type OutsideRequest,
-	type OutsideRequestKind,
-	type OutsideRequestTrigger,
-	type RecursiveAttempt,
-	type RecursiveAttemptKind,
-	type RecursiveModeState,
-	loadState,
-	saveState,
-} from "./state.ts";
+import { type GovernorDecision, type LoopState, type OutsideRequest, type OutsideRequestKind, type OutsideRequestTrigger, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveModeState } from "./state/core.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface OutsideRequestDeps {
 	getCurrentLoop(): string | null;

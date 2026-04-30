@@ -2,24 +2,11 @@
  * Criterion ledger and verification artifact slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type Criterion,
-	type CriterionLedger,
-	type CriterionStatus,
-	type LoopState,
-	type VerificationArtifact,
-	compactText,
-	isArtifactKind,
-	isCriterionStatus,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeIds,
-	rebuildRequirementTrace,
-	saveState,
-} from "./state.ts";
+import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact } from "./state/core.ts";
+import { isArtifactKind, isCriterionStatus, normalizeId, normalizeIds, rebuildRequirementTrace } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface LedgerToolDeps {
 	getCurrentLoop(): string | null;

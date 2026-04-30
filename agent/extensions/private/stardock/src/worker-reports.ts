@@ -2,23 +2,12 @@
  * Manual WorkerReport slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type ChangedFileReport,
-	type LoopState,
-	type WorkerReport,
-	compactText,
-	isAdvisoryHandoffRole,
-	isValidationResult,
-	isWorkerReportStatus,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeStringList,
-	saveState,
-} from "./state.ts";
 import { formatCriterionCounts } from "./ledger.ts";
+import { type ChangedFileReport, compactText, type LoopState, nextSequentialId, type WorkerReport } from "./state/core.ts";
+import { isAdvisoryHandoffRole, isValidationResult, isWorkerReportStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface WorkerReportToolDeps {
 	getCurrentLoop(): string | null;

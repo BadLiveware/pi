@@ -2,12 +2,12 @@
  * Stardock state persistence.
  */
 
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { LoopState } from "./core.ts";
-import { archiveDir, ensureDir, existingStatePath, runsDir, statePath, stardockDir, tryRead } from "./paths.ts";
 import { migrateState } from "./migration.ts";
+import { archiveDir,ensureDir,existingStatePath,runsDir,stardockDir,statePath,tryRead } from "./paths.ts";
 
 export function readStateFile(filePath: string): LoopState | null {
 	const content = tryRead(filePath);

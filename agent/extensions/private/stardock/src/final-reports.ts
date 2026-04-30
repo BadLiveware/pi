@@ -2,22 +2,11 @@
  * Final verification report slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type FinalVerificationReport,
-	type FinalValidationRecord,
-	type LoopState,
-	compactText,
-	isFinalVerificationStatus,
-	isValidationResult,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeIds,
-	normalizeStringList,
-	saveState,
-} from "./state.ts";
+import { compactText, type FinalValidationRecord, type FinalVerificationReport, type LoopState, nextSequentialId } from "./state/core.ts";
+import { isFinalVerificationStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface FinalReportToolDeps {
 	getCurrentLoop(): string | null;

@@ -2,9 +2,9 @@
  * Stardock run-file path and filesystem helpers.
  */
 
+import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { STARDOCK_DIR } from "./core.ts";
 
 export const stardockDir = (ctx: ExtensionContext) => path.resolve(ctx.cwd, STARDOCK_DIR);

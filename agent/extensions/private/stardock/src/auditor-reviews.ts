@@ -2,21 +2,13 @@
  * Manual auditor review slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type AuditorReview,
-	type LoopState,
-	compactText,
-	isAuditorReviewStatus,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeStringList,
-	saveState,
-} from "./state.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision } from "./outside-requests.ts";
+import { type AuditorReview, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
+import { isAuditorReviewStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface AuditorToolDeps {
 	getCurrentLoop(): string | null;

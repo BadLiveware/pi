@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import { makeHarness, runDir, statePath, taskPath } from "./test-harness.ts";
+import { makeHarness,statePath } from "./test-harness.ts";
 
 test("recursive mode start persists setup and queues bounded attempt prompt", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));

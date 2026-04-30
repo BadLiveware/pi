@@ -2,10 +2,11 @@
  * Read-only Stardock governance policy recommendations.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { type Criterion, type LoopState, compactText, loadState } from "./state.ts";
 import { formatCriterionCounts } from "./ledger.ts";
+import { compactText, type Criterion, type LoopState } from "./state/core.ts";
+import { loadState } from "./state/store.ts";
 
 export interface PolicyToolDeps {
 	getCurrentLoop(): string | null;

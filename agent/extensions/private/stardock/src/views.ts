@@ -2,12 +2,13 @@
  * Stardock state and run view formatting slice.
  */
 
-import * as path from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import * as path from "node:path";
 import { currentBrief } from "./briefs.ts";
-import { criterionCounts, formatCriterionCounts } from "./ledger.ts";
-import { latestGovernorDecision, pendingOutsideRequests } from "./outside-requests.ts";
-import { type LoopState, type OutsideRequest, STATUS_ICONS, existingStatePath } from "./state.ts";
+import { criterionCounts,formatCriterionCounts } from "./ledger.ts";
+import { latestGovernorDecision,pendingOutsideRequests } from "./outside-requests.ts";
+import { type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
+import { existingStatePath } from "./state/paths.ts";
 
 export function formatLoop(l: LoopState): string {
 	const status = `${STATUS_ICONS[l.status]} ${l.status}`;

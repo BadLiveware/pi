@@ -2,21 +2,12 @@
  * Provider-neutral advisory handoff slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type AdvisoryHandoff,
-	type LoopState,
-	compactText,
-	isAdvisoryHandoffRole,
-	isAdvisoryHandoffStatus,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeStringList,
-	saveState,
-} from "./state.ts";
 import { formatCriterionCounts } from "./ledger.ts";
+import { type AdvisoryHandoff, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
+import { isAdvisoryHandoffRole, isAdvisoryHandoffStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface AdvisoryHandoffToolDeps {
 	getCurrentLoop(): string | null;

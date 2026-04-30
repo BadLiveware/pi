@@ -2,20 +2,12 @@
  * Manual breakout package slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type BreakoutPackage,
-	type LoopState,
-	compactText,
-	isBreakoutPackageStatus,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeStringList,
-	saveState,
-} from "./state.ts";
 import { formatCriterionCounts } from "./ledger.ts";
+import { type BreakoutPackage, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
+import { isBreakoutPackageStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface BreakoutToolDeps {
 	getCurrentLoop(): string | null;

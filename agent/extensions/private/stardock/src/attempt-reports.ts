@@ -2,16 +2,10 @@
  * Recursive attempt report slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type LoopState,
-	type RecursiveAttempt,
-	type RecursiveAttemptKind,
-	type RecursiveAttemptResult,
-	loadState,
-	saveState,
-} from "./state.ts";
+import { type LoopState, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveAttemptResult } from "./state/core.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface AttemptReportDeps {
 	getCurrentLoop(): string | null;

@@ -2,21 +2,11 @@
  * Iteration brief slice for Stardock.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import {
-	type BriefLifecycleAction,
-	type Criterion,
-	type IterationBrief,
-	type LoopState,
-	compactText,
-	isBriefSource,
-	loadState,
-	nextSequentialId,
-	normalizeId,
-	normalizeStringList,
-	saveState,
-} from "./state.ts";
+import { type BriefLifecycleAction, compactText, type Criterion, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
+import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
+import { loadState, saveState } from "./state/store.ts";
 
 export interface BriefToolDeps {
 	getCurrentLoop(): string | null;
