@@ -39,51 +39,133 @@ Implemented and committed:
 - `251732e feat: validate Ralph loop modes`
 - `a8fe4f1 feat: add Ralph recursive mode`
 - `3088421 feat: add Ralph outside request workflow`
+- `cb8cfee docs: update Ralph modes plan status`
+- `945b100 feat: record Ralph attempt reports`
+- `bf22925 feat: build Ralph outside request payloads`
+- `a233c34 feat: trigger Ralph recursive outside help`
+- `a66512c feat: add manual Ralph governor helper`
+- `417f768 docs: gate future Ralph automation`
 
-Current implementation:
+Implemented behavior:
 
-- Local extension path: `agent/extensions/public/ralph-loop/index.ts`.
-- Current storage:
-  - `.ralph/<name>.md`
-  - `.ralph/<name>.state.json`
-  - `.ralph/archive/`
-- Current tools:
+- Modes:
+  - `checklist`: default, compatibility-preserving loop behavior.
+  - `recursive`: bounded attempts with objective/setup state, attempt reports, outside requests, governor decisions, and trigger support.
+  - `evolve`: reserved; design-gated in `.pi/plans/ralph-evolve-mode.md`.
+- Compatibility:
+  - v1 state files without mode metadata migrate to `schemaVersion: 2` checklist state.
+  - Top-level compatibility fields remain saved.
+- Tools:
   - `ralph_start`
   - `ralph_done`
+  - `ralph_attempt_report`
+  - `ralph_govern`
   - `ralph_outside_requests`
+  - `ralph_outside_payload`
   - `ralph_outside_answer`
-- Current commands:
+- Commands:
   - `/ralph ...`
+  - `/ralph govern [loop]`
   - `/ralph outside [loop]`
+  - `/ralph outside payload <loop> <request-id>`
   - `/ralph outside answer <loop> <request-id> <answer>`
   - `/ralph-stop`
-- Current modes:
-  - `checklist`: default and compatibility-preserving.
-  - `recursive`: objective-driven bounded attempts with prompt-visible setup state, attempt placeholders, and data-only outside/governor requests.
-  - `evolve`: reserved; not implemented.
-- Current recursive outside-help behavior:
-  - `outsideHelpEvery` creates interval-triggered `governor_review` requests.
-  - Pending requests and the latest governor steer are included in recursive prompts.
-  - Widget summaries show pending request count and governor steer.
-  - Answers and structured governor decisions can be recorded without editing state files manually.
-- Current loop prompts ask the agent to update the task file, output `<promise>COMPLETE</promise>` when done, otherwise call `ralph_done`.
-- Completion no longer sends a synthetic user message; it persists a `ralph-loop` session entry and uses UI notification.
+- Recursive behavior:
+  - structured attempt reports carry hypothesis, kind, action summary, validation, result, keep/reset, evidence, and follow-up ideas;
+  - `outsideHelpEvery` preserves interval governor reviews;
+  - `governEvery` provides independent governor cadence;
+  - stagnation creates `failure_analysis` requests;
+  - scaffolding drift creates `mutation_suggestions` requests;
+  - `ralph_govern` creates a manual governor request and payload without calling a model or spawning subagents;
+  - recorded governor decisions appear as constraints in subsequent recursive prompts.
+
+## Updated design direction: context routing, not prompt replay
+
+Dogfooding showed that repeating the canonical task or plan each iteration is often the wrong context shape. The canonical plan can be larger than what the next worker needs and can distract the agent from the specific next move.
+
+Future Ralph work should treat the canonical plan and task file as durable source material, not as the default iteration prompt. Each iteration should receive a **context packet** selected for that attempt:
+
+1. **Specific job** — the one bounded action to perform now.
+2. **Acceptance criteria** — what makes this attempt complete.
+3. **Required context** — only the relevant plan excerpts, files, decisions, and constraints.
+4. **Future-preserving constraints** — invariants, compatibility notes, and what not to overbuild.
+5. **Output contract** — attempt report, changed files, validation evidence, risks, and suggested next move.
+
+The governor should own context selection. Instead of `ralph_done` blindly queuing the same task content, the target architecture is:
+
+```text
+durable plan + durable loop state
+        ↓
+governor selects next move + minimal context packet
+        ↓
+worker/subagent performs one bounded attempt
+        ↓
+structured report + artifacts
+        ↓
+governor updates state and chooses the next packet
+```
+
+The governor also has a one-shot/compaction problem. Do not assume the governor keeps infinite chat context. Preserve governor understanding in durable state and outsource bounded work to workers/subagents when useful.
+
+Future state shape to consider:
+
+```ts
+interface GovernorState {
+  objective: string;
+  currentStrategy?: string;
+  completedMilestones: string[];
+  activeConstraints: string[];
+  knownRisks: string[];
+  openQuestions: string[];
+  nextContextHints: string[];
+  rejectedPaths: Array<{ summary: string; reason: string }>;
+}
+
+interface IterationBrief {
+  id: string;
+  objective: string;
+  task: string;
+  acceptanceCriteria: string[];
+  requiredContext: string[];
+  constraints: string[];
+  avoid: string[];
+  outputContract: string;
+  sourceRefs: string[];
+}
+
+interface WorkerReport {
+  objective: string;
+  summary: string;
+  changedFiles: string[];
+  behaviorChanged: string[];
+  validation: Array<{ command: string; result: "passed" | "failed" | "skipped"; summary: string }>;
+  risks: string[];
+  openQuestions: string[];
+  suggestedNextMove?: string;
+  reviewHints: string[];
+}
+```
+
+Subagents should help the governor avoid “driving down the ditch”: the implementer does one bounded attempt, while the governor owns direction, stop/pivot/continue decisions, and context routing. The parent/governor should not automatically reread every file a worker touched; it should consume structured worker reports and inspect only high-risk, ambiguous, failed, or public-contract-changing areas.
 
 ## Remaining future work summary
 
-The practical first pass is complete through basic data-only outside request/governor support. Future work should focus on dogfooding and targeted increments:
+The practical implementation path is complete through bounded recursive/governor workflow. Remaining work is design-gated and should be driven by dogfood evidence:
 
-1. Tighten recursive mode data quality:
-   - add richer attempt reports or an explicit attempt-reporting tool only if task-file-only reporting proves too weak;
-   - add `governEvery` separately from `outsideHelpEvery` if interval governor reviews need independent cadence;
-   - add lightweight stagnation/scaffolding-drift detection using attempt classifications once attempts carry enough structured signal.
-2. Polish manual outside-agent workflow:
-   - return ready-to-copy governor/researcher prompts;
-   - add researcher request templates for ideas, failure analysis, and mutation suggestions;
-   - make request listing easier to consume from parent/orchestrator agents.
-3. Add semi-automatic governed recursive workflow after manual workflow dogfooding.
-4. For subagent-driven recursive mode, use `.pi/plans/ralph-subagent-recursive-mode.md` as the design gate.
-5. For `evolve` mode, use `.pi/plans/ralph-evolve-mode.md` as the design gate after recursive mode has real dogfood evidence.
+1. **Context packet routing**
+   - add `GovernorState` and `IterationBrief` only after manual governor/payload workflows show what context is repeatedly needed;
+   - make prompts brief-by-default and source the canonical plan selectively;
+   - keep large artifacts referenced, not pasted.
+2. **Worker/subagent handoff quality**
+   - define a durable `WorkerReport` contract;
+   - add selective parent review policy so the governor does not duplicate worker work;
+   - implement advisory-only subagent flow before any editing flow.
+3. **Subagent-driven recursive mode**
+   - use `.pi/plans/ralph-subagent-recursive-mode.md` as the design gate;
+   - do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, and edit ownership are safe.
+4. **Evolve mode**
+   - use `.pi/plans/ralph-evolve-mode.md` as the design gate;
+   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, and dogfood evidence are available.
 
 ## Architecture decision
 
@@ -322,218 +404,45 @@ OpenEvolve ideas to map later:
 - early stopping uses patience and threshold
 - islands/parallelism are future work, likely via worktrees/subagents
 
-## Implementation plan
+## Implementation plan status
 
-### 1. Refactor loop state and migration without behavior change — implemented
+Completed implementation is intentionally compacted here; use commit history and tests for detail.
 
-Files:
-- `agent/extensions/public/ralph-loop/index.ts`
-- `agent/extensions/public/ralph-loop/index.test.ts`
+| Stage | Status | Commit(s) / notes |
+| --- | --- | --- |
+| State migration + checklist handler | Done | `6eccd8e`; v1 state migrates to checklist schema v2. |
+| Mode parameter + validation | Done | `251732e`; `checklist` default, unsupported modes fail cleanly. |
+| Recursive setup + prompt | Done | `a8fe4f1`; objective/setup state, bounded-attempt prompt, attempt placeholders. |
+| Outside request queue + governor decisions | Done | `3088421`; data-only requests and answer recording. |
+| Structured attempt reports | Done | `945b100`; `ralph_attempt_report` records hypothesis/action/validation/result/evidence. |
+| Request payloads/templates | Done | `bf22925`; ready-to-copy governor/researcher payloads. |
+| Trigger mechanics | Done | `a233c34`; `governEvery`, stagnation, and scaffolding-drift request creation. |
+| Manual governor helper | Done | `a66512c`; `ralph_govern` creates/reuses a durable governor request and payload. |
+| Future automation design gates | Done | `417f768`; subagent and evolve plans written. |
 
-Tasks:
-- Add `schemaVersion?: number`, `mode?: LoopMode`, and optional `modeState` fields to `LoopState`.
-- Update `migrateState` to synthesize checklist mode for old state files.
-- Keep saved top-level fields compatible with the current watchdog and existing state readers.
-- Add tests for loading old state shape as checklist mode.
+### Next implementation candidates
 
-Acceptance:
-- Existing start/done/completion tests pass.
-- A v1 state fixture without `mode` loads and saves as an active checklist loop.
+Do not restart the completed implementation path. Future implementation should begin with one of these design-gated slices:
 
-Validation:
-- `npm run typecheck --prefix agent/extensions`
-- `npm test --prefix agent/extensions -- public/ralph-loop/index.test.ts`
+1. **Context packet routing**
+   - Add `GovernorState` and `IterationBrief` after dogfooding confirms the needed fields.
+   - Change recursive prompt generation so a governor-selected brief, not the full canonical plan, becomes the normal worker prompt.
+   - Add tests that the prompt includes only selected context and still preserves required constraints.
+2. **Worker report / selective review workflow**
+   - Define `WorkerReport` state and payload expectations.
+   - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
+   - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
+3. **Advisory subagent workflow**
+   - Start with advisory-only worker runs if a safe extension/subagent API exists.
+   - Do not apply edits automatically.
+   - Persist worker run payload, result, failure, and artifacts.
+4. **Evolve mode**
+   - Start only after `.pi/plans/ralph-evolve-mode.md` gates are satisfied.
+   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, and isolation choice before implementation.
 
-### 2. Extract checklist mode behind internal mode handler — implemented
+### Completion boundary
 
-Files:
-- `agent/extensions/public/ralph-loop/index.ts`
-- optionally `agent/extensions/public/ralph-loop/src/modes.ts` if `index.ts` becomes hard to review
-
-Tasks:
-- Extract current prompt building into a checklist handler.
-- Route `ralph_start`, `/ralph start`, `/ralph resume`, `ralph_done`, and `before_agent_start` through the handler.
-- Keep current prompt text stable except for mode labels if necessary.
-- Keep completion marker behavior unchanged.
-
-Acceptance:
-- Golden-ish tests confirm first prompt still contains `RALPH LOOP`, current task content, item pacing, completion marker, and `ralph_done` instruction.
-- No user-visible behavior change for default start.
-
-Validation:
-- Same as task 1.
-- Manual smoke: start disposable checklist loop and complete it.
-
-### 3. Add mode parameter and setup validation — implemented
-
-Files:
-- `index.ts`, tests, README, skill.
-
-Tasks:
-- Add optional `mode` to `ralph_start` schema with default `checklist`.
-- Add `/ralph start --mode checklist|recursive` parsing, initially allowing only checklist to run fully if recursive is not implemented in the same commit.
-- Add clear error messages for unsupported mode/setup combinations.
-- Update README and skill to describe mode selection.
-
-Acceptance:
-- `ralph_start` without mode behaves exactly as before.
-- `ralph_start` with `mode: "checklist"` behaves exactly as before.
-- Unsupported mode produces a concise tool result or UI warning, not a partial loop.
-
-Validation:
-- Typecheck/tests.
-- Manual `/ralph status` after failed unsupported mode shows no stray active loop.
-
-### 4. Implement recursive mode state and prompt — implemented
-
-Files:
-- `index.ts` or mode module, tests, README, skill.
-
-Tasks:
-- Add recursive setup fields to `ralph_start` schema:
-  - `objective`
-  - `baseline`
-  - `validationCommand`
-  - `resetPolicy`
-  - `maxFailedAttempts`
-  - `outsideHelpEvery`
-  - `outsideHelpOnStagnation`
-- Add recursive `modeState` with attempt log and idea status.
-- Build recursive prompt that asks for one bounded hypothesis/attempt and evidence recording.
-- On `ralph_done`, append an attempt placeholder if the agent did not update state explicitly; keep first pass prompt-driven rather than adding a complex attempt tool.
-- Render status/widget summary with latest attempt count and objective.
-
-Acceptance:
-- Recursive start creates state with `mode: "recursive"` and setup fields.
-- Prompt includes objective, validation command if supplied, reset policy, stop conditions, and outside-help policy.
-- `ralph_done` advances recursive iteration and preserves attempt log.
-
-Validation:
-- Unit tests for recursive start and next prompt.
-- Manual smoke with a disposable recursive loop that completes immediately.
-
-### 5. Add outside request queue and governor checkpoint as data-only features — partially implemented
-
-Implemented in `3088421`:
-- `outsideRequests` list in loop state with migration default.
-- `GovernorDecision` data shape.
-- `outsideHelpEvery` creates interval-triggered `governor_review` requests.
-- Pending requests and latest governor decisions render in recursive prompts.
-- Recursive widget summary includes pending request count and latest required next move.
-- `ralph_outside_answer` stores answers and optional structured governor decisions.
-
-Remaining:
-- researcher request generation from stagnation/out-of-ideas signals;
-- independent `governEvery` cadence if needed;
-- failed/neutral attempt accumulation triggers;
-- scaffolding-drift detection based on structured attempt classifications.
-
-Files:
-- mode state code, README, tests.
-
-Tasks:
-- Add `outsideRequests` list to state.
-- Add helper to create researcher requests from recursive mode when iteration count hits `outsideHelpEvery` or stagnation threshold.
-- Add helper to create governor reviews when iteration count hits `governEvery`, when failed/neutral attempts accumulate, or when scaffolding drift is detected.
-- Add a lightweight scaffolding-drift detector based on attempt classifications: repeated `setup`, `refactor`, `instrumentation`, or `benchmark_scaffold` attempts with no subsequent `candidate_change` or `measured_improvement`.
-- Render pending outside requests and latest governor decision in the Ralph widget/status summary.
-- Add `/ralph outside answer <id>` or a small tool only if needed to inject answers/decisions; otherwise keep answers manual in the task file for the first pass.
-
-Acceptance:
-- A recursive loop can record a pending researcher request without launching a subagent.
-- A recursive loop can record a pending governor review or latest governor decision.
-- Pending requests are visible in `/ralph status` or widget summary.
-- The next prompt includes unanswered outside requests and any latest governor steer without blocking normal work.
-- A governor `requiredNextMove` is treated as a hard prompt constraint for the next iteration unless the main loop records a concrete rejection reason.
-
-Validation:
-- Tests for request creation, governor decision rendering, and scaffolding-drift trigger.
-- Manual smoke with `outsideHelpEvery: 1` and `governEvery: 1`.
-
-### 6. Add manual outside-agent workflow — partially implemented
-
-Implemented in `3088421`:
-- `ralph_outside_requests` lists requests with state details.
-- `ralph_outside_answer` records answers and structured governor decisions.
-- `/ralph outside [loop]` lists outside requests.
-- `/ralph outside answer <loop> <request-id> <answer>` records a plain-text answer.
-- README and skill docs describe the data-only/manual workflow.
-
-Remaining:
-- ready-to-copy prompt payloads for governor/researcher execution;
-- explicit governor and researcher prompt templates;
-- better parent/orchestrator workflow docs once the manual workflow is dogfooded.
-
-Do not automate subagent execution yet. First make pending outside requests easy for the parent/orchestrator agent to execute through existing tools.
-
-Tasks:
-- Add command/tool output that lists pending outside requests with ready-to-copy prompts.
-- Add `ralph_outside_answer` or equivalent to record governor/researcher answers into loop state.
-- Define two prompt templates:
-  - Governor prompt: trajectory review, drift detection, next-move decision.
-  - Researcher prompt: new mutation/idea/failure-analysis generation for a targeted problem.
-- Document parent-agent workflow: inspect request, run `subagent`/`web_search`/research tool, record answer, continue loop.
-
-Acceptance:
-- A parent agent can satisfy a pending governor/researcher request without editing state files manually.
-- The main loop consumes recorded answers in the next prompt.
-- No automatic unbounded research fanout.
-
-Validation:
-- Test answer recording and prompt inclusion.
-- Manual smoke with a synthetic governor decision that forces a next move.
-
-### 7. Add semi-automatic governed recursive workflow — future
-
-Only after manual outside-agent workflow is dogfooded.
-
-Tasks:
-- Add a helper command/tool that returns the exact subagent task payload for pending governor/research requests.
-- Optionally add a `ralph_govern` tool that the main agent can call at checkpoints to produce/record a governor decision using the current model, without a separate subagent.
-- Keep implementation attempts bounded: one decision, one attempt, one report.
-
-Acceptance:
-- Main agent can run a governor checkpoint without prompt engineering from scratch.
-- Governor output is structured and recorded durably.
-- The next implementer prompt includes the governor decision as a constraint.
-
-Validation:
-- Manual dogfood on an optimization task where the governor prevents additional scaffolding.
-
-### 8. Add subagent-driven recursive mode later — design gate written
-
-Detailed design gate: `.pi/plans/ralph-subagent-recursive-mode.md`.
-
-Only after the governor/researcher prompts and answer recording are stable.
-
-Target cadence:
-
-```text
-governor -> implementer subagent -> evaluator/validation -> governor
-```
-
-Constraints:
-- Implementer owns exactly one bounded attempt.
-- Governor owns direction and stop/pivot/research decisions.
-- Researcher only runs when requested by governor or explicit policy.
-- Edits by implementer subagents require a safe ownership model: parent-applied patches, worktrees, or advisory-only first.
-
-Acceptance:
-- The loop can run an attempt via subagent and record a structured attempt report.
-- Governor can reject scaffolding drift and require measured candidate changes.
-- User can inspect and interrupt the loop between attempts.
-
-### 9. Design evolve mode after recursive dogfooding — design gate written
-
-Detailed design gate: `.pi/plans/ralph-evolve-mode.md`.
-
-Create or revise the detailed plan once recursive mode has been used on at least one real debugging or optimization task.
-
-Minimum evidence needed before evolve implementation:
-- What recursive logs lacked for candidate selection.
-- Whether validation command output needs structured parsing.
-- Whether worktree isolation is required.
-- How to bound candidate archive and prompt size.
+The original mode-aware/recursive plan is complete up to the safe boundary. Direct subagent execution and evolve candidate execution are intentionally not implemented because they require design approval and safety proof points.
 
 ## Validation strategy
 

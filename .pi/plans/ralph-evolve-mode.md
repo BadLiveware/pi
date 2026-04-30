@@ -26,6 +26,8 @@ seed candidate -> mutate -> evaluate -> archive -> select next candidate
 
 Ralph should remain inspectable and interruptible. The extension should not become an unbounded autonomous optimizer.
 
+Evolve mode should also follow the context-routing rule: prompts receive bounded candidate/archive summaries and the next requested mutation, not the full canonical plan or full evaluator logs.
+
 ## Evidence needed before implementation
 
 Gather this from recursive dogfooding first:
@@ -164,7 +166,7 @@ Scaling variables:
 
 ## Prompt shape
 
-Evolve prompts should include only:
+Evolve prompts are specialized `IterationBrief`s for candidate work. They should include only:
 
 - objective and primary metric;
 - current best candidate summary;

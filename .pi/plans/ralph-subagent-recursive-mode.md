@@ -15,6 +15,43 @@ Do not make `ralph-loop` spawn subagents directly yet. The next safe shape is an
 
 Only after that workflow is dogfooded should the extension add a direct subagent-driven mode.
 
+## Context routing principle
+
+Do not paste the full canonical plan into every worker iteration. The plan and task file are durable source material; the governor should route only the context needed for the next bounded attempt.
+
+A worker should receive an `IterationBrief`, not the whole plan:
+
+```ts
+interface IterationBrief {
+  id: string;
+  objective: string;
+  task: string;
+  acceptanceCriteria: string[];
+  requiredContext: string[];
+  constraints: string[];
+  avoid: string[];
+  outputContract: string;
+  sourceRefs: string[];
+}
+```
+
+The governor should preserve compact durable understanding in state rather than relying on chat history:
+
+```ts
+interface GovernorState {
+  objective: string;
+  currentStrategy?: string;
+  completedMilestones: string[];
+  activeConstraints: string[];
+  knownRisks: string[];
+  openQuestions: string[];
+  nextContextHints: string[];
+  rejectedPaths: Array<{ summary: string; reason: string }>;
+}
+```
+
+This is also the main anti-ditch mechanism: the implementer executes one brief; the governor decides whether the next brief continues, pivots, measures, requests research, or stops.
+
 ## Context and constraints
 
 - Current safe boundary: extension state and prompts are deterministic and inspectable.
@@ -41,6 +78,18 @@ Existing state remains the source of truth:
 Future direct subagent mode may add:
 
 ```ts
+interface WorkerReport {
+  objective: string;
+  summary: string;
+  changedFiles: string[];
+  behaviorChanged: string[];
+  validation: Array<{ command: string; result: "passed" | "failed" | "skipped"; summary: string }>;
+  risks: string[];
+  openQuestions: string[];
+  suggestedNextMove?: string;
+  reviewHints: string[];
+}
+
 interface WorkerRun {
   id: string;
   requestId: string;
@@ -64,6 +113,8 @@ Do not add this state until an execution path exists that can maintain it reliab
 - Parent/orchestrator owns tool execution, subagent invocation, review, and whether to apply edits.
 - Implementer subagents must not own the overall loop direction.
 - Governor decisions may constrain the next prompt but should remain inspectable and rejectable with a recorded reason.
+- The governor should consume worker reports and artifacts, not re-derive all context by rereading every changed file.
+- Parent/governor review should read touched files only when risk, ambiguity, failed validation, public contract changes, or worker review hints justify it.
 
 ## Options considered
 
@@ -95,6 +146,8 @@ Only after advisory mode proves useful should parent-applied patches or worktree
 - Direct execution must never bypass `outsideRequests`, `GovernorDecision`, or `RecursiveAttempt` state.
 - Editing workers require an explicit edit policy and rollback story before implementation.
 - No background fanout without user-visible state and interruption points.
+- No worker should receive the entire canonical plan by default; prompts should be selected context packets.
+- Worker reports must identify changed files, validation evidence, risks, and which files are worth parent review.
 
 ## Performance shape
 
