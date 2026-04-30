@@ -113,6 +113,39 @@ interface OutsideRequest {
 	consumedAt?: string;
 }
 
+type CriterionStatus = "pending" | "passed" | "failed" | "skipped" | "blocked";
+type VerificationArtifactKind = "test" | "smoke" | "curl" | "browser" | "screenshot" | "walkthrough" | "benchmark" | "log" | "other";
+
+interface Criterion {
+	id: string;
+	taskId?: string;
+	sourceRef?: string;
+	requirement?: string;
+	description: string;
+	passCondition: string;
+	testMethod?: string;
+	status: CriterionStatus;
+	evidence?: string;
+	redEvidence?: string;
+	greenEvidence?: string;
+	lastCheckedAt?: string;
+}
+
+interface CriterionLedger {
+	criteria: Criterion[];
+	requirementTrace: Array<{ requirement: string; criterionIds: string[] }>;
+}
+
+interface VerificationArtifact {
+	id: string;
+	kind: VerificationArtifactKind;
+	command?: string;
+	path?: string;
+	summary: string;
+	criterionIds?: string[];
+	createdAt: string;
+}
+
 interface LoopModeHandler {
 	mode: LoopMode;
 	buildPrompt(state: LoopState, taskContent: string, reason: PromptReason): string;
@@ -122,7 +155,7 @@ interface LoopModeHandler {
 }
 
 interface LoopState {
-	schemaVersion: 2;
+	schemaVersion: 3;
 	name: string;
 	taskFile: string;
 	mode: LoopMode;
@@ -138,6 +171,8 @@ interface LoopState {
 	lastReflectionAt: number; // Last iteration we reflected at
 	modeState: LoopModeState;
 	outsideRequests: OutsideRequest[];
+	criterionLedger: CriterionLedger;
+	verificationArtifacts: VerificationArtifact[];
 }
 
 const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
@@ -269,6 +304,94 @@ export default function (pi: ExtensionAPI) {
 		return Array.isArray(value) ? (value as OutsideRequest[]) : [];
 	}
 
+	function defaultCriterionLedger(): CriterionLedger {
+		return { criteria: [], requirementTrace: [] };
+	}
+
+	function isCriterionStatus(value: unknown): value is CriterionStatus {
+		return ["pending", "passed", "failed", "skipped", "blocked"].includes(String(value));
+	}
+
+	function isArtifactKind(value: unknown): value is VerificationArtifactKind {
+		return ["test", "smoke", "curl", "browser", "screenshot", "walkthrough", "benchmark", "log", "other"].includes(String(value));
+	}
+
+	function normalizeIds(value: unknown): string[] | undefined {
+		if (!Array.isArray(value)) return undefined;
+		const ids = value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
+		return ids.length > 0 ? [...new Set(ids)] : undefined;
+	}
+
+	function normalizeId(value: unknown, fallback: string): string {
+		const raw = typeof value === "string" ? value.trim() : "";
+		const normalized = raw.replace(/[^a-zA-Z0-9_.:-]/g, "_").replace(/_+/g, "_");
+		return normalized || fallback;
+	}
+
+	function rebuildRequirementTrace(criteria: Criterion[]): CriterionLedger["requirementTrace"] {
+		const byRequirement = new Map<string, Set<string>>();
+		for (const criterion of criteria) {
+			const requirement = criterion.requirement?.trim();
+			if (!requirement) continue;
+			const ids = byRequirement.get(requirement) ?? new Set<string>();
+			ids.add(criterion.id);
+			byRequirement.set(requirement, ids);
+		}
+		return [...byRequirement.entries()].map(([requirement, ids]) => ({ requirement, criterionIds: [...ids].sort() }));
+	}
+
+	function migrateCriterionLedger(value: unknown): CriterionLedger {
+		if (!value || typeof value !== "object") return defaultCriterionLedger();
+		const raw = value as { criteria?: unknown };
+		const criteria = Array.isArray(raw.criteria)
+			? raw.criteria
+					.map((item, index): Criterion | null => {
+						if (!item || typeof item !== "object") return null;
+						const criterion = item as Partial<Criterion> & Record<string, unknown>;
+						const description = typeof criterion.description === "string" ? criterion.description.trim() : "";
+						const passCondition = typeof criterion.passCondition === "string" ? criterion.passCondition.trim() : "";
+						if (!description || !passCondition) return null;
+						return {
+							id: normalizeId(criterion.id, `c${index + 1}`),
+							taskId: typeof criterion.taskId === "string" && criterion.taskId.trim() ? criterion.taskId.trim() : undefined,
+							sourceRef: typeof criterion.sourceRef === "string" && criterion.sourceRef.trim() ? criterion.sourceRef.trim() : undefined,
+							requirement: typeof criterion.requirement === "string" && criterion.requirement.trim() ? criterion.requirement.trim() : undefined,
+							description,
+							passCondition,
+							testMethod: typeof criterion.testMethod === "string" && criterion.testMethod.trim() ? criterion.testMethod.trim() : undefined,
+							status: isCriterionStatus(criterion.status) ? criterion.status : "pending",
+							evidence: typeof criterion.evidence === "string" && criterion.evidence.trim() ? criterion.evidence.trim() : undefined,
+							redEvidence: typeof criterion.redEvidence === "string" && criterion.redEvidence.trim() ? criterion.redEvidence.trim() : undefined,
+							greenEvidence: typeof criterion.greenEvidence === "string" && criterion.greenEvidence.trim() ? criterion.greenEvidence.trim() : undefined,
+							lastCheckedAt: typeof criterion.lastCheckedAt === "string" ? criterion.lastCheckedAt : undefined,
+						};
+					})
+					.filter((criterion): criterion is Criterion => criterion !== null)
+			: [];
+		return { criteria, requirementTrace: rebuildRequirementTrace(criteria) };
+	}
+
+	function migrateVerificationArtifacts(value: unknown): VerificationArtifact[] {
+		if (!Array.isArray(value)) return [];
+		return value
+			.map((item, index): VerificationArtifact | null => {
+				if (!item || typeof item !== "object") return null;
+				const artifact = item as Partial<VerificationArtifact> & Record<string, unknown>;
+				const summary = typeof artifact.summary === "string" ? artifact.summary.trim() : "";
+				if (!summary) return null;
+				return {
+					id: normalizeId(artifact.id, `a${index + 1}`),
+					kind: isArtifactKind(artifact.kind) ? artifact.kind : "other",
+					command: typeof artifact.command === "string" && artifact.command.trim() ? artifact.command.trim() : undefined,
+					path: typeof artifact.path === "string" && artifact.path.trim() ? artifact.path.trim() : undefined,
+					summary,
+					criterionIds: normalizeIds(artifact.criterionIds),
+					createdAt: typeof artifact.createdAt === "string" ? artifact.createdAt : new Date().toISOString(),
+				};
+			})
+			.filter((artifact): artifact is VerificationArtifact => artifact !== null);
+	}
+
 	function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 		const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 		const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
@@ -276,7 +399,7 @@ export default function (pi: ExtensionAPI) {
 		const mode = normalizeMode(raw.mode);
 		const name = stringOrDefault(raw.name, "stardock");
 		return {
-			schemaVersion: 2,
+			schemaVersion: 3,
 			name,
 			taskFile: stringOrDefault(raw.taskFile, defaultTaskFile(name)),
 			mode,
@@ -292,6 +415,8 @@ export default function (pi: ExtensionAPI) {
 			lastReflectionAt,
 			modeState: migrateModeState(mode, raw.modeState),
 			outsideRequests: migrateOutsideRequests(raw.outsideRequests),
+			criterionLedger: migrateCriterionLedger(raw.criterionLedger),
+			verificationArtifacts: migrateVerificationArtifacts(raw.verificationArtifacts),
 		};
 	}
 
@@ -633,6 +758,122 @@ export default function (pi: ExtensionAPI) {
 		return { ok: true, state, attempt };
 	}
 
+	// --- Criterion ledger and verification artifacts ---
+
+	function nextSequentialId(prefix: string, existing: Array<{ id: string }>): string {
+		let index = existing.length + 1;
+		const ids = new Set(existing.map((item) => item.id));
+		while (ids.has(`${prefix}${index}`)) index++;
+		return `${prefix}${index}`;
+	}
+
+	function criterionCounts(ledger: CriterionLedger): Record<CriterionStatus, number> & { total: number } {
+		const counts = { total: ledger.criteria.length, pending: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 };
+		for (const criterion of ledger.criteria) counts[criterion.status]++;
+		return counts;
+	}
+
+	function upsertCriterion(
+		ctx: ExtensionContext,
+		loopName: string,
+		input: Partial<Criterion> & { id?: string; description?: string; passCondition?: string },
+	): { ok: true; state: LoopState; criterion: Criterion; created: boolean } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+
+		const id = normalizeId(input.id, nextSequentialId("c", state.criterionLedger.criteria));
+		const existingIndex = state.criterionLedger.criteria.findIndex((criterion) => criterion.id === id);
+		const existing = existingIndex >= 0 ? state.criterionLedger.criteria[existingIndex] : undefined;
+		const description = typeof input.description === "string" && input.description.trim() ? input.description.trim() : existing?.description;
+		const passCondition = typeof input.passCondition === "string" && input.passCondition.trim() ? input.passCondition.trim() : existing?.passCondition;
+		if (!description || !passCondition) return { ok: false, error: "Criterion requires description and passCondition." };
+
+		const evidenceChanged = input.status !== undefined || input.evidence !== undefined || input.redEvidence !== undefined || input.greenEvidence !== undefined;
+		const criterion: Criterion = {
+			id,
+			taskId: typeof input.taskId === "string" && input.taskId.trim() ? input.taskId.trim() : existing?.taskId,
+			sourceRef: typeof input.sourceRef === "string" && input.sourceRef.trim() ? input.sourceRef.trim() : existing?.sourceRef,
+			requirement: typeof input.requirement === "string" && input.requirement.trim() ? input.requirement.trim() : existing?.requirement,
+			description,
+			passCondition,
+			testMethod: typeof input.testMethod === "string" && input.testMethod.trim() ? input.testMethod.trim() : existing?.testMethod,
+			status: isCriterionStatus(input.status) ? input.status : existing?.status ?? "pending",
+			evidence: typeof input.evidence === "string" && input.evidence.trim() ? compactText(input.evidence, 500) : existing?.evidence,
+			redEvidence: typeof input.redEvidence === "string" && input.redEvidence.trim() ? compactText(input.redEvidence, 500) : existing?.redEvidence,
+			greenEvidence: typeof input.greenEvidence === "string" && input.greenEvidence.trim() ? compactText(input.greenEvidence, 500) : existing?.greenEvidence,
+			lastCheckedAt: evidenceChanged ? new Date().toISOString() : existing?.lastCheckedAt,
+		};
+
+		if (existingIndex >= 0) state.criterionLedger.criteria[existingIndex] = criterion;
+		else state.criterionLedger.criteria.push(criterion);
+		state.criterionLedger.criteria.sort((a, b) => a.id.localeCompare(b.id));
+		state.criterionLedger.requirementTrace = rebuildRequirementTrace(state.criterionLedger.criteria);
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, criterion, created: existingIndex < 0 };
+	}
+
+	function recordVerificationArtifact(
+		ctx: ExtensionContext,
+		loopName: string,
+		input: Partial<VerificationArtifact> & { summary?: string },
+	): { ok: true; state: LoopState; artifact: VerificationArtifact; created: boolean } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+
+		const id = normalizeId(input.id, nextSequentialId("a", state.verificationArtifacts));
+		const existingIndex = state.verificationArtifacts.findIndex((artifact) => artifact.id === id);
+		const existing = existingIndex >= 0 ? state.verificationArtifacts[existingIndex] : undefined;
+		const summary = typeof input.summary === "string" && input.summary.trim() ? compactText(input.summary, 500) : existing?.summary;
+		if (!summary) return { ok: false, error: "Verification artifact requires summary." };
+
+		const artifact: VerificationArtifact = {
+			id,
+			kind: isArtifactKind(input.kind) ? input.kind : existing?.kind ?? "other",
+			command: typeof input.command === "string" && input.command.trim() ? input.command.trim() : existing?.command,
+			path: typeof input.path === "string" && input.path.trim() ? input.path.trim() : existing?.path,
+			summary,
+			criterionIds: normalizeIds(input.criterionIds) ?? existing?.criterionIds,
+			createdAt: existing?.createdAt ?? new Date().toISOString(),
+		};
+
+		if (existingIndex >= 0) state.verificationArtifacts[existingIndex] = artifact;
+		else state.verificationArtifacts.push(artifact);
+		state.verificationArtifacts.sort((a, b) => a.id.localeCompare(b.id));
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, artifact, created: existingIndex < 0 };
+	}
+
+	function formatCriterionCounts(ledger: CriterionLedger): string {
+		const counts = criterionCounts(ledger);
+		return `Criteria: ${counts.total} total, ${counts.passed} passed, ${counts.failed} failed, ${counts.blocked} blocked, ${counts.skipped} skipped, ${counts.pending} pending`;
+	}
+
+	function formatLedgerOverview(state: LoopState): string {
+		const lines = [`Ledger for ${state.name}`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`];
+		if (state.criterionLedger.criteria.length > 0) {
+			lines.push("", "Criteria");
+			for (const criterion of state.criterionLedger.criteria.slice(0, 12)) {
+				lines.push(`- ${criterion.id} [${criterion.status}] ${compactText(criterion.description, 120)}`);
+				lines.push(`  Pass: ${compactText(criterion.passCondition, 120)}`);
+				if (criterion.evidence) lines.push(`  Evidence: ${compactText(criterion.evidence, 120)}`);
+			}
+			if (state.criterionLedger.criteria.length > 12) lines.push(`... ${state.criterionLedger.criteria.length - 12} more criteria`);
+		}
+		if (state.verificationArtifacts.length > 0) {
+			lines.push("", "Artifacts");
+			for (const artifact of state.verificationArtifacts.slice(0, 12)) {
+				const criteria = artifact.criterionIds?.length ? ` · criteria ${artifact.criterionIds.join(",")}` : "";
+				lines.push(`- ${artifact.id} [${artifact.kind}] ${compactText(artifact.summary, 120)}${criteria}`);
+				if (artifact.path) lines.push(`  Path: ${artifact.path}`);
+				if (artifact.command) lines.push(`  Command: ${compactText(artifact.command, 120)}`);
+			}
+			if (state.verificationArtifacts.length > 12) lines.push(`... ${state.verificationArtifacts.length - 12} more artifacts`);
+		}
+		return lines.join("\n");
+	}
+
 	// --- UI ---
 
 	function formatLoop(l: LoopState): string {
@@ -646,6 +887,11 @@ export default function (pi: ExtensionAPI) {
 		const outsideRequests = state.outsideRequests;
 		const pendingRequests = pendingOutsideRequests(state);
 		const latestAttempt = attempts.at(-1);
+		const criteria = criterionCounts(state.criterionLedger);
+		const artifactsByKind = state.verificationArtifacts.reduce<Record<string, number>>((counts, artifact) => {
+			counts[artifact.kind] = (counts[artifact.kind] ?? 0) + 1;
+			return counts;
+		}, {});
 		return {
 			name: state.name,
 			mode: state.mode,
@@ -681,7 +927,17 @@ export default function (pi: ExtensionAPI) {
 				answered: outsideRequests.filter((request) => request.status === "answered").length,
 				latestGovernorDecision: latestGovernorDecision(state),
 			},
-			...(includeDetails ? { modeState: state.modeState, requests: state.outsideRequests } : {}),
+			criteria: {
+				...criteria,
+				requirementTrace: state.criterionLedger.requirementTrace.length,
+			},
+			verificationArtifacts: {
+				total: state.verificationArtifacts.length,
+				byKind: artifactsByKind,
+			},
+			...(includeDetails
+				? { modeState: state.modeState, requests: state.outsideRequests, criterionLedger: state.criterionLedger, artifacts: state.verificationArtifacts }
+				: {}),
 		};
 	}
 
@@ -690,7 +946,9 @@ export default function (pi: ExtensionAPI) {
 		const reported = attempts.filter((attempt) => attempt.status === "reported").length;
 		const requestText = state.outsideRequests.length > 0 ? `, outside ${pendingOutsideRequests(state).length}/${state.outsideRequests.length} pending` : "";
 		const attemptText = attempts.length > 0 ? `, attempts ${reported}/${attempts.length} reported` : "";
-		return `${formatLoop(state)}${attemptText}${requestText}`;
+		const criteriaText = state.criterionLedger.criteria.length > 0 ? `, criteria ${criterionCounts(state.criterionLedger).passed}/${state.criterionLedger.criteria.length} passed` : "";
+		const artifactsText = state.verificationArtifacts.length > 0 ? `, artifacts ${state.verificationArtifacts.length}` : "";
+		return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}`;
 	}
 
 	function compactText(value: string | undefined, maxLength = 160): string | undefined {
@@ -777,6 +1035,7 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
+		lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`);
 		if (latestDecision) {
 			lines.push("", "Latest governor decision", `  Verdict: ${latestDecision.verdict}`, `  Rationale: ${compactText(latestDecision.rationale, 220) ?? "none"}`);
 			if (latestDecision.requiredNextMove) lines.push(`  Required next move: ${latestDecision.requiredNextMove}`);
@@ -1222,7 +1481,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const state: LoopState = {
-				schemaVersion: 2,
+				schemaVersion: 3,
 				name: loopName,
 				taskFile,
 				mode,
@@ -1237,6 +1496,8 @@ export default function (pi: ExtensionAPI) {
 				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
 				outsideRequests: [],
+				criterionLedger: defaultCriterionLedger(),
+				verificationArtifacts: [],
 			};
 
 			saveState(ctx, state);
@@ -1661,7 +1922,7 @@ Examples:
 			fs.writeFileSync(fullPath, params.taskContent, "utf-8");
 
 			const state: LoopState = {
-				schemaVersion: 2,
+				schemaVersion: 3,
 				name: loopName,
 				taskFile,
 				mode,
@@ -1676,6 +1937,8 @@ Examples:
 				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
 				outsideRequests: [],
+				criterionLedger: defaultCriterionLedger(),
+				verificationArtifacts: [],
 			};
 
 			saveState(ctx, state);
@@ -1791,6 +2054,8 @@ Examples:
 					state.modeState.kind === "recursive" ? `Objective: ${state.modeState.objective}` : undefined,
 					attempts.length > 0 ? `Attempts: ${attempts.filter((attempt) => attempt.status === "reported").length}/${attempts.length} reported` : undefined,
 					`Outside requests: ${pendingOutsideRequests(state).length}/${state.outsideRequests.length} pending`,
+					formatCriterionCounts(state.criterionLedger),
+					`Verification artifacts: ${state.verificationArtifacts.length}`,
 					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
 				].filter((line): line is string => Boolean(line));
 				const text = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : lines.join("\n");
@@ -1809,6 +2074,101 @@ Examples:
 					currentLoop,
 					loops: loops.map((state) => summarizeLoopState(ctx, state, archived, includeDetails)),
 				},
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "stardock_ledger",
+		label: "Manage Stardock Ledger",
+		description: "Inspect or update a Stardock criterion ledger and compact verification artifact refs.",
+		parameters: Type.Object({
+			action: Type.Union([Type.Literal("list"), Type.Literal("upsertCriterion"), Type.Literal("recordArtifact")], {
+				description: "list returns the ledger; upsertCriterion creates/updates a criterion; recordArtifact records a compact verification artifact ref.",
+			}),
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+			id: Type.Optional(Type.String({ description: "Criterion or artifact id. Generated when omitted." })),
+			taskId: Type.Optional(Type.String({ description: "Optional task/work item id for a criterion." })),
+			sourceRef: Type.Optional(Type.String({ description: "Optional source reference such as a plan heading or file path." })),
+			requirement: Type.Optional(Type.String({ description: "Original requirement text this criterion traces to." })),
+			description: Type.Optional(Type.String({ description: "Criterion description. Required for new criteria." })),
+			passCondition: Type.Optional(Type.String({ description: "Observable condition that makes the criterion pass. Required for new criteria." })),
+			testMethod: Type.Optional(Type.String({ description: "How to verify this criterion." })),
+			status: Type.Optional(
+				Type.Union([Type.Literal("pending"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped"), Type.Literal("blocked")], {
+					description: "Criterion status.",
+				}),
+			),
+			evidence: Type.Optional(Type.String({ description: "Compact criterion evidence summary or path." })),
+			redEvidence: Type.Optional(Type.String({ description: "Compact failing/baseline evidence summary or path." })),
+			greenEvidence: Type.Optional(Type.String({ description: "Compact passing evidence summary or path." })),
+			kind: Type.Optional(
+				Type.Union(
+					[
+						Type.Literal("test"),
+						Type.Literal("smoke"),
+						Type.Literal("curl"),
+						Type.Literal("browser"),
+						Type.Literal("screenshot"),
+						Type.Literal("walkthrough"),
+						Type.Literal("benchmark"),
+						Type.Literal("log"),
+						Type.Literal("other"),
+					],
+					{ description: "Verification artifact kind." },
+				),
+			),
+			command: Type.Optional(Type.String({ description: "Command associated with an artifact." })),
+			path: Type.Optional(Type.String({ description: "Path or URL for an artifact." })),
+			summary: Type.Optional(Type.String({ description: "Compact artifact summary. Required for recordArtifact." })),
+			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids linked to an artifact." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
+			const state = loadState(ctx, loopName);
+			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
+
+			if (params.action === "list") {
+				return {
+					content: [{ type: "text", text: formatLedgerOverview(state) }],
+					details: { loopName, criterionLedger: state.criterionLedger, verificationArtifacts: state.verificationArtifacts },
+				};
+			}
+
+			if (params.action === "upsertCriterion") {
+				const result = upsertCriterion(ctx, loopName, {
+					id: params.id,
+					taskId: params.taskId,
+					sourceRef: params.sourceRef,
+					requirement: params.requirement,
+					description: params.description,
+					passCondition: params.passCondition,
+					testMethod: params.testMethod,
+					status: params.status,
+					evidence: params.evidence,
+					redEvidence: params.redEvidence,
+					greenEvidence: params.greenEvidence,
+				});
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				return {
+					content: [{ type: "text", text: `${result.created ? "Created" : "Updated"} criterion ${result.criterion.id} in loop "${loopName}".` }],
+					details: { loopName, criterion: result.criterion, criterionLedger: result.state.criterionLedger },
+				};
+			}
+
+			const result = recordVerificationArtifact(ctx, loopName, {
+				id: params.id,
+				kind: params.kind,
+				command: params.command,
+				path: params.path,
+				summary: params.summary,
+				criterionIds: params.criterionIds,
+			});
+			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			return {
+				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} artifact ${result.artifact.id} in loop "${loopName}".` }],
+				details: { loopName, artifact: result.artifact, verificationArtifacts: result.state.verificationArtifacts },
 			};
 		},
 	});

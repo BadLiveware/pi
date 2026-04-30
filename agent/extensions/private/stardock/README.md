@@ -26,7 +26,8 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | --- | --- |
 | `stardock_start` | Create `.stardock/runs/<name>/task.md`, write task content, save loop state, and queue iteration 1. |
 | `stardock_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
-| `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. |
+| `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. Includes criteria and verification artifact counts. |
+| `stardock_ledger` | Inspect or update the loop's criterion ledger and compact verification artifact refs. Supports `list`, `upsertCriterion`, and `recordArtifact`. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
@@ -76,7 +77,9 @@ Options for `/stardock start`:
 
 While a loop is active, Stardock also shows an at-a-glance widget with loop name, mode/status/iteration, recursive attempt progress, outside request count, and the latest governor steer when present.
 
-Use `/stardock view [loop]` when you want to know what is happening in more detail. It summarizes the run status, objective, attempts, outside requests, latest governor decision, and a chronological timeline. Use `/stardock timeline [loop]` when you only want the event sequence.
+Use `/stardock view [loop]` when you want to know what is happening in more detail. It summarizes the run status, objective, attempts, outside requests, criteria, verification artifact counts, latest governor decision, and a chronological timeline. Use `/stardock timeline [loop]` when you only want the event sequence.
+
+Use `stardock_ledger` when a loop needs explicit acceptance criteria or compact evidence refs. Criteria keep stable IDs, source/requirement context, pass conditions, status, and compact evidence. Verification artifacts store summaries plus optional commands, paths, and linked criterion IDs; put long logs, screenshots, and benchmark output in files and reference them rather than pasting them into state.
 
 Agents can request the same views through `stardock_state`:
 

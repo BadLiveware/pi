@@ -5,7 +5,7 @@ description: Use when starting, driving, or inspecting private Stardock implemen
 
 # Stardock
 
-Stardock is a private Pi implementation framework for governed agentic work. Current capabilities are checklist and recursive loops; future work will add criteria, compact context packets, verification artifacts, auditor oversight, and bounded worker handoffs.
+Stardock is a private Pi implementation framework for governed agentic work. Current capabilities are checklist and recursive loops, plus a minimal criterion ledger and compact verification artifact refs; future work will add compact context packets, auditor oversight, final verification reports, and bounded worker handoffs.
 
 Use `stardock_start` to begin a loop. Choose `mode: "checklist"` for finite known work or `mode: "recursive"` for bounded try/test/reset attempts on open-ended objectives:
 
@@ -32,6 +32,8 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
 6. For recursive loops, use `stardock_attempt_report` when available.
 7. Call `stardock_done` to proceed to the next iteration.
 8. Output `<promise>COMPLETE</promise>` only when the scoped work is done.
+
+Use `stardock_ledger` when criteria or evidence need to be durable: `upsertCriterion` records stable acceptance criteria with pass conditions and compact evidence, `recordArtifact` stores compact refs to tests/smoke checks/screenshots/logs/benchmarks, and `list` shows the ledger without reading `.stardock/` files. Keep long logs and screenshots outside state; store paths and concise summaries.
 
 If outside-help/governor requests appear, inspect them with `stardock_outside_requests`, fetch ready-to-copy work with `stardock_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `stardock_outside_answer`. Use `stardock_govern` for an immediate manual governor review request and payload without spawning subagents. Stardock keeps governor requests to one per iteration, so a manual governor request/decision suppresses the automatic cadence request for that same iteration.
 

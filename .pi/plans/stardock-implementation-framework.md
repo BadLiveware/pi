@@ -86,6 +86,7 @@ Implemented behavior:
   - `stardock_start`
   - `stardock_done`
   - `stardock_state`
+  - `stardock_ledger`
   - `stardock_attempt_report`
   - `stardock_govern`
   - `stardock_outside_requests`
@@ -125,6 +126,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - `stardock_state` now gives agents a compact read-only state/list surface so dogfood runs do not require direct reads of ignored `.stardock/` files.
 - `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views provide the first operational "what is happening" visualization for a run.
 - The active-run widget now provides an at-a-glance companion with loop identity, mode/status/iteration, recursive attempt progress, outside request count, latest attempt, and latest governor steer.
+- Initial schema v3 ledger state now stores `criterionLedger` and `verificationArtifacts`; `stardock_ledger` can list/upsert criteria and record compact artifact refs, and `stardock_state` reports criteria/artifact progress without reading `.stardock/` files.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -715,13 +717,13 @@ Completed implementation is intentionally compacted here; use commit history and
 
 Do not restart the completed implementation path. Future implementation should begin with one of these design-gated slices:
 
-1. **Criterion ledger prototype**
-   - Add additive state for criteria, pass conditions, test methods, status, evidence, optional red/green evidence, and baseline validation.
+1. **Criterion ledger expansion**
+   - Initial additive state and `stardock_ledger` update/list support exists for criteria, pass conditions, test methods, status, compact evidence, optional red/green evidence, requirement traces, and compact artifact refs.
    - Add a plan/task-file distillation path that can create or update criteria without replacing the canonical plan.
-   - Add tests for migration, status updates, prompt caps, baseline evidence, and requirement-to-criterion traceability.
-2. **Verification artifact handling**
-   - Add artifact refs for tests, smoke commands, `curl`, browser/screenshot checks, walkthroughs, and benchmarks.
-   - Store long logs/screenshots outside state and include only compact summaries in prompts.
+   - Add baseline validation records and stronger criteria review/update policy once dogfooding shows the right granularity.
+2. **Verification artifact expansion**
+   - Initial artifact refs exist for tests, smoke commands, `curl`, browser/screenshot checks, walkthroughs, benchmarks, logs, and other refs.
+   - Keep long logs/screenshots outside state and include only compact summaries in prompts.
    - Add final-report support for artifact lists and unresolved validation gaps.
 3. **Criteria-aware context packet routing**
    - Add `GovernorState` and `IterationBrief` after dogfooding confirms the needed fields.

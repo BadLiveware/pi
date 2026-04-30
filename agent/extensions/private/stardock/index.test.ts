@@ -82,6 +82,7 @@ test("stardock registers tools and commands", () => {
 		assert.ok(tools.has("stardock_start"));
 		assert.ok(tools.has("stardock_done"));
 		assert.ok(tools.has("stardock_state"));
+		assert.ok(tools.has("stardock_ledger"));
 		assert.ok(tools.has("stardock_attempt_report"));
 		assert.ok(tools.has("stardock_govern"));
 		assert.ok(tools.has("stardock_outside_payload"));
@@ -127,10 +128,13 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		const demoTaskPath = taskPath(cwd, "Demo_Loop");
 		assert.equal(fs.readFileSync(demoTaskPath, "utf-8"), "# Task\n\n## Checklist\n- [ ] First item\n");
 		const state = JSON.parse(fs.readFileSync(demoStatePath, "utf-8"));
+		assert.equal(state.schemaVersion, 3);
 		assert.equal(state.status, "active");
 		assert.equal(state.taskFile, path.join(".stardock", "runs", "Demo_Loop", "task.md"));
 		assert.equal(state.mode, "checklist");
 		assert.deepEqual(state.modeState, { kind: "checklist" });
+		assert.deepEqual(state.criterionLedger, { criteria: [], requirementTrace: [] });
+		assert.deepEqual(state.verificationArtifacts, []);
 		assert.equal(state.iteration, 1);
 		assert.equal(state.itemsPerIteration, 1);
 
@@ -183,6 +187,122 @@ test("stardock_state lists and inspects loop summaries", async () => {
 		assert.equal(inspectResult.details.loop.taskFile, path.join(".stardock", "runs", "State_Loop", "task.md"));
 		assert.equal(inspectResult.details.loop.recursive.objective, "Inspect loop state without reading files directly");
 		assert.equal(inspectResult.details.loop.modeState.kind, "recursive");
+		assert.equal(inspectResult.details.loop.criteria.total, 0);
+		assert.equal(inspectResult.details.loop.verificationArtifacts.total, 0);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_ledger records criteria and compact artifact refs", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const stateTool = tools.get("stardock_state");
+		const done = tools.get("stardock_done");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(stateTool);
+		assert.ok(done);
+
+		await start.execute(
+			"tool-ledger-start",
+			{
+				name: "Ledger Loop",
+				mode: "checklist",
+				taskContent: "# Ledger task\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const createCriterion = await ledger.execute(
+			"tool-ledger-criterion-create",
+			{
+				action: "upsertCriterion",
+				loopName: "Ledger_Loop",
+				id: "c-build",
+				requirement: "Validation is explicit",
+				sourceRef: ".pi/plans/stardock-implementation-framework.md#criterion-ledger",
+				description: "Run validation before claiming the loop slice complete.",
+				passCondition: "Typecheck and focused tests pass with fresh output.",
+				testMethod: "npm run typecheck --prefix agent/extensions && npm test --prefix agent/extensions -- private/stardock/index.test.ts",
+				status: "failed",
+				evidence: "Initial baseline has no criterion-ledger tests.",
+				redEvidence: "No focused test asserted criterion persistence.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(createCriterion.content[0].text, /Created criterion c-build/);
+		assert.equal(createCriterion.details.criterion.status, "failed");
+		assert.deepEqual(createCriterion.details.criterionLedger.requirementTrace, [
+			{ requirement: "Validation is explicit", criterionIds: ["c-build"] },
+		]);
+
+		const updateCriterion = await ledger.execute(
+			"tool-ledger-criterion-update",
+			{
+				action: "upsertCriterion",
+				loopName: "Ledger_Loop",
+				id: "c-build",
+				status: "passed",
+				evidence: "Typecheck and focused tests passed after adding ledger coverage.",
+				greenEvidence: "node --test private/stardock/index.test.ts passed.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(updateCriterion.content[0].text, /Updated criterion c-build/);
+		assert.equal(updateCriterion.details.criterion.description, "Run validation before claiming the loop slice complete.");
+		assert.equal(updateCriterion.details.criterion.status, "passed");
+		assert.ok(updateCriterion.details.criterion.lastCheckedAt);
+
+		const longSummary = `${"log line ".repeat(90)}final result passed`;
+		const artifactResult = await ledger.execute(
+			"tool-ledger-artifact",
+			{
+				action: "recordArtifact",
+				loopName: "Ledger_Loop",
+				id: "a-test",
+				kind: "test",
+				command: "npm test --prefix agent/extensions -- private/stardock/index.test.ts",
+				path: "artifacts/stardock-ledger-test.txt",
+				summary: longSummary,
+				criterionIds: ["c-build"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(artifactResult.content[0].text, /Recorded artifact a-test/);
+		assert.equal(artifactResult.details.artifact.summary.length, 500);
+		assert.equal(artifactResult.details.artifact.summary.endsWith("…"), true);
+		assert.deepEqual(artifactResult.details.artifact.criterionIds, ["c-build"]);
+
+		const listResult = await ledger.execute("tool-ledger-list", { action: "list", loopName: "Ledger_Loop" }, undefined, undefined, ctx);
+		assert.match(listResult.content[0].text, /Criteria: 1 total, 1 passed/);
+		assert.match(listResult.content[0].text, /Artifacts: 1 total/);
+		assert.match(listResult.content[0].text, /a-test \[test\]/);
+		assert.equal(listResult.content[0].text.includes(longSummary), false);
+
+		const summaryResult = await stateTool.execute("tool-ledger-state", { loopName: "Ledger_Loop", includeDetails: true }, undefined, undefined, ctx);
+		assert.match(summaryResult.content[0].text, /Criteria: 1 total, 1 passed/);
+		assert.match(summaryResult.content[0].text, /Verification artifacts: 1/);
+		assert.equal(summaryResult.details.loop.criteria.passed, 1);
+		assert.equal(summaryResult.details.loop.verificationArtifacts.total, 1);
+		assert.equal(summaryResult.details.loop.criterionLedger.criteria[0].id, "c-build");
+
+		await done.execute("tool-ledger-done", {}, undefined, undefined, ctx);
+		assert.equal(messages.length, 2);
+		assert.equal(messages[1].content.includes("c-build"), false);
+		assert.equal(messages[1].content.includes(longSummary), false);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -488,9 +608,11 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 		assert.equal(messages.length, 1);
 		assert.match(messages[0].content, /STARDOCK LOOP: legacy \| Iteration 2\/5/);
 		const migrated = JSON.parse(fs.readFileSync(statePath(cwd, "legacy"), "utf-8"));
-		assert.equal(migrated.schemaVersion, 2);
+		assert.equal(migrated.schemaVersion, 3);
 		assert.equal(migrated.mode, "checklist");
 		assert.deepEqual(migrated.modeState, { kind: "checklist" });
+		assert.deepEqual(migrated.criterionLedger, { criteria: [], requirementTrace: [] });
+		assert.deepEqual(migrated.verificationArtifacts, []);
 		assert.equal(migrated.reflectEvery, 3);
 		assert.equal(migrated.iteration, 2);
 		assert.equal(migrated.status, "active");
