@@ -16,6 +16,7 @@ Evolve mode should be implemented only when all of these are true:
 - candidate isolation strategy is chosen;
 - criterion/evidence handling exists so candidate prompts do not replay the full plan;
 - verification artifact handling exists for evaluator logs, benchmark outputs, and screenshots if relevant;
+- auditor gate handling exists for entering evolve mode and applying candidate patches;
 - recursive dogfooding shows that attempt logs are insufficient for metric-driven candidate selection.
 
 ## Purpose
@@ -28,7 +29,7 @@ seed candidate -> mutate -> evaluate -> archive -> select next candidate
 
 Ralph should remain inspectable and interruptible. The extension should not become an unbounded autonomous optimizer.
 
-Evolve mode should also follow the context-routing rule: prompts receive bounded candidate/archive summaries, selected criterion IDs, and the next requested mutation, not the full canonical plan or full evaluator logs.
+Evolve mode should also follow the context-routing rule: prompts receive bounded candidate/archive summaries, selected criterion IDs, and the next requested mutation, not the full canonical plan or full evaluator logs. Entering evolve execution and applying candidate patches should require auditor review or explicit user approval.
 
 ## Evidence needed before implementation
 
@@ -42,6 +43,7 @@ Gather this from recursive dogfooding first:
 - Whether evaluator runtime is short and deterministic enough for interactive loops.
 - Whether a criterion ledger is sufficient to trace requirements to candidate evidence.
 - Whether evaluator output should be stored as artifacts, evidence journals, or compact metric summaries.
+- Which evolve actions require two-key governor/auditor agreement versus direct user approval.
 
 ## Data/state shape
 
@@ -102,6 +104,7 @@ interface EvolveModeState {
 - Candidate application must be explicit and reversible.
 - Archive summaries must be capped before prompt inclusion.
 - The user or parent/orchestrator must be able to inspect between candidate attempts.
+- Auditor review or explicit user approval gates evolve entry, criteria relaxation, and automatic candidate patch application.
 
 ## Options considered
 
@@ -181,6 +184,7 @@ Evolve prompts are specialized `IterationBrief`s for candidate work. They should
 - evaluator command and constraints;
 - baseline/current-best metric evidence when available;
 - selected criteria and pass conditions relevant to the candidate;
+- any auditor findings or gate constraints relevant to this candidate;
 - one requested mutation/candidate action;
 - explicit instruction to record candidate metadata, criterion evidence, and validation result.
 
@@ -202,7 +206,8 @@ First implementation tests:
 - candidate metadata is capped and persisted;
 - evaluator output is byte-capped and linked as an artifact when useful;
 - archive truncates at `archiveSize`;
-- prompt includes only bounded candidate summaries and selected criteria;
+- prompt includes only bounded candidate summaries, selected criteria, and relevant auditor constraints;
+- gated evolve actions surface auditor/user-approval requirements;
 - checklist and recursive modes remain unchanged.
 
 Manual smoke:
@@ -221,6 +226,7 @@ Do not implement evolve mode until:
 - expected archive/prompt sizes are documented;
 - criteria-to-candidate evidence handling is designed;
 - evaluator artifact handling and baseline comparison are designed;
+- auditor gate handling is accepted or user explicitly approves bypassing it;
 - user approves moving from design to implementation.
 
 ## Non-goals

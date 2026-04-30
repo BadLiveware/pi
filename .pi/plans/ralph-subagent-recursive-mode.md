@@ -78,7 +78,8 @@ Direct subagent support, if added, should progress through roles in this order:
 2. **Test runner** — advisory only. Runs noisy validation, stores full logs as artifacts, and returns compact failure summaries tied to criteria.
 3. **Researcher** — advisory only. Supplies ideas, examples, or failure analysis when requested by the governor.
 4. **Governor** — advisory direction-setting role; should remain separate from implementer execution.
-5. **Implementer** — bounded attempt only, and only after edit ownership/isolation is solved.
+5. **Auditor** — advisory oversight role. Reviews governor direction, criteria integrity, evidence quality, and automation gates; does not implement.
+6. **Implementer** — bounded attempt only, and only after edit ownership/isolation is solved.
 
 ## Data/state shape
 
@@ -87,8 +88,9 @@ Existing state remains the source of truth:
 - `LoopState`: loop lifecycle, mode, iteration, task file.
 - `RecursiveModeState`: objective, setup fields, attempts.
 - `RecursiveAttempt`: structured attempt report.
-- `OutsideRequest`: governor/researcher work item.
+- `OutsideRequest`: governor/researcher/auditor work item.
 - `GovernorDecision`: recorded steer for subsequent prompts.
+- `AuditorReview`: recorded oversight findings for governor decisions and gated moves.
 
 Future direct subagent mode may add:
 
@@ -109,6 +111,13 @@ interface FailureDiagnosis {
   retestEvidence?: string;
 }
 
+interface AuditorReview {
+  verdict: "aligned" | "minor_concerns" | "direction_drift" | "evidence_gap" | "scope_creep" | "premature_completion" | "needs_user_decision";
+  findings: Array<{ severity: "info" | "warning" | "blocker"; summary: string; recommendation: string }>;
+  requiredGovernorAction?: string;
+  forbiddenNextMoves?: string[];
+}
+
 interface WorkerReport {
   objective: string;
   summary: string;
@@ -127,7 +136,7 @@ interface WorkerReport {
 interface WorkerRun {
   id: string;
   requestId: string;
-  role: "explorer" | "test_runner" | "governor" | "implementer" | "researcher";
+  role: "explorer" | "test_runner" | "governor" | "auditor" | "implementer" | "researcher";
   status: "queued" | "running" | "answered" | "failed" | "dismissed";
   startedAt?: string;
   completedAt?: string;
@@ -147,6 +156,7 @@ Do not add this state until an execution path exists that can maintain it reliab
 - Parent/orchestrator owns tool execution, subagent invocation, review, and whether to apply edits.
 - Implementer subagents must not own the overall loop direction.
 - Governor decisions may constrain the next prompt but should remain inspectable and rejectable with a recorded reason.
+- Auditor blocker findings may gate the next governor move, but must remain inspectable and rejectable only with rationale or user override.
 - The governor should consume worker reports and artifacts, not re-derive all context by rereading every changed file.
 - Parent/governor review should read touched files only when risk, ambiguity, failed validation, public contract changes, or worker review hints justify it.
 
@@ -162,27 +172,28 @@ Do not add this state until an execution path exists that can maintain it reliab
 
 ## Chosen future shape
 
-If direct subagent support is later added, start with **advisory-only direct subagents**, especially explorer and test-runner roles:
+If direct subagent support is later added, start with **advisory-only direct subagents**, especially explorer, test-runner, and auditor roles:
 
-1. Ralph creates a `WorkerRun` from a pending `OutsideRequest` or governor-selected brief.
+1. Ralph creates a `WorkerRun` from a pending `OutsideRequest`, auditor request, or governor-selected brief.
 2. The worker returns text plus artifact refs only; no file edits are applied automatically.
-3. Ralph records the answer into the request or worker report.
+3. Ralph records the answer into the request, audit record, or worker report.
 4. The next prompt consumes the compact answer and artifact summaries.
 5. The parent/user can inspect all state before the next attempt.
 
-Only after advisory explorer/test-runner mode proves useful should parent-applied patches or worktree implementation attempts be considered.
+Only after advisory explorer/test-runner/auditor mode proves useful should parent-applied patches or worktree implementation attempts be considered.
 
 ## Boundaries, contracts, and invariants
 
 - One worker run maps to one request.
 - One implementer run maps to one bounded attempt.
 - Every worker run must have a durable payload and a recorded result or failure.
-- Direct execution must never bypass `outsideRequests`, `GovernorDecision`, or `RecursiveAttempt` state.
+- Direct execution must never bypass `outsideRequests`, `GovernorDecision`, `AuditorReview`, or `RecursiveAttempt` state.
 - Editing workers require an explicit edit policy and rollback story before implementation.
 - No background fanout without user-visible state and interruption points.
 - No worker should receive the entire canonical plan by default; prompts should be selected context packets.
 - Worker reports must identify evaluated criteria, changed files, validation evidence, artifact refs, risks, and which files are worth parent review.
 - Large or complex worker-produced changes may require a maintainer-facing walkthrough before final completion to avoid cognitive debt.
+- High-risk moves such as editing subagents, automatic patch application, evolve execution, or unresolved completion require auditor review or explicit user approval.
 
 ## Performance shape
 
@@ -209,6 +220,7 @@ Before direct subagent execution:
 - Record where manual execution is too slow or error-prone.
 - Verify extension API supports safe subagent lifecycle, cancellation/interruption, and result capture.
 - Add tests for request → worker payload → answer recording → prompt inclusion.
+- Add tests for auditor blocker findings gating the next governor move without direct implementation changes.
 - Manual smoke: advisory worker answer affects the next prompt, no automatic edits occur.
 
 Before editing workers:
@@ -226,8 +238,9 @@ Next implementable slice, when justified:
 2. Add `WorkerRun` state behind a feature flag or explicit mode option.
 3. Implement advisory-only explorer payload/execution first, if a safe extension API exists.
 4. Add test-runner worker handling with log artifacts and compact summaries.
-5. Record worker answers through the same `ralph_outside_answer`/report path.
-6. Keep checklist and ordinary recursive mode unaffected.
+5. Add auditor worker handling for oversight payloads and findings before any editing workers.
+6. Record worker answers through the same `ralph_outside_answer`/report/audit path.
+7. Keep checklist and ordinary recursive mode unaffected.
 
 ## Non-goals
 

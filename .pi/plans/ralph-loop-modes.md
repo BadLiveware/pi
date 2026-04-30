@@ -285,6 +285,70 @@ The [Agentic Engineering Patterns guide](https://simonwillison.net/guides/agenti
 - **Compound learning**: finalization can optionally propose reusable prompt, validation, skill, tool, or project-convention updates discovered during the loop.
 - **Cognitive debt gates**: large or complex agent-generated changes may require a walkthrough or maintainer-facing explanation before final completion.
 
+## Oversight: who watches the governor
+
+The governor can drift too. Add a bounded **Auditor** / **Oversight Reviewer** role that reviews the control loop, not the implementation details. The auditor should be occasional, evidence-led, non-executing, and unable to silently mutate state.
+
+The role split becomes:
+
+```text
+Implementer: performs bounded work
+Governor: chooses direction, criteria, and context
+Auditor: checks whether governor direction remains aligned, evidenced, and safe
+User: ultimate authority for scope/value judgments and overrides
+```
+
+Auditor reviews should run only at checkpoints:
+
+- every N governor decisions, not every iteration;
+- before final completion;
+- before relaxing/deleting criteria or changing scope;
+- before high-risk automation such as editing subagents, candidate patch application, or evolve mode;
+- when drift signals appear, such as repeated no-progress decisions, omitted context, or repeated worker duplication.
+
+Future state shape to consider:
+
+```ts
+interface AuditorFinding {
+  severity: "info" | "warning" | "blocker";
+  summary: string;
+  evidence: string;
+  recommendation: string;
+}
+
+interface AuditorReview {
+  id: string;
+  reviewedAt: string;
+  verdict:
+    | "aligned"
+    | "minor_concerns"
+    | "direction_drift"
+    | "evidence_gap"
+    | "scope_creep"
+    | "premature_completion"
+    | "needs_user_decision";
+  findings: AuditorFinding[];
+  requiredGovernorAction?: string;
+  forbiddenNextMoves?: string[];
+  criteriaToRevisit?: string[];
+  userQuestions?: string[];
+}
+```
+
+Auditor blocker findings should constrain the next governor decision. The governor must either comply, record a concrete rejection rationale, or ask the user for an override.
+
+Two-key decisions should require governor plus auditor agreement, or explicit user approval:
+
+- complete with unresolved/skipped criteria;
+- relax, delete, or reinterpret criteria;
+- switch from advisory subagents to editing subagents;
+- apply candidate patches automatically;
+- enter evolve/candidate execution mode;
+- perform destructive operations;
+- declare a large/complex change done without walkthrough/evidence.
+
+First implementation should be data-only: create an `auditor_review` outside request and ready-to-copy payload, then record the answer like other outside requests. Do not add always-on auditor loops or direct model calls inside the extension.
+
 ## Remaining future work summary
 
 The practical implementation path is complete through bounded recursive/governor workflow. Remaining work is design-gated and should be driven by dogfood evidence:
@@ -298,22 +362,27 @@ The practical implementation path is complete through bounded recursive/governor
    - add `GovernorState` and `IterationBrief` only after manual governor/payload workflows show what context is repeatedly needed;
    - make prompts brief-by-default and source the canonical plan selectively;
    - keep large artifacts referenced, not pasted.
-3. **Worker/subagent handoff quality**
+3. **Auditor oversight**
+   - add `auditor_review` requests and ready-to-copy auditor payloads;
+   - run auditor reviews at bounded checkpoints, pre-completion, scope changes, automation gates, and drift signals;
+   - require blocker findings to constrain or be explicitly rejected by the next governor decision;
+   - use two-key rules for unresolved completion, criteria relaxation, editing subagents, evolve execution, and destructive operations.
+4. **Worker/subagent handoff quality**
    - define a durable `WorkerReport` contract with evaluated criteria, validation evidence, verification artifact refs, and failure diagnoses;
    - add selective parent review policy so the governor does not duplicate worker work;
    - implement advisory-only subagent flow before any editing flow.
-4. **Completion, breakout, and learning gates**
+5. **Completion, breakout, and learning gates**
    - add `FinalVerificationReport` before making completion fully criteria-aware;
    - add `BreakoutPackage` for repeated failures, blocked criteria, or loops with no criterion movement;
    - add optional compound-learning proposals and cognitive-debt walkthrough requirements for large/complex changes;
    - keep quality-profile escalation optional and explicit.
-5. **Subagent-driven recursive mode**
+6. **Subagent-driven recursive mode**
    - use `.pi/plans/ralph-subagent-recursive-mode.md` as the design gate;
    - start with exploration and test-runner subagents before implementer subagents;
    - do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, and edit ownership are safe.
-6. **Evolve mode**
+7. **Evolve mode**
    - use `.pi/plans/ralph-evolve-mode.md` as the design gate;
-   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, and dogfood evidence are available.
+   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, auditor gate handling, and dogfood evidence are available.
 
 ## Architecture decision
 
@@ -348,7 +417,7 @@ interface LoopState {
 
 Compatibility rule: missing `schemaVersion` or `mode` means `schemaVersion: 1`, `mode: "checklist"`, and `modeState` is synthesized from the existing fields. Missing `outsideRequests` is synthesized as an empty list.
 
-Future schema revisions may add `criterionLedger`, `governorState`, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older checklist/recursive loops must remain valid with empty synthesized ledgers/artifact lists.
+Future schema revisions may add `criterionLedger`, `governorState`, auditor reviews, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/audit lists.
 
 ### Mode interface
 
@@ -370,13 +439,14 @@ Current implementation distinguishes normal iteration and reflection. Future pro
 
 Represent outside help as a durable request in state before wiring it to subagents. This keeps the loop engine deterministic and inspectable.
 
-There are three distinct outside/worker roles for recursive and evolve loops:
+There are four distinct outside/worker roles for recursive and evolve loops:
 
 1. **Governor** — owns loop direction. Reviews trajectory and decides whether effort is being spent well, has narrowed too far, is stuck in scaffolding/setup work, or needs a hard steer toward measurement and candidate changes.
-2. **Implementer** — owns one bounded attempt. It should not own the overall decision to keep pursuing its current lane.
-3. **Researcher** — supplies new ideas, mutations, prior art, examples, benchmarks, or failure explanations when the governor requests more options.
+2. **Auditor** — watches the governor at bounded checkpoints. Reviews objective alignment, criteria integrity, evidence sufficiency, context routing, scope drift, and automation safety.
+3. **Implementer** — owns one bounded attempt. It should not own the overall decision to keep pursuing its current lane.
+4. **Researcher** — supplies new ideas, mutations, prior art, examples, benchmarks, or failure explanations when the governor requests more options.
 
-The governor is not just a normal reflection prompt. It should have authority to emit steering decisions that the next iteration must follow unless the main agent records a concrete reason to reject them.
+The governor is not just a normal reflection prompt. It should have authority to emit steering decisions that the next iteration must follow unless the main agent records a concrete reason to reject them. The auditor is not a second governor; it issues bounded findings that the governor must address or escalate to the user.
 
 Long-term recursive/evolve loops should be capable of this manager/worker cadence:
 
@@ -386,6 +456,7 @@ Governor chooses next move
 → validation/evaluation runs
 → Implementer records attempt report
 → Governor reviews evidence and either continues, pivots, requests research, stops, or asks the user
+→ Auditor occasionally reviews governor direction and gates high-risk moves
 ```
 
 For the first implementation passes, keep this as state and prompt structure. Do not require the extension to spawn subagents directly.
@@ -393,14 +464,25 @@ For the first implementation passes, keep this as state and prompt structure. Do
 ```ts
 interface OutsideRequest {
   id: string;
-  kind: "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review";
+  kind: "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review" | "auditor_review";
   status: "requested" | "in_progress" | "answered" | "dismissed";
   requestedAt: string;
   requestedByIteration: number;
-  trigger: "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane";
+  trigger:
+    | "every_n_iterations"
+    | "out_of_ideas"
+    | "manual"
+    | "stagnation"
+    | "scaffolding_drift"
+    | "low_value_lane"
+    | "periodic_audit"
+    | "pre_completion"
+    | "scope_change"
+    | "automation_gate";
   prompt: string;
   answer?: string;
   decision?: GovernorDecision;
+  audit?: AuditorReview;
   consumedAt?: string;
 }
 
@@ -422,11 +504,12 @@ Scaling variables:
 - task file size
 - number of attempts/candidates in mode state
 - number and size of outside request answers
+- number and size of auditor reviews and findings
 - evaluator command output size for future recursive/evolve validation
 
 Bounds:
 - list/status reads only `.state.json` files in `.ralph/` and `.ralph/archive/`.
-- mode summaries cap rendered attempt/candidate/request rows.
+- mode summaries cap rendered attempt/candidate/request/audit rows.
 - recursive/evolve logs store summaries in state and detailed artifacts in separate files when content grows.
 - evaluator outputs in future modes must have timeouts and byte caps before being inserted into prompts.
 
@@ -435,8 +518,8 @@ Bounds:
 ### Orchestration model by mode
 
 - `checklist`: in-session single-agent loop by default. The main agent can keep working through a finite checklist without governor overhead.
-- `recursive`: governed loop. Initially the main agent may still perform implementation, but the state model and prompts should treat each iteration as a bounded implementer attempt that is subject to governor review.
-- `evolve`: manager/worker loop. Candidate generation, evaluation, archive management, and research injection should eventually be separated, likely with subagents/worktrees, but only after recursive mode has been dogfooded.
+- `recursive`: governed loop. Initially the main agent may still perform implementation, but the state model and prompts should treat each iteration as a bounded implementer attempt that is subject to governor review and occasional auditor oversight.
+- `evolve`: manager/worker loop. Candidate generation, evaluation, archive management, and research injection should eventually be separated, likely with subagents/worktrees, but only after recursive mode has been dogfooded and auditor gates for high-risk automation are defined.
 
 ### `checklist` mode
 
@@ -510,6 +593,11 @@ Governor checkpoint behavior:
 - If the governor emits `requiredNextMove`, include it prominently in the next iteration prompt.
 - Require the main loop to either follow the steer or record why it is rejecting it.
 - If the governor emits `request_research`, create a researcher `OutsideRequest` with a targeted prompt rather than letting the implementer brainstorm indefinitely.
+
+Auditor checkpoint behavior:
+- Review recent governor decisions, iteration briefs, criterion movement, evidence quality, and budget use.
+- Trigger before final completion, scope/criteria changes, high-risk automation, or repeated no-progress governor decisions.
+- If the auditor emits blocker findings, the next governor decision must comply, explicitly reject with rationale, or ask the user for an override.
 
 ### `evolve` mode
 
@@ -587,21 +675,25 @@ Do not restart the completed implementation path. Future implementation should b
    - Change recursive prompt generation so a governor-selected brief, not the full canonical plan, becomes the normal worker prompt.
    - Include selected `criterionIds`, required context, and verification requirements; keep large artifacts referenced.
    - Add tests that the prompt includes only selected context and still preserves required constraints.
-4. **Worker report / selective review workflow**
+4. **Auditor oversight workflow**
+   - Add `auditor_review` request creation and ready-to-copy auditor payloads.
+   - Add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.
+   - Record auditor findings and require blocker findings to constrain, be explicitly rejected by, or escalate the next governor decision.
+5. **Worker report / selective review workflow**
    - Define `WorkerReport` state and payload expectations, including evaluated criteria, artifact refs, and failure diagnoses.
    - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
    - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
-5. **Breakout, final verification, and compound learning reports**
+6. **Breakout, final verification, and compound learning reports**
    - Add `BreakoutPackage` for repeated criterion failures, blocked criteria, or no criterion movement.
    - Add `FinalVerificationReport` so completion summarizes criteria status, validation commands, artifacts, integration evidence, and unresolved gaps.
    - Add optional compound-learning proposals and cognitive-debt handoff explanations.
-6. **Advisory subagent workflow**
+7. **Advisory subagent workflow**
    - Start with exploration and test-runner subagents if a safe extension/subagent API exists.
    - Do not apply edits automatically.
    - Persist worker run payload, result, failure, artifact refs, and summaries.
-7. **Evolve mode**
+8. **Evolve mode**
    - Start only after `.pi/plans/ralph-evolve-mode.md` gates are satisfied.
-   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence/artifact handling, and isolation choice before implementation.
+   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence/artifact handling, auditor gates, and isolation choice before implementation.
 
 ### Completion boundary
 
@@ -635,6 +727,11 @@ After behavior changes:
   - stores long logs/screenshots as artifact refs, not prompt text
   - updates criterion status from evidence
   - produces breakout/final verification reports when triggered
+- smoke auditor workflow after oversight changes:
+  - creates `auditor_review` requests at configured gates
+  - records auditor findings without mutating criteria or implementation state directly
+  - includes blocker findings in the next governor prompt
+  - requires explicit governor response or user escalation before gated moves
 
 ## Risks and mitigations
 
@@ -646,6 +743,8 @@ After behavior changes:
   - Mitigation: keep criteria binary/testable, preserve source refs, and route criterion IDs plus selected context instead of copying the full plan.
 - Risk: evidence artifacts grow without bound or become unreadable.
   - Mitigation: store large logs/screenshots outside state, cap summaries, and require final reports to name only decision-relevant artifacts.
+- Risk: auditor reviews create infinite-regress governance or too much overhead.
+  - Mitigation: keep the auditor bounded, occasional, non-executing, and focused on control-loop evidence; do not add auditor-of-auditor behavior.
 - Risk: outside research creates distracting work or loops forever.
   - Mitigation: make outside requests data-only first, with explicit budgets/triggers.
 - Risk: evolve mode mutates code unsafely.
@@ -659,6 +758,7 @@ The initial mode-aware/recursive implementation path is complete. Next execution
 
 1. Dogfood recursive mode with the current attempt-report/governor tools on one or two real debugging or optimization tasks.
 2. Prototype the criterion ledger and baseline/red-green evidence only after dogfooding confirms the right granularity.
-3. Add verification artifacts and compact final reports before adding any direct subagent automation.
-4. Add exploration/test-runner subagents before implementer subagents.
-5. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates.
+3. Add verification artifacts and compact final reports.
+4. Add auditor review requests/payloads before adding any direct subagent automation.
+5. Add exploration/test-runner subagents before implementer subagents.
+6. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates and auditor checkpoints.
