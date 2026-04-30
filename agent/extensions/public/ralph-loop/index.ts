@@ -47,12 +47,24 @@ interface ChecklistModeState {
 
 type RecursiveResetPolicy = "manual" | "revert_failed_attempts" | "keep_best_only";
 type RecursiveStopCriterion = "target_reached" | "idea_exhaustion" | "max_failed_attempts" | "max_iterations" | "user_decision";
+type RecursiveAttemptStatus = "pending_report" | "reported";
+type RecursiveAttemptKind = "candidate_change" | "setup" | "refactor" | "instrumentation" | "benchmark_scaffold" | "research" | "other";
+type RecursiveAttemptResult = "improved" | "neutral" | "worse" | "invalid" | "blocked";
 
 interface RecursiveAttempt {
 	id: string;
 	iteration: number;
 	createdAt: string;
-	status: "pending_report";
+	updatedAt?: string;
+	status: RecursiveAttemptStatus;
+	kind?: RecursiveAttemptKind;
+	hypothesis?: string;
+	actionSummary?: string;
+	validation?: string;
+	result?: RecursiveAttemptResult;
+	kept?: boolean;
+	evidence?: string;
+	followupIdeas?: string[];
 	summary: string;
 }
 
@@ -390,6 +402,70 @@ export default function (pi: ExtensionAPI) {
 		return { ok: true, state, request };
 	}
 
+	// --- Attempt reports ---
+
+	function summarizeAttemptReport(input: {
+		hypothesis?: string;
+		actionSummary?: string;
+		validation?: string;
+		result?: RecursiveAttemptResult;
+	}): string {
+		return [input.result ? `Result: ${input.result}.` : undefined, input.hypothesis, input.actionSummary, input.validation]
+			.filter((part): part is string => Boolean(part && part.trim()))
+			.join(" ");
+	}
+
+	function recordAttemptReport(
+		ctx: ExtensionContext,
+		loopName: string,
+		input: {
+			iteration?: number;
+			kind?: RecursiveAttemptKind;
+			hypothesis?: string;
+			actionSummary?: string;
+			validation?: string;
+			result?: RecursiveAttemptResult;
+			kept?: boolean;
+			evidence?: string;
+			followupIdeas?: string[];
+		},
+	): { ok: true; state: LoopState; attempt: RecursiveAttempt } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		if (state.mode !== "recursive" || state.modeState.kind !== "recursive") {
+			return { ok: false, error: `Loop "${loopName}" is not a recursive loop.` };
+		}
+		const iteration = input.iteration ?? Math.max(1, state.iteration - 1);
+		const modeState = state.modeState;
+		let attempt = modeState.attempts.find((item) => item.iteration === iteration);
+		if (!attempt) {
+			attempt = {
+				id: `attempt-${iteration}`,
+				iteration,
+				createdAt: new Date().toISOString(),
+				status: "pending_report",
+				summary: "",
+			};
+			modeState.attempts.push(attempt);
+		}
+		attempt.status = "reported";
+		attempt.updatedAt = new Date().toISOString();
+		attempt.kind = input.kind;
+		attempt.hypothesis = input.hypothesis;
+		attempt.actionSummary = input.actionSummary;
+		attempt.validation = input.validation;
+		attempt.result = input.result;
+		attempt.kept = input.kept;
+		attempt.evidence = input.evidence;
+		attempt.followupIdeas = input.followupIdeas;
+		attempt.summary = summarizeAttemptReport(input) || attempt.summary || `Attempt ${iteration} reported.`;
+		modeState.attempts.sort((a, b) => a.iteration - b.iteration);
+		state.modeState = modeState;
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, attempt };
+	}
+
 	// --- UI ---
 
 	function formatLoop(l: LoopState): string {
@@ -479,6 +555,16 @@ export default function (pi: ExtensionAPI) {
 		return lines;
 	}
 
+	function formatRecentAttemptReports(modeState: RecursiveModeState): string[] {
+		return modeState.attempts
+			.filter((attempt) => attempt.status === "reported")
+			.slice(-3)
+			.map((attempt) => {
+				const label = [`attempt ${attempt.iteration}`, attempt.kind, attempt.result].filter(Boolean).join(" · ");
+				return `- ${label}: ${attempt.summary}`;
+			});
+	}
+
 	function appendOutsideRequestPromptSections(parts: string[], state: LoopState): void {
 		const pending = pendingOutsideRequests(state);
 		if (pending.length > 0) {
@@ -531,6 +617,8 @@ export default function (pi: ExtensionAPI) {
 			const parts = [header, ""];
 			if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
 			parts.push("## Recursive Objective", ...formatRecursiveSetup(modeState), "");
+			const recentAttempts = formatRecentAttemptReports(modeState);
+			if (recentAttempts.length > 0) parts.push("## Recent Attempt Reports", ...recentAttempts, "");
 			appendOutsideRequestPromptSections(parts, state);
 			parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
 			parts.push("\n## Attempt Instructions\n");
@@ -542,7 +630,7 @@ export default function (pi: ExtensionAPI) {
 			} else {
 				parts.push("3. Run or describe the most relevant validation available for this attempt.");
 			}
-			parts.push("4. Record the hypothesis, action summary, validation, result, and keep/reset decision in the task file.");
+			parts.push("4. Record the hypothesis, action summary, validation, result, and keep/reset decision in the task file; use ralph_attempt_report when available.");
 			parts.push(`5. Apply reset policy: ${modeState.resetPolicy}.`);
 			parts.push(`6. When the objective is met or stop criteria apply, respond with: ${COMPLETE_MARKER}`);
 			parts.push("7. Otherwise, call the ralph_done tool to proceed to the next bounded attempt.");
@@ -564,7 +652,7 @@ export default function (pi: ExtensionAPI) {
 					: "- Run or describe relevant validation for the attempt.",
 				pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,
 				decision?.requiredNextMove ? `- Governor required next move: ${decision.requiredNextMove}` : undefined,
-				"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
+				"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use ralph_attempt_report when available.",
 				`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
 				"- Otherwise, call ralph_done tool to proceed to next iteration.",
 			]
@@ -587,10 +675,11 @@ export default function (pi: ExtensionAPI) {
 		summarize(state) {
 			const modeState = requireRecursiveState(state);
 			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
+			const reportedCount = modeState.attempts.filter((attempt) => attempt.status === "reported").length;
 			const summary = [
 				`Attempt ${state.iteration}${maxStr}`,
 				`Objective: ${modeState.objective}`,
-				`Recorded attempts: ${modeState.attempts.length}`,
+				`Recorded attempts: ${modeState.attempts.length} (${reportedCount} reported)`,
 				`Pending outside requests: ${pendingOutsideRequests(state).length}`,
 			];
 			const decision = latestGovernorDecision(state);
@@ -635,6 +724,14 @@ export default function (pi: ExtensionAPI) {
 				: [];
 		const parsed = rawValues.filter((part): part is RecursiveStopCriterion => typeof part === "string" && isStopCriterion(part));
 		return parsed.length > 0 ? parsed : ["target_reached", "idea_exhaustion", "max_iterations"];
+	}
+
+	function isAttemptKind(value: unknown): value is RecursiveAttemptKind {
+		return ["candidate_change", "setup", "refactor", "instrumentation", "benchmark_scaffold", "research", "other"].includes(String(value));
+	}
+
+	function isAttemptResult(value: unknown): value is RecursiveAttemptResult {
+		return ["improved", "neutral", "worse", "invalid", "blocked"].includes(String(value));
 	}
 
 	function createModeState(mode: "checklist" | "recursive", input: Record<string, unknown>): { modeState?: LoopModeState; error?: string } {
@@ -1244,6 +1341,62 @@ Examples:
 			return {
 				content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.` }],
 				details: {},
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "ralph_attempt_report",
+		label: "Record Ralph Attempt Report",
+		description: "Record a structured report for one bounded recursive Ralph attempt.",
+		parameters: Type.Object({
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+			iteration: Type.Optional(Type.Number({ description: "Attempt iteration. Defaults to the most recently completed attempt." })),
+			kind: Type.Optional(
+				Type.Union([
+					Type.Literal("candidate_change"),
+					Type.Literal("setup"),
+					Type.Literal("refactor"),
+					Type.Literal("instrumentation"),
+					Type.Literal("benchmark_scaffold"),
+					Type.Literal("research"),
+					Type.Literal("other"),
+				]),
+			),
+			hypothesis: Type.Optional(Type.String({ description: "Hypothesis tested by this bounded attempt." })),
+			actionSummary: Type.Optional(Type.String({ description: "What changed or was tried." })),
+			validation: Type.Optional(Type.String({ description: "Validation command/check and result summary." })),
+			result: Type.Optional(
+				Type.Union([
+					Type.Literal("improved"),
+					Type.Literal("neutral"),
+					Type.Literal("worse"),
+					Type.Literal("invalid"),
+					Type.Literal("blocked"),
+				]),
+			),
+			kept: Type.Optional(Type.Boolean({ description: "Whether this attempt's changes/evidence should be kept." })),
+			evidence: Type.Optional(Type.String({ description: "Evidence path, output, or concise result details." })),
+			followupIdeas: Type.Optional(Type.Array(Type.String(), { description: "Follow-up ideas discovered by this attempt." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			const result = recordAttemptReport(ctx, loopName, {
+				iteration: params.iteration,
+				kind: isAttemptKind(params.kind) ? params.kind : undefined,
+				hypothesis: params.hypothesis,
+				actionSummary: params.actionSummary,
+				validation: params.validation,
+				result: isAttemptResult(params.result) ? params.result : undefined,
+				kept: params.kept,
+				evidence: params.evidence,
+				followupIdeas: params.followupIdeas,
+			});
+			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			return {
+				content: [{ type: "text", text: `Recorded report for attempt ${result.attempt.iteration} in loop "${loopName}".` }],
+				details: { loopName, attempt: result.attempt },
 			};
 		},
 	});

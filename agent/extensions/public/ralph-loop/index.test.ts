@@ -69,6 +69,7 @@ test("ralph_loop registers current-compatible tools and commands", () => {
 		const { tools, commands, handlers } = makeHarness(cwd);
 		assert.ok(tools.has("ralph_start"));
 		assert.ok(tools.has("ralph_done"));
+		assert.ok(tools.has("ralph_attempt_report"));
 		assert.ok(tools.has("ralph_outside_requests"));
 		assert.ok(tools.has("ralph_outside_answer"));
 		assert.ok(commands.has("ralph"));
@@ -404,6 +405,64 @@ test("recursive outside requests can be listed, answered, and included as govern
 		state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Governor_Loop.state.json"), "utf-8"));
 		assert.equal(state.outsideRequests[0].status, "answered");
 		assert.equal(state.outsideRequests[0].decision.verdict, "measure");
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("ralph_attempt_report records structured recursive attempt data", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		const done = tools.get("ralph_done");
+		const report = tools.get("ralph_attempt_report");
+		assert.ok(start);
+		assert.ok(done);
+		assert.ok(report);
+
+		await start.execute(
+			"tool-recursive",
+			{
+				name: "Report Loop",
+				mode: "recursive",
+				taskContent: "# Report task\n",
+				objective: "Find a better result",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done", {}, undefined, undefined, ctx);
+		await report.execute(
+			"tool-report",
+			{
+				loopName: "Report_Loop",
+				iteration: 1,
+				kind: "candidate_change",
+				hypothesis: "Changing the prompt improves behavior.",
+				actionSummary: "Added structured attempt reporting.",
+				validation: "Focused tests passed.",
+				result: "improved",
+				kept: true,
+				evidence: "index.test.ts",
+				followupIdeas: ["Use attempt kinds for drift detection"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done-2", {}, undefined, undefined, ctx);
+
+		assert.match(messages[2].content, /Recent Attempt Reports/);
+		assert.match(messages[2].content, /candidate_change · improved/);
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Report_Loop.state.json"), "utf-8"));
+		assert.equal(state.modeState.attempts[0].status, "reported");
+		assert.equal(state.modeState.attempts[0].kind, "candidate_change");
+		assert.equal(state.modeState.attempts[0].result, "improved");
+		assert.equal(state.modeState.attempts[0].kept, true);
+		assert.deepEqual(state.modeState.attempts[0].followupIdeas, ["Use attempt kinds for drift detection"]);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

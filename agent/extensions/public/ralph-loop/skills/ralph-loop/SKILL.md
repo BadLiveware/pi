@@ -18,7 +18,7 @@ ralph_start({
 })
 ```
 
-Recursive mode requires an `objective` and may include `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, `outsideHelpEvery`, and `outsideHelpOnStagnation`. Each recursive iteration should be one bounded hypothesis/attempt with evidence recorded in the task file. If outside-help/governor requests appear, inspect them with `ralph_outside_requests`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `ralph_outside_answer`.
+Recursive mode requires an `objective` and may include `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, `outsideHelpEvery`, and `outsideHelpOnStagnation`. Each recursive iteration should be one bounded hypothesis/attempt with evidence recorded in the task file. Use `ralph_attempt_report` to record structured attempt data when available. If outside-help/governor requests appear, inspect them with `ralph_outside_requests`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `ralph_outside_answer`.
 
 ## Loop Behavior
 

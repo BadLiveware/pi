@@ -28,7 +28,7 @@ A loop sends an iteration prompt to the agent. The agent works on the task file,
 <promise>COMPLETE</promise>
 ```
 
-The extension preserves top-level Ralph state fields for compatibility with existing `.ralph` directories. Old state files without mode metadata are migrated to schema version 2 as `checklist` loops when loaded. Recursive loops store their objective, validation/reset policy, stop criteria, and attempt placeholders under `modeState`.
+The extension preserves top-level Ralph state fields for compatibility with existing `.ralph` directories. Old state files without mode metadata are migrated to schema version 2 as `checklist` loops when loaded. Recursive loops store their objective, validation/reset policy, stop criteria, attempt reports, and pending outside requests in state.
 
 ## Agent tools
 
@@ -36,6 +36,7 @@ The extension preserves top-level Ralph state fields for compatibility with exis
 | --- | --- |
 | `ralph_start` | Create `.ralph/<name>.md`, write the task content, save loop state, and queue iteration 1. |
 | `ralph_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
+| `ralph_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `ralph_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
 | `ralph_outside_answer` | Record an outside-help answer or structured governor decision without editing state files manually. |
 
@@ -102,6 +103,8 @@ Options for `/ralph start`:
 | `--max-failed-attempts N` | Recursive failed-attempt budget. |
 | `--outside-help-every N` | Recursive cue interval for requesting outside help. |
 | `--outside-help-on-stagnation` | Cue outside help when attempts stagnate. |
+
+Recursive attempts can be reported with `ralph_attempt_report`, including kind (`candidate_change`, `setup`, `refactor`, `instrumentation`, `benchmark_scaffold`, `research`, or `other`), hypothesis, action summary, validation, result (`improved`, `neutral`, `worse`, `invalid`, or `blocked`), keep/reset decision, evidence, and follow-up ideas. Recent reports are summarized in the next recursive prompt.
 
 Recursive loops with `outsideHelpEvery` create data-only `governor_review` requests at the configured interval. The extension does not spawn subagents; a parent/orchestrator agent can inspect requests, run whatever research or review is appropriate, then record the result with `ralph_outside_answer` or `/ralph outside answer`. Structured governor answers can include a verdict, rationale, required next move, forbidden next moves, and evidence gaps; the next recursive prompt includes the latest steer.
 
