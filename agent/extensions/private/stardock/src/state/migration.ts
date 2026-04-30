@@ -8,6 +8,8 @@ import {
 	type AdvisoryHandoffRole,
 	type AdvisoryHandoffStatus,
 	type AuditorReview,
+	type BreakoutPackage,
+	type BreakoutPackageStatus,
 	type AuditorReviewStatus,
 	type Criterion,
 	type CriterionLedger,
@@ -196,6 +198,10 @@ export function isAdvisoryHandoffStatus(value: unknown): value is AdvisoryHandof
 	return ["draft", "requested", "answered", "failed", "dismissed"].includes(String(value));
 }
 
+export function isBreakoutPackageStatus(value: unknown): value is BreakoutPackageStatus {
+	return ["draft", "open", "resolved", "dismissed"].includes(String(value));
+}
+
 function normalizeProviderMetadata(value: unknown): Record<string, unknown> | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 	return Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 20));
@@ -349,6 +355,39 @@ export function migrateAdvisoryHandoffs(value: unknown): AdvisoryHandoff[] {
 		.filter((handoff): handoff is AdvisoryHandoff => handoff !== null);
 }
 
+export function migrateBreakoutPackages(value: unknown): BreakoutPackage[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item, index): BreakoutPackage | null => {
+			if (!item || typeof item !== "object") return null;
+			const breakout = item as Partial<BreakoutPackage> & Record<string, unknown>;
+			const summary = typeof breakout.summary === "string" ? breakout.summary.trim() : "";
+			const requestedDecision = typeof breakout.requestedDecision === "string" ? breakout.requestedDecision.trim() : "";
+			if (!summary && !requestedDecision) return null;
+			const now = new Date().toISOString();
+			return {
+				id: normalizeId(breakout.id, `bp${index + 1}`),
+				status: isBreakoutPackageStatus(breakout.status) ? breakout.status : "draft",
+				summary: summary ? compactText(summary, 500) ?? summary : compactText(requestedDecision, 500) ?? requestedDecision,
+				blockedCriterionIds: normalizeStringList(breakout.blockedCriterionIds),
+				attemptIds: normalizeStringList(breakout.attemptIds),
+				artifactIds: normalizeStringList(breakout.artifactIds),
+				finalReportIds: normalizeStringList(breakout.finalReportIds),
+				auditorReviewIds: normalizeStringList(breakout.auditorReviewIds),
+				advisoryHandoffIds: normalizeStringList(breakout.advisoryHandoffIds),
+				outsideRequestIds: normalizeStringList(breakout.outsideRequestIds),
+				lastErrors: normalizeStringList(breakout.lastErrors).map((error) => compactText(error, 240) ?? error),
+				suspectedRootCauses: normalizeStringList(breakout.suspectedRootCauses).map((cause) => compactText(cause, 240) ?? cause),
+				requestedDecision: requestedDecision ? compactText(requestedDecision, 500) ?? requestedDecision : "Decide whether to resume, pivot, narrow scope, request help, or stop.",
+				resumeCriteria: normalizeStringList(breakout.resumeCriteria).map((criterion) => compactText(criterion, 240) ?? criterion),
+				recommendedNextActions: normalizeStringList(breakout.recommendedNextActions).map((action) => compactText(action, 240) ?? action),
+				createdAt: typeof breakout.createdAt === "string" ? breakout.createdAt : now,
+				updatedAt: typeof breakout.updatedAt === "string" ? breakout.updatedAt : now,
+			};
+		})
+		.filter((breakout): breakout is BreakoutPackage => breakout !== null);
+}
+
 export function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 	const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 	const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
@@ -380,5 +419,6 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		finalVerificationReports: migrateFinalVerificationReports(raw.finalVerificationReports),
 		auditorReviews: migrateAuditorReviews(raw.auditorReviews),
 		advisoryHandoffs: migrateAdvisoryHandoffs(raw.advisoryHandoffs),
+		breakoutPackages: migrateBreakoutPackages(raw.breakoutPackages),
 	};
 }

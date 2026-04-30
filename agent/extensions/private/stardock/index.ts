@@ -80,6 +80,7 @@ import { registerAdvisoryHandoffTool } from "./src/advisory-handoffs.ts";
 import { registerAttemptReportTool } from "./src/attempt-reports.ts";
 import { registerAuditorTool } from "./src/auditor-reviews.ts";
 import { applyActiveBriefLifecycle, appendActiveBriefPromptSection, appendTaskSourceSection, currentBrief, registerBriefTool } from "./src/briefs.ts";
+import { registerBreakoutTool } from "./src/breakout-packages.ts";
 import { registerFinalReportTool } from "./src/final-reports.ts";
 import { criterionCounts, formatCriterionCounts, registerLedgerTool } from "./src/ledger.ts";
 import { answerOutsideRequest, appendOutsideRequestPromptSections, createManualGovernorPayload, formatOutsideRequests, getOutsideRequestPayload, latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests, registerOutsideRequestTools } from "./src/outside-requests.ts";
@@ -599,6 +600,7 @@ export default function (pi: ExtensionAPI) {
 				finalVerificationReports: [],
 				auditorReviews: [],
 				advisoryHandoffs: [],
+				breakoutPackages: [],
 			};
 
 			saveState(ctx, state);
@@ -1044,6 +1046,7 @@ Examples:
 				finalVerificationReports: [],
 				auditorReviews: [],
 				advisoryHandoffs: [],
+				breakoutPackages: [],
 			};
 
 			saveState(ctx, state);
@@ -1212,6 +1215,12 @@ Examples:
 	});
 
 	registerAuditorTool(pi, {
+		getCurrentLoop: () => currentLoop,
+		updateUI,
+		optionalLoopDetails,
+	});
+
+	registerBreakoutTool(pi, {
 		getCurrentLoop: () => currentLoop,
 		updateUI,
 		optionalLoopDetails,

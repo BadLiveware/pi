@@ -755,7 +755,9 @@ Do not restart the completed implementation path. Future implementation should b
    - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
    - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
 6. **Breakout, final verification, and compound learning reports**
-   - Add `BreakoutPackage` for repeated criterion failures, blocked criteria, or no criterion movement.
+   - Initial manual/data-only `BreakoutPackage` support exists through `stardock_breakout` for repeated criterion failures, blocked criteria, unresolved decisions, or no criterion movement.
+   - Breakout packages store compact decision/evidence context: linked criteria, attempts, artifacts, final reports, auditor reviews, advisory handoffs, outside requests, last errors, suspected root causes, requested decision, resume criteria, and recommended next actions.
+   - Breakout packages do not trigger escalation, call providers, apply edits, or block completion automatically in v1; future policy can recommend or require them at abandonment/escalation gates.
    - Initial manual `FinalVerificationReport` state and `stardock_final_report` list/record support exists for compact criteria coverage, validation records, artifact refs, unresolved gaps, and compatibility/security/performance notes.
    - Later, add policy for when completion should require or recommend a final report, and how reports interact with auditor review.
    - Add optional compound-learning proposals and cognitive-debt handoff explanations.

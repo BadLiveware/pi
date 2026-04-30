@@ -152,6 +152,7 @@ export type FinalVerificationStatus = "draft" | "passed" | "failed" | "partial";
 export type ValidationResult = "passed" | "failed" | "skipped";
 export type AuditorReviewStatus = "draft" | "passed" | "concerns" | "blocked";
 export type AdvisoryHandoffRole = "explorer" | "test_runner" | "researcher" | "reviewer" | "governor" | "auditor" | "implementer";
+export type BreakoutPackageStatus = "draft" | "open" | "resolved" | "dismissed";
 export type AdvisoryHandoffStatus = "draft" | "requested" | "answered" | "failed" | "dismissed";
 
 export interface FinalValidationRecord {
@@ -212,6 +213,26 @@ export interface AdvisoryHandoff {
 	updatedAt: string;
 }
 
+export interface BreakoutPackage {
+	id: string;
+	status: BreakoutPackageStatus;
+	summary: string;
+	blockedCriterionIds: string[];
+	attemptIds: string[];
+	artifactIds: string[];
+	finalReportIds: string[];
+	auditorReviewIds: string[];
+	advisoryHandoffIds: string[];
+	outsideRequestIds: string[];
+	lastErrors: string[];
+	suspectedRootCauses: string[];
+	requestedDecision: string;
+	resumeCriteria: string[];
+	recommendedNextActions: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
 export interface IterationBrief {
 	id: string;
 	status: IterationBriefStatus;
@@ -264,6 +285,7 @@ export interface LoopState {
 	finalVerificationReports: FinalVerificationReport[];
 	auditorReviews: AuditorReview[];
 	advisoryHandoffs: AdvisoryHandoff[];
+	breakoutPackages: BreakoutPackage[];
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
