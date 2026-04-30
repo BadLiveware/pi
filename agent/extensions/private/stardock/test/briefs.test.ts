@@ -122,12 +122,31 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 		assert.match(followupResult.details.followupTool.content, /Stardock run: Ergonomics_Loop/);
 		assert.equal(followupResult.details.followupTool.details.loop.name, "Ergonomics_Loop");
 
+		const listFollowup = await brief.execute(
+			"tool-ergonomics-list-followup",
+			{
+				action: "upsert",
+				loopName: "Ergonomics_Loop",
+				id: "b-three",
+				objective: "Use read-only list followups.",
+				task: "Attach brief list output without bespoke include flags.",
+				followupTool: { name: "stardock_brief", args: { action: "list", loopName: "Ergonomics_Loop" } },
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(listFollowup.content[0].text, /Created brief b-three/);
+		assert.equal(listFollowup.details.followupTool.name, "stardock_brief");
+		assert.match(listFollowup.details.followupTool.content, /Briefs for Ergonomics_Loop/);
+		assert.equal(listFollowup.details.followupTool.details.briefs.length, 3);
+
 		const rejectedFollowup = await brief.execute(
 			"tool-ergonomics-rejected-followup",
 			{
 				action: "upsert",
 				loopName: "Ergonomics_Loop",
-				id: "b-three",
+				id: "b-four",
 				objective: "Reject mutating followups.",
 				task: "Do not allow followupTool to perform a mutation.",
 				followupTool: { name: "stardock_brief", args: { action: "upsert", loopName: "Ergonomics_Loop" } },
@@ -136,9 +155,9 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 			undefined,
 			ctx,
 		);
-		assert.match(rejectedFollowup.content[0].text, /Created brief b-three/);
+		assert.match(rejectedFollowup.content[0].text, /Created brief b-four/);
 		assert.equal(rejectedFollowup.details.followupTool.details.ok, false);
-		assert.equal(rejectedFollowup.details.followupTool.details.reason, "unsupported_or_mutating");
+		assert.equal(rejectedFollowup.details.followupTool.details.reason, "mutating_action");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
