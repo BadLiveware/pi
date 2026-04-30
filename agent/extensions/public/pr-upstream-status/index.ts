@@ -167,6 +167,13 @@ interface PrAutoSolveMessageDetails {
 	ciFailureCount: number;
 }
 
+interface PrAutoSolveRequest {
+	content: string;
+	details: PrAutoSolveMessageDetails;
+	feedbackKeys: string[];
+	ciFailureKeys: string[];
+}
+
 interface CodeHostProvider {
 	id: string;
 	parseRepo(remoteUrl: string): RepoRef | undefined;
@@ -187,6 +194,7 @@ const FRESH_SESSION_AUTO_SOLVE_GRACE_MS = 300_000;
 const SUPPRESSION_NOTICE_GAP_MS = 300_000;
 const CONFIG_FILE_NAME = "pr-upstream-status.json";
 const MESSAGE_TYPE_PR_AUTO_SOLVE = "pr-upstream:auto-solve";
+const WIDGET_PR_AUTO_SOLVE = "pr-upstream-auto-solve";
 const DEFAULT_SETTINGS: PrUpstreamSettings = {
 	autoSolveEnabled: true,
 };
@@ -967,6 +975,11 @@ function countLabel(count: number, singular: string, plural: string): string {
 	return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
 }
 
+function truncateLine(value: string, maxLength: number): string {
+	if (value.length <= maxLength) return value;
+	return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
 function registerAutoSolveMessageRenderer(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer<PrAutoSolveMessageDetails>(MESSAGE_TYPE_PR_AUTO_SOLVE, (message, _options, theme) => {
 		const details = message.details;
@@ -1006,6 +1019,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	let lastPromptedHeadSha: string | undefined;
 	let promptedFeedbackKeys = new Set<string>();
 	let promptedCiFailureKeys = new Set<string>();
+	let pendingAutoSolve: PrAutoSolveRequest | undefined;
 	let lastRefreshAt = 0;
 
 	registerAutoSolveMessageRenderer(pi);
@@ -1020,9 +1034,10 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		pi.appendEntry("pr-upstream-status-state", settings);
 	}
 
-	function setAutoSolveEnabled(enabled: boolean): void {
+	function setAutoSolveEnabled(enabled: boolean, ctx?: ExtensionContext): void {
 		autoSolveEnabled = enabled;
 		settings.autoSolveEnabled = enabled;
+		if (!enabled) clearPendingAutoSolve(ctx);
 		persistSettings();
 		emitPrimitives();
 	}
@@ -1057,18 +1072,49 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		pi.events.emit("pr-upstream:state", payload);
 	}
 
+	function updateAutoSolveCard(ctx: ExtensionContext): void {
+		if (!pendingAutoSolve) {
+			ctx.ui.setWidget(WIDGET_PR_AUTO_SOLVE, undefined);
+			return;
+		}
+
+		const details = pendingAutoSolve.details;
+		const prLabel = osc8(ctx.ui.theme.fg("accent", `#${details.pr.number}`), details.pr.url);
+		const feedback = countLabel(details.feedbackCount, "PR comment", "PR comments");
+		const ciFailures = countLabel(details.ciFailureCount, "CI failure", "CI failures");
+		ctx.ui.setWidget(WIDGET_PR_AUTO_SOLVE, [
+			`${ctx.ui.theme.fg("warning", "PR auto-solve pending")} ${prLabel} ${ctx.ui.theme.fg("muted", truncateLine(details.pr.title, 72))}`,
+			`${ctx.ui.theme.fg("muted", "Will notify agent when idle/allowed ·")} ${feedback} · ${ciFailures} · checks: ${details.pr.checks}`,
+		]);
+	}
+
+	function setPendingAutoSolve(ctx: ExtensionContext, request: PrAutoSolveRequest): void {
+		pendingAutoSolve = request;
+		updateStatus(ctx);
+	}
+
+	function clearPendingAutoSolve(ctx?: ExtensionContext): void {
+		pendingAutoSolve = undefined;
+		if (ctx) updateStatus(ctx);
+	}
+
 	function updateStatus(ctx: ExtensionContext): void {
 		if (!snapshot.pr) {
 			ctx.ui.setStatus("pr-upstream", undefined);
+			updateAutoSolveCard(ctx);
 			return;
 		}
 		const parts = [ctx.ui.theme.fg("muted", "PR"), renderCheck(ctx.ui.theme, snapshot.pr.checks)];
 		if (snapshot.pr.comments > 0) {
 			parts.push(ctx.ui.theme.fg("muted", `💬${snapshot.pr.comments}`));
 		}
+		if (pendingAutoSolve) {
+			parts.push(ctx.ui.theme.fg("warning", "✦pending"));
+		}
 		const prLabel = osc8(ctx.ui.theme.fg("accent", `#${snapshot.pr.number}`), snapshot.pr.url);
 		parts.push(prLabel);
 		ctx.ui.setStatus("pr-upstream", parts.join(" "));
+		updateAutoSolveCard(ctx);
 	}
 
 	function autoSolveStatusText(ctx?: ExtensionContext): string {
@@ -1113,6 +1159,93 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		return true;
 	}
 
+	function canTriggerAutoSolve(
+		ctx: ExtensionContext,
+		options: { allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean } = {},
+	): boolean {
+		if (!ctx.isIdle() || ctx.hasPendingMessages()) return false;
+		if (shouldSuppressAutoSolveForWorkspace(ctx, options.allowConcurrentWorkspace === true)) return false;
+		if (shouldSuppressAutoSolveForFreshSession(ctx, options.allowFreshSession === true)) return false;
+		return true;
+	}
+
+	function makeAutoSolveRequest(
+		pr: PullRequestInfo,
+		targetFeedback: PullRequestFeedback[],
+		targetCiFailures: PullRequestCiFailure[],
+	): PrAutoSolveRequest {
+		const promptParts = [
+			`Auto-solve PR #${pr.number}: ${pr.url}`,
+			`Checks: ${pr.checks}${pr.headSha ? `, head: ${pr.headSha}` : ""}.`,
+			"Review only true/relevant PR feedback; for CI, find the failing job/step/root cause. Inspect linked details if this summary is incomplete. Make minimal changes, validate locally, and summarize fixes/dismissals/validation.",
+		];
+		if (targetFeedback.length > 0) {
+			promptParts.push("", "PR comments:", summarizeFeedback(targetFeedback));
+		}
+		if (targetCiFailures.length > 0) {
+			promptParts.push("", "CI failure context:", summarizeCiFailures(targetCiFailures));
+		}
+
+		return {
+			content: promptParts.join("\n"),
+			details: {
+				kind: "auto_solve",
+				pr: {
+					number: pr.number,
+					title: pr.title,
+					url: pr.url,
+					checks: pr.checks,
+					headSha: pr.headSha,
+				},
+				feedbackCount: targetFeedback.length,
+				ciFailureCount: targetCiFailures.length,
+			},
+			feedbackKeys: targetFeedback.map(feedbackKey),
+			ciFailureKeys: targetCiFailures.map((failure) => ciFailureKey(pr, failure)),
+		};
+	}
+
+	function sendAutoSolveRequest(
+		ctx: ExtensionContext,
+		request: PrAutoSolveRequest,
+		options: { allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean } = {},
+	): boolean {
+		if (!canTriggerAutoSolve(ctx, options)) return false;
+
+		for (const key of request.feedbackKeys) promptedFeedbackKeys.add(key);
+		for (const key of request.ciFailureKeys) promptedCiFailureKeys.add(key);
+		lastAutoSolveAt = Date.now();
+
+		const commentText = countLabel(request.details.feedbackCount, "PR comment", "PR comments");
+		const ciText = countLabel(request.details.ciFailureCount, "CI failure", "CI failures");
+		ctx.ui.notify(`Auto-solve queued for ${commentText} and ${ciText}.`, "info");
+		pi.sendMessage(
+			{
+				customType: MESSAGE_TYPE_PR_AUTO_SOLVE,
+				content: request.content,
+				display: true,
+				details: request.details,
+			},
+			{ triggerTurn: true },
+		);
+		clearPendingAutoSolve(ctx);
+		return true;
+	}
+
+	function deliverPendingAutoSolve(
+		ctx: ExtensionContext,
+		options: { allowConcurrentWorkspace?: boolean; allowFreshSession?: boolean; ignoreIncompleteChecks?: boolean } = {},
+	): boolean {
+		if (!pendingAutoSolve) return false;
+		const pr = snapshot.pr;
+		if (!pr || pr.number !== pendingAutoSolve.details.pr.number || (pr.headSha && pendingAutoSolve.details.pr.headSha && pr.headSha !== pendingAutoSolve.details.pr.headSha)) {
+			clearPendingAutoSolve(ctx);
+			return false;
+		}
+		if (!options.ignoreIncompleteChecks && !checksAreComplete(pr.checks)) return false;
+		return sendAutoSolveRequest(ctx, pendingAutoSolve, options);
+	}
+
 	async function maybeAutoSolve(
 		ctx: ExtensionContext,
 		options: {
@@ -1126,25 +1259,26 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	): Promise<boolean> {
 		const {
 			force = false,
-			allowConcurrentWorkspace = false,
-			allowFreshSession = false,
 			ignoreDisabled = false,
 			ignoreIncompleteChecks = false,
 			includePrompted = false,
 		} = options;
 		const pr = snapshot.pr;
-		if ((!autoSolveEnabled && !ignoreDisabled) || !pr) return false;
-		if (!ignoreIncompleteChecks && !checksAreComplete(pr.checks)) return false;
-		if (!ctx.isIdle() || ctx.hasPendingMessages()) return false;
-		if (autoSolvePromptInFlight) return false;
-		if (shouldSuppressAutoSolveForWorkspace(ctx, allowConcurrentWorkspace)) return false;
-		if (shouldSuppressAutoSolveForFreshSession(ctx, allowFreshSession)) return false;
+		if (!pr) {
+			clearPendingAutoSolve(ctx);
+			return false;
+		}
 
 		if (lastPromptedHeadSha && pr.headSha && pr.headSha !== lastPromptedHeadSha) {
 			promptedFeedbackKeys = new Set<string>();
 			promptedCiFailureKeys = new Set<string>();
+			clearPendingAutoSolve(ctx);
 		}
 		lastPromptedHeadSha = pr.headSha;
+
+		if ((!autoSolveEnabled && !ignoreDisabled) || (!ignoreIncompleteChecks && !checksAreComplete(pr.checks))) return false;
+		if (pendingAutoSolve && deliverPendingAutoSolve(ctx, options)) return true;
+		if (autoSolvePromptInFlight) return false;
 
 		const now = Date.now();
 		if (!force && now - lastAutoSolveAt < AUTO_SOLVE_MIN_GAP_MS) return false;
@@ -1157,48 +1291,18 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			]);
 			const targetFeedback = includePrompted ? feedback : feedback.filter((item) => !promptedFeedbackKeys.has(feedbackKey(item)));
 			const targetCiFailures = includePrompted ? ciFailures : ciFailures.filter((item) => !promptedCiFailureKeys.has(ciFailureKey(pr, item)));
-			if (targetFeedback.length === 0 && targetCiFailures.length === 0) return false;
-
-			for (const key of targetFeedback.map(feedbackKey)) promptedFeedbackKeys.add(key);
-			for (const failure of targetCiFailures) promptedCiFailureKeys.add(ciFailureKey(pr, failure));
-			lastAutoSolveAt = now;
-
-			const promptParts = [
-				`Auto-solve PR #${pr.number}: ${pr.url}`,
-				`Checks: ${pr.checks}${pr.headSha ? `, head: ${pr.headSha}` : ""}.`,
-				"Review only true/relevant PR feedback; for CI, find the failing job/step/root cause. Inspect linked details if this summary is incomplete. Make minimal changes, validate locally, and summarize fixes/dismissals/validation.",
-			];
-			if (targetFeedback.length > 0) {
-				promptParts.push("", "PR comments:", summarizeFeedback(targetFeedback));
-			}
-			if (targetCiFailures.length > 0) {
-				promptParts.push("", "CI failure context:", summarizeCiFailures(targetCiFailures));
+			if (targetFeedback.length === 0 && targetCiFailures.length === 0) {
+				clearPendingAutoSolve(ctx);
+				return false;
 			}
 
-			const commentText = countLabel(targetFeedback.length, "PR comment", "PR comments");
-			const ciText = countLabel(targetCiFailures.length, "CI failure", "CI failures");
-			ctx.ui.notify(`Auto-solve queued for ${commentText} and ${ciText}.`, "info");
-			pi.sendMessage(
-				{
-					customType: MESSAGE_TYPE_PR_AUTO_SOLVE,
-					content: promptParts.join("\n"),
-					display: true,
-					details: {
-						kind: "auto_solve",
-						pr: {
-							number: pr.number,
-							title: pr.title,
-							url: pr.url,
-							checks: pr.checks,
-							headSha: pr.headSha,
-						},
-						feedbackCount: targetFeedback.length,
-						ciFailureCount: targetCiFailures.length,
-					} satisfies PrAutoSolveMessageDetails,
-				},
-				{ triggerTurn: true },
-			);
-			return true;
+			const request = makeAutoSolveRequest(pr, targetFeedback, targetCiFailures);
+			if (canTriggerAutoSolve(ctx, options)) {
+				return sendAutoSolveRequest(ctx, request, options);
+			}
+
+			setPendingAutoSolve(ctx, request);
+			return false;
 		} finally {
 			autoSolvePromptInFlight = false;
 		}
@@ -1216,7 +1320,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 			const repoCtx = await discoverRepoContext(pi, ctx.cwd, provider);
 			if (!repoCtx) {
 				snapshot = { branch: undefined, pr: undefined, updatedAt: Date.now(), error: "No supported git remote." };
-				updateStatus(ctx);
+				clearPendingAutoSolve(ctx);
 				emitPrimitives();
 				return;
 			}
@@ -1237,7 +1341,8 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 				updatedAt: Date.now(),
 				error: undefined,
 			};
-			updateStatus(ctx);
+			if (!pr) clearPendingAutoSolve(ctx);
+			else updateStatus(ctx);
 			emitPrimitives();
 			await maybeAutoSolve(ctx);
 		} catch (error) {
@@ -1264,13 +1369,13 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			const action = args.trim().toLowerCase();
 			if (["on", "enable", "enabled", "true", "yes", "1", "start"].includes(action)) {
-				setAutoSolveEnabled(true);
+				setAutoSolveEnabled(true, ctx);
 				ctx.ui.notify("PR auto-solve enabled.", "info");
 				await maybeAutoSolve(ctx, { force: true });
 				return;
 			}
 			if (["off", "disable", "disabled", "false", "no", "0", "stop"].includes(action)) {
-				setAutoSolveEnabled(false);
+				setAutoSolveEnabled(false, ctx);
 				ctx.ui.notify("PR auto-solve disabled.", "info");
 				return;
 			}
@@ -1332,6 +1437,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
+		deliverPendingAutoSolve(ctx);
 		await refresh(ctx);
 	});
 
