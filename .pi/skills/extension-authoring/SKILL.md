@@ -43,6 +43,7 @@ Do not add tools for static behavior that has no meaningful state or user-tunabl
 - Keep normal responses compact, and make larger post-mutation summaries opt-in so convenience does not make simple operations noisy.
 - Name tools with a stable extension prefix. Use names that describe capabilities, such as `<extension>_state`, `<extension>_sources`, `<extension>_config`, `<extension>_debug`, or a single `<extension>_manage` tool with explicit actions.
 - Keep tool descriptions action-specific; say what the tool returns or changes.
+- When prompts, tool descriptions, command help, parameter descriptions, or extension skills shape future agent behavior, use `prompt-behavior-testing` to verify trigger boundaries and adherence.
 - Return concise `content` for the model and richer structured `details` for rendering/debugging.
 - Make list/state calls safe and read-only.
 - Make mutation calls narrow, reversible where practical, and explicit about persistence.
@@ -98,5 +99,5 @@ Before finishing an extension change:
 Match validation to the change:
 - Run the extension workspace typecheck when TypeScript changed.
 - Exercise the introspection and mutation interface with representative data when adding agent-operable configuration.
-- For natural-language configuration flows, run a small skill-style behavior check: ask an agent how it would configure the extension and verify it inspects running state before mutating and re-checks the effective state after.
+- For natural-language configuration flows or agent-facing prompt/tool text, use `prompt-behavior-testing`: ask an agent how it would configure or operate the extension and verify it inspects running state before mutating, supplies the right structured parameters, and re-checks the effective state after.
 - Verify linked/live layout with `./link-into-pi-agent.sh` when changing files under `agent/` that should appear in `~/.pi/agent`.

@@ -117,6 +117,7 @@ Use the available skills when they fit:
 - `address-pr-feedback`
 - `verification-before-completion`
 - `subagent-delegation`
+- `prompt-behavior-testing`
 - `writing-skills`
 
 ## Definition of Done
