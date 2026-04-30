@@ -75,6 +75,30 @@ interface EvolveModeState {
 
 type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;
 type PromptReason = "iteration" | "reflection";
+type OutsideRequestKind = "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review";
+type OutsideRequestStatus = "requested" | "in_progress" | "answered" | "dismissed";
+type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane";
+
+interface GovernorDecision {
+	verdict: "continue" | "pivot" | "stop" | "measure" | "exploit_scaffold" | "ask_user";
+	rationale: string;
+	requiredNextMove?: string;
+	forbiddenNextMoves?: string[];
+	evidenceGaps?: string[];
+}
+
+interface OutsideRequest {
+	id: string;
+	kind: OutsideRequestKind;
+	status: OutsideRequestStatus;
+	requestedAt: string;
+	requestedByIteration: number;
+	trigger: OutsideRequestTrigger;
+	prompt: string;
+	answer?: string;
+	decision?: GovernorDecision;
+	consumedAt?: string;
+}
 
 interface LoopModeHandler {
 	mode: LoopMode;
@@ -100,6 +124,7 @@ interface LoopState {
 	completedAt?: string;
 	lastReflectionAt: number; // Last iteration we reflected at
 	modeState: LoopModeState;
+	outsideRequests: OutsideRequest[];
 }
 
 const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
@@ -183,6 +208,15 @@ export default function (pi: ExtensionAPI) {
 
 	function migrateModeState(mode: LoopMode, rawModeState: unknown): LoopModeState {
 		if (rawModeState && typeof rawModeState === "object" && (rawModeState as { kind?: unknown }).kind === mode) {
+			if (mode === "recursive") {
+				const raw = rawModeState as Partial<RecursiveModeState>;
+				return {
+					...defaultRecursiveModeState(raw.objective),
+					...raw,
+					attempts: Array.isArray(raw.attempts) ? raw.attempts : [],
+					outsideHelpOnStagnation: raw.outsideHelpOnStagnation === true,
+				};
+			}
 			return rawModeState as LoopModeState;
 		}
 		return defaultModeState(mode);
@@ -194,6 +228,10 @@ export default function (pi: ExtensionAPI) {
 
 	function stringOrDefault(value: unknown, fallback: string): string {
 		return typeof value === "string" ? value : fallback;
+	}
+
+	function migrateOutsideRequests(value: unknown): OutsideRequest[] {
+		return Array.isArray(value) ? (value as OutsideRequest[]) : [];
 	}
 
 	function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
@@ -218,6 +256,7 @@ export default function (pi: ExtensionAPI) {
 			completedAt: typeof raw.completedAt === "string" ? raw.completedAt : undefined,
 			lastReflectionAt,
 			modeState: migrateModeState(mode, raw.modeState),
+			outsideRequests: migrateOutsideRequests(raw.outsideRequests),
 		};
 	}
 
@@ -283,6 +322,72 @@ export default function (pi: ExtensionAPI) {
 		currentLoop = null;
 		updateUI(ctx);
 		if (message && ctx.hasUI) ctx.ui.notify(message, "info");
+	}
+
+	// --- Outside requests ---
+
+	function pendingOutsideRequests(state: LoopState): OutsideRequest[] {
+		return state.outsideRequests.filter((request) => request.status === "requested" || request.status === "in_progress");
+	}
+
+	function latestGovernorDecision(state: LoopState): GovernorDecision | undefined {
+		return [...state.outsideRequests]
+			.reverse()
+			.find((request) => request.kind === "governor_review" && request.decision)?.decision;
+	}
+
+	function addOutsideRequest(state: LoopState, request: Omit<OutsideRequest, "requestedAt" | "status">): OutsideRequest {
+		const existing = state.outsideRequests.find((item) => item.id === request.id);
+		if (existing) return existing;
+		const next: OutsideRequest = { ...request, status: "requested", requestedAt: new Date().toISOString() };
+		state.outsideRequests.push(next);
+		return next;
+	}
+
+	function maybeCreateRecursiveOutsideRequests(state: LoopState, modeState: RecursiveModeState): void {
+		if (!modeState.outsideHelpEvery || state.iteration % modeState.outsideHelpEvery !== 0) return;
+		addOutsideRequest(state, {
+			id: `governor-${state.iteration}`,
+			kind: "governor_review",
+			requestedByIteration: state.iteration,
+			trigger: "every_n_iterations",
+			prompt: [
+				`Review recursive loop "${state.name}" after attempt ${state.iteration}.`,
+				`Objective: ${modeState.objective}`,
+				`Attempts recorded: ${modeState.attempts.length}`,
+				"Decide whether the next move should continue, pivot, stop, measure, exploit scaffold, or ask the user.",
+				"If useful, provide requiredNextMove, forbiddenNextMoves, and evidenceGaps.",
+			].join("\n"),
+		});
+	}
+
+	function formatOutsideRequest(request: OutsideRequest): string {
+		return `${request.id} [${request.status}] ${request.kind} from iteration ${request.requestedByIteration}: ${request.prompt}`;
+	}
+
+	function formatOutsideRequests(state: LoopState): string {
+		if (state.outsideRequests.length === 0) return `No outside requests for ${state.name}.`;
+		return state.outsideRequests.map(formatOutsideRequest).join("\n\n");
+	}
+
+	function answerOutsideRequest(
+		ctx: ExtensionContext,
+		loopName: string,
+		requestId: string,
+		answer: string,
+		decision?: GovernorDecision,
+	): { ok: true; state: LoopState; request: OutsideRequest } | { ok: false; error: string } {
+		const state = loadState(ctx, loopName);
+		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+		const request = state.outsideRequests.find((item) => item.id === requestId);
+		if (!request) return { ok: false, error: `Outside request "${requestId}" not found in loop "${loopName}".` };
+		request.status = "answered";
+		request.answer = answer;
+		request.decision = decision;
+		request.consumedAt = new Date().toISOString();
+		saveState(ctx, state);
+		updateUI(ctx);
+		return { ok: true, state, request };
 	}
 
 	// --- UI ---
@@ -374,6 +479,26 @@ export default function (pi: ExtensionAPI) {
 		return lines;
 	}
 
+	function appendOutsideRequestPromptSections(parts: string[], state: LoopState): void {
+		const pending = pendingOutsideRequests(state);
+		if (pending.length > 0) {
+			parts.push("## Pending Outside Requests");
+			for (const request of pending.slice(0, 5)) {
+				parts.push(`- ${request.id} (${request.kind}, ${request.trigger}): ${request.prompt}`);
+			}
+			parts.push("Use parent/orchestrator help if needed, then record answers with ralph_outside_answer or /ralph outside answer.", "");
+		}
+
+		const decision = latestGovernorDecision(state);
+		if (decision) {
+			parts.push("## Latest Governor Steer", `- Verdict: ${decision.verdict}`, `- Rationale: ${decision.rationale}`);
+			if (decision.requiredNextMove) parts.push(`- Required next move: ${decision.requiredNextMove}`);
+			if (decision.forbiddenNextMoves?.length) parts.push(`- Forbidden next moves: ${decision.forbiddenNextMoves.join(", ")}`);
+			if (decision.evidenceGaps?.length) parts.push(`- Evidence gaps: ${decision.evidenceGaps.join(", ")}`);
+			parts.push("Follow the steer or record a concrete reason for rejecting it in the task file.", "");
+		}
+	}
+
 	const checklistModeHandler: LoopModeHandler = {
 		mode: "checklist",
 		buildPrompt: buildChecklistPrompt,
@@ -406,6 +531,7 @@ export default function (pi: ExtensionAPI) {
 			const parts = [header, ""];
 			if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
 			parts.push("## Recursive Objective", ...formatRecursiveSetup(modeState), "");
+			appendOutsideRequestPromptSections(parts, state);
 			parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
 			parts.push("\n## Attempt Instructions\n");
 			parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
@@ -427,6 +553,8 @@ export default function (pi: ExtensionAPI) {
 		},
 		buildSystemInstructions(state) {
 			const modeState = requireRecursiveState(state);
+			const pending = pendingOutsideRequests(state).length;
+			const decision = latestGovernorDecision(state);
 			return [
 				"You are in a Ralph recursive loop.",
 				`- Objective: ${modeState.objective}`,
@@ -434,10 +562,14 @@ export default function (pi: ExtensionAPI) {
 				modeState.validationCommand
 					? `- Validate with or explain: ${modeState.validationCommand}`
 					: "- Run or describe relevant validation for the attempt.",
+				pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,
+				decision?.requiredNextMove ? `- Governor required next move: ${decision.requiredNextMove}` : undefined,
 				"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
 				`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
 				"- Otherwise, call ralph_done tool to proceed to next iteration.",
-			].join("\n");
+			]
+				.filter((line): line is string => Boolean(line))
+				.join("\n");
 		},
 		onIterationDone(state) {
 			const modeState = requireRecursiveState(state);
@@ -449,16 +581,21 @@ export default function (pi: ExtensionAPI) {
 				status: "pending_report",
 				summary: "Agent should record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
 			});
+			maybeCreateRecursiveOutsideRequests(state, modeState);
 			state.modeState = modeState;
 		},
 		summarize(state) {
 			const modeState = requireRecursiveState(state);
 			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
-			return [
+			const summary = [
 				`Attempt ${state.iteration}${maxStr}`,
 				`Objective: ${modeState.objective}`,
 				`Recorded attempts: ${modeState.attempts.length}`,
+				`Pending outside requests: ${pendingOutsideRequests(state).length}`,
 			];
+			const decision = latestGovernorDecision(state);
+			if (decision?.requiredNextMove) summary.push(`Governor steer: ${decision.requiredNextMove}`);
+			return summary;
 		},
 	};
 
@@ -644,6 +781,7 @@ export default function (pi: ExtensionAPI) {
 				startedAt: existing?.startedAt || new Date().toISOString(),
 				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
+				outsideRequests: [],
 			};
 
 			saveState(ctx, state);
@@ -815,6 +953,27 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(`${label}:\n${loops.map((l) => formatLoop(l)).join("\n")}`, "info");
 		},
 
+		outside(rest, ctx) {
+			const [action, loopArg, requestId, ...answerParts] = rest.trim().split(/\s+/).filter(Boolean);
+			if (action === "answer") {
+				if (!loopArg || !requestId || answerParts.length === 0) {
+					ctx.ui.notify("Usage: /ralph outside answer <loop> <request-id> <answer>", "warning");
+					return;
+				}
+				const result = answerOutsideRequest(ctx, loopArg, requestId, answerParts.join(" "));
+				ctx.ui.notify(result.ok ? `Recorded answer for ${requestId}.` : result.error, result.ok ? "info" : "error");
+				return;
+			}
+
+			const loopName = action || currentLoop;
+			if (!loopName) {
+				ctx.ui.notify("Usage: /ralph outside [loop]", "warning");
+				return;
+			}
+			const state = loadState(ctx, loopName);
+			ctx.ui.notify(state ? `Outside requests for ${loopName}:\n${formatOutsideRequests(state)}` : `Loop "${loopName}" not found.`, state ? "info" : "error");
+		},
+
 		nuke(rest, ctx) {
 			const force = rest.trim() === "--yes";
 			const warning =
@@ -862,6 +1021,9 @@ Commands:
   /ralph archive <name>               Move loop to archive
   /ralph clean [--all]                Clean completed loops
   /ralph list --archived              Show archived loops
+  /ralph outside [loop]               Show outside requests
+  /ralph outside answer <loop> <id> <answer>
+                                      Record outside request answer
   /ralph nuke [--yes]                 Delete all .ralph data
   /ralph-stop                         Stop active loop (idle only)
 
@@ -869,6 +1031,9 @@ Options:
   --items-per-iteration N  Suggest N items per turn (prompt hint)
   --reflect-every N        Reflect every N iterations
   --max-iterations N       Stop after N iterations (default 50)
+  --mode checklist|recursive
+                            Select loop mode
+  --objective TEXT         Required for recursive mode
 
 To stop: press ESC to interrupt, then run /ralph-stop when idle
 
@@ -1000,6 +1165,7 @@ Examples:
 				startedAt: new Date().toISOString(),
 				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
+				outsideRequests: [],
 			};
 
 			saveState(ctx, state);
@@ -1078,6 +1244,69 @@ Examples:
 			return {
 				content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.` }],
 				details: {},
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "ralph_outside_requests",
+		label: "List Ralph Outside Requests",
+		description: "List pending or answered outside help/governor requests for a Ralph loop.",
+		parameters: Type.Object({
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			const state = loadState(ctx, loopName);
+			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
+			return {
+				content: [{ type: "text", text: formatOutsideRequests(state) }],
+				details: { loopName, outsideRequests: state.outsideRequests },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "ralph_outside_answer",
+		label: "Answer Ralph Outside Request",
+		description: "Record an answer or governor decision for a Ralph outside request without editing state files manually.",
+		parameters: Type.Object({
+			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+			requestId: Type.String({ description: "Outside request id to answer." }),
+			answer: Type.String({ description: "Answer text from governor, researcher, or manual review." }),
+			verdict: Type.Optional(
+				Type.Union([
+					Type.Literal("continue"),
+					Type.Literal("pivot"),
+					Type.Literal("stop"),
+					Type.Literal("measure"),
+					Type.Literal("exploit_scaffold"),
+					Type.Literal("ask_user"),
+				]),
+			),
+			rationale: Type.Optional(Type.String({ description: "Governor rationale. Required to store a structured decision." })),
+			requiredNextMove: Type.Optional(Type.String({ description: "Governor-required next move." })),
+			forbiddenNextMoves: Type.Optional(Type.Array(Type.String(), { description: "Moves the next iteration should avoid." })),
+			evidenceGaps: Type.Optional(Type.Array(Type.String(), { description: "Evidence gaps the next iteration should address." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const loopName = params.loopName ?? currentLoop;
+			if (!loopName) return { content: [{ type: "text", text: "No active Ralph loop." }], details: {} };
+			const decision = params.verdict
+				? {
+						verdict: params.verdict,
+						rationale: params.rationale ?? params.answer,
+						requiredNextMove: params.requiredNextMove,
+						forbiddenNextMoves: params.forbiddenNextMoves,
+						evidenceGaps: params.evidenceGaps,
+					}
+				: undefined;
+			const result = answerOutsideRequest(ctx, loopName, params.requestId, params.answer, decision);
+			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, requestId: params.requestId } };
+			return {
+				content: [{ type: "text", text: `Recorded answer for ${params.requestId} in loop "${loopName}".` }],
+				details: { loopName, request: result.request },
 			};
 		},
 	});

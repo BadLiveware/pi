@@ -69,6 +69,8 @@ test("ralph_loop registers current-compatible tools and commands", () => {
 		const { tools, commands, handlers } = makeHarness(cwd);
 		assert.ok(tools.has("ralph_start"));
 		assert.ok(tools.has("ralph_done"));
+		assert.ok(tools.has("ralph_outside_requests"));
+		assert.ok(tools.has("ralph_outside_answer"));
 		assert.ok(commands.has("ralph"));
 		assert.ok(commands.has("ralph-stop"));
 		assert.ok((handlers.get("before_agent_start") ?? []).length > 0);
@@ -335,6 +337,73 @@ test("ralph_done records recursive attempt placeholder before next prompt", asyn
 		assert.equal(state.modeState.attempts[0].id, "attempt-1");
 		assert.equal(state.modeState.attempts[0].iteration, 1);
 		assert.equal(state.modeState.attempts[0].status, "pending_report");
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("recursive outside requests can be listed, answered, and included as governor steer", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		const done = tools.get("ralph_done");
+		const listOutside = tools.get("ralph_outside_requests");
+		const answerOutside = tools.get("ralph_outside_answer");
+		assert.ok(start);
+		assert.ok(done);
+		assert.ok(listOutside);
+		assert.ok(answerOutside);
+
+		await start.execute(
+			"tool-recursive",
+			{
+				name: "Governor Loop",
+				mode: "recursive",
+				taskContent: "# Governed task\n",
+				objective: "Find a better route",
+				maxIterations: 4,
+				outsideHelpEvery: 1,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done-1", {}, undefined, undefined, ctx);
+
+		assert.match(messages[1].content, /Pending Outside Requests/);
+		assert.match(messages[1].content, /governor-1/);
+		let state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Governor_Loop.state.json"), "utf-8"));
+		assert.equal(state.outsideRequests.length, 1);
+		assert.equal(state.outsideRequests[0].kind, "governor_review");
+		assert.equal(state.outsideRequests[0].status, "requested");
+
+		const listResult = await listOutside.execute("tool-list", { loopName: "Governor_Loop" }, undefined, undefined, ctx);
+		assert.match(listResult.content[0].text, /governor-1/);
+
+		await answerOutside.execute(
+			"tool-answer",
+			{
+				loopName: "Governor_Loop",
+				requestId: "governor-1",
+				answer: "Measure before changing more code.",
+				verdict: "measure",
+				rationale: "No evidence yet.",
+				requiredNextMove: "Run the benchmark before another implementation attempt.",
+				forbiddenNextMoves: ["large refactor"],
+				evidenceGaps: ["benchmark output"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done-2", {}, undefined, undefined, ctx);
+
+		assert.match(messages[2].content, /Latest Governor Steer/);
+		assert.match(messages[2].content, /Run the benchmark before another implementation attempt/);
+		state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Governor_Loop.state.json"), "utf-8"));
+		assert.equal(state.outsideRequests[0].status, "answered");
+		assert.equal(state.outsideRequests[0].decision.verdict, "measure");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

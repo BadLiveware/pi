@@ -36,6 +36,8 @@ The extension preserves top-level Ralph state fields for compatibility with exis
 | --- | --- |
 | `ralph_start` | Create `.ralph/<name>.md`, write the task content, save loop state, and queue iteration 1. |
 | `ralph_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
+| `ralph_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
+| `ralph_outside_answer` | Record an outside-help answer or structured governor decision without editing state files manually. |
 
 Example:
 
@@ -77,6 +79,8 @@ Recursive example:
 | `/ralph-stop` | Stop the active loop when the agent is idle. |
 | `/ralph status` | Show active and paused loops. |
 | `/ralph list --archived` | Show archived loops. |
+| `/ralph outside [loop]` | Show outside-help/governor requests for a loop. |
+| `/ralph outside answer <loop> <request-id> <answer>` | Record a plain-text answer for an outside request. |
 | `/ralph archive <name>` | Move a non-active loop to `.ralph/archive/`. |
 | `/ralph clean [--all]` | Remove completed loop state; `--all` also removes matching task files. |
 | `/ralph cancel <name>` | Delete a loop state file. |
@@ -98,6 +102,8 @@ Options for `/ralph start`:
 | `--max-failed-attempts N` | Recursive failed-attempt budget. |
 | `--outside-help-every N` | Recursive cue interval for requesting outside help. |
 | `--outside-help-on-stagnation` | Cue outside help when attempts stagnate. |
+
+Recursive loops with `outsideHelpEvery` create data-only `governor_review` requests at the configured interval. The extension does not spawn subagents; a parent/orchestrator agent can inspect requests, run whatever research or review is appropriate, then record the result with `ralph_outside_answer` or `/ralph outside answer`. Structured governor answers can include a verdict, rationale, required next move, forbidden next moves, and evidence gaps; the next recursive prompt includes the latest steer.
 
 Press Esc to interrupt a running assistant turn. Send a normal message or use `/ralph resume <name>` to continue. Use `/ralph-stop` when idle to end the loop.
 
