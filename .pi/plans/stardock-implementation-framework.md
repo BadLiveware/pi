@@ -77,8 +77,10 @@ Implemented behavior:
   - `recursive`: bounded attempts with objective/setup state, attempt reports, outside requests, governor decisions, and trigger support.
   - `evolve`: reserved; design-gated in `.pi/plans/stardock-evolve-mode.md`.
 - State behavior:
-  - private loop files live in `.stardock/`;
+  - managed private runs live under `.stardock/runs/<name>/` with `task.md` and `state.json`;
+  - archived managed runs live under `.stardock/archive/<name>/` with the same file shape;
   - state remains schema-versioned and mode-aware;
+  - legacy flat `.stardock/<name>.state.json` state remains readable for local resilience;
   - legacy `.ralph/` compatibility is not required, though a one-shot importer can be added if useful.
 - Tools:
   - `stardock_start`
@@ -117,6 +119,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - Attempt reporting, manual governor payload creation, and `stardock_outside_answer` worked as a coherent parent-orchestrated workflow.
 - After `stardock_done`, answered governor decisions remained in `.stardock/` state with structured `decision` fields and a `consumedAt` timestamp, giving the next prompt/state a durable steer.
 - The first private loop created untracked `.stardock/` files until `.gitignore` was updated; keep runtime loop state ignored by default.
+- New managed loops now use per-run folders under `.stardock/runs/` so task files and state files for different runs are easy to distinguish.
 - `governEvery: 1` can create an automatic governor request for the same iteration immediately after a manual governor request was answered. This is usable but noisy; future request handling should consider deduping equivalent governor requests or suppressing automatic cadence requests when a fresh manual decision already exists for that iteration.
 
 ## Updated design direction: context routing, not prompt replay
@@ -455,7 +458,7 @@ interface LoopState {
 }
 ```
 
-Private Stardock schema rule: current `.stardock/` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, but `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
+Private Stardock schema rule: current `.stardock/runs/<name>/state.json` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, and legacy flat `.stardock/<name>.state.json` files remain readable enough to resume and rewrite into the run-folder layout. `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
 
 Future schema revisions may add `criterionLedger`, `governorState`, auditor reviews, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/audit lists.
 
@@ -575,7 +578,8 @@ Behavior:
 Acceptance:
 - Existing tests still pass.
 - Local legacy `.ralph/*.state.json` files may be imported or ignored; compatibility is not required.
-- Current private `.stardock/*.state.json` files remain valid across additive schema revisions.
+- Current private `.stardock/runs/<name>/state.json` files remain valid across additive schema revisions.
+- Legacy flat `.stardock/*.state.json` files may be read and rewritten into `.stardock/runs/<name>/state.json` when touched.
 
 ### `recursive` mode
 
@@ -699,6 +703,7 @@ Completed implementation is intentionally compacted here; use commit history and
 | Manual governor helper | Done | `a66512c`; now surfaced as `stardock_govern` to create/reuse a durable governor request and payload. |
 | Future automation design gates | Done | `417f768`; subagent and evolve plans written. |
 | Private Stardock extension shell | Done | `fceb41d`; extension moved to `agent/extensions/private/stardock/`; public Ralph path removed; clean `stardock_*`, `/stardock`, and `.stardock/` surface implemented. |
+| Per-run Stardock storage | Done | Managed runs use `.stardock/runs/<name>/task.md` and `state.json`; archives use `.stardock/archive/<name>/`. |
 
 ### Next implementation candidates
 

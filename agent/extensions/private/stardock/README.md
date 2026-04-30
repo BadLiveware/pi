@@ -12,17 +12,19 @@ Architecture diagrams: see [`docs/architecture-diagrams.md`](docs/architecture-d
 - Registered from: `agent/extensions/package.json`
 - State directory: `.stardock/`
 
-Stardock stores loop state in the current workspace:
+Stardock stores loop state in the current workspace, with one folder per run:
 
-- `.stardock/<name>.md` — task file with goals, checklist, notes, and verification evidence.
-- `.stardock/<name>.state.json` — loop state, iteration count, pacing, mode state, attempts, and outside requests.
-- `.stardock/archive/` — archived loop state/task files.
+- `.stardock/runs/<name>/task.md` — task file with goals, checklist, notes, and verification evidence.
+- `.stardock/runs/<name>/state.json` — loop state, iteration count, pacing, mode state, attempts, and outside requests.
+- `.stardock/archive/<name>/` — archived run folder with the same `task.md` / `state.json` shape.
+
+The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`, remains readable for local resilience, but new and archived managed runs use per-run folders.
 
 ## Agent tools
 
 | Tool | What it does |
 | --- | --- |
-| `stardock_start` | Create `.stardock/<name>.md`, write task content, save loop state, and queue iteration 1. |
+| `stardock_start` | Create `.stardock/runs/<name>/task.md`, write task content, save loop state, and queue iteration 1. |
 | `stardock_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
@@ -34,7 +36,7 @@ Stardock stores loop state in the current workspace:
 
 | Command | What it does |
 | --- | --- |
-| `/stardock start <name\|path>` | Start a loop from a new `.stardock/<name>.md` file or an existing task path. |
+| `/stardock start <name\|path>` | Start a loop from a new `.stardock/runs/<name>/task.md` file or an existing task path. |
 | `/stardock resume <name>` | Resume a paused loop and queue the next prompt. |
 | `/stardock stop` | Pause the current loop. |
 | `/stardock-stop` | Stop the active loop when the agent is idle. |
@@ -44,7 +46,7 @@ Stardock stores loop state in the current workspace:
 | `/stardock outside [loop]` | Show outside-help/governor requests for a loop. |
 | `/stardock outside payload <loop> <request-id>` | Show a ready-to-copy governor or researcher task payload. |
 | `/stardock outside answer <loop> <request-id> <answer>` | Record a plain-text answer for an outside request. |
-| `/stardock archive <name>` | Move a non-active loop to `.stardock/archive/`. |
+| `/stardock archive <name>` | Move a non-active managed loop to `.stardock/archive/<name>/`. |
 | `/stardock clean [--all]` | Remove completed loop state; `--all` also removes matching task files. |
 | `/stardock cancel <name>` | Delete a loop state file. |
 | `/stardock nuke [--yes]` | Delete all `.stardock` data in the workspace. |

@@ -63,6 +63,18 @@ function makeHarness(cwd: string) {
 	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, ctx };
 }
 
+function runDir(cwd: string, name: string, archived = false): string {
+	return path.join(cwd, ".stardock", archived ? "archive" : "runs", name);
+}
+
+function statePath(cwd: string, name: string, archived = false): string {
+	return path.join(runDir(cwd, name, archived), "state.json");
+}
+
+function taskPath(cwd: string, name: string, archived = false): string {
+	return path.join(runDir(cwd, name, archived), "task.md");
+}
+
 test("stardock registers tools and commands", () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
@@ -110,11 +122,12 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		assert.match(messages[0].content, /STARDOCK LOOP: Demo_Loop \| Iteration 1\/3/);
 		assert.deepEqual(messages[0].options, { deliverAs: "followUp" });
 
-		const statePath = path.join(cwd, ".stardock", "Demo_Loop.state.json");
-		const taskPath = path.join(cwd, ".stardock", "Demo_Loop.md");
-		assert.equal(fs.readFileSync(taskPath, "utf-8"), "# Task\n\n## Checklist\n- [ ] First item\n");
-		const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+		const demoStatePath = statePath(cwd, "Demo_Loop");
+		const demoTaskPath = taskPath(cwd, "Demo_Loop");
+		assert.equal(fs.readFileSync(demoTaskPath, "utf-8"), "# Task\n\n## Checklist\n- [ ] First item\n");
+		const state = JSON.parse(fs.readFileSync(demoStatePath, "utf-8"));
 		assert.equal(state.status, "active");
+		assert.equal(state.taskFile, path.join(".stardock", "runs", "Demo_Loop", "task.md"));
 		assert.equal(state.mode, "checklist");
 		assert.deepEqual(state.modeState, { kind: "checklist" });
 		assert.equal(state.iteration, 1);
@@ -124,7 +137,7 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		assert.match(doneResult.content[0].text, /Iteration 1 complete/);
 		assert.equal(messages.length, 2);
 		assert.match(messages[1].content, /STARDOCK LOOP: Demo_Loop \| Iteration 2\/3/);
-		const nextState = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+		const nextState = JSON.parse(fs.readFileSync(demoStatePath, "utf-8"));
 		assert.equal(nextState.iteration, 2);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
@@ -170,9 +183,56 @@ test("completion marker completes loop without queuing a user message", async ()
 		assert.match(String((entries.at(-1)?.data as any).banner), /STARDOCK LOOP COMPLETE: Complete_Loop/);
 		assert.ok(notifications.some((message) => message.includes("STARDOCK LOOP COMPLETE: Complete_Loop")));
 
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Complete_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Loop"), "utf-8"));
 		assert.equal(state.status, "completed");
 		assert.equal(state.active, false);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("archive moves managed run folders under archive", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, commands, handlers, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		assert.ok(start);
+
+		await start.execute(
+			"tool-archive",
+			{
+				name: "Archive Loop",
+				taskContent: "# Archive task\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+		await agentEnd(
+			{
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
+					},
+				],
+			},
+			ctx,
+		);
+
+		const stardock = commands.get("stardock");
+		assert.ok(stardock);
+		await stardock.handler("archive Archive_Loop", ctx);
+
+		assert.equal(fs.existsSync(runDir(cwd, "Archive_Loop")), false);
+		assert.equal(fs.readFileSync(taskPath(cwd, "Archive_Loop", true), "utf-8"), "# Archive task\n");
+		const archivedState = JSON.parse(fs.readFileSync(statePath(cwd, "Archive_Loop", true), "utf-8"));
+		assert.equal(archivedState.status, "completed");
+		assert.equal(archivedState.taskFile, path.join(".stardock", "archive", "Archive_Loop", "task.md"));
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -212,7 +272,7 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 
 		assert.equal(messages.length, 1);
 		assert.match(messages[0].content, /STARDOCK LOOP: legacy \| Iteration 2\/5/);
-		const migrated = JSON.parse(fs.readFileSync(path.join(loopDir, "legacy.state.json"), "utf-8"));
+		const migrated = JSON.parse(fs.readFileSync(statePath(cwd, "legacy"), "utf-8"));
 		assert.equal(migrated.schemaVersion, 2);
 		assert.equal(migrated.mode, "checklist");
 		assert.deepEqual(migrated.modeState, { kind: "checklist" });
@@ -245,13 +305,13 @@ test("unsupported mode does not create a loop", async () => {
 		);
 		assert.match(toolResult.content[0].text, /planned but not implemented/);
 		assert.equal(messages.length, 0);
-		assert.equal(fs.existsSync(path.join(cwd, ".stardock", "Evolve_Loop.state.json")), false);
+		assert.equal(fs.existsSync(statePath(cwd, "Evolve_Loop")), false);
 
 		const stardock = commands.get("stardock");
 		assert.ok(stardock);
 		await stardock.handler("start cmd-evolve --mode evolve", ctx);
 		assert.ok(notifications.some((message) => message.includes('Stardock mode "evolve" is planned but not implemented yet.')));
-		assert.equal(fs.existsSync(path.join(cwd, ".stardock", "cmd-evolve.state.json")), false);
+		assert.equal(fs.existsSync(statePath(cwd, "cmd-evolve")), false);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -290,7 +350,7 @@ test("recursive mode start persists setup and queues bounded attempt prompt", as
 		assert.match(messages[0].content, /Reduce query latency without hurting recall/);
 		assert.match(messages[0].content, /npm run bench:search/);
 		assert.match(messages[0].content, /one bounded implementer attempt/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Search_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Search_Loop"), "utf-8"));
 		assert.equal(state.mode, "recursive");
 		assert.equal(state.modeState.kind, "recursive");
 		assert.equal(state.modeState.objective, "Reduce query latency without hurting recall");
@@ -334,7 +394,7 @@ test("stardock_done records recursive attempt placeholder before next prompt", a
 
 		assert.equal(messages.length, 2);
 		assert.match(messages[1].content, /Attempt 2\/3/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Attempt_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Attempt_Loop"), "utf-8"));
 		assert.equal(state.iteration, 2);
 		assert.equal(state.modeState.attempts.length, 1);
 		assert.equal(state.modeState.attempts[0].id, "attempt-1");
@@ -378,7 +438,7 @@ test("recursive outside requests can be listed, answered, and included as govern
 
 		assert.match(messages[1].content, /Pending Outside Requests/);
 		assert.match(messages[1].content, /governor-1/);
-		let state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Governor_Loop.state.json"), "utf-8"));
+		let state = JSON.parse(fs.readFileSync(statePath(cwd, "Governor_Loop"), "utf-8"));
 		assert.equal(state.outsideRequests.length, 1);
 		assert.equal(state.outsideRequests[0].kind, "governor_review");
 		assert.equal(state.outsideRequests[0].status, "requested");
@@ -418,7 +478,7 @@ test("recursive outside requests can be listed, answered, and included as govern
 
 		assert.match(messages[2].content, /Latest Governor Steer/);
 		assert.match(messages[2].content, /Run the benchmark before another implementation attempt/);
-		state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Governor_Loop.state.json"), "utf-8"));
+		state = JSON.parse(fs.readFileSync(statePath(cwd, "Governor_Loop"), "utf-8"));
 		assert.equal(state.outsideRequests[0].status, "answered");
 		assert.equal(state.outsideRequests[0].decision.verdict, "measure");
 	} finally {
@@ -473,7 +533,7 @@ test("stardock_attempt_report records structured recursive attempt data", async 
 
 		assert.match(messages[2].content, /Recent Attempt Reports/);
 		assert.match(messages[2].content, /candidate_change · improved/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Report_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Report_Loop"), "utf-8"));
 		assert.equal(state.modeState.attempts[0].status, "reported");
 		assert.equal(state.modeState.attempts[0].kind, "candidate_change");
 		assert.equal(state.modeState.attempts[0].result, "improved");
@@ -547,7 +607,7 @@ test("recursive triggers create governor and stagnation requests from structured
 
 		assert.match(messages[2].content, /governor-2/);
 		assert.match(messages[2].content, /research-stagnation-2/);
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Trigger_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Trigger_Loop"), "utf-8"));
 		assert.ok(state.outsideRequests.some((request: any) => request.id === "governor-2" && request.kind === "governor_review"));
 		assert.ok(state.outsideRequests.some((request: any) => request.id === "research-stagnation-2" && request.kind === "failure_analysis"));
 	} finally {
@@ -582,7 +642,7 @@ test("stardock_govern creates a manual governor request payload", async () => {
 		assert.match(result.content[0].text, /Governor task/);
 		assert.match(result.content[0].text, /Trigger: manual/);
 		assert.equal(result.details.request.id, "governor-manual-1");
-		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".stardock", "Govern_Loop.state.json"), "utf-8"));
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Govern_Loop"), "utf-8"));
 		assert.equal(state.outsideRequests[0].id, "governor-manual-1");
 		assert.equal(state.outsideRequests[0].trigger, "manual");
 	} finally {

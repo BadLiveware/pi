@@ -147,12 +147,34 @@ export default function (pi: ExtensionAPI) {
 	// --- File helpers ---
 
 	const stardockDir = (ctx: ExtensionContext) => path.resolve(ctx.cwd, STARDOCK_DIR);
+	const runsDir = (ctx: ExtensionContext) => path.join(stardockDir(ctx), "runs");
 	const archiveDir = (ctx: ExtensionContext) => path.join(stardockDir(ctx), "archive");
 	const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_");
 
-	function getPath(ctx: ExtensionContext, name: string, ext: string, archived = false): string {
+	function runDir(ctx: ExtensionContext, name: string, archived = false): string {
+		return path.join(archived ? archiveDir(ctx) : runsDir(ctx), sanitize(name));
+	}
+
+	function statePath(ctx: ExtensionContext, name: string, archived = false): string {
+		return path.join(runDir(ctx, name, archived), "state.json");
+	}
+
+	function taskPath(ctx: ExtensionContext, name: string, archived = false): string {
+		return path.join(runDir(ctx, name, archived), "task.md");
+	}
+
+	function defaultTaskFile(name: string): string {
+		return path.join(STARDOCK_DIR, "runs", sanitize(name), "task.md");
+	}
+
+	function legacyPath(ctx: ExtensionContext, name: string, ext: string, archived = false): string {
 		const dir = archived ? archiveDir(ctx) : stardockDir(ctx);
 		return path.join(dir, `${sanitize(name)}${ext}`);
+	}
+
+	function existingStatePath(ctx: ExtensionContext, name: string, archived = false): string {
+		const currentPath = statePath(ctx, name, archived);
+		return fs.existsSync(currentPath) ? currentPath : legacyPath(ctx, name, ".state.json", archived);
 	}
 
 	function ensureDir(filePath: string): void {
@@ -255,7 +277,7 @@ export default function (pi: ExtensionAPI) {
 		return {
 			schemaVersion: 2,
 			name,
-			taskFile: stringOrDefault(raw.taskFile, path.join(STARDOCK_DIR, `${sanitize(name)}.md`)),
+			taskFile: stringOrDefault(raw.taskFile, defaultTaskFile(name)),
 			mode,
 			iteration: numberOrDefault(raw.iteration, 0),
 			maxIterations: numberOrDefault(raw.maxIterations, 50),
@@ -272,29 +294,44 @@ export default function (pi: ExtensionAPI) {
 		};
 	}
 
-	function loadState(ctx: ExtensionContext, name: string, archived = false): LoopState | null {
-		const content = tryRead(getPath(ctx, name, ".state.json", archived));
+	function readStateFile(filePath: string): LoopState | null {
+		const content = tryRead(filePath);
 		return content ? migrateState(JSON.parse(content)) : null;
+	}
+
+	function loadState(ctx: ExtensionContext, name: string, archived = false): LoopState | null {
+		return readStateFile(existingStatePath(ctx, name, archived));
 	}
 
 	function saveState(ctx: ExtensionContext, state: LoopState, archived = false): void {
 		state.active = state.status === "active";
-		const filePath = getPath(ctx, state.name, ".state.json", archived);
+		const filePath = statePath(ctx, state.name, archived);
 		ensureDir(filePath);
 		fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf-8");
 	}
 
 	function listLoops(ctx: ExtensionContext, archived = false): LoopState[] {
-		const dir = archived ? archiveDir(ctx) : stardockDir(ctx);
-		if (!fs.existsSync(dir)) return [];
-		return fs
-			.readdirSync(dir)
-			.filter((f) => f.endsWith(".state.json"))
-			.map((f) => {
-				const content = tryRead(path.join(dir, f));
-				return content ? migrateState(JSON.parse(content)) : null;
-			})
-			.filter((s): s is LoopState => s !== null);
+		const currentDir = archived ? archiveDir(ctx) : runsDir(ctx);
+		const legacyDir = archived ? archiveDir(ctx) : stardockDir(ctx);
+		const byName = new Map<string, LoopState>();
+
+		if (fs.existsSync(currentDir)) {
+			for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+				if (!entry.isDirectory()) continue;
+				const state = readStateFile(path.join(currentDir, entry.name, "state.json"));
+				if (state) byName.set(state.name, state);
+			}
+		}
+
+		if (fs.existsSync(legacyDir)) {
+			for (const entry of fs.readdirSync(legacyDir, { withFileTypes: true })) {
+				if (!entry.isFile() || !entry.name.endsWith(".state.json")) continue;
+				const state = readStateFile(path.join(legacyDir, entry.name));
+				if (state && !byName.has(state.name)) byName.set(state.name, state);
+			}
+		}
+
+		return [...byName.values()];
 	}
 
 	// --- Loop state transitions ---
@@ -978,7 +1015,7 @@ export default function (pi: ExtensionAPI) {
 
 			const isPath = args.name.includes("/") || args.name.includes("\\");
 			const loopName = isPath ? sanitize(path.basename(args.name, path.extname(args.name))) : args.name;
-			const taskFile = isPath ? args.name : path.join(STARDOCK_DIR, `${loopName}.md`);
+			const taskFile = isPath ? args.name : defaultTaskFile(loopName);
 
 			const existing = loadState(ctx, loopName);
 			if (existing?.status === "active") {
@@ -1103,7 +1140,8 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			if (currentLoop === loopName) currentLoop = null;
-			tryDelete(getPath(ctx, loopName, ".state.json"));
+			tryDelete(statePath(ctx, loopName));
+			tryDelete(legacyPath(ctx, loopName, ".state.json"));
 			ctx.ui.notify(`Cancelled: ${loopName}`, "info");
 			updateUI(ctx);
 		},
@@ -1126,16 +1164,22 @@ export default function (pi: ExtensionAPI) {
 
 			if (currentLoop === loopName) currentLoop = null;
 
-			const srcState = getPath(ctx, loopName, ".state.json");
-			const dstState = getPath(ctx, loopName, ".state.json", true);
-			ensureDir(dstState);
-			if (fs.existsSync(srcState)) fs.renameSync(srcState, dstState);
+			const sourceRunDir = runDir(ctx, loopName);
+			const sourceTask = path.resolve(ctx.cwd, state.taskFile);
+			const taskIsManaged = sourceTask.startsWith(stardockDir(ctx)) && !sourceTask.startsWith(archiveDir(ctx));
+			if (taskIsManaged) state.taskFile = path.relative(ctx.cwd, taskPath(ctx, loopName, true));
+			saveState(ctx, state, true);
 
-			const srcTask = path.resolve(ctx.cwd, state.taskFile);
-			if (srcTask.startsWith(stardockDir(ctx)) && !srcTask.startsWith(archiveDir(ctx))) {
-				const dstTask = getPath(ctx, loopName, ".md", true);
-				if (fs.existsSync(srcTask)) fs.renameSync(srcTask, dstTask);
+			if (taskIsManaged && fs.existsSync(sourceTask)) {
+				const destinationTask = taskPath(ctx, loopName, true);
+				ensureDir(destinationTask);
+				tryDelete(destinationTask);
+				fs.renameSync(sourceTask, destinationTask);
 			}
+
+			tryRemoveDir(sourceRunDir);
+			tryDelete(legacyPath(ctx, loopName, ".state.json"));
+			if (taskIsManaged) tryDelete(legacyPath(ctx, loopName, ".md"));
 
 			ctx.ui.notify(`Archived: ${loopName}`, "info");
 			updateUI(ctx);
@@ -1151,8 +1195,12 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			for (const loop of completed) {
-				tryDelete(getPath(ctx, loop.name, ".state.json"));
-				if (all) tryDelete(getPath(ctx, loop.name, ".md"));
+				tryDelete(statePath(ctx, loop.name));
+				tryDelete(legacyPath(ctx, loop.name, ".state.json"));
+				if (all) {
+					tryRemoveDir(runDir(ctx, loop.name));
+					tryDelete(legacyPath(ctx, loop.name, ".md"));
+				}
 				if (currentLoop === loop.name) currentLoop = null;
 			}
 
@@ -1389,7 +1437,7 @@ Examples:
 			}
 
 			const loopName = sanitize(params.name);
-			const taskFile = path.join(STARDOCK_DIR, `${loopName}.md`);
+			const taskFile = defaultTaskFile(loopName);
 
 			if (loadState(ctx, loopName)?.status === "active") {
 				return { content: [{ type: "text", text: `Loop "${loopName}" already active.` }], details: {} };
@@ -1723,8 +1771,8 @@ Examples:
 		// active loop when there are multiple, using the state file mtime.
 		if (!currentLoop && active.length > 0) {
 			const mostRecent = active.reduce((best, candidate) => {
-				const bestMtime = safeMtimeMs(getPath(ctx, best.name, ".state.json"));
-				const candidateMtime = safeMtimeMs(getPath(ctx, candidate.name, ".state.json"));
+				const bestMtime = safeMtimeMs(existingStatePath(ctx, best.name));
+				const candidateMtime = safeMtimeMs(existingStatePath(ctx, candidate.name));
 				return candidateMtime > bestMtime ? candidate : best;
 			});
 			currentLoop = mostRecent.name;
