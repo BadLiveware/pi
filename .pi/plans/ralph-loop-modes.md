@@ -82,8 +82,8 @@ The practical first pass is complete through basic data-only outside request/gov
    - add researcher request templates for ideas, failure analysis, and mutation suggestions;
    - make request listing easier to consume from parent/orchestrator agents.
 3. Add semi-automatic governed recursive workflow after manual workflow dogfooding.
-4. Add subagent-driven recursive mode only after prompt templates and answer recording are stable.
-5. Design `evolve` mode as a separate follow-up plan after recursive mode has real dogfood evidence.
+4. For subagent-driven recursive mode, use `.pi/plans/ralph-subagent-recursive-mode.md` as the design gate.
+5. For `evolve` mode, use `.pi/plans/ralph-evolve-mode.md` as the design gate after recursive mode has real dogfood evidence.
 
 ## Architecture decision
 
@@ -500,7 +500,9 @@ Acceptance:
 Validation:
 - Manual dogfood on an optimization task where the governor prevents additional scaffolding.
 
-### 8. Add subagent-driven recursive mode later — future
+### 8. Add subagent-driven recursive mode later — design gate written
+
+Detailed design gate: `.pi/plans/ralph-subagent-recursive-mode.md`.
 
 Only after the governor/researcher prompts and answer recording are stable.
 
@@ -521,9 +523,11 @@ Acceptance:
 - Governor can reject scaffolding drift and require measured candidate changes.
 - User can inspect and interrupt the loop between attempts.
 
-### 9. Design evolve mode after recursive dogfooding — future
+### 9. Design evolve mode after recursive dogfooding — design gate written
 
-Create a separate plan once recursive mode has been used on at least one real debugging or optimization task.
+Detailed design gate: `.pi/plans/ralph-evolve-mode.md`.
+
+Create or revise the detailed plan once recursive mode has been used on at least one real debugging or optimization task.
 
 Minimum evidence needed before evolve implementation:
 - What recursive logs lacked for candidate selection.
