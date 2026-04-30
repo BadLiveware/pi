@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
+import { batchFailureDetails, batchMutationResponse, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { AuditorReview, LoopState } from "../state/core.ts";
 
 export interface AuditorReviewMutationParams extends Partial<AuditorReview> {
@@ -16,11 +16,5 @@ export function runAuditorReviewRecord(loopName: string, params: AuditorReviewMu
 		return result.ok ? { state: result.state, item: result.review, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	const updatedState = batch.lastState;
-	const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "review", pluralName: "auditor reviews", pluralDetailKey: "reviews", singleItemText: (review, result) => `${result.created ? "Recorded" : "Updated"} auditor review ${review.id}` });
-	return {
-		contentText: `${response.contentText} in loop "${loopName}".`,
-		details: { loopName, [response.detailKey]: response.detailValue, auditorReviews: updatedState.auditorReviews },
-		state: updatedState,
-	};
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "review", pluralName: "auditor reviews", pluralDetailKey: "reviews", singleItemText: (review, result) => `${result.created ? "Recorded" : "Updated"} auditor review ${review.id}`, stateDetails: (state) => ({ auditorReviews: state.auditorReviews }) });
 }

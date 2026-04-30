@@ -45,7 +45,15 @@ export function batchFailureDetails<TFailure extends BatchMutationFailure>(loopN
 	return { loopName, failedIndex: failure.index, failedInput: failure.input };
 }
 
-export function describeBatchMutation<TItem>(batch: BatchMutationSuccess<unknown, TItem>, options: { verb: string; singularName: string; pluralName: string; pluralDetailKey?: string; singleItemText(item: TItem, result: BatchMutationResult<unknown, TItem>): string }): BatchResponseShape<TItem> {
+export interface DescribeBatchMutationOptions<TItem> {
+	verb: string;
+	singularName: string;
+	pluralName: string;
+	pluralDetailKey?: string;
+	singleItemText(item: TItem, result: BatchMutationResult<unknown, TItem>): string;
+}
+
+export function describeBatchMutation<TItem>(batch: BatchMutationSuccess<unknown, TItem>, options: DescribeBatchMutationOptions<TItem>): BatchResponseShape<TItem> {
 	if (batch.isBatch) {
 		return {
 			contentText: `${options.verb} ${batch.items.length} ${options.pluralName}`,
@@ -58,6 +66,15 @@ export function describeBatchMutation<TItem>(batch: BatchMutationSuccess<unknown
 		contentText: options.singleItemText(result.item, result),
 		detailKey: options.singularName,
 		detailValue: result.item,
+	};
+}
+
+export function batchMutationResponse<TState, TItem>(loopName: string, batch: BatchMutationSuccess<TState, TItem>, options: DescribeBatchMutationOptions<TItem> & { stateDetails?: (state: TState) => Record<string, unknown> }): AppToolMutationResponse<TState> {
+	const response = describeBatchMutation(batch as BatchMutationSuccess<unknown, TItem>, options);
+	return {
+		contentText: `${response.contentText} in loop "${loopName}".`,
+		details: { loopName, [response.detailKey]: response.detailValue, ...(options.stateDetails?.(batch.lastState) ?? {}) },
+		state: batch.lastState,
 	};
 }
 

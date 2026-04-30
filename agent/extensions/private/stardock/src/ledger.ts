@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { runLedgerArtifactRecord, runLedgerCriteriaUpsert } from "./app/ledger-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact } from "./state/core.ts";
 import { isArtifactKind, isCriterionStatus, normalizeId, normalizeIds, rebuildRequirementTrace } from "./state/migration.ts";
@@ -197,41 +198,15 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 
 			if (params.action === "upsertCriterion" || params.action === "upsertCriteria") {
 				const inputs = params.action === "upsertCriteria" ? params.criteria ?? [] : [{ id: params.id, taskId: params.taskId, sourceRef: params.sourceRef, requirement: params.requirement, description: params.description, passCondition: params.passCondition, testMethod: params.testMethod, status: params.status, evidence: params.evidence, redEvidence: params.redEvidence, greenEvidence: params.greenEvidence }];
-				if (inputs.length === 0) return { content: [{ type: "text", text: "No criteria provided." }], details: { loopName } };
-				const criteria: Criterion[] = [];
-				let created = 0;
-				let stateAfter: LoopState | undefined;
-				for (const input of inputs) {
-					const result = upsertCriterion(ctx, loopName, input, deps.updateUI);
-					if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, criteria } };
-					criteria.push(result.criterion);
-					if (result.created) created++;
-					stateAfter = result.state;
-				}
-				const updatedState = stateAfter ?? loadState(ctx, loopName) ?? undefined;
-				return {
-					content: [{ type: "text", text: inputs.length === 1 ? `${created === 1 ? "Created" : "Updated"} criterion ${criteria[0].id} in loop "${loopName}".` : `Upserted ${criteria.length} criteria in loop "${loopName}" (${created} created, ${criteria.length - created} updated).` }],
-					details: { loopName, criteria, criterion: criteria[0], criterionLedger: updatedState?.criterionLedger, ...(updatedState ? deps.optionalLoopDetails(ctx, updatedState, params) : {}) },
-				};
+				const response = runLedgerCriteriaUpsert(loopName, inputs, params.action === "upsertCriteria", { upsertCriterion: (input) => upsertCriterion(ctx, loopName, input, deps.updateUI) });
+				const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
+				return { content: [{ type: "text", text: response.contentText }], details };
 			}
 
 			const inputs = params.action === "recordArtifacts" ? params.artifacts ?? [] : [{ id: params.id, kind: params.kind, command: params.command, path: params.path, summary: params.summary, criterionIds: params.criterionIds }];
-			if (inputs.length === 0) return { content: [{ type: "text", text: "No artifacts provided." }], details: { loopName } };
-			const artifacts: VerificationArtifact[] = [];
-			let created = 0;
-			let stateAfter: LoopState | undefined;
-			for (const input of inputs) {
-				const result = recordVerificationArtifact(ctx, loopName, input, deps.updateUI);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, artifacts } };
-				artifacts.push(result.artifact);
-				if (result.created) created++;
-				stateAfter = result.state;
-			}
-			const updatedState = stateAfter ?? loadState(ctx, loopName) ?? undefined;
-			return {
-				content: [{ type: "text", text: inputs.length === 1 ? `${created === 1 ? "Recorded" : "Updated"} artifact ${artifacts[0].id} in loop "${loopName}".` : `Recorded ${artifacts.length} artifacts in loop "${loopName}" (${created} created, ${artifacts.length - created} updated).` }],
-				details: { loopName, artifacts, artifact: artifacts[0], verificationArtifacts: updatedState?.verificationArtifacts, ...(updatedState ? deps.optionalLoopDetails(ctx, updatedState, params) : {}) },
-			};
+			const response = runLedgerArtifactRecord(loopName, inputs, params.action === "recordArtifacts", { recordArtifact: (input) => recordVerificationArtifact(ctx, loopName, input, deps.updateUI) });
+			const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
+			return { content: [{ type: "text", text: response.contentText }], details };
 		},
 	});
 }

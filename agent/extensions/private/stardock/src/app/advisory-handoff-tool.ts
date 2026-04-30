@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
+import { batchFailureDetails, batchMutationResponse, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { AdvisoryHandoff, LoopState } from "../state/core.ts";
 
 export interface AdvisoryHandoffMutationParams extends Partial<AdvisoryHandoff> {
@@ -16,11 +16,5 @@ export function runAdvisoryHandoffRecord(loopName: string, params: AdvisoryHando
 		return result.ok ? { state: result.state, item: result.handoff, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	const updatedState = batch.lastState;
-	const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "handoff", pluralName: "advisory handoffs", pluralDetailKey: "handoffs", singleItemText: (handoff, result) => `${result.created ? "Recorded" : "Updated"} advisory handoff ${handoff.id}` });
-	return {
-		contentText: `${response.contentText} in loop "${loopName}".`,
-		details: { loopName, [response.detailKey]: response.detailValue, advisoryHandoffs: updatedState.advisoryHandoffs },
-		state: updatedState,
-	};
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "handoff", pluralName: "advisory handoffs", pluralDetailKey: "handoffs", singleItemText: (handoff, result) => `${result.created ? "Recorded" : "Updated"} advisory handoff ${handoff.id}`, stateDetails: (state) => ({ advisoryHandoffs: state.advisoryHandoffs }) });
 }

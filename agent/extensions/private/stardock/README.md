@@ -11,7 +11,7 @@ Architecture diagrams: see [`docs/architecture-diagrams.md`](docs/architecture-d
 - Extension source: `agent/extensions/private/stardock/`
 - Registered from: `agent/extensions/package.json`
 - State directory: `.stardock/`
-- Source layout: `index.ts` owns extension lifecycle, current-loop orchestration, mode flow, slash commands, and top-level tool wiring. `src/state.ts` is a compatibility barrel for shared state code split under `src/state/` (`core.ts`, `paths.ts`, `migration.ts`, `store.ts`). Vertical feature slices keep feature-owned behavior, formatting, schemas, prompt sections, and tool registration together: `src/ledger.ts`, `src/briefs.ts`, `src/outside-requests.ts`, `src/attempt-reports.ts`, `src/final-reports.ts`, and `src/views.ts`.
+- Source layout: `index.ts` is a thin extension entrypoint and `src/runtime/` owns Pi-facing lifecycle, commands, hooks, prompts, UI, tool registration, and followup adapters. Shared state code lives under `src/state/` (`core.ts`, `paths.ts`, `migration.ts`, `store.ts`). Vertical feature slices keep feature-owned formatting, schemas, payload/list behavior, and tool registration together, while `src/app/*-tool.ts` modules hold Pi-free mutation orchestration for batch/write paths.
 
 Stardock stores loop state in the current workspace, with one folder per run:
 

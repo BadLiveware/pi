@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
+import { batchFailureDetails, batchMutationResponse, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { LoopState, WorkerReport } from "../state/core.ts";
 
 export type WorkerReportMutationInput = Omit<Partial<WorkerReport>, "changedFiles"> & { changedFiles?: unknown };
@@ -18,11 +18,5 @@ export function runWorkerReportRecord(loopName: string, params: WorkerReportMuta
 		return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	const updatedState = batch.lastState;
-	const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "report", pluralName: "worker reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} worker report ${report.id}` });
-	return {
-		contentText: `${response.contentText} in loop "${loopName}".`,
-		details: { loopName, [response.detailKey]: response.detailValue, workerReports: updatedState.workerReports },
-		state: updatedState,
-	};
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "report", pluralName: "worker reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} worker report ${report.id}`, stateDetails: (state) => ({ workerReports: state.workerReports }) });
 }

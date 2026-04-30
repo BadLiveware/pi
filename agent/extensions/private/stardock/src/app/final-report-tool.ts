@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
+import { batchFailureDetails, batchMutationResponse, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { FinalVerificationReport, LoopState } from "../state/core.ts";
 
 export interface FinalReportMutationParams extends Partial<FinalVerificationReport> {
@@ -16,11 +16,5 @@ export function runFinalReportRecord(loopName: string, params: FinalReportMutati
 		return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	const updatedState = batch.lastState;
-	const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "report", pluralName: "final reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} final report ${report.id}` });
-	return {
-		contentText: `${response.contentText} in loop "${loopName}".`,
-		details: { loopName, [response.detailKey]: response.detailValue, finalVerificationReports: updatedState.finalVerificationReports },
-		state: updatedState,
-	};
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "report", pluralName: "final reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} final report ${report.id}`, stateDetails: (state) => ({ finalVerificationReports: state.finalVerificationReports }) });
 }

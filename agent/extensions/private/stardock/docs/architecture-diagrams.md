@@ -1,6 +1,6 @@
 # Stardock architecture diagrams
 
-These diagrams describe Stardock's target architecture. The private extension currently provides the shell, checklist mode, recursive mode, structured attempt reports, governor/outside request payloads, and local `.stardock/` state. Criterion ledgers, verification artifacts, auditor reviews, advisory subagents, and evolve mode are planned design gates.
+These diagrams describe Stardock's target architecture and current private implementation direction. The private extension provides checklist and recursive loops, structured attempt reports, governor/outside request payloads, criterion ledgers, verification artifacts, iteration briefs, final reports, auditor reviews, advisory handoffs, breakout packages, worker reports, read-only policy recommendations, and local `.stardock/` state. Direct subagent execution and evolve mode remain planned design gates.
 
 ## High-level architecture
 

@@ -1,4 +1,4 @@
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
+import { batchFailureDetails, batchMutationResponse, normalizeBatchInputs, runOrderedBatch, type AppToolMutationResponse } from "./batch.ts";
 import type { LoopState, RecursiveAttempt, RecursiveAttemptKind, RecursiveAttemptResult } from "../state/core.ts";
 
 export interface AttemptReportMutationInput {
@@ -28,10 +28,5 @@ export function runAttemptReportRecord(loopName: string, params: AttemptReportMu
 		return result.ok ? { state: result.state, item: result.attempt } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "attempt", pluralName: "attempt reports", pluralDetailKey: "attempts", singleItemText: (attempt) => `Recorded report for attempt ${attempt.iteration}` });
-	return {
-		contentText: `${response.contentText} in loop "${loopName}".`,
-		details: { loopName, [response.detailKey]: response.detailValue },
-		state: batch.lastState,
-	};
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "attempt", pluralName: "attempt reports", pluralDetailKey: "attempts", singleItemText: (attempt) => `Recorded report for attempt ${attempt.iteration}` });
 }
