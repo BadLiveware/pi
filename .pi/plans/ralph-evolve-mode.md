@@ -14,6 +14,7 @@ Evolve mode should be implemented only when all of these are true:
 - command timeout and output byte caps exist;
 - candidate archive size and prompt summary bounds exist;
 - candidate isolation strategy is chosen;
+- criterion/evidence handling exists so candidate prompts do not replay the full plan;
 - recursive dogfooding shows that attempt logs are insufficient for metric-driven candidate selection.
 
 ## Purpose
@@ -26,7 +27,7 @@ seed candidate -> mutate -> evaluate -> archive -> select next candidate
 
 Ralph should remain inspectable and interruptible. The extension should not become an unbounded autonomous optimizer.
 
-Evolve mode should also follow the context-routing rule: prompts receive bounded candidate/archive summaries and the next requested mutation, not the full canonical plan or full evaluator logs.
+Evolve mode should also follow the context-routing rule: prompts receive bounded candidate/archive summaries, selected criterion IDs, and the next requested mutation, not the full canonical plan or full evaluator logs.
 
 ## Evidence needed before implementation
 
@@ -38,6 +39,7 @@ Gather this from recursive dogfooding first:
 - Which metrics are stable enough to optimize.
 - How many candidates are useful before prompt/archive bloat appears.
 - Whether evaluator runtime is short and deterministic enough for interactive loops.
+- Whether a criterion ledger is sufficient to trace requirements to candidate evidence.
 
 ## Data/state shape
 
@@ -72,6 +74,8 @@ interface EvolveCandidate {
   changedFiles: string[];
   metrics: Record<string, number | string>;
   primaryScore?: number;
+  criterionIds: string[];
+  evidenceSummary?: string;
   status: "accepted" | "rejected" | "invalid" | "best";
   evaluatorOutputFile?: string;
   createdAt: string;
@@ -172,8 +176,9 @@ Evolve prompts are specialized `IterationBrief`s for candidate work. They should
 - current best candidate summary;
 - bounded archive summary;
 - evaluator command and constraints;
+- selected criteria and pass conditions relevant to the candidate;
 - one requested mutation/candidate action;
-- explicit instruction to record candidate metadata and validation result.
+- explicit instruction to record candidate metadata, criterion evidence, and validation result.
 
 Do not include full evaluator logs or full patches in prompts unless small and necessary.
 
@@ -192,7 +197,7 @@ First implementation tests:
 - candidate metadata is capped and persisted;
 - evaluator output is byte-capped;
 - archive truncates at `archiveSize`;
-- prompt includes only bounded candidate summaries;
+- prompt includes only bounded candidate summaries and selected criteria;
 - checklist and recursive modes remain unchanged.
 
 Manual smoke:
@@ -209,6 +214,7 @@ Do not implement evolve mode until:
 - evaluator command safety bounds are accepted;
 - candidate isolation choice is accepted;
 - expected archive/prompt sizes are documented;
+- criteria-to-candidate evidence handling is designed;
 - user approves moving from design to implementation.
 
 ## Non-goals

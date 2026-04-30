@@ -125,7 +125,9 @@ interface IterationBrief {
   id: string;
   objective: string;
   task: string;
+  criterionIds: string[];
   acceptanceCriteria: string[];
+  verificationRequired: string[];
   requiredContext: string[];
   constraints: string[];
   avoid: string[];
@@ -138,7 +140,9 @@ interface WorkerReport {
   summary: string;
   changedFiles: string[];
   behaviorChanged: string[];
+  evaluatedCriteria: string[];
   validation: Array<{ command: string; result: "passed" | "failed" | "skipped"; summary: string }>;
+  failureDiagnoses: FailureDiagnosis[];
   risks: string[];
   openQuestions: string[];
   suggestedNextMove?: string;
@@ -148,24 +152,116 @@ interface WorkerReport {
 
 Subagents should help the governor avoid “driving down the ditch”: the implementer does one bounded attempt, while the governor owns direction, stop/pivot/continue decisions, and context routing. The parent/governor should not automatically reread every file a worker touched; it should consume structured worker reports and inspect only high-risk, ambiguous, failed, or public-contract-changing areas.
 
+## Verification-led context routing
+
+The [Ralphable methodology article](https://ralphable.com/blog/ralph-loop-methodology) reinforces one useful design point: objective pass/fail criteria should be explicit, durable, and tied to evidence. Treat the article as design input, not as authority for marketing claims or exact implementation choices.
+
+The missing bridge between the canonical plan and a minimal iteration prompt is a **criterion ledger**. The canonical plan should be distilled into criteria once, then each `IterationBrief` should reference the criteria relevant to the next bounded attempt.
+
+Target flow:
+
+```text
+canonical plan
+→ criterion ledger
+→ governor selects criterion IDs + required context
+→ worker executes bounded brief
+→ worker reports evidence, failures, and diagnoses
+→ ledger updates
+→ governor chooses next brief or final verification
+```
+
+Future state shape to consider:
+
+```ts
+interface Criterion {
+  id: string;
+  taskId?: string;
+  sourceRef?: string;
+  description: string;
+  passCondition: string;
+  testMethod?: string;
+  status: "pending" | "passed" | "failed" | "skipped" | "blocked";
+  evidence?: string;
+  lastCheckedAt?: string;
+}
+
+interface CriterionLedger {
+  criteria: Criterion[];
+  requirementTrace: Array<{ requirement: string; criterionIds: string[] }>;
+}
+
+interface FailureDiagnosis {
+  criterionId: string;
+  observedFailure: string;
+  likelyCause: string;
+  fixApplied?: string;
+  retestEvidence?: string;
+}
+
+interface BreakoutPackage {
+  blockedCriterionIds: string[];
+  attemptsTried: string[];
+  lastErrors: string[];
+  suspectedRootCauses: string[];
+  requestedDecision: string;
+  resumeCriteria: string[];
+}
+
+interface FinalVerificationReport {
+  criteriaSummary: {
+    passed: number;
+    failed: number;
+    skipped: number;
+    blocked: number;
+  };
+  validationCommands: string[];
+  integrationEvidence?: string;
+  unresolvedGaps: string[];
+  completionRationale: string;
+}
+```
+
+The governor should use iteration metrics as drift signals:
+
+- same criterion fails repeatedly → split the task, challenge the criterion, or request outside help;
+- many attempts with no criterion status movement → likely scaffolding drift or wrong lane;
+- repeated fixes without retesting → force an evaluation step before more implementation;
+- final completion should require a compact `FinalVerificationReport`, not only a completion marker.
+
+Requirement traceability should stay compact:
+
+```text
+original requirement → criterion → attempt/report → evidence
+```
+
+Quality profiles can be a later option, not a default. If added, they should raise verification standards deliberately, for example `functional` → `integration` → `production` → `polish`, instead of encouraging premature polish on discardable work.
+
 ## Remaining future work summary
 
 The practical implementation path is complete through bounded recursive/governor workflow. Remaining work is design-gated and should be driven by dogfood evidence:
 
-1. **Context packet routing**
+1. **Verification-led context routing**
+   - add a `CriterionLedger` after dogfooding confirms the right criterion granularity;
+   - route `criterionIds`, pass conditions, and test methods into `IterationBrief` instead of replaying the full plan;
+   - update criterion status from worker evidence and failure diagnoses.
+2. **Context packet routing**
    - add `GovernorState` and `IterationBrief` only after manual governor/payload workflows show what context is repeatedly needed;
    - make prompts brief-by-default and source the canonical plan selectively;
    - keep large artifacts referenced, not pasted.
-2. **Worker/subagent handoff quality**
-   - define a durable `WorkerReport` contract;
+3. **Worker/subagent handoff quality**
+   - define a durable `WorkerReport` contract with evaluated criteria, validation evidence, and failure diagnoses;
    - add selective parent review policy so the governor does not duplicate worker work;
    - implement advisory-only subagent flow before any editing flow.
-3. **Subagent-driven recursive mode**
+4. **Completion and breakout gates**
+   - add `FinalVerificationReport` before making completion fully criteria-aware;
+   - add `BreakoutPackage` for repeated failures, blocked criteria, or loops with no criterion movement;
+   - keep quality-profile escalation optional and explicit.
+5. **Subagent-driven recursive mode**
    - use `.pi/plans/ralph-subagent-recursive-mode.md` as the design gate;
    - do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, and edit ownership are safe.
-4. **Evolve mode**
+6. **Evolve mode**
    - use `.pi/plans/ralph-evolve-mode.md` as the design gate;
-   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, and dogfood evidence are available.
+   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, and dogfood evidence are available.
 
 ## Architecture decision
 
@@ -199,6 +295,8 @@ interface LoopState {
 ```
 
 Compatibility rule: missing `schemaVersion` or `mode` means `schemaVersion: 1`, `mode: "checklist"`, and `modeState` is synthesized from the existing fields. Missing `outsideRequests` is synthesized as an empty list.
+
+Future schema revisions may add `criterionLedger`, `governorState`, and final verification records. Keep them additive and migratable; older checklist/recursive loops must remain valid with empty synthesized ledgers.
 
 ### Mode interface
 
@@ -424,21 +522,29 @@ Completed implementation is intentionally compacted here; use commit history and
 
 Do not restart the completed implementation path. Future implementation should begin with one of these design-gated slices:
 
-1. **Context packet routing**
+1. **Criterion ledger prototype**
+   - Add additive state for criteria, pass conditions, test methods, status, and evidence.
+   - Add a plan/task-file distillation path that can create or update criteria without replacing the canonical plan.
+   - Add tests for migration, status updates, prompt caps, and requirement-to-criterion traceability.
+2. **Criteria-aware context packet routing**
    - Add `GovernorState` and `IterationBrief` after dogfooding confirms the needed fields.
    - Change recursive prompt generation so a governor-selected brief, not the full canonical plan, becomes the normal worker prompt.
+   - Include selected `criterionIds`, required context, and verification requirements; keep large artifacts referenced.
    - Add tests that the prompt includes only selected context and still preserves required constraints.
-2. **Worker report / selective review workflow**
-   - Define `WorkerReport` state and payload expectations.
+3. **Worker report / selective review workflow**
+   - Define `WorkerReport` state and payload expectations, including evaluated criteria and failure diagnoses.
    - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
    - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
-3. **Advisory subagent workflow**
+4. **Breakout and final verification reports**
+   - Add `BreakoutPackage` for repeated criterion failures, blocked criteria, or no criterion movement.
+   - Add `FinalVerificationReport` so completion summarizes criteria status, validation commands, integration evidence, and unresolved gaps.
+5. **Advisory subagent workflow**
    - Start with advisory-only worker runs if a safe extension/subagent API exists.
    - Do not apply edits automatically.
    - Persist worker run payload, result, failure, and artifacts.
-4. **Evolve mode**
+6. **Evolve mode**
    - Start only after `.pi/plans/ralph-evolve-mode.md` gates are satisfied.
-   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, and isolation choice before implementation.
+   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence handling, and isolation choice before implementation.
 
 ### Completion boundary
 
@@ -465,6 +571,11 @@ After behavior changes:
   - records outside answers or governor decisions
   - includes latest steer in the next prompt
   - completion marker completes without extension error
+- smoke criteria-aware loop after criterion-led changes:
+  - distills or records criteria without losing the canonical plan
+  - routes only selected criteria into the next prompt
+  - updates criterion status from evidence
+  - produces breakout/final verification reports when triggered
 
 ## Risks and mitigations
 
@@ -472,6 +583,8 @@ After behavior changes:
   - Mitigation: migration tests with v1 fixtures and preserving top-level fields.
 - Risk: prompt bloat from attempt/candidate logs.
   - Mitigation: cap prompt summaries and move large artifacts to separate files.
+- Risk: criteria ledger creates false precision or duplicates the plan.
+  - Mitigation: keep criteria binary/testable, preserve source refs, and route criterion IDs plus selected context instead of copying the full plan.
 - Risk: outside research creates distracting work or loops forever.
   - Mitigation: make outside requests data-only first, with explicit budgets/triggers.
 - Risk: evolve mode mutates code unsafely.

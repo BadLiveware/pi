@@ -26,7 +26,9 @@ interface IterationBrief {
   id: string;
   objective: string;
   task: string;
+  criterionIds: string[];
   acceptanceCriteria: string[];
+  verificationRequired: string[];
   requiredContext: string[];
   constraints: string[];
   avoid: string[];
@@ -51,6 +53,8 @@ interface GovernorState {
 ```
 
 This is also the main anti-ditch mechanism: the implementer executes one brief; the governor decides whether the next brief continues, pivots, measures, requests research, or stops.
+
+Worker briefs should be verification-led when criteria exist: route selected criterion IDs, pass conditions, and test methods; do not ask workers to infer completion from a large plan.
 
 ## Context and constraints
 
@@ -78,12 +82,22 @@ Existing state remains the source of truth:
 Future direct subagent mode may add:
 
 ```ts
+interface FailureDiagnosis {
+  criterionId: string;
+  observedFailure: string;
+  likelyCause: string;
+  fixApplied?: string;
+  retestEvidence?: string;
+}
+
 interface WorkerReport {
   objective: string;
   summary: string;
   changedFiles: string[];
   behaviorChanged: string[];
+  evaluatedCriteria: string[];
   validation: Array<{ command: string; result: "passed" | "failed" | "skipped"; summary: string }>;
+  failureDiagnoses: FailureDiagnosis[];
   risks: string[];
   openQuestions: string[];
   suggestedNextMove?: string;
@@ -147,7 +161,7 @@ Only after advisory mode proves useful should parent-applied patches or worktree
 - Editing workers require an explicit edit policy and rollback story before implementation.
 - No background fanout without user-visible state and interruption points.
 - No worker should receive the entire canonical plan by default; prompts should be selected context packets.
-- Worker reports must identify changed files, validation evidence, risks, and which files are worth parent review.
+- Worker reports must identify evaluated criteria, changed files, validation evidence, risks, and which files are worth parent review.
 
 ## Performance shape
 
