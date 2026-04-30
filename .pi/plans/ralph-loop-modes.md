@@ -29,7 +29,18 @@ The design should make room for an OpenEvolve-inspired mode, but should not jump
 - Do not make outside research automatically spawn subagents until the request/response data model is stable.
 - Do not put all subagent orchestration directly inside the extension until Pi exposes a clean, safe extension API for that. The extension should own state and requests first; the parent/orchestrator agent can run subagents through existing tools.
 
-## Current observed baseline
+## Current implemented baseline
+
+Last updated: 2026-04-30.
+
+Implemented and committed:
+
+- `6eccd8e refactor: add Ralph checklist mode state`
+- `251732e feat: validate Ralph loop modes`
+- `a8fe4f1 feat: add Ralph recursive mode`
+- `3088421 feat: add Ralph outside request workflow`
+
+Current implementation:
 
 - Local extension path: `agent/extensions/public/ralph-loop/index.ts`.
 - Current storage:
@@ -39,11 +50,40 @@ The design should make room for an OpenEvolve-inspired mode, but should not jump
 - Current tools:
   - `ralph_start`
   - `ralph_done`
+  - `ralph_outside_requests`
+  - `ralph_outside_answer`
 - Current commands:
   - `/ralph ...`
+  - `/ralph outside [loop]`
+  - `/ralph outside answer <loop> <request-id> <answer>`
   - `/ralph-stop`
-- Current loop prompt asks the agent to update the task file, output `<promise>COMPLETE</promise>` when done, otherwise call `ralph_done`.
+- Current modes:
+  - `checklist`: default and compatibility-preserving.
+  - `recursive`: objective-driven bounded attempts with prompt-visible setup state, attempt placeholders, and data-only outside/governor requests.
+  - `evolve`: reserved; not implemented.
+- Current recursive outside-help behavior:
+  - `outsideHelpEvery` creates interval-triggered `governor_review` requests.
+  - Pending requests and the latest governor steer are included in recursive prompts.
+  - Widget summaries show pending request count and governor steer.
+  - Answers and structured governor decisions can be recorded without editing state files manually.
+- Current loop prompts ask the agent to update the task file, output `<promise>COMPLETE</promise>` when done, otherwise call `ralph_done`.
 - Completion no longer sends a synthetic user message; it persists a `ralph-loop` session entry and uses UI notification.
+
+## Remaining future work summary
+
+The practical first pass is complete through basic data-only outside request/governor support. Future work should focus on dogfooding and targeted increments:
+
+1. Tighten recursive mode data quality:
+   - add richer attempt reports or an explicit attempt-reporting tool only if task-file-only reporting proves too weak;
+   - add `governEvery` separately from `outsideHelpEvery` if interval governor reviews need independent cadence;
+   - add lightweight stagnation/scaffolding-drift detection using attempt classifications once attempts carry enough structured signal.
+2. Polish manual outside-agent workflow:
+   - return ready-to-copy governor/researcher prompts;
+   - add researcher request templates for ideas, failure analysis, and mutation suggestions;
+   - make request listing easier to consume from parent/orchestrator agents.
+3. Add semi-automatic governed recursive workflow after manual workflow dogfooding.
+4. Add subagent-driven recursive mode only after prompt templates and answer recording are stable.
+5. Design `evolve` mode as a separate follow-up plan after recursive mode has real dogfood evidence.
 
 ## Architecture decision
 
@@ -72,11 +112,11 @@ interface LoopState {
   completedAt?: string;
   lastReflectionAt: number;
   modeState: ChecklistModeState | RecursiveModeState | EvolveModeState;
-  outsideRequests?: OutsideRequest[];
+  outsideRequests: OutsideRequest[];
 }
 ```
 
-Compatibility rule: missing `schemaVersion` or `mode` means `schemaVersion: 1`, `mode: "checklist"`, and `modeState` is synthesized from the existing fields.
+Compatibility rule: missing `schemaVersion` or `mode` means `schemaVersion: 1`, `mode: "checklist"`, and `modeState` is synthesized from the existing fields. Missing `outsideRequests` is synthesized as an empty list.
 
 ### Mode interface
 
@@ -92,7 +132,7 @@ interface LoopModeHandler<TModeState> {
 }
 ```
 
-`PromptReason` should distinguish normal iteration, reflection, outside-research-returned, max-iteration warning, and manual resume.
+Current implementation distinguishes normal iteration and reflection. Future prompt-reason work should add outside-research-returned, max-iteration warning, and manual resume only when those paths need materially different prompts.
 
 ### Outside research/request shape
 
@@ -284,7 +324,7 @@ OpenEvolve ideas to map later:
 
 ## Implementation plan
 
-### 1. Refactor loop state and migration without behavior change
+### 1. Refactor loop state and migration without behavior change — implemented
 
 Files:
 - `agent/extensions/public/ralph-loop/index.ts`
@@ -304,7 +344,7 @@ Validation:
 - `npm run typecheck --prefix agent/extensions`
 - `npm test --prefix agent/extensions -- public/ralph-loop/index.test.ts`
 
-### 2. Extract checklist mode behind internal mode handler
+### 2. Extract checklist mode behind internal mode handler — implemented
 
 Files:
 - `agent/extensions/public/ralph-loop/index.ts`
@@ -324,7 +364,7 @@ Validation:
 - Same as task 1.
 - Manual smoke: start disposable checklist loop and complete it.
 
-### 3. Add mode parameter and setup validation
+### 3. Add mode parameter and setup validation — implemented
 
 Files:
 - `index.ts`, tests, README, skill.
@@ -344,7 +384,7 @@ Validation:
 - Typecheck/tests.
 - Manual `/ralph status` after failed unsupported mode shows no stray active loop.
 
-### 4. Implement recursive mode state and prompt
+### 4. Implement recursive mode state and prompt — implemented
 
 Files:
 - `index.ts` or mode module, tests, README, skill.
@@ -372,7 +412,21 @@ Validation:
 - Unit tests for recursive start and next prompt.
 - Manual smoke with a disposable recursive loop that completes immediately.
 
-### 5. Add outside request queue and governor checkpoint as data-only features
+### 5. Add outside request queue and governor checkpoint as data-only features — partially implemented
+
+Implemented in `3088421`:
+- `outsideRequests` list in loop state with migration default.
+- `GovernorDecision` data shape.
+- `outsideHelpEvery` creates interval-triggered `governor_review` requests.
+- Pending requests and latest governor decisions render in recursive prompts.
+- Recursive widget summary includes pending request count and latest required next move.
+- `ralph_outside_answer` stores answers and optional structured governor decisions.
+
+Remaining:
+- researcher request generation from stagnation/out-of-ideas signals;
+- independent `governEvery` cadence if needed;
+- failed/neutral attempt accumulation triggers;
+- scaffolding-drift detection based on structured attempt classifications.
 
 Files:
 - mode state code, README, tests.
@@ -396,7 +450,19 @@ Validation:
 - Tests for request creation, governor decision rendering, and scaffolding-drift trigger.
 - Manual smoke with `outsideHelpEvery: 1` and `governEvery: 1`.
 
-### 6. Add manual outside-agent workflow
+### 6. Add manual outside-agent workflow — partially implemented
+
+Implemented in `3088421`:
+- `ralph_outside_requests` lists requests with state details.
+- `ralph_outside_answer` records answers and structured governor decisions.
+- `/ralph outside [loop]` lists outside requests.
+- `/ralph outside answer <loop> <request-id> <answer>` records a plain-text answer.
+- README and skill docs describe the data-only/manual workflow.
+
+Remaining:
+- ready-to-copy prompt payloads for governor/researcher execution;
+- explicit governor and researcher prompt templates;
+- better parent/orchestrator workflow docs once the manual workflow is dogfooded.
 
 Do not automate subagent execution yet. First make pending outside requests easy for the parent/orchestrator agent to execute through existing tools.
 
@@ -417,7 +483,7 @@ Validation:
 - Test answer recording and prompt inclusion.
 - Manual smoke with a synthetic governor decision that forces a next move.
 
-### 7. Add semi-automatic governed recursive workflow
+### 7. Add semi-automatic governed recursive workflow — future
 
 Only after manual outside-agent workflow is dogfooded.
 
@@ -434,7 +500,7 @@ Acceptance:
 Validation:
 - Manual dogfood on an optimization task where the governor prevents additional scaffolding.
 
-### 8. Add subagent-driven recursive mode later
+### 8. Add subagent-driven recursive mode later — future
 
 Only after the governor/researcher prompts and answer recording are stable.
 
@@ -455,7 +521,7 @@ Acceptance:
 - Governor can reject scaffolding drift and require measured candidate changes.
 - User can inspect and interrupt the loop between attempts.
 
-### 9. Design evolve mode after recursive dogfooding
+### 9. Design evolve mode after recursive dogfooding — future
 
 Create a separate plan once recursive mode has been used on at least one real debugging or optimization task.
 
@@ -478,10 +544,13 @@ After behavior changes:
 - smoke checklist loop:
   - `ralph_start` queues prompt
   - completion marker completes without extension error
-- smoke recursive loop once implemented:
+- smoke recursive loop after recursive/outside-request changes:
   - starts with mode state
   - queues recursive prompt
   - creates/preserves attempt log
+  - creates outside/governor requests when configured
+  - records outside answers or governor decisions
+  - includes latest steer in the next prompt
   - completion marker completes without extension error
 
 ## Risks and mitigations
@@ -499,4 +568,11 @@ After behavior changes:
 
 ## Execution recommendation
 
-Start with tasks 1 and 2 as a pure refactor preserving behavior. Commit that separately. Then add the `mode` parameter and recursive mode in small commits. Treat evolve mode as a follow-up project after recursive mode has real dogfood evidence.
+The initial implementation path is complete through basic recursive outside/governor workflow. Next execution should not restart at task 1. Use this order instead:
+
+1. Dogfood recursive mode on one or two real debugging or optimization tasks.
+2. Record where task-file-only attempt reports are insufficient.
+3. If needed, add structured attempt reporting and ready-to-copy governor/researcher prompts.
+4. Add `governEvery`, stagnation, or scaffolding-drift triggers only after attempt data can support them.
+5. Consider semi-automatic governor helpers after the manual workflow is stable.
+6. Treat subagent-driven recursive mode and `evolve` mode as follow-up projects with separate plans.
