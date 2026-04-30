@@ -4,10 +4,12 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { runLedgerArtifactRecord, runLedgerCriteriaUpsert } from "./app/ledger-tool.ts";
+import * as path from "node:path";
+import { runLedgerArtifactRecord, runLedgerCriteriaUpsert, runLedgerTaskDistillation } from "./app/ledger-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact } from "./state/core.ts";
 import { isArtifactKind, isCriterionStatus, normalizeId, normalizeIds, rebuildRequirementTrace } from "./state/migration.ts";
+import { taskPath, tryRead } from "./state/paths.ts";
 import { loadState, saveState } from "./state/store.ts";
 
 export interface LedgerToolDeps {
@@ -153,8 +155,8 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 		label: "Manage Stardock Ledger",
 		description: "Inspect or update a Stardock criterion ledger and compact verification artifact refs.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("list"), Type.Literal("upsertCriterion"), Type.Literal("upsertCriteria"), Type.Literal("recordArtifact"), Type.Literal("recordArtifacts")], {
-				description: "list returns the ledger; upsertCriterion/upsertCriteria create or update criteria; recordArtifact/recordArtifacts record compact verification artifact refs.",
+			action: Type.Union([Type.Literal("list"), Type.Literal("distillTaskCriteria"), Type.Literal("upsertCriterion"), Type.Literal("upsertCriteria"), Type.Literal("recordArtifact"), Type.Literal("recordArtifacts")], {
+				description: "list returns the ledger; distillTaskCriteria derives criteria from the loop task file; upsertCriterion/upsertCriteria create or update criteria; recordArtifact/recordArtifacts record compact verification artifact refs.",
 			}),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			id: Type.Optional(Type.String({ description: "Criterion or artifact id. Generated when omitted." })),
@@ -194,6 +196,16 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 					content: [{ type: "text", text: formatLedgerOverview(state) }],
 					details: { loopName, criterionLedger: state.criterionLedger, verificationArtifacts: state.verificationArtifacts },
 				};
+			}
+
+			if (params.action === "distillTaskCriteria") {
+				const relativeTaskFile = state.taskFile || taskPath(ctx, loopName);
+				const absoluteTaskFile = path.isAbsolute(relativeTaskFile) ? relativeTaskFile : path.join(ctx.cwd, relativeTaskFile);
+				const taskContent = tryRead(absoluteTaskFile);
+				if (taskContent === null) return { content: [{ type: "text", text: `Task file not found: ${relativeTaskFile}` }], details: { loopName, taskFile: relativeTaskFile } };
+				const response = runLedgerTaskDistillation(loopName, relativeTaskFile, taskContent, { upsertCriterion: (input) => upsertCriterion(ctx, loopName, input, deps.updateUI) });
+				const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
+				return { content: [{ type: "text", text: response.contentText }], details };
 			}
 
 			if (params.action === "upsertCriterion" || params.action === "upsertCriteria") {

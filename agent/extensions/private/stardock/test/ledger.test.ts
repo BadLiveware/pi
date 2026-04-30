@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import { makeHarness } from "./test-harness.ts";
+import { makeHarness, taskPath } from "./test-harness.ts";
 
 test("stardock_ledger records criteria and compact artifact refs", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
@@ -114,6 +114,59 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 		assert.equal(messages.length, 2);
 		assert.equal(messages[1].content.includes("c-build"), false);
 		assert.equal(messages[1].content.includes(longSummary), false);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_ledger distills task checklist items into criteria without rewriting the task", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-ledger-distill-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		assert.ok(start);
+		assert.ok(ledger);
+
+		const taskContent = `# Distill task
+
+## Goals
+- Keep this as context, not a criterion while checklist exists.
+
+## Checklist
+- [ ] Add deterministic criterion distillation.
+- [ ] Preserve the canonical task file.
+`;
+		await start.execute(
+			"tool-ledger-distill-start",
+			{
+				name: "Distill Loop",
+				mode: "checklist",
+				taskContent,
+				maxIterations: 1,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const taskFile = taskPath(cwd, "Distill_Loop");
+		const before = fs.readFileSync(taskFile, "utf-8");
+
+		const distill = await ledger.execute("tool-ledger-distill", { action: "distillTaskCriteria", loopName: "Distill_Loop" }, undefined, undefined, ctx);
+		assert.match(distill.content[0].text, /Distilled 2 task criteria/);
+		assert.equal(distill.details.criteria.length, 2);
+		assert.equal(distill.details.criteria[0].id, "c-task-01");
+		assert.equal(distill.details.criteria[0].description, "Add deterministic criterion distillation.");
+		assert.match(distill.details.criteria[0].sourceRef, /\.stardock\/runs\/Distill_Loop\/task\.md:L/);
+		assert.equal(distill.details.criteria[1].id, "c-task-02");
+		assert.equal(distill.details.criteria[1].description, "Preserve the canonical task file.");
+		assert.equal(fs.readFileSync(taskFile, "utf-8"), before);
+
+		await ledger.execute("tool-ledger-distill-update", { action: "upsertCriterion", loopName: "Distill_Loop", id: "c-task-01", status: "passed", evidence: "Focused test passed." }, undefined, undefined, ctx);
+		const redistill = await ledger.execute("tool-ledger-redistill", { action: "distillTaskCriteria", loopName: "Distill_Loop" }, undefined, undefined, ctx);
+		assert.match(redistill.content[0].text, /Distilled 2 task criteria/);
+		assert.equal(redistill.details.criteria[0].status, "passed");
+		assert.equal(redistill.details.criteria[0].evidence, "Focused test passed.");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

@@ -734,7 +734,7 @@ Do not restart the completed implementation path. Future implementation should b
 
 1. **Criterion ledger expansion**
    - Initial additive state and `stardock_ledger` update/list support exists for criteria, pass conditions, test methods, status, compact evidence, optional red/green evidence, requirement traces, and compact artifact refs.
-   - Add a plan/task-file distillation path that can create or update criteria without replacing the canonical plan.
+   - Initial task-file distillation exists through `stardock_ledger({ action: "distillTaskCriteria" })`; it derives starter criteria from checklist items, or goal/requirement bullets when no checklist exists, without replacing the canonical task file.
    - Add baseline validation records and stronger criteria review/update policy once dogfooding shows the right granularity.
 2. **Verification artifact expansion**
    - Initial artifact refs exist for tests, smoke commands, `curl`, browser/screenshot checks, walkthroughs, benchmarks, logs, and other refs.
