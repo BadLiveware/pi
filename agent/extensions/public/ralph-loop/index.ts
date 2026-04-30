@@ -45,8 +45,28 @@ interface ChecklistModeState {
 	kind: "checklist";
 }
 
+type RecursiveResetPolicy = "manual" | "revert_failed_attempts" | "keep_best_only";
+type RecursiveStopCriterion = "target_reached" | "idea_exhaustion" | "max_failed_attempts" | "max_iterations" | "user_decision";
+
+interface RecursiveAttempt {
+	id: string;
+	iteration: number;
+	createdAt: string;
+	status: "pending_report";
+	summary: string;
+}
+
 interface RecursiveModeState {
 	kind: "recursive";
+	objective: string;
+	baseline?: string;
+	validationCommand?: string;
+	resetPolicy: RecursiveResetPolicy;
+	stopWhen: RecursiveStopCriterion[];
+	maxFailedAttempts?: number;
+	outsideHelpEvery?: number;
+	outsideHelpOnStagnation: boolean;
+	attempts: RecursiveAttempt[];
 }
 
 interface EvolveModeState {
@@ -60,6 +80,7 @@ interface LoopModeHandler {
 	mode: LoopMode;
 	buildPrompt(state: LoopState, taskContent: string, reason: PromptReason): string;
 	buildSystemInstructions(state: LoopState): string;
+	onIterationDone(state: LoopState): void;
 	summarize(state: LoopState): string[];
 }
 
@@ -143,8 +164,19 @@ export default function (pi: ExtensionAPI) {
 		return value === "recursive" || value === "evolve" || value === "checklist" ? value : "checklist";
 	}
 
+	function defaultRecursiveModeState(objective = "Continue improving the task outcome"): RecursiveModeState {
+		return {
+			kind: "recursive",
+			objective,
+			resetPolicy: "manual",
+			stopWhen: ["target_reached", "idea_exhaustion", "max_iterations"],
+			outsideHelpOnStagnation: false,
+			attempts: [],
+		};
+	}
+
 	function defaultModeState(mode: LoopMode): LoopModeState {
-		if (mode === "recursive") return { kind: "recursive" };
+		if (mode === "recursive") return defaultRecursiveModeState();
 		if (mode === "evolve") return { kind: "evolve" };
 		return { kind: "checklist" };
 	}
@@ -279,9 +311,9 @@ export default function (pi: ExtensionAPI) {
 		const lines = [
 			theme.fg("accent", theme.bold("Ralph Wiggum")),
 			theme.fg("muted", `Loop: ${state.name}`),
+			theme.fg("dim", `Mode: ${state.mode}`),
 			theme.fg("dim", `Status: ${STATUS_ICONS[state.status]} ${state.status}`),
-			theme.fg("dim", `Iteration: ${state.iteration}${maxStr}`),
-			theme.fg("dim", `Task: ${state.taskFile}`),
+			...getModeHandler(state.mode).summarize(state).map((line) => theme.fg("dim", line)),
 		];
 		if (state.reflectEvery > 0) {
 			const next = state.reflectEvery - ((state.iteration - 1) % state.reflectEvery);
@@ -326,6 +358,22 @@ export default function (pi: ExtensionAPI) {
 		return parts.join("\n");
 	}
 
+	function requireRecursiveState(state: LoopState): RecursiveModeState {
+		return state.modeState.kind === "recursive" ? state.modeState : defaultRecursiveModeState();
+	}
+
+	function formatRecursiveSetup(modeState: RecursiveModeState): string[] {
+		const lines = [`- Objective: ${modeState.objective}`];
+		if (modeState.baseline) lines.push(`- Baseline/current best: ${modeState.baseline}`);
+		if (modeState.validationCommand) lines.push(`- Validation command/check: ${modeState.validationCommand}`);
+		lines.push(`- Reset policy: ${modeState.resetPolicy}`);
+		lines.push(`- Stop when: ${modeState.stopWhen.join(", ")}`);
+		if (modeState.maxFailedAttempts) lines.push(`- Max failed attempts: ${modeState.maxFailedAttempts}`);
+		if (modeState.outsideHelpEvery) lines.push(`- Outside help cue: every ${modeState.outsideHelpEvery} iterations`);
+		if (modeState.outsideHelpOnStagnation) lines.push("- Outside help cue: stagnation or repeated low-value attempts");
+		return lines;
+	}
+
 	const checklistModeHandler: LoopModeHandler = {
 		mode: "checklist",
 		buildPrompt: buildChecklistPrompt,
@@ -339,13 +387,83 @@ export default function (pi: ExtensionAPI) {
 			instructions += `- Otherwise, call ralph_done tool to proceed to next iteration`;
 			return instructions;
 		},
+		onIterationDone() {},
 		summarize(state) {
 			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 			return [`Iteration ${state.iteration}${maxStr}`, `Task: ${state.taskFile}`];
 		},
 	};
 
-	function getModeHandler(_mode: LoopMode): LoopModeHandler {
+	const recursiveModeHandler: LoopModeHandler = {
+		mode: "recursive",
+		buildPrompt(state, taskContent, reason) {
+			const modeState = requireRecursiveState(state);
+			const isReflection = reason === "reflection";
+			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
+			const header = `───────────────────────────────────────────────────────────────────────
+🔁 RALPH RECURSIVE LOOP: ${state.name} | Attempt ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
+───────────────────────────────────────────────────────────────────────`;
+			const parts = [header, ""];
+			if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
+			parts.push("## Recursive Objective", ...formatRecursiveSetup(modeState), "");
+			parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
+			parts.push("\n## Attempt Instructions\n");
+			parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
+			parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
+			parts.push("2. Make one bounded attempt that tests that hypothesis.");
+			if (modeState.validationCommand) {
+				parts.push(`3. Run or explain the validation check: ${modeState.validationCommand}`);
+			} else {
+				parts.push("3. Run or describe the most relevant validation available for this attempt.");
+			}
+			parts.push("4. Record the hypothesis, action summary, validation, result, and keep/reset decision in the task file.");
+			parts.push(`5. Apply reset policy: ${modeState.resetPolicy}.`);
+			parts.push(`6. When the objective is met or stop criteria apply, respond with: ${COMPLETE_MARKER}`);
+			parts.push("7. Otherwise, call the ralph_done tool to proceed to the next bounded attempt.");
+			if (modeState.outsideHelpEvery || modeState.outsideHelpOnStagnation) {
+				parts.push("\nOutside-help cues are configured. If this attempt is blocked, stagnant, or out of ideas, record the needed help in the task file before calling ralph_done.");
+			}
+			return parts.join("\n");
+		},
+		buildSystemInstructions(state) {
+			const modeState = requireRecursiveState(state);
+			return [
+				"You are in a Ralph recursive loop.",
+				`- Objective: ${modeState.objective}`,
+				"- Work on one bounded hypothesis/attempt this iteration.",
+				modeState.validationCommand
+					? `- Validate with or explain: ${modeState.validationCommand}`
+					: "- Run or describe relevant validation for the attempt.",
+				"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
+				`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
+				"- Otherwise, call ralph_done tool to proceed to next iteration.",
+			].join("\n");
+		},
+		onIterationDone(state) {
+			const modeState = requireRecursiveState(state);
+			if (modeState.attempts.some((attempt) => attempt.iteration === state.iteration)) return;
+			modeState.attempts.push({
+				id: `attempt-${state.iteration}`,
+				iteration: state.iteration,
+				createdAt: new Date().toISOString(),
+				status: "pending_report",
+				summary: "Agent should record hypothesis, actions, validation, result, and keep/reset decision in the task file.",
+			});
+			state.modeState = modeState;
+		},
+		summarize(state) {
+			const modeState = requireRecursiveState(state);
+			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
+			return [
+				`Attempt ${state.iteration}${maxStr}`,
+				`Objective: ${modeState.objective}`,
+				`Recorded attempts: ${modeState.attempts.length}`,
+			];
+		},
+	};
+
+	function getModeHandler(mode: LoopMode): LoopModeHandler {
+		if (mode === "recursive") return recursiveModeHandler;
 		return checklistModeHandler;
 	}
 
@@ -355,13 +473,52 @@ export default function (pi: ExtensionAPI) {
 
 	// --- Arg parsing ---
 
-	function isImplementedMode(mode: string): mode is "checklist" {
-		return mode === "checklist";
+	function isImplementedMode(mode: string): mode is "checklist" | "recursive" {
+		return mode === "checklist" || mode === "recursive";
 	}
 
 	function unsupportedModeMessage(mode: string): string {
-		if (mode === "recursive" || mode === "evolve") return `Ralph mode "${mode}" is planned but not implemented yet.`;
-		return `Unsupported Ralph mode "${mode}". Supported mode: checklist.`;
+		if (mode === "evolve") return `Ralph mode "${mode}" is planned but not implemented yet.`;
+		return `Unsupported Ralph mode "${mode}". Supported modes: checklist, recursive.`;
+	}
+
+	function isResetPolicy(value: unknown): value is RecursiveResetPolicy {
+		return value === "manual" || value === "revert_failed_attempts" || value === "keep_best_only";
+	}
+
+	function isStopCriterion(value: string): value is RecursiveStopCriterion {
+		return ["target_reached", "idea_exhaustion", "max_failed_attempts", "max_iterations", "user_decision"].includes(value);
+	}
+
+	function parseStopWhen(value: unknown): RecursiveStopCriterion[] {
+		const rawValues = Array.isArray(value)
+			? value
+			: typeof value === "string"
+				? value.split(",").map((part) => part.trim())
+				: [];
+		const parsed = rawValues.filter((part): part is RecursiveStopCriterion => typeof part === "string" && isStopCriterion(part));
+		return parsed.length > 0 ? parsed : ["target_reached", "idea_exhaustion", "max_iterations"];
+	}
+
+	function createModeState(mode: "checklist" | "recursive", input: Record<string, unknown>): { modeState?: LoopModeState; error?: string } {
+		if (mode === "checklist") return { modeState: defaultModeState("checklist") };
+
+		const objective = typeof input.objective === "string" ? input.objective.trim() : "";
+		if (!objective) return { error: 'Recursive Ralph mode requires an "objective".' };
+
+		const resetPolicy = isResetPolicy(input.resetPolicy) ? input.resetPolicy : "manual";
+		const state: RecursiveModeState = {
+			...defaultRecursiveModeState(objective),
+			baseline: typeof input.baseline === "string" && input.baseline.trim() ? input.baseline.trim() : undefined,
+			validationCommand:
+				typeof input.validationCommand === "string" && input.validationCommand.trim() ? input.validationCommand.trim() : undefined,
+			resetPolicy,
+			stopWhen: parseStopWhen(input.stopWhen),
+			maxFailedAttempts: numberOrDefault(input.maxFailedAttempts, 0) > 0 ? numberOrDefault(input.maxFailedAttempts, 0) : undefined,
+			outsideHelpEvery: numberOrDefault(input.outsideHelpEvery, 0) > 0 ? numberOrDefault(input.outsideHelpEvery, 0) : undefined,
+			outsideHelpOnStagnation: input.outsideHelpOnStagnation === true,
+		};
+		return { modeState: state };
 	}
 
 	function parseArgs(argsStr: string) {
@@ -369,6 +526,14 @@ export default function (pi: ExtensionAPI) {
 		const result = {
 			name: "",
 			mode: "checklist",
+			objective: "",
+			baseline: undefined as string | undefined,
+			validationCommand: undefined as string | undefined,
+			resetPolicy: "manual",
+			stopWhen: undefined as string | undefined,
+			maxFailedAttempts: undefined as number | undefined,
+			outsideHelpEvery: undefined as number | undefined,
+			outsideHelpOnStagnation: false,
 			maxIterations: 50,
 			itemsPerIteration: 0,
 			reflectEvery: 0,
@@ -384,6 +549,29 @@ export default function (pi: ExtensionAPI) {
 			} else if (tok === "--mode" && next) {
 				result.mode = next.replace(/^"|"$/g, "");
 				i++;
+			} else if (tok === "--objective" && next) {
+				result.objective = next.replace(/^"|"$/g, "");
+				i++;
+			} else if (tok === "--baseline" && next) {
+				result.baseline = next.replace(/^"|"$/g, "");
+				i++;
+			} else if (tok === "--validation-command" && next) {
+				result.validationCommand = next.replace(/^"|"$/g, "");
+				i++;
+			} else if (tok === "--reset-policy" && next) {
+				result.resetPolicy = next.replace(/^"|"$/g, "");
+				i++;
+			} else if (tok === "--stop-when" && next) {
+				result.stopWhen = next.replace(/^"|"$/g, "");
+				i++;
+			} else if (tok === "--max-failed-attempts" && next) {
+				result.maxFailedAttempts = parseInt(next, 10) || undefined;
+				i++;
+			} else if (tok === "--outside-help-every" && next) {
+				result.outsideHelpEvery = parseInt(next, 10) || undefined;
+				i++;
+			} else if (tok === "--outside-help-on-stagnation") {
+				result.outsideHelpOnStagnation = true;
 			} else if (tok === "--items-per-iteration" && next) {
 				result.itemsPerIteration = parseInt(next, 10) || 0;
 				i++;
@@ -407,7 +595,7 @@ export default function (pi: ExtensionAPI) {
 			const args = parseArgs(rest);
 			if (!args.name) {
 				ctx.ui.notify(
-					"Usage: /ralph start <name|path> [--items-per-iteration N] [--reflect-every N] [--max-iterations N]",
+					"Usage: /ralph start <name|path> [--mode checklist|recursive] [--objective TEXT] [--items-per-iteration N] [--reflect-every N] [--max-iterations N]",
 					"warning",
 				);
 				return;
@@ -415,6 +603,12 @@ export default function (pi: ExtensionAPI) {
 
 			if (!isImplementedMode(args.mode)) {
 				ctx.ui.notify(unsupportedModeMessage(args.mode), "warning");
+				return;
+			}
+			const mode = args.mode;
+			const modeResult = createModeState(mode, args);
+			if (modeResult.error || !modeResult.modeState) {
+				ctx.ui.notify(modeResult.error ?? "Could not create Ralph mode state.", "warning");
 				return;
 			}
 
@@ -439,7 +633,7 @@ export default function (pi: ExtensionAPI) {
 				schemaVersion: 2,
 				name: loopName,
 				taskFile,
-				mode: "checklist",
+				mode,
 				iteration: 1,
 				maxIterations: args.maxIterations,
 				itemsPerIteration: args.itemsPerIteration,
@@ -449,7 +643,7 @@ export default function (pi: ExtensionAPI) {
 				status: "active",
 				startedAt: existing?.startedAt || new Date().toISOString(),
 				lastReflectionAt: 0,
-				modeState: defaultModeState("checklist"),
+				modeState: modeResult.modeState,
 			};
 
 			saveState(ctx, state);
@@ -739,10 +933,33 @@ Examples:
 			name: Type.String({ description: "Loop name (e.g., 'refactor-auth')" }),
 			mode: Type.Optional(
 				Type.Union([Type.Literal("checklist"), Type.Literal("recursive"), Type.Literal("evolve")], {
-					description: "Loop mode. checklist is implemented; recursive/evolve are planned.",
+					description: "Loop mode. checklist and recursive are implemented; evolve is planned.",
 				}),
 			),
 			taskContent: Type.String({ description: "Task in markdown with goals and checklist" }),
+			objective: Type.Optional(Type.String({ description: "Recursive mode objective. Required when mode is recursive." })),
+			baseline: Type.Optional(Type.String({ description: "Recursive mode starting point or current best evidence." })),
+			validationCommand: Type.Optional(Type.String({ description: "Command or check the agent should run/describe for each recursive attempt." })),
+			resetPolicy: Type.Optional(
+				Type.Union([Type.Literal("manual"), Type.Literal("revert_failed_attempts"), Type.Literal("keep_best_only")], {
+					description: "Recursive mode reset policy. Default: manual.",
+				}),
+			),
+			stopWhen: Type.Optional(
+				Type.Array(
+					Type.Union([
+						Type.Literal("target_reached"),
+						Type.Literal("idea_exhaustion"),
+						Type.Literal("max_failed_attempts"),
+						Type.Literal("max_iterations"),
+						Type.Literal("user_decision"),
+					]),
+					{ description: "Recursive mode stop criteria." },
+				),
+			),
+			maxFailedAttempts: Type.Optional(Type.Number({ description: "Stop criterion budget for failed recursive attempts." })),
+			outsideHelpEvery: Type.Optional(Type.Number({ description: "Recursive mode prompt cue interval for outside help." })),
+			outsideHelpOnStagnation: Type.Optional(Type.Boolean({ description: "Cue outside help when recursive attempts stagnate." })),
 			itemsPerIteration: Type.Optional(Type.Number({ description: "Suggest N items per turn (0 = no limit)" })),
 			reflectEvery: Type.Optional(Type.Number({ description: "Reflect every N iterations" })),
 			maxIterations: Type.Optional(Type.Number({ description: "Max iterations (default: 50)", default: 50 })),
@@ -751,6 +968,10 @@ Examples:
 			const mode = params.mode ?? "checklist";
 			if (!isImplementedMode(mode)) {
 				return { content: [{ type: "text", text: unsupportedModeMessage(mode) }], details: { mode } };
+			}
+			const modeResult = createModeState(mode, params);
+			if (modeResult.error || !modeResult.modeState) {
+				return { content: [{ type: "text", text: modeResult.error ?? "Could not create Ralph mode state." }], details: { mode } };
 			}
 
 			const loopName = sanitize(params.name);
@@ -768,7 +989,7 @@ Examples:
 				schemaVersion: 2,
 				name: loopName,
 				taskFile,
-				mode: "checklist",
+				mode,
 				iteration: 1,
 				maxIterations: params.maxIterations ?? 50,
 				itemsPerIteration: params.itemsPerIteration ?? 0,
@@ -778,7 +999,7 @@ Examples:
 				status: "active",
 				startedAt: new Date().toISOString(),
 				lastReflectionAt: 0,
-				modeState: defaultModeState("checklist"),
+				modeState: modeResult.modeState,
 			};
 
 			saveState(ctx, state);
@@ -821,6 +1042,8 @@ Examples:
 					details: {},
 				};
 			}
+
+			getModeHandler(state.mode).onIterationDone(state);
 
 			// Increment iteration
 			state.iteration++;

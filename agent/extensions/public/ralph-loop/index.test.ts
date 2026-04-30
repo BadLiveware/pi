@@ -230,8 +230,8 @@ test("unsupported mode does not create a loop", async () => {
 		const toolResult = await start.execute(
 			"tool-unsupported",
 			{
-				name: "Recursive Loop",
-				mode: "recursive",
+				name: "Evolve Loop",
+				mode: "evolve",
 				taskContent: "# Task\n",
 			},
 			undefined,
@@ -240,13 +240,101 @@ test("unsupported mode does not create a loop", async () => {
 		);
 		assert.match(toolResult.content[0].text, /planned but not implemented/);
 		assert.equal(messages.length, 0);
-		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "Recursive_Loop.state.json")), false);
+		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "Evolve_Loop.state.json")), false);
 
 		const ralph = commands.get("ralph");
 		assert.ok(ralph);
-		await ralph.handler("start cmd-recursive --mode recursive", ctx);
-		assert.ok(notifications.some((message) => message.includes('Ralph mode "recursive" is planned but not implemented yet.')));
-		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "cmd-recursive.state.json")), false);
+		await ralph.handler("start cmd-evolve --mode evolve", ctx);
+		assert.ok(notifications.some((message) => message.includes('Ralph mode "evolve" is planned but not implemented yet.')));
+		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "cmd-evolve.state.json")), false);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("recursive mode start persists setup and queues bounded attempt prompt", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		assert.ok(start);
+
+		await start.execute(
+			"tool-recursive",
+			{
+				name: "Search Loop",
+				mode: "recursive",
+				taskContent: "# Improve search\n",
+				objective: "Reduce query latency without hurting recall",
+				baseline: "p95 120ms",
+				validationCommand: "npm run bench:search",
+				resetPolicy: "keep_best_only",
+				stopWhen: ["target_reached", "max_iterations", "user_decision"],
+				maxIterations: 4,
+				maxFailedAttempts: 2,
+				outsideHelpEvery: 2,
+				outsideHelpOnStagnation: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		assert.equal(messages.length, 1);
+		assert.match(messages[0].content, /RALPH RECURSIVE LOOP: Search_Loop \| Attempt 1\/4/);
+		assert.match(messages[0].content, /Reduce query latency without hurting recall/);
+		assert.match(messages[0].content, /npm run bench:search/);
+		assert.match(messages[0].content, /one bounded implementer attempt/);
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Search_Loop.state.json"), "utf-8"));
+		assert.equal(state.mode, "recursive");
+		assert.equal(state.modeState.kind, "recursive");
+		assert.equal(state.modeState.objective, "Reduce query latency without hurting recall");
+		assert.equal(state.modeState.baseline, "p95 120ms");
+		assert.equal(state.modeState.validationCommand, "npm run bench:search");
+		assert.equal(state.modeState.resetPolicy, "keep_best_only");
+		assert.deepEqual(state.modeState.stopWhen, ["target_reached", "max_iterations", "user_decision"]);
+		assert.equal(state.modeState.maxFailedAttempts, 2);
+		assert.equal(state.modeState.outsideHelpEvery, 2);
+		assert.equal(state.modeState.outsideHelpOnStagnation, true);
+		assert.deepEqual(state.modeState.attempts, []);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("ralph_done records recursive attempt placeholder before next prompt", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		const done = tools.get("ralph_done");
+		assert.ok(start);
+		assert.ok(done);
+
+		await start.execute(
+			"tool-recursive",
+			{
+				name: "Attempt Loop",
+				mode: "recursive",
+				taskContent: "# Attempt task\n",
+				objective: "Find a passing fix",
+				validationCommand: "npm test",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done", {}, undefined, undefined, ctx);
+
+		assert.equal(messages.length, 2);
+		assert.match(messages[1].content, /Attempt 2\/3/);
+		const state = JSON.parse(fs.readFileSync(path.join(cwd, ".ralph", "Attempt_Loop.state.json"), "utf-8"));
+		assert.equal(state.iteration, 2);
+		assert.equal(state.modeState.attempts.length, 1);
+		assert.equal(state.modeState.attempts[0].id, "attempt-1");
+		assert.equal(state.modeState.attempts[0].iteration, 1);
+		assert.equal(state.modeState.attempts[0].status, "pending_report");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

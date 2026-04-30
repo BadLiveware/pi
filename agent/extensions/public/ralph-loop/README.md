@@ -1,8 +1,8 @@
 # pi-ralph-loop
 
-Long-running iterative development loops for Pi. This first local version intentionally mirrors the behavior of `@tmustier/pi-ralph-wiggum` so it can be swapped in before we change the loop model.
+Long-running iterative development loops for Pi. The default `checklist` mode preserves the behavior of `@tmustier/pi-ralph-wiggum`; `recursive` mode adds bounded attempt loops for open-ended search.
 
-Use it when a task needs repeated autonomous passes with a durable checklist, optional pacing, and explicit completion.
+Use it when a task needs repeated autonomous passes with a durable checklist, optional pacing, explicit completion, or bounded try/test/reset attempts.
 
 ## Install
 
@@ -28,7 +28,7 @@ A loop sends an iteration prompt to the agent. The agent works on the task file,
 <promise>COMPLETE</promise>
 ```
 
-The extension preserves top-level Ralph state fields for compatibility with existing `.ralph` directories. Old state files without mode metadata are migrated to schema version 2 as `checklist` loops when loaded.
+The extension preserves top-level Ralph state fields for compatibility with existing `.ralph` directories. Old state files without mode metadata are migrated to schema version 2 as `checklist` loops when loaded. Recursive loops store their objective, validation/reset policy, stop criteria, and attempt placeholders under `modeState`.
 
 ## Agent tools
 
@@ -47,6 +47,23 @@ Example:
   "itemsPerIteration": 3,
   "reflectEvery": 10,
   "maxIterations": 50
+}
+```
+
+Recursive example:
+
+```json
+{
+  "name": "search-latency",
+  "mode": "recursive",
+  "taskContent": "# Improve search latency\n\n## Verification\n- Record each attempt and benchmark result.",
+  "objective": "Reduce query latency without hurting recall",
+  "baseline": "p95 120ms",
+  "validationCommand": "npm run bench:search",
+  "resetPolicy": "keep_best_only",
+  "stopWhen": ["target_reached", "idea_exhaustion", "max_iterations"],
+  "maxIterations": 10,
+  "outsideHelpEvery": 3
 }
 ```
 
@@ -69,10 +86,18 @@ Options for `/ralph start`:
 
 | Option | Description |
 | --- | --- |
-| `--mode checklist` | Select the loop mode. `checklist` is the only implemented mode; `recursive` and `evolve` are reserved. |
+| `--mode checklist\|recursive` | Select the loop mode. `evolve` is reserved. |
 | `--max-iterations N` | Stop after N iterations. Default: 50. |
 | `--items-per-iteration N` | Prompt hint to process roughly N items per turn. |
 | `--reflect-every N` | Insert a reflection checkpoint every N iterations. |
+| `--objective TEXT` | Required for `--mode recursive`; describes the target outcome. |
+| `--baseline TEXT` | Optional recursive baseline/current best evidence. |
+| `--validation-command CMD` | Optional recursive validation command or check. |
+| `--reset-policy manual\|revert_failed_attempts\|keep_best_only` | Recursive reset policy. Default: `manual`. |
+| `--stop-when A,B` | Recursive stop criteria. Defaults to target reached, idea exhaustion, or max iterations. |
+| `--max-failed-attempts N` | Recursive failed-attempt budget. |
+| `--outside-help-every N` | Recursive cue interval for requesting outside help. |
+| `--outside-help-on-stagnation` | Cue outside help when attempts stagnate. |
 
 Press Esc to interrupt a running assistant turn. Send a normal message or use `/ralph resume <name>` to continue. Use `/ralph-stop` when idle to end the loop.
 

@@ -5,18 +5,20 @@ description: Long-running iterative development loops with pacing control and ve
 
 # Ralph Loop - Long-Running Development Loops
 
-Use the `ralph_start` tool to begin a loop:
+Use the `ralph_start` tool to begin a loop. Choose `mode: "checklist"` for finite known work or `mode: "recursive"` for bounded try/test/reset attempts on open-ended objectives:
 
 ```
 ralph_start({
   name: "loop-name",
-  mode: "checklist",       // Optional; checklist is the implemented mode
+  mode: "checklist",       // Optional; checklist is the default mode
   taskContent: "# Task\n\n## Goals\n- Goal 1\n\n## Checklist\n- [ ] Item 1\n- [ ] Item 2",
   maxIterations: 50,        // Default: 50
   itemsPerIteration: 3,     // Optional: suggest N items per turn
   reflectEvery: 10          // Optional: reflect every N iterations
 })
 ```
+
+Recursive mode requires an `objective` and may include `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, `outsideHelpEvery`, and `outsideHelpOnStagnation`. Each recursive iteration should be one bounded hypothesis/attempt with evidence recorded in the task file.
 
 ## Loop Behavior
 
@@ -30,7 +32,7 @@ ralph_start({
 
 ## User Commands
 
-- `/ralph start <name|path> [--mode checklist]` - Start a new loop.
+- `/ralph start <name|path> [--mode checklist|recursive]` - Start a new loop.
 - `/ralph resume <name>` - Resume loop.
 - `/ralph stop` - Pause loop (when agent idle).
 - `/ralph-stop` - Stop active loop (idle only).
