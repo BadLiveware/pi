@@ -62,7 +62,7 @@ Current config:
 
 ```json
 {
-  "maxResults": 50,
+  "maxResults": 125,
   "queryTimeoutMs": 30000,
   "maxOutputBytes": 5000000
 }
@@ -219,6 +219,7 @@ Candidate improvements:
 - Better handling for interface/object field roots when changed-file mode discovers many fields.
 - Better candidate grouping/deduplication for same-line call + selector pairs.
 - More concise high-signal summaries for broad diffs.
+- Continue monitoring whether the 125-row default location cap is enough to avoid agents falling back to broad `rg` for context.
 
 Acceptance criteria:
 

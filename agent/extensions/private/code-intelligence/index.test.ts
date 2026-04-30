@@ -197,7 +197,7 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal(state.languageServers.typescript.available, "available");
 	assert.equal(["tsserver", "typescript-language-server", "typescript-language-service"].includes(state.languageServers.typescript.details.command), true);
 	assert.match(state.limitations.join("\n"), /availability-only/);
-	assert.deepEqual(state.config, { maxResults: 50, queryTimeoutMs: 30000, maxOutputBytes: 5000000 });
+	assert.deepEqual(state.config, { maxResults: 125, queryTimeoutMs: 30000, maxOutputBytes: 5000000 });
 	assert.equal(statuses.at(-1)?.key, "code-intel");
 	assert.match(statuses.at(-1)?.value ?? "", /^ci\s+syn:ok/);
 });
@@ -264,6 +264,20 @@ test("impact map includes current-source syntax candidates", async () => {
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_selector" && row.text === "selector.NeedTags" && row.line === 10), true);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags: true" && row.line === 12), true);
 	assert.match(impact.coverage.limitations.join("\n"), /current-source syntax/);
+});
+
+test("impact map default location cap is closer to normal bounded search output", async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-wide-impact-"));
+	execFileSync("git", ["init", "-q"], { cwd: repo });
+	const callers = Array.from({ length: 40 }, (_, index) => `export function caller${index}() { return target() }`).join("\n");
+	fs.writeFileSync(path.join(repo, "wide.ts"), `export function target() { return true }\n${callers}\n`);
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["target"] }, undefined, undefined, ctx));
+	assert.equal(impact.detail, "locations");
+	assert.equal(impact.related.length, 40);
+	assert.equal(impact.coverage.truncated, false);
+	assert.equal(impact.coverage.maxResults, 125);
 });
 
 test("impact map suppresses selector duplicates for method calls", async () => {

@@ -120,7 +120,7 @@ export interface CodeIntelLocalMapParams {
 }
 
 export const DEFAULT_CONFIG: CodeIntelConfig = {
-	maxResults: 50,
+	maxResults: 125,
 	queryTimeoutMs: DEFAULT_TIMEOUT_MS,
 	maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
 };

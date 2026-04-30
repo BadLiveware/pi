@@ -1,5 +1,5 @@
 {
-  "maxResults": 50,
+  "maxResults": 125,
   "queryTimeoutMs": 30000,
   "maxOutputBytes": 5000000
 }

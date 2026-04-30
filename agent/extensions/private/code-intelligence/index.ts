@@ -410,7 +410,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 			symbols: Type.Optional(Type.Array(Type.String(), { description: "Symbols to treat as impact roots." })),
 			changedFiles: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files whose defined symbols should be impact roots." })),
 			baseRef: Type.Optional(Type.String({ description: "Optional git base ref for discovering changed files with git diff --name-only." })),
-			maxResults: Type.Optional(Type.Number({ description: "Maximum related rows returned. Defaults to min(config maxResults, 25)." })),
+			maxResults: Type.Optional(Type.Number({ description: "Maximum related rows returned. Defaults to min(config maxResults, 125) for locations, or min(config maxResults, 25) for snippets." })),
 			maxRootSymbols: Type.Optional(Type.Number({ description: "Maximum root symbols to query after expanding changed files. Default 20." })),
 			timeoutMs: timeoutParam,
 			detail: detailParam,

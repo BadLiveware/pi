@@ -129,7 +129,7 @@ Build the primary candidate read-next impact map from:
 - `changedFiles` expanded through current-source Tree-sitter definitions
 - optional `baseRef` using `git diff --name-only <baseRef> --`
 
-The output groups roots and related caller/consumer candidates, with truncation and limitation metadata. Defaults are intentionally tight: up to 20 root symbols after changed-file expansion and 25 related rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context. Use `detail: "snippets"` only when inline context helps triage without immediate reads.
+The output groups roots and related caller/consumer candidates, with truncation and limitation metadata. Defaults are bounded but closer to normal agent search habits: up to 20 root symbols after changed-file expansion and 125 location rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context; snippet output stays tighter at 25 rows by default. Use `detail: "snippets"` only when inline context helps triage without immediate reads.
 
 Impact-map routing currently supports Go, TypeScript/TSX, JavaScript, and Python source files. When changed files are non-source or outside the impact-routing set, the result includes `coverage.supportedImpactLanguages`, `coverage.unsupportedImpactFiles`, and `coverage.nonSourceFiles` so agents can fall back deliberately to source reads, `code_intel_syntax_search`, `code_intel_local_map`, or bounded `rg` instead of treating an empty map as a successful review.
 
@@ -230,7 +230,7 @@ Defaults:
 
 ```json
 {
-  "maxResults": 50,
+  "maxResults": 125,
   "queryTimeoutMs": 30000,
   "maxOutputBytes": 5000000
 }
