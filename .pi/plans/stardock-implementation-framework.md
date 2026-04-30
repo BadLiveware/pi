@@ -474,12 +474,13 @@ interface LoopState {
   briefs: IterationBrief[];
   currentBriefId?: string;
   finalVerificationReports: FinalVerificationReport[];
+  auditorReviews: AuditorReview[];
 }
 ```
 
 Private Stardock schema rule: current `.stardock/runs/<name>/state.json` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, and legacy flat `.stardock/<name>.state.json` files remain readable enough to resume and rewrite into the run-folder layout. `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
 
-Future schema revisions may add `governorState`, auditor reviews, baseline validation, compound-learning proposals, handoff explanations, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/brief/final-report/audit lists.
+Future schema revisions may add `governorState`, baseline validation, compound-learning proposals, handoff explanations, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/brief/final-report/auditor-review lists.
 
 ### Mode interface
 
@@ -746,9 +747,9 @@ Do not restart the completed implementation path. Future implementation should b
    - Later, add stronger policy or reports for when a governor-sourced brief should supersede full task replay across multiple attempts.
    - Continue keeping selected `criterionIds`, required context, and verification requirements bounded; keep large artifacts referenced.
 4. **Auditor oversight workflow**
-   - Add `auditor_review` request creation and ready-to-copy auditor payloads.
-   - Add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.
-   - Record auditor findings and require blocker findings to constrain, be explicitly rejected by, or escalate the next governor decision.
+   - Initial manual/data-only `stardock_auditor` support exists for ready-to-copy auditor payloads plus compact review records linked to criteria, artifacts, and final reports.
+   - Later, add trigger handling for periodic review, pre-completion, scope/criteria changes, automation gates, and drift signals.
+   - Later, add policy for blocker findings to constrain, be explicitly rejected by, or escalate the next governor decision.
 5. **Worker report / selective review workflow**
    - Define `WorkerReport` state and payload expectations, including evaluated criteria, artifact refs, and failure diagnoses.
    - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
@@ -799,10 +800,10 @@ After behavior changes:
   - updates criterion status from evidence
   - produces breakout/final verification reports when triggered
 - smoke auditor workflow after oversight changes:
-  - creates `auditor_review` requests at configured gates
-  - records auditor findings without mutating criteria or implementation state directly
-  - includes blocker findings in the next governor prompt
-  - requires explicit governor response or user escalation before gated moves
+  - builds compact `stardock_auditor` payloads with criteria/artifact/final-report/attempt/governor context
+  - records auditor reviews without mutating criteria or implementation state directly
+  - keeps v1 manual/data-only with no model calls, subagent execution, or automatic completion blocking
+  - later gated versions should include blocker findings in the next governor prompt and require explicit governor response or user escalation before gated moves
 
 ## Risks and mitigations
 

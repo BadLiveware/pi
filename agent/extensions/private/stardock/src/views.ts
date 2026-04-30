@@ -83,6 +83,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 					}
 				: undefined,
 		},
+		auditorReviews: state.auditorReviews,
 		briefs: {
 			total: state.briefs.length,
 			currentBriefId: state.currentBriefId,
@@ -201,7 +202,7 @@ export function formatRunOverview(ctx: ExtensionContext, state: LoopState, archi
 	}
 
 	lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
-	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
+	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Auditor reviews: ${state.auditorReviews.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
 	if (activeBrief) {
 		lines.push("", "Active brief", `  ${activeBrief.id}: ${compactViewText(activeBrief.objective, 180)}`, `  Task: ${compactViewText(activeBrief.task, 180)}`);
 		if (activeBrief.criterionIds.length) lines.push(`  Criteria: ${activeBrief.criterionIds.join(", ")}`);

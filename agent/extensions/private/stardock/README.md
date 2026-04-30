@@ -31,6 +31,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | `stardock_ledger` | Inspect or update the loop's criterion ledger and compact verification artifact refs. Supports `list`, `upsertCriterion`, `upsertCriteria`, `recordArtifact`, and `recordArtifacts`, with optional post-mutation state/overview details. |
 | `stardock_brief` | Inspect or update manual or governor-sourced IterationBrief context packets. Supports `list`, `upsert`, `activate`, `clear`, and `complete`; `upsert` can also activate the brief and return optional state or prompt preview details. |
 | `stardock_final_report` | Record or inspect compact final verification reports with criteria coverage, validation records, artifact refs, unresolved gaps, and risk notes. |
+| `stardock_auditor` | Build ready-to-copy manual auditor review payloads and record compact auditor review results. Supports `list`, `payload`, and `record`; v1 is data-only and does not call models, spawn subagents, or block completion. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
@@ -91,6 +92,8 @@ Briefs default to `source: "manual"`. Use `source: "governor"` plus an optional 
 When finishing an iteration, `stardock_done` keeps the active brief by default. Pass `briefLifecycle: "complete"` to mark the active brief completed and return the next prompt to the normal task shape, or `briefLifecycle: "clear"` to deactivate it back to draft without marking it done. Add `includeState: true` when you want the lifecycle result and compact loop summary in the same tool response.
 
 Use `stardock_final_report` near completion to record a bounded evidence summary. Reports can link criteria and artifact IDs, include compact validation records with `passed`/`failed`/`skipped` results, list unresolved gaps, and capture compatibility/security/performance notes. Reports are manual and optional in this slice: Stardock does not require one before completion, run validators, call models, or paste long logs/screenshots into state.
+
+Use `stardock_auditor` when a bounded oversight review should inspect the evidence trail. `payload` returns a ready-to-copy auditor task with compact criteria, artifact, final-report, attempt, and governor/outside-request context. `record` stores a compact manual auditor result with status, summary, focus, linked criteria/artifacts/final reports, concerns, recommendations, and required follow-ups. `list` inspects recorded reviews. Auditor v1 is manual and data-only: it does not call a model, spawn subagents, mutate implementation state, or enforce completion gates automatically.
 
 Agents can request the same views through `stardock_state`:
 

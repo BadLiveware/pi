@@ -4,6 +4,8 @@
 
 import {
 	DEFAULT_REFLECT_INSTRUCTIONS,
+	type AuditorReview,
+	type AuditorReviewStatus,
 	type Criterion,
 	type CriterionLedger,
 	type CriterionStatus,
@@ -179,6 +181,10 @@ export function isValidationResult(value: unknown): value is ValidationResult {
 	return ["passed", "failed", "skipped"].includes(String(value));
 }
 
+export function isAuditorReviewStatus(value: unknown): value is AuditorReviewStatus {
+	return ["draft", "passed", "concerns", "blocked"].includes(String(value));
+}
+
 export function isBriefSource(value: unknown): value is IterationBriefSource {
 	return ["manual", "governor"].includes(String(value));
 }
@@ -267,6 +273,33 @@ export function migrateFinalVerificationReports(value: unknown): FinalVerificati
 		.filter((report): report is FinalVerificationReport => report !== null);
 }
 
+export function migrateAuditorReviews(value: unknown): AuditorReview[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item, index): AuditorReview | null => {
+			if (!item || typeof item !== "object") return null;
+			const review = item as Partial<AuditorReview> & Record<string, unknown>;
+			const summary = typeof review.summary === "string" ? review.summary.trim() : "";
+			if (!summary) return null;
+			const now = new Date().toISOString();
+			return {
+				id: normalizeId(review.id, `ar${index + 1}`),
+				status: isAuditorReviewStatus(review.status) ? review.status : "draft",
+				summary: compactText(summary, 500) ?? summary,
+				focus: typeof review.focus === "string" && review.focus.trim() ? compactText(review.focus.trim(), 240) ?? review.focus.trim() : "General auditor review",
+				criterionIds: normalizeStringList(review.criterionIds),
+				artifactIds: normalizeStringList(review.artifactIds),
+				finalReportIds: normalizeStringList(review.finalReportIds),
+				concerns: normalizeStringList(review.concerns).map((concern) => compactText(concern, 240) ?? concern),
+				recommendations: normalizeStringList(review.recommendations).map((recommendation) => compactText(recommendation, 240) ?? recommendation),
+				requiredFollowups: normalizeStringList(review.requiredFollowups).map((followup) => compactText(followup, 240) ?? followup),
+				createdAt: typeof review.createdAt === "string" ? review.createdAt : now,
+				updatedAt: typeof review.updatedAt === "string" ? review.updatedAt : now,
+			};
+		})
+		.filter((review): review is AuditorReview => review !== null);
+}
+
 export function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 	const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 	const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
@@ -296,5 +329,6 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		briefs,
 		currentBriefId: migrateCurrentBriefId(raw.currentBriefId, briefs),
 		finalVerificationReports: migrateFinalVerificationReports(raw.finalVerificationReports),
+		auditorReviews: migrateAuditorReviews(raw.auditorReviews),
 	};
 }

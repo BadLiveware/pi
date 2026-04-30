@@ -77,6 +77,7 @@ import {
 	tryRemoveDir,
 } from "./src/state.ts";
 import { registerAttemptReportTool } from "./src/attempt-reports.ts";
+import { registerAuditorTool } from "./src/auditor-reviews.ts";
 import { applyActiveBriefLifecycle, appendActiveBriefPromptSection, appendTaskSourceSection, currentBrief, registerBriefTool } from "./src/briefs.ts";
 import { registerFinalReportTool } from "./src/final-reports.ts";
 import { criterionCounts, formatCriterionCounts, registerLedgerTool } from "./src/ledger.ts";
@@ -595,6 +596,7 @@ export default function (pi: ExtensionAPI) {
 				verificationArtifacts: [],
 				briefs: [],
 				finalVerificationReports: [],
+				auditorReviews: [],
 			};
 
 			saveState(ctx, state);
@@ -1038,6 +1040,7 @@ Examples:
 				verificationArtifacts: [],
 				briefs: [],
 				finalVerificationReports: [],
+				auditorReviews: [],
 			};
 
 			saveState(ctx, state);
@@ -1167,6 +1170,7 @@ Examples:
 					formatCriterionCounts(state.criterionLedger),
 					`Verification artifacts: ${state.verificationArtifacts.length}`,
 					`Final reports: ${state.finalVerificationReports.length}`,
+					`Auditor reviews: ${state.auditorReviews.length}`,
 					`Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`,
 					activeBrief ? `Current brief task: ${activeBrief.task}` : undefined,
 					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
@@ -1193,6 +1197,12 @@ Examples:
 
 
 	registerBriefTool(pi, {
+		getCurrentLoop: () => currentLoop,
+		updateUI,
+		optionalLoopDetails,
+	});
+
+	registerAuditorTool(pi, {
 		getCurrentLoop: () => currentLoop,
 		updateUI,
 		optionalLoopDetails,

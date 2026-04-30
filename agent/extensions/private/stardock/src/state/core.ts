@@ -150,6 +150,7 @@ export type IterationBriefSource = "manual" | "governor";
 export type BriefLifecycleAction = "keep" | "complete" | "clear";
 export type FinalVerificationStatus = "draft" | "passed" | "failed" | "partial";
 export type ValidationResult = "passed" | "failed" | "skipped";
+export type AuditorReviewStatus = "draft" | "passed" | "concerns" | "blocked";
 
 export interface FinalValidationRecord {
 	command?: string;
@@ -169,6 +170,21 @@ export interface FinalVerificationReport {
 	compatibilityNotes: string[];
 	securityNotes: string[];
 	performanceNotes: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AuditorReview {
+	id: string;
+	status: AuditorReviewStatus;
+	summary: string;
+	focus: string;
+	criterionIds: string[];
+	artifactIds: string[];
+	finalReportIds: string[];
+	concerns: string[];
+	recommendations: string[];
+	requiredFollowups: string[];
 	createdAt: string;
 	updatedAt: string;
 }
@@ -223,6 +239,7 @@ export interface LoopState {
 	briefs: IterationBrief[];
 	currentBriefId?: string;
 	finalVerificationReports: FinalVerificationReport[];
+	auditorReviews: AuditorReview[];
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
