@@ -14,14 +14,14 @@ No external services, credentials, or extra CLIs are required.
 
 ## How it works
 
-The extension watches two low-risk recovery cases and sends an automated watchdog nudge. The nudge tells the agent that it is not a new user request, to check whether work actually remains, and to stop instead of continuing when the task is already complete.
+The extension watches two low-risk recovery cases and queues an automated watchdog nudge. The nudge tells the agent that it is not a new user request, to check whether work actually remains, and to stop instead of continuing when the task is already complete.
 
 Recovery cases:
 
-- **Idle compaction:** after a compaction, Pi is idle, no messages are queued, and either the compaction followed a context overflow or the current session branch contains an unresolved/resumable Ralph prompt. A stale active `.ralph/*.state.json` file alone is not enough.
+- **Idle compaction:** after a compaction, either the compaction followed a context overflow or the current session branch contains an unresolved/resumable Ralph prompt. A stale active `.ralph/*.state.json` file alone is not enough.
 - **Stalled Ralph turn:** after a Ralph loop prompt, the assistant ends while saying it will continue or proceed, but has not called `ralph_done` or completed the loop.
 
-It snapshots/analyzes the branch before compaction and suppresses nudges when Ralph already advanced with `ralph_done`. It does nothing while tools are running or messages are already queued. Ralph stall recovery is capped to one automatic nudge per Ralph prompt to avoid noisy loops. The footer status shows `watchdog:on` or `watchdog:off`.
+It snapshots/analyzes the branch before compaction and suppresses nudges when Ralph already advanced with `ralph_done`. If the agent is busy or messages are already queued, the nudge remains pending, appears in a small user-only card, and is delivered only once Pi is idle. Ralph stall recovery is capped to one automatic nudge per Ralph prompt to avoid noisy loops. The footer status shows `watchdog:on` or `watchdog:off`, plus `✦pending` when a nudge is waiting.
 
 The prompt includes the Ralph completion marker instruction, so a finished Ralph loop can answer `<promise>COMPLETE</promise>` rather than inventing extra work.
 
