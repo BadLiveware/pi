@@ -23,9 +23,35 @@ export interface BatchMutationFailure {
 	isBatch: boolean;
 }
 
+export interface BatchResponseShape<TItem> {
+	contentText: string;
+	detailKey: string;
+	detailValue: TItem | TItem[];
+}
+
 export function normalizeBatchInputs<TSingle, TBatch>(singleInput: TSingle, batchInput: TBatch[] | undefined): { inputs: Array<TSingle | TBatch>; isBatch: boolean } {
 	if (Array.isArray(batchInput) && batchInput.length > 0) return { inputs: batchInput, isBatch: true };
 	return { inputs: [singleInput], isBatch: false };
+}
+
+export function batchFailureDetails<TFailure extends BatchMutationFailure>(loopName: string, failure: TFailure): { loopName: string; failedIndex: number; failedInput: unknown } {
+	return { loopName, failedIndex: failure.index, failedInput: failure.input };
+}
+
+export function describeBatchMutation<TItem>(batch: BatchMutationSuccess<unknown, TItem>, options: { verb: string; singularName: string; pluralName: string; pluralDetailKey?: string; singleItemText(item: TItem, result: BatchMutationResult<unknown, TItem>): string }): BatchResponseShape<TItem> {
+	if (batch.isBatch) {
+		return {
+			contentText: `${options.verb} ${batch.items.length} ${options.pluralName}`,
+			detailKey: options.pluralDetailKey ?? options.pluralName,
+			detailValue: batch.items,
+		};
+	}
+	const result = batch.results[0];
+	return {
+		contentText: options.singleItemText(result.item, result),
+		detailKey: options.singularName,
+		detailValue: result.item,
+	};
 }
 
 export function runOrderedBatch<TInput, TState, TItem>(

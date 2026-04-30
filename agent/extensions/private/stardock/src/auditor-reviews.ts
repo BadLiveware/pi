@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision } from "./outside-requests.ts";
@@ -209,19 +209,13 @@ export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): vo
 				const result = recordAuditorReview(ctx, loopName, input);
 				return result.ok ? { state: result.state, item: result.review, created: result.created } : result;
 			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
 			deps.updateUI(ctx);
 			const updatedState = batch.lastState;
-			if (batch.isBatch) {
-				return {
-					content: [{ type: "text", text: `Recorded ${batch.items.length} auditor reviews in loop "${loopName}".` }],
-					details: { loopName, reviews: batch.items, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
-				};
-			}
-			const result = batch.results[0];
+			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "review", pluralName: "auditor reviews", pluralDetailKey: "reviews", singleItemText: (review, result) => `${result.created ? "Recorded" : "Updated"} auditor review ${review.id}` });
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} auditor review ${result.item.id} in loop "${loopName}".` }],
-				details: { loopName, review: result.item, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
+				details: { loopName, [response.detailKey]: response.detailValue, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

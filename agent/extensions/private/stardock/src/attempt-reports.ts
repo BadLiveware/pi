@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { type LoopState, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveAttemptResult } from "./state/core.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -137,17 +137,11 @@ export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportD
 				);
 				return result.ok ? { state: result.state, item: result.attempt } : result;
 			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
-			if (batch.isBatch) {
-				return {
-					content: [{ type: "text", text: `Recorded ${batch.items.length} attempt reports in loop "${loopName}".` }],
-					details: { loopName, attempts: batch.items },
-				};
-			}
-			const result = batch.results[0];
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
+			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "attempt", pluralName: "attempt reports", pluralDetailKey: "attempts", singleItemText: (attempt) => `Recorded report for attempt ${attempt.iteration}` });
 			return {
-				content: [{ type: "text", text: `Recorded report for attempt ${result.item.iteration} in loop "${loopName}".` }],
-				details: { loopName, attempt: result.item },
+				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
+				details: { loopName, [response.detailKey]: response.detailValue },
 			};
 		},
 	});

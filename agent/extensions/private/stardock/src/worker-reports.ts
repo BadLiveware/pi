@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type ChangedFileReport, compactText, type LoopState, nextSequentialId, type WorkerReport } from "./state/core.ts";
@@ -233,19 +233,13 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 				const result = recordWorkerReport(ctx, loopName, input);
 				return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
 			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
 			deps.updateUI(ctx);
 			const updatedState = batch.lastState;
-			if (batch.isBatch) {
-				return {
-					content: [{ type: "text", text: `Recorded ${batch.items.length} worker reports in loop "${loopName}".` }],
-					details: { loopName, reports: batch.items, workerReports: updatedState.workerReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
-				};
-			}
-			const result = batch.results[0];
+			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "report", pluralName: "worker reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} worker report ${report.id}` });
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} worker report ${result.item.id} in loop "${loopName}".` }],
-				details: { loopName, report: result.item, workerReports: updatedState.workerReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
+				details: { loopName, [response.detailKey]: response.detailValue, workerReports: updatedState.workerReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

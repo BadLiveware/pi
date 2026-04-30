@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type BreakoutPackage, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
@@ -237,19 +237,13 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 				const result = recordBreakoutPackage(ctx, loopName, input);
 				return result.ok ? { state: result.state, item: result.breakout, created: result.created } : result;
 			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
 			deps.updateUI(ctx);
 			const updatedState = batch.lastState;
-			if (batch.isBatch) {
-				return {
-					content: [{ type: "text", text: `Recorded ${batch.items.length} breakout packages in loop "${loopName}".` }],
-					details: { loopName, packages: batch.items, breakoutPackages: updatedState.breakoutPackages, ...deps.optionalLoopDetails(ctx, updatedState, params) },
-				};
-			}
-			const result = batch.results[0];
+			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "breakout", pluralName: "breakout packages", pluralDetailKey: "packages", singleItemText: (breakout, result) => `${result.created ? "Recorded" : "Updated"} breakout package ${breakout.id}` });
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} breakout package ${result.item.id} in loop "${loopName}".` }],
-				details: { loopName, breakout: result.item, breakoutPackages: updatedState.breakoutPackages, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
+				details: { loopName, [response.detailKey]: response.detailValue, breakoutPackages: updatedState.breakoutPackages, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});
