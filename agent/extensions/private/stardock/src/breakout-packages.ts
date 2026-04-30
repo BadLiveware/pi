@@ -174,6 +174,24 @@ export function recordBreakoutPackage(ctx: ExtensionContext, loopName: string, i
 
 const breakoutStatusSchema = Type.Union([Type.Literal("draft"), Type.Literal("open"), Type.Literal("resolved"), Type.Literal("dismissed")]);
 
+const breakoutPackageInputSchema = Type.Object({
+	id: Type.Optional(Type.String({ description: "Breakout package id. Generated for record when omitted." })),
+	status: Type.Optional(breakoutStatusSchema),
+	summary: Type.Optional(Type.String({ description: "Compact stuck/blocked loop summary." })),
+	blockedCriterionIds: Type.Optional(Type.Array(Type.String(), { description: "Blocked, failed, or relevant criterion ids." })),
+	attemptIds: Type.Optional(Type.Array(Type.String(), { description: "Recursive attempt ids referenced by this package." })),
+	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Verification artifact ids referenced by this package." })),
+	finalReportIds: Type.Optional(Type.Array(Type.String(), { description: "Final report ids referenced by this package." })),
+	auditorReviewIds: Type.Optional(Type.Array(Type.String(), { description: "Auditor review ids referenced by this package." })),
+	advisoryHandoffIds: Type.Optional(Type.Array(Type.String(), { description: "Advisory handoff ids referenced by this package." })),
+	outsideRequestIds: Type.Optional(Type.Array(Type.String(), { description: "Outside request ids referenced by this package." })),
+	lastErrors: Type.Optional(Type.Array(Type.String(), { description: "Compact recent errors or failure observations." })),
+	suspectedRootCauses: Type.Optional(Type.Array(Type.String(), { description: "Compact suspected root causes." })),
+	requestedDecision: Type.Optional(Type.String({ description: "Decision requested from user/governor/auditor/advisor." })),
+	resumeCriteria: Type.Optional(Type.Array(Type.String(), { description: "Conditions that make resuming safe or useful." })),
+	recommendedNextActions: Type.Optional(Type.Array(Type.String(), { description: "Compact recommended next actions." })),
+});
+
 export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): void {
 	pi.registerTool({
 		name: "stardock_breakout",
@@ -197,6 +215,7 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 			requestedDecision: Type.Optional(Type.String({ description: "Decision requested from user/governor/auditor/advisor." })),
 			resumeCriteria: Type.Optional(Type.Array(Type.String(), { description: "Conditions that make resuming safe or useful." })),
 			recommendedNextActions: Type.Optional(Type.Array(Type.String(), { description: "Compact recommended next actions." })),
+			packages: Type.Optional(Type.Array(breakoutPackageInputSchema, { description: "Batch breakout packages for record. Single-package fields remain compatibility sugar." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -212,12 +231,25 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
 				return { content: [{ type: "text", text: payload.payload }], details: { loopName, breakoutPackages: state.breakoutPackages } };
 			}
-			const result = recordBreakoutPackage(ctx, loopName, params);
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			const inputPackages = Array.isArray(params.packages) && params.packages.length > 0 ? params.packages : [params];
+			const results = [];
+			for (const input of inputPackages) {
+				const result = recordBreakoutPackage(ctx, loopName, input);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				results.push(result);
+			}
 			deps.updateUI(ctx);
+			const updatedState = results[results.length - 1].state;
+			if (Array.isArray(params.packages) && params.packages.length > 0) {
+				return {
+					content: [{ type: "text", text: `Recorded ${results.length} breakout packages in loop "${loopName}".` }],
+					details: { loopName, packages: results.map((result) => result.breakout), breakoutPackages: updatedState.breakoutPackages, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				};
+			}
+			const result = results[0];
 			return {
 				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} breakout package ${result.breakout.id} in loop "${loopName}".` }],
-				details: { loopName, breakout: result.breakout, breakoutPackages: result.state.breakoutPackages, ...deps.optionalLoopDetails(ctx, result.state, params) },
+				details: { loopName, breakout: result.breakout, breakoutPackages: updatedState.breakoutPackages, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

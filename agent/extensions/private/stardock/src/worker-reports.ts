@@ -172,6 +172,23 @@ const workerRoleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("tes
 const changedFileSchema = Type.Object({ path: Type.String(), summary: Type.Optional(Type.String()), reviewReason: Type.Optional(Type.String()) });
 const workerValidationSchema = Type.Object({ command: Type.Optional(Type.String()), result: Type.Union([Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped")]), summary: Type.String(), artifactIds: Type.Optional(Type.Array(Type.String())) });
 
+const workerReportInputSchema = Type.Object({
+	id: Type.Optional(Type.String({ description: "Worker report id. Generated for record when omitted." })),
+	status: Type.Optional(workerStatusSchema),
+	role: Type.Optional(workerRoleSchema),
+	objective: Type.Optional(Type.String({ description: "Worker objective or assigned task." })),
+	summary: Type.Optional(Type.String({ description: "Compact worker result summary." })),
+	advisoryHandoffIds: Type.Optional(Type.Array(Type.String(), { description: "Related advisory handoff ids." })),
+	evaluatedCriterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criteria evaluated by the worker." })),
+	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids referenced by the report." })),
+	changedFiles: Type.Optional(Type.Array(changedFileSchema, { description: "Changed files plus summary/review reason." })),
+	validation: Type.Optional(Type.Array(workerValidationSchema, { description: "Validation records returned by the worker." })),
+	risks: Type.Optional(Type.Array(Type.String(), { description: "Compact risks." })),
+	openQuestions: Type.Optional(Type.Array(Type.String(), { description: "Compact open questions." })),
+	suggestedNextMove: Type.Optional(Type.String({ description: "Suggested next move from the worker." })),
+	reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective parent review hints." })),
+});
+
 export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToolDeps): void {
 	pi.registerTool({
 		name: "stardock_worker_report",
@@ -194,6 +211,7 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 			openQuestions: Type.Optional(Type.Array(Type.String(), { description: "Compact open questions." })),
 			suggestedNextMove: Type.Optional(Type.String({ description: "Suggested next move from the worker." })),
 			reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective parent review hints." })),
+			reports: Type.Optional(Type.Array(workerReportInputSchema, { description: "Batch worker reports for record. Single-report fields remain compatibility sugar." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -209,12 +227,25 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
 				return { content: [{ type: "text", text: payload.payload }], details: { loopName, workerReports: state.workerReports } };
 			}
-			const result = recordWorkerReport(ctx, loopName, params);
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			const inputReports = Array.isArray(params.reports) && params.reports.length > 0 ? params.reports : [params];
+			const results = [];
+			for (const input of inputReports) {
+				const result = recordWorkerReport(ctx, loopName, input);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				results.push(result);
+			}
 			deps.updateUI(ctx);
+			const updatedState = results[results.length - 1].state;
+			if (Array.isArray(params.reports) && params.reports.length > 0) {
+				return {
+					content: [{ type: "text", text: `Recorded ${results.length} worker reports in loop "${loopName}".` }],
+					details: { loopName, reports: results.map((result) => result.report), workerReports: updatedState.workerReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				};
+			}
+			const result = results[0];
 			return {
 				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} worker report ${result.report.id} in loop "${loopName}".` }],
-				details: { loopName, report: result.report, workerReports: result.state.workerReports, ...deps.optionalLoopDetails(ctx, result.state, params) },
+				details: { loopName, report: result.report, workerReports: updatedState.workerReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

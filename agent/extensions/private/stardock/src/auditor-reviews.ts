@@ -150,6 +150,19 @@ export function recordAuditorReview(ctx: ExtensionContext, loopName: string, inp
 	return { ok: true, state, review, created: existingIndex < 0 };
 }
 
+const auditorReviewInputSchema = Type.Object({
+	id: Type.Optional(Type.String({ description: "Auditor review id. Generated for record when omitted." })),
+	status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("concerns"), Type.Literal("blocked")], { description: "Auditor review status." })),
+	summary: Type.Optional(Type.String({ description: "Compact auditor review summary. Required for new records." })),
+	focus: Type.Optional(Type.String({ description: "Review focus for payloads or records." })),
+	criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids referenced by this review." })),
+	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids referenced by this review." })),
+	finalReportIds: Type.Optional(Type.Array(Type.String(), { description: "Final report ids referenced by this review." })),
+	concerns: Type.Optional(Type.Array(Type.String(), { description: "Compact concerns found by the auditor." })),
+	recommendations: Type.Optional(Type.Array(Type.String(), { description: "Compact auditor recommendations." })),
+	requiredFollowups: Type.Optional(Type.Array(Type.String(), { description: "Required follow-up checks or actions." })),
+});
+
 export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): void {
 	pi.registerTool({
 		name: "stardock_auditor",
@@ -168,6 +181,7 @@ export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): vo
 			concerns: Type.Optional(Type.Array(Type.String(), { description: "Compact concerns found by the auditor." })),
 			recommendations: Type.Optional(Type.Array(Type.String(), { description: "Compact auditor recommendations." })),
 			requiredFollowups: Type.Optional(Type.Array(Type.String(), { description: "Required follow-up checks or actions." })),
+			reviews: Type.Optional(Type.Array(auditorReviewInputSchema, { description: "Batch auditor reviews for record. Single-review fields remain compatibility sugar." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -189,23 +203,25 @@ export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): vo
 					details: { loopName, focus: params.focus, auditorReviews: state.auditorReviews },
 				};
 			}
-			const result = recordAuditorReview(ctx, loopName, {
-				id: params.id,
-				status: params.status,
-				summary: params.summary,
-				focus: params.focus,
-				criterionIds: params.criterionIds,
-				artifactIds: params.artifactIds,
-				finalReportIds: params.finalReportIds,
-				concerns: params.concerns,
-				recommendations: params.recommendations,
-				requiredFollowups: params.requiredFollowups,
-			});
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			const inputReviews = Array.isArray(params.reviews) && params.reviews.length > 0 ? params.reviews : [params];
+			const results = [];
+			for (const input of inputReviews) {
+				const result = recordAuditorReview(ctx, loopName, input);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				results.push(result);
+			}
 			deps.updateUI(ctx);
+			const updatedState = results[results.length - 1].state;
+			if (Array.isArray(params.reviews) && params.reviews.length > 0) {
+				return {
+					content: [{ type: "text", text: `Recorded ${results.length} auditor reviews in loop "${loopName}".` }],
+					details: { loopName, reviews: results.map((result) => result.review), auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				};
+			}
+			const result = results[0];
 			return {
 				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} auditor review ${result.review.id} in loop "${loopName}".` }],
-				details: { loopName, review: result.review, auditorReviews: result.state.auditorReviews, ...deps.optionalLoopDetails(ctx, result.state, params) },
+				details: { loopName, review: result.review, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

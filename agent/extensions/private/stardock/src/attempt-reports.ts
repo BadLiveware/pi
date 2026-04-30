@@ -83,6 +83,18 @@ export function recordAttemptReport(
 	return { ok: true, state, attempt };
 }
 
+const attemptReportInputSchema = Type.Object({
+	iteration: Type.Optional(Type.Number({ description: "Attempt iteration. Defaults to the most recently completed attempt." })),
+	kind: Type.Optional(Type.Union([Type.Literal("candidate_change"), Type.Literal("setup"), Type.Literal("refactor"), Type.Literal("instrumentation"), Type.Literal("benchmark_scaffold"), Type.Literal("research"), Type.Literal("other")])),
+	hypothesis: Type.Optional(Type.String({ description: "Hypothesis tested by this bounded attempt." })),
+	actionSummary: Type.Optional(Type.String({ description: "What changed or was tried." })),
+	validation: Type.Optional(Type.String({ description: "Validation command/check and result summary." })),
+	result: Type.Optional(Type.Union([Type.Literal("improved"), Type.Literal("neutral"), Type.Literal("worse"), Type.Literal("invalid"), Type.Literal("blocked")])),
+	kept: Type.Optional(Type.Boolean({ description: "Whether this attempt's changes/evidence should be kept." })),
+	evidence: Type.Optional(Type.String({ description: "Evidence path, output, or concise result details." })),
+	followupIdeas: Type.Optional(Type.Array(Type.String(), { description: "Follow-up ideas discovered by this attempt." })),
+});
+
 export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportDeps): void {
 	pi.registerTool({
 		name: "stardock_attempt_report",
@@ -99,27 +111,40 @@ export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportD
 			kept: Type.Optional(Type.Boolean({ description: "Whether this attempt's changes/evidence should be kept." })),
 			evidence: Type.Optional(Type.String({ description: "Evidence path, output, or concise result details." })),
 			followupIdeas: Type.Optional(Type.Array(Type.String(), { description: "Follow-up ideas discovered by this attempt." })),
+			reports: Type.Optional(Type.Array(attemptReportInputSchema, { description: "Batch attempt reports. Single-report fields remain compatibility sugar." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
-			const result = recordAttemptReport(
-				ctx,
-				loopName,
-				{
-					iteration: params.iteration,
-					kind: isAttemptKind(params.kind) ? params.kind : undefined,
-					hypothesis: params.hypothesis,
-					actionSummary: params.actionSummary,
-					validation: params.validation,
-					result: isAttemptResult(params.result) ? params.result : undefined,
-					kept: params.kept,
-					evidence: params.evidence,
-					followupIdeas: params.followupIdeas,
-				},
-				deps.updateUI,
-			);
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			const inputReports = Array.isArray(params.reports) && params.reports.length > 0 ? params.reports : [params];
+			const results = [];
+			for (const input of inputReports) {
+				const result = recordAttemptReport(
+					ctx,
+					loopName,
+					{
+						iteration: input.iteration,
+						kind: isAttemptKind(input.kind) ? input.kind : undefined,
+						hypothesis: input.hypothesis,
+						actionSummary: input.actionSummary,
+						validation: input.validation,
+						result: isAttemptResult(input.result) ? input.result : undefined,
+						kept: input.kept,
+						evidence: input.evidence,
+						followupIdeas: input.followupIdeas,
+					},
+					deps.updateUI,
+				);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				results.push(result);
+			}
+			if (Array.isArray(params.reports) && params.reports.length > 0) {
+				return {
+					content: [{ type: "text", text: `Recorded ${results.length} attempt reports in loop "${loopName}".` }],
+					details: { loopName, attempts: results.map((result) => result.attempt) },
+				};
+			}
+			const result = results[0];
 			return {
 				content: [{ type: "text", text: `Recorded report for attempt ${result.attempt.iteration} in loop "${loopName}".` }],
 				details: { loopName, attempt: result.attempt },

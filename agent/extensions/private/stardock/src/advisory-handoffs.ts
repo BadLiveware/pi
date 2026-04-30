@@ -139,6 +139,25 @@ export function recordAdvisoryHandoff(ctx: ExtensionContext, loopName: string, i
 const advisoryRoleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("researcher"), Type.Literal("reviewer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("implementer")]);
 const advisoryStatusSchema = Type.Union([Type.Literal("draft"), Type.Literal("requested"), Type.Literal("answered"), Type.Literal("failed"), Type.Literal("dismissed")]);
 
+const advisoryHandoffInputSchema = Type.Object({
+	id: Type.Optional(Type.String({ description: "Handoff id. Generated for record when omitted." })),
+	role: Type.Optional(advisoryRoleSchema),
+	status: Type.Optional(advisoryStatusSchema),
+	objective: Type.Optional(Type.String({ description: "Provider-neutral handoff objective. Required for payload and new records." })),
+	summary: Type.Optional(Type.String({ description: "Compact handoff summary." })),
+	criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids selected for this handoff." })),
+	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids selected for this handoff." })),
+	finalReportIds: Type.Optional(Type.Array(Type.String(), { description: "Final report ids selected for this handoff." })),
+	contextRefs: Type.Optional(Type.Array(Type.String(), { description: "Compact file/path/doc refs to include." })),
+	constraints: Type.Optional(Type.Array(Type.String(), { description: "Provider-neutral constraints for the assignee." })),
+	requestedOutput: Type.Optional(Type.String({ description: "Provider-neutral output contract." })),
+	provider: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Opaque optional provider metadata. Not used as source of truth." })),
+	resultSummary: Type.Optional(Type.String({ description: "Compact returned result summary." })),
+	concerns: Type.Optional(Type.Array(Type.String(), { description: "Compact concerns returned by the assignee." })),
+	recommendations: Type.Optional(Type.Array(Type.String(), { description: "Compact recommendations returned by the assignee." })),
+	artifactRefs: Type.Optional(Type.Array(Type.String(), { description: "Paths/URLs/refs to external artifacts or transcripts." })),
+});
+
 export function registerAdvisoryHandoffTool(pi: ExtensionAPI, deps: AdvisoryHandoffToolDeps): void {
 	pi.registerTool({
 		name: "stardock_handoff",
@@ -163,6 +182,7 @@ export function registerAdvisoryHandoffTool(pi: ExtensionAPI, deps: AdvisoryHand
 			concerns: Type.Optional(Type.Array(Type.String(), { description: "Compact concerns returned by the assignee." })),
 			recommendations: Type.Optional(Type.Array(Type.String(), { description: "Compact recommendations returned by the assignee." })),
 			artifactRefs: Type.Optional(Type.Array(Type.String(), { description: "Paths/URLs/refs to external artifacts or transcripts." })),
+			handoffs: Type.Optional(Type.Array(advisoryHandoffInputSchema, { description: "Batch advisory handoffs for record. Single-handoff fields remain compatibility sugar." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -180,12 +200,25 @@ export function registerAdvisoryHandoffTool(pi: ExtensionAPI, deps: AdvisoryHand
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
 				return { content: [{ type: "text", text: payload.payload }], details: { loopName, role: params.role, objective: params.objective, advisoryHandoffs: state.advisoryHandoffs } };
 			}
-			const result = recordAdvisoryHandoff(ctx, loopName, params);
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			const inputHandoffs = Array.isArray(params.handoffs) && params.handoffs.length > 0 ? params.handoffs : [params];
+			const results = [];
+			for (const input of inputHandoffs) {
+				const result = recordAdvisoryHandoff(ctx, loopName, input);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				results.push(result);
+			}
 			deps.updateUI(ctx);
+			const updatedState = results[results.length - 1].state;
+			if (Array.isArray(params.handoffs) && params.handoffs.length > 0) {
+				return {
+					content: [{ type: "text", text: `Recorded ${results.length} advisory handoffs in loop "${loopName}".` }],
+					details: { loopName, handoffs: results.map((result) => result.handoff), advisoryHandoffs: updatedState.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				};
+			}
+			const result = results[0];
 			return {
 				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} advisory handoff ${result.handoff.id} in loop "${loopName}".` }],
-				details: { loopName, handoff: result.handoff, advisoryHandoffs: result.state.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, result.state, params) },
+				details: { loopName, handoff: result.handoff, advisoryHandoffs: updatedState.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

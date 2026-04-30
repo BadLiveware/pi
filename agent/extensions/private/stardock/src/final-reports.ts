@@ -122,6 +122,19 @@ const finalValidationRecordInputSchema = Type.Object({
 	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids supporting this validation record." })),
 });
 
+const finalReportInputSchema = Type.Object({
+	id: Type.Optional(Type.String({ description: "Report id. Generated for record when omitted." })),
+	status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("partial")], { description: "Final verification status." })),
+	summary: Type.Optional(Type.String({ description: "Compact final verification summary. Required for new reports." })),
+	criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids covered by this report." })),
+	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Verification artifact ids referenced by this report." })),
+	validation: Type.Optional(Type.Array(finalValidationRecordInputSchema, { description: "Validation commands/checks and compact results." })),
+	unresolvedGaps: Type.Optional(Type.Array(Type.String(), { description: "Known unresolved gaps or skipped verification." })),
+	compatibilityNotes: Type.Optional(Type.Array(Type.String(), { description: "Compatibility notes or public contract considerations." })),
+	securityNotes: Type.Optional(Type.Array(Type.String(), { description: "Security notes or verification gaps." })),
+	performanceNotes: Type.Optional(Type.Array(Type.String(), { description: "Performance notes or measurement gaps." })),
+});
+
 export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolDeps, formatCriterionCounts: (ledger: LoopState["criterionLedger"]) => string): void {
 	pi.registerTool({
 		name: "stardock_final_report",
@@ -140,6 +153,7 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 			compatibilityNotes: Type.Optional(Type.Array(Type.String(), { description: "Compatibility notes or public contract considerations." })),
 			securityNotes: Type.Optional(Type.Array(Type.String(), { description: "Security notes or verification gaps." })),
 			performanceNotes: Type.Optional(Type.Array(Type.String(), { description: "Performance notes or measurement gaps." })),
+			reports: Type.Optional(Type.Array(finalReportInputSchema, { description: "Batch final reports for record. Single-report fields remain compatibility sugar." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -155,23 +169,25 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 					details: { loopName, finalVerificationReports: state.finalVerificationReports },
 				};
 			}
-			const result = recordFinalVerificationReport(ctx, loopName, {
-				id: params.id,
-				status: params.status,
-				summary: params.summary,
-				criterionIds: params.criterionIds,
-				artifactIds: params.artifactIds,
-				validation: params.validation,
-				unresolvedGaps: params.unresolvedGaps,
-				compatibilityNotes: params.compatibilityNotes,
-				securityNotes: params.securityNotes,
-				performanceNotes: params.performanceNotes,
-			});
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+			const inputReports = Array.isArray(params.reports) && params.reports.length > 0 ? params.reports : [params];
+			const results = [];
+			for (const input of inputReports) {
+				const result = recordFinalVerificationReport(ctx, loopName, input);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
+				results.push(result);
+			}
 			deps.updateUI(ctx);
+			const updatedState = results[results.length - 1].state;
+			if (Array.isArray(params.reports) && params.reports.length > 0) {
+				return {
+					content: [{ type: "text", text: `Recorded ${results.length} final reports in loop "${loopName}".` }],
+					details: { loopName, reports: results.map((result) => result.report), finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				};
+			}
+			const result = results[0];
 			return {
 				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} final report ${result.report.id} in loop "${loopName}".` }],
-				details: { loopName, report: result.report, finalVerificationReports: result.state.finalVerificationReports, ...deps.optionalLoopDetails(ctx, result.state, params) },
+				details: { loopName, report: result.report, finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});
