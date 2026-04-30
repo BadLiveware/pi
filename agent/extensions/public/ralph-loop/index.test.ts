@@ -169,3 +169,50 @@ test("completion marker completes loop without queuing a user message", async ()
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("v1 state without mode migrates to checklist mode on resume", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { commands, messages, ctx } = makeHarness(cwd);
+		const loopDir = path.join(cwd, ".ralph");
+		fs.mkdirSync(loopDir, { recursive: true });
+		fs.writeFileSync(path.join(loopDir, "legacy.md"), "# Legacy task\n", "utf-8");
+		fs.writeFileSync(
+			path.join(loopDir, "legacy.state.json"),
+			JSON.stringify(
+				{
+					name: "legacy",
+					taskFile: ".ralph/legacy.md",
+					iteration: 1,
+					maxIterations: 5,
+					itemsPerIteration: 2,
+					reflectEveryItems: 3,
+					reflectInstructions: "Reflect",
+					active: false,
+					startedAt: "2026-01-01T00:00:00.000Z",
+					lastReflectionAtItems: 0,
+				},
+				null,
+				2,
+			),
+			"utf-8",
+		);
+
+		const ralph = commands.get("ralph");
+		assert.ok(ralph);
+		await ralph.handler("resume legacy", ctx);
+
+		assert.equal(messages.length, 1);
+		assert.match(messages[0].content, /RALPH LOOP: legacy \| Iteration 2\/5/);
+		const migrated = JSON.parse(fs.readFileSync(path.join(loopDir, "legacy.state.json"), "utf-8"));
+		assert.equal(migrated.schemaVersion, 2);
+		assert.equal(migrated.mode, "checklist");
+		assert.deepEqual(migrated.modeState, { kind: "checklist" });
+		assert.equal(migrated.reflectEvery, 3);
+		assert.equal(migrated.iteration, 2);
+		assert.equal(migrated.status, "active");
+		assert.equal(migrated.active, true);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});

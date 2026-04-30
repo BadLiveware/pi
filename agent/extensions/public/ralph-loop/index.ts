@@ -39,10 +39,35 @@ Pause and reflect on your progress:
 Update the task file with your reflection, then continue working.`;
 
 type LoopStatus = "active" | "paused" | "completed";
+type LoopMode = "checklist" | "recursive" | "evolve";
+
+interface ChecklistModeState {
+	kind: "checklist";
+}
+
+interface RecursiveModeState {
+	kind: "recursive";
+}
+
+interface EvolveModeState {
+	kind: "evolve";
+}
+
+type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;
+type PromptReason = "iteration" | "reflection";
+
+interface LoopModeHandler {
+	mode: LoopMode;
+	buildPrompt(state: LoopState, taskContent: string, reason: PromptReason): string;
+	buildSystemInstructions(state: LoopState): string;
+	summarize(state: LoopState): string[];
+}
 
 interface LoopState {
+	schemaVersion: 2;
 	name: string;
 	taskFile: string;
+	mode: LoopMode;
 	iteration: number;
 	maxIterations: number;
 	itemsPerIteration: number; // Prompt hint only - "process N items per turn"
@@ -53,6 +78,7 @@ interface LoopState {
 	startedAt: string;
 	completedAt?: string;
 	lastReflectionAt: number; // Last iteration we reflected at
+	modeState: LoopModeState;
 }
 
 const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
@@ -113,17 +139,54 @@ export default function (pi: ExtensionAPI) {
 
 	// --- State management ---
 
-	function migrateState(raw: Partial<LoopState> & { name: string }): LoopState {
-		if (!raw.status) raw.status = raw.active ? "active" : "paused";
-		raw.active = raw.status === "active";
-		// Migrate old field names
-		if ("reflectEveryItems" in raw && !raw.reflectEvery) {
-			raw.reflectEvery = (raw as any).reflectEveryItems;
+	function normalizeMode(value: unknown): LoopMode {
+		return value === "recursive" || value === "evolve" || value === "checklist" ? value : "checklist";
+	}
+
+	function defaultModeState(mode: LoopMode): LoopModeState {
+		if (mode === "recursive") return { kind: "recursive" };
+		if (mode === "evolve") return { kind: "evolve" };
+		return { kind: "checklist" };
+	}
+
+	function migrateModeState(mode: LoopMode, rawModeState: unknown): LoopModeState {
+		if (rawModeState && typeof rawModeState === "object" && (rawModeState as { kind?: unknown }).kind === mode) {
+			return rawModeState as LoopModeState;
 		}
-		if ("lastReflectionAtItems" in raw && raw.lastReflectionAt === undefined) {
-			raw.lastReflectionAt = (raw as any).lastReflectionAtItems;
-		}
-		return raw as LoopState;
+		return defaultModeState(mode);
+	}
+
+	function numberOrDefault(value: unknown, fallback: number): number {
+		return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+	}
+
+	function stringOrDefault(value: unknown, fallback: string): string {
+		return typeof value === "string" ? value : fallback;
+	}
+
+	function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
+		const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
+		const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
+		const status = raw.status === "active" || raw.status === "completed" || raw.status === "paused" ? raw.status : raw.active ? "active" : "paused";
+		const mode = normalizeMode(raw.mode);
+		const name = stringOrDefault(raw.name, "ralph-loop");
+		return {
+			schemaVersion: 2,
+			name,
+			taskFile: stringOrDefault(raw.taskFile, path.join(RALPH_DIR, `${sanitize(name)}.md`)),
+			mode,
+			iteration: numberOrDefault(raw.iteration, 0),
+			maxIterations: numberOrDefault(raw.maxIterations, 50),
+			itemsPerIteration: numberOrDefault(raw.itemsPerIteration, 0),
+			reflectEvery,
+			reflectInstructions: stringOrDefault(raw.reflectInstructions, DEFAULT_REFLECT_INSTRUCTIONS),
+			active: status === "active",
+			status,
+			startedAt: stringOrDefault(raw.startedAt, new Date().toISOString()),
+			completedAt: typeof raw.completedAt === "string" ? raw.completedAt : undefined,
+			lastReflectionAt,
+			modeState: migrateModeState(mode, raw.modeState),
+		};
 	}
 
 	function loadState(ctx: ExtensionContext, name: string, archived = false): LoopState | null {
@@ -233,7 +296,8 @@ export default function (pi: ExtensionAPI) {
 
 	// --- Prompt building ---
 
-	function buildPrompt(state: LoopState, taskContent: string, isReflection: boolean): string {
+	function buildChecklistPrompt(state: LoopState, taskContent: string, reason: PromptReason): string {
+		const isReflection = reason === "reflection";
 		const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 		const header = `───────────────────────────────────────────────────────────────────────
 🔄 RALPH LOOP: ${state.name} | Iteration ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
@@ -260,6 +324,33 @@ export default function (pi: ExtensionAPI) {
 		parts.push(`4. Otherwise, call the ralph_done tool to proceed to next iteration`);
 
 		return parts.join("\n");
+	}
+
+	const checklistModeHandler: LoopModeHandler = {
+		mode: "checklist",
+		buildPrompt: buildChecklistPrompt,
+		buildSystemInstructions(state) {
+			let instructions = `You are in a Ralph loop working on: ${state.taskFile}\n`;
+			if (state.itemsPerIteration > 0) {
+				instructions += `- Work on ~${state.itemsPerIteration} items this iteration\n`;
+			}
+			instructions += `- Update the task file as you progress\n`;
+			instructions += `- When FULLY COMPLETE: ${COMPLETE_MARKER}\n`;
+			instructions += `- Otherwise, call ralph_done tool to proceed to next iteration`;
+			return instructions;
+		},
+		summarize(state) {
+			const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
+			return [`Iteration ${state.iteration}${maxStr}`, `Task: ${state.taskFile}`];
+		},
+	};
+
+	function getModeHandler(_mode: LoopMode): LoopModeHandler {
+		return checklistModeHandler;
+	}
+
+	function buildPrompt(state: LoopState, taskContent: string, reason: PromptReason): string {
+		return getModeHandler(state.mode).buildPrompt(state, taskContent, reason);
 	}
 
 	// --- Arg parsing ---
@@ -327,8 +418,10 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			const state: LoopState = {
+				schemaVersion: 2,
 				name: loopName,
 				taskFile,
+				mode: "checklist",
 				iteration: 1,
 				maxIterations: args.maxIterations,
 				itemsPerIteration: args.itemsPerIteration,
@@ -338,6 +431,7 @@ export default function (pi: ExtensionAPI) {
 				status: "active",
 				startedAt: existing?.startedAt || new Date().toISOString(),
 				lastReflectionAt: 0,
+				modeState: defaultModeState("checklist"),
 			};
 
 			saveState(ctx, state);
@@ -349,7 +443,7 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify(`Could not read task file: ${taskFile}`, "error");
 				return;
 			}
-			pi.sendUserMessage(buildPrompt(state, content, false));
+			pi.sendUserMessage(buildPrompt(state, content, "iteration"));
 		},
 
 		stop(_rest, ctx) {
@@ -409,7 +503,7 @@ export default function (pi: ExtensionAPI) {
 
 			const needsReflection =
 				state.reflectEvery > 0 && state.iteration > 1 && (state.iteration - 1) % state.reflectEvery === 0;
-			pi.sendUserMessage(buildPrompt(state, content, needsReflection));
+			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"));
 		},
 
 		status(_rest, ctx) {
@@ -643,8 +737,10 @@ Examples:
 			fs.writeFileSync(fullPath, params.taskContent, "utf-8");
 
 			const state: LoopState = {
+				schemaVersion: 2,
 				name: loopName,
 				taskFile,
+				mode: "checklist",
 				iteration: 1,
 				maxIterations: params.maxIterations ?? 50,
 				itemsPerIteration: params.itemsPerIteration ?? 0,
@@ -654,13 +750,14 @@ Examples:
 				status: "active",
 				startedAt: new Date().toISOString(),
 				lastReflectionAt: 0,
+				modeState: defaultModeState("checklist"),
 			};
 
 			saveState(ctx, state);
 			currentLoop = loopName;
 			updateUI(ctx);
 
-			pi.sendUserMessage(buildPrompt(state, params.taskContent, false), { deliverAs: "followUp" });
+			pi.sendUserMessage(buildPrompt(state, params.taskContent, "iteration"), { deliverAs: "followUp" });
 
 			return {
 				content: [{ type: "text", text: `Started loop "${loopName}" (max ${state.maxIterations} iterations).` }],
@@ -725,7 +822,7 @@ Examples:
 			}
 
 			// Queue next iteration - use followUp so user can still interrupt
-			pi.sendUserMessage(buildPrompt(state, content, needsReflection), { deliverAs: "followUp" });
+			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"), { deliverAs: "followUp" });
 
 			return {
 				content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.` }],
@@ -743,13 +840,7 @@ Examples:
 
 		const iterStr = `${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`;
 
-		let instructions = `You are in a Ralph loop working on: ${state.taskFile}\n`;
-		if (state.itemsPerIteration > 0) {
-			instructions += `- Work on ~${state.itemsPerIteration} items this iteration\n`;
-		}
-		instructions += `- Update the task file as you progress\n`;
-		instructions += `- When FULLY COMPLETE: ${COMPLETE_MARKER}\n`;
-		instructions += `- Otherwise, call ralph_done tool to proceed to next iteration`;
+		const instructions = getModeHandler(state.mode).buildSystemInstructions(state);
 
 		return {
 			systemPrompt: event.systemPrompt + `\n[RALPH LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}`,
