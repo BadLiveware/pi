@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type AdvisoryHandoff, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
@@ -200,25 +201,24 @@ export function registerAdvisoryHandoffTool(pi: ExtensionAPI, deps: AdvisoryHand
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
 				return { content: [{ type: "text", text: payload.payload }], details: { loopName, role: params.role, objective: params.objective, advisoryHandoffs: state.advisoryHandoffs } };
 			}
-			const inputHandoffs = Array.isArray(params.handoffs) && params.handoffs.length > 0 ? params.handoffs : [params];
-			const results = [];
-			for (const input of inputHandoffs) {
+			const inputs = normalizeBatchInputs(params, params.handoffs);
+			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 				const result = recordAdvisoryHandoff(ctx, loopName, input);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-				results.push(result);
-			}
+				return result.ok ? { state: result.state, item: result.handoff, created: result.created } : result;
+			});
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
 			deps.updateUI(ctx);
-			const updatedState = results[results.length - 1].state;
-			if (Array.isArray(params.handoffs) && params.handoffs.length > 0) {
+			const updatedState = batch.lastState;
+			if (batch.isBatch) {
 				return {
-					content: [{ type: "text", text: `Recorded ${results.length} advisory handoffs in loop "${loopName}".` }],
-					details: { loopName, handoffs: results.map((result) => result.handoff), advisoryHandoffs: updatedState.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+					content: [{ type: "text", text: `Recorded ${batch.items.length} advisory handoffs in loop "${loopName}".` }],
+					details: { loopName, handoffs: batch.items, advisoryHandoffs: updatedState.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 				};
 			}
-			const result = results[0];
+			const result = batch.results[0];
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} advisory handoff ${result.handoff.id} in loop "${loopName}".` }],
-				details: { loopName, handoff: result.handoff, advisoryHandoffs: updatedState.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} advisory handoff ${result.item.id} in loop "${loopName}".` }],
+				details: { loopName, handoff: result.item, advisoryHandoffs: updatedState.advisoryHandoffs, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

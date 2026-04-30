@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { type LoopState, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveAttemptResult } from "./state/core.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -116,9 +117,8 @@ export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportD
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
-			const inputReports = Array.isArray(params.reports) && params.reports.length > 0 ? params.reports : [params];
-			const results = [];
-			for (const input of inputReports) {
+			const inputs = normalizeBatchInputs(params, params.reports);
+			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 				const result = recordAttemptReport(
 					ctx,
 					loopName,
@@ -135,19 +135,19 @@ export function registerAttemptReportTool(pi: ExtensionAPI, deps: AttemptReportD
 					},
 					deps.updateUI,
 				);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-				results.push(result);
-			}
-			if (Array.isArray(params.reports) && params.reports.length > 0) {
+				return result.ok ? { state: result.state, item: result.attempt } : result;
+			});
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
+			if (batch.isBatch) {
 				return {
-					content: [{ type: "text", text: `Recorded ${results.length} attempt reports in loop "${loopName}".` }],
-					details: { loopName, attempts: results.map((result) => result.attempt) },
+					content: [{ type: "text", text: `Recorded ${batch.items.length} attempt reports in loop "${loopName}".` }],
+					details: { loopName, attempts: batch.items },
 				};
 			}
-			const result = results[0];
+			const result = batch.results[0];
 			return {
-				content: [{ type: "text", text: `Recorded report for attempt ${result.attempt.iteration} in loop "${loopName}".` }],
-				details: { loopName, attempt: result.attempt },
+				content: [{ type: "text", text: `Recorded report for attempt ${result.item.iteration} in loop "${loopName}".` }],
+				details: { loopName, attempt: result.item },
 			};
 		},
 	});

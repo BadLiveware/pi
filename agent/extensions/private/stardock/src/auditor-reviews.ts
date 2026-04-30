@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision } from "./outside-requests.ts";
@@ -203,25 +204,24 @@ export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): vo
 					details: { loopName, focus: params.focus, auditorReviews: state.auditorReviews },
 				};
 			}
-			const inputReviews = Array.isArray(params.reviews) && params.reviews.length > 0 ? params.reviews : [params];
-			const results = [];
-			for (const input of inputReviews) {
+			const inputs = normalizeBatchInputs(params, params.reviews);
+			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 				const result = recordAuditorReview(ctx, loopName, input);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-				results.push(result);
-			}
+				return result.ok ? { state: result.state, item: result.review, created: result.created } : result;
+			});
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
 			deps.updateUI(ctx);
-			const updatedState = results[results.length - 1].state;
-			if (Array.isArray(params.reviews) && params.reviews.length > 0) {
+			const updatedState = batch.lastState;
+			if (batch.isBatch) {
 				return {
-					content: [{ type: "text", text: `Recorded ${results.length} auditor reviews in loop "${loopName}".` }],
-					details: { loopName, reviews: results.map((result) => result.review), auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+					content: [{ type: "text", text: `Recorded ${batch.items.length} auditor reviews in loop "${loopName}".` }],
+					details: { loopName, reviews: batch.items, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 				};
 			}
-			const result = results[0];
+			const result = batch.results[0];
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} auditor review ${result.review.id} in loop "${loopName}".` }],
-				details: { loopName, review: result.review, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} auditor review ${result.item.id} in loop "${loopName}".` }],
+				details: { loopName, review: result.item, auditorReviews: updatedState.auditorReviews, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});

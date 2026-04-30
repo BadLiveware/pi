@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
 import { type BriefLifecycleAction, compactText, type Criterion, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
@@ -292,15 +293,14 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 			}
 
 			if (params.action === "upsert") {
-				const inputBriefs = Array.isArray(params.briefs) && params.briefs.length > 0 ? params.briefs : [{ id: params.id, objective: params.objective, task: params.task, source: params.source, requestId: params.requestId, criterionIds: params.criterionIds, acceptanceCriteria: params.acceptanceCriteria, verificationRequired: params.verificationRequired, requiredContext: params.requiredContext, constraints: params.constraints, avoid: params.avoid, outputContract: params.outputContract, sourceRefs: params.sourceRefs }];
-				const results = [];
-				for (const input of inputBriefs) {
+				const inputs = normalizeBatchInputs({ id: params.id, objective: params.objective, task: params.task, source: params.source, requestId: params.requestId, criterionIds: params.criterionIds, acceptanceCriteria: params.acceptanceCriteria, verificationRequired: params.verificationRequired, requiredContext: params.requiredContext, constraints: params.constraints, avoid: params.avoid, outputContract: params.outputContract, sourceRefs: params.sourceRefs }, params.briefs);
+				const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 					const result = upsertBrief(ctx, loopName, input, deps.updateUI);
-					if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-					results.push(result);
-				}
-				let updatedState = results[results.length - 1].state;
-				let brief = results[results.length - 1].brief;
+					return result.ok ? { state: result.state, item: result.brief, created: result.created } : result;
+				});
+				if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
+				let updatedState = batch.lastState;
+				let brief = batch.items[batch.items.length - 1];
 				if (params.activate === true) {
 					const activateResult = setCurrentBrief(ctx, loopName, brief.id, deps.updateUI);
 					if (!activateResult.ok) return { content: [{ type: "text", text: activateResult.error }], details: { loopName, brief } };
@@ -309,11 +309,11 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 				}
 				if (Array.isArray(params.briefs) && params.briefs.length > 0) {
 					return withFollowupTool({
-						content: [{ type: "text", text: `Upserted ${results.length} briefs${params.activate === true ? ` and activated ${brief.id}` : ""} in loop "${loopName}".` }],
-						details: { loopName, brief, upsertedBriefs: results.map((result) => result.brief), briefs: updatedState.briefs, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
+						content: [{ type: "text", text: `Upserted ${batch.items.length} briefs${params.activate === true ? ` and activated ${brief.id}` : ""} in loop "${loopName}".` }],
+						details: { loopName, brief, upsertedBriefs: batch.items, briefs: updatedState.briefs, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
 					}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 				}
-				const result = results[0];
+				const result = batch.results[0];
 				const actionText = `${result.created ? "Created" : "Updated"} brief ${brief.id}${params.activate === true ? " and activated it" : ""} in loop "${loopName}".`;
 				return withFollowupTool({
 					content: [{ type: "text", text: actionText }],
@@ -340,24 +340,23 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 			}
 
-			const completeIds = Array.isArray(params.ids) && params.ids.length > 0 ? params.ids : [params.id];
-			const completed = [];
-			for (const id of completeIds) {
+			const inputs = normalizeBatchInputs(params.id, params.ids);
+			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (id) => {
 				const result = completeBrief(ctx, loopName, deps.updateUI, id);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, id } };
-				completed.push(result);
-			}
-			const updatedState = completed[completed.length - 1].state;
-			if (Array.isArray(params.ids) && params.ids.length > 0) {
+				return result.ok ? { state: result.state, item: result.brief } : result;
+			});
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, id: batch.input, failedIndex: batch.index } };
+			const updatedState = batch.lastState;
+			if (batch.isBatch) {
 				return withFollowupTool({
-					content: [{ type: "text", text: `Completed ${completed.length} briefs in loop "${loopName}".` }],
-					details: { loopName, completedBriefs: completed.map((result) => result.brief), currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
+					content: [{ type: "text", text: `Completed ${batch.items.length} briefs in loop "${loopName}".` }],
+					details: { loopName, completedBriefs: batch.items, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
 				}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 			}
-			const result = completed[0];
+			const result = batch.results[0];
 			return withFollowupTool({
-				content: [{ type: "text", text: `Completed brief ${result.brief.id} in loop "${loopName}".` }],
-				details: { loopName, brief: result.brief, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
+				content: [{ type: "text", text: `Completed brief ${result.item.id} in loop "${loopName}".` }],
+				details: { loopName, brief: result.item, currentBriefId: updatedState.currentBriefId, ...deps.optionalLoopDetails(ctx, updatedState, detailsParams) },
 			}, ctx, deps.getCurrentLoop(), params.followupTool, ["stardock_brief:mutation"]);
 		},
 	});

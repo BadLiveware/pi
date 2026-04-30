@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type FinalValidationRecord, type FinalVerificationReport, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isFinalVerificationStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList } from "./state/migration.ts";
@@ -169,25 +170,24 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 					details: { loopName, finalVerificationReports: state.finalVerificationReports },
 				};
 			}
-			const inputReports = Array.isArray(params.reports) && params.reports.length > 0 ? params.reports : [params];
-			const results = [];
-			for (const input of inputReports) {
+			const inputs = normalizeBatchInputs(params, params.reports);
+			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
 				const result = recordFinalVerificationReport(ctx, loopName, input);
-				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-				results.push(result);
-			}
+				return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
+			});
+			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: { loopName, failedIndex: batch.index } };
 			deps.updateUI(ctx);
-			const updatedState = results[results.length - 1].state;
-			if (Array.isArray(params.reports) && params.reports.length > 0) {
+			const updatedState = batch.lastState;
+			if (batch.isBatch) {
 				return {
-					content: [{ type: "text", text: `Recorded ${results.length} final reports in loop "${loopName}".` }],
-					details: { loopName, reports: results.map((result) => result.report), finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+					content: [{ type: "text", text: `Recorded ${batch.items.length} final reports in loop "${loopName}".` }],
+					details: { loopName, reports: batch.items, finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 				};
 			}
-			const result = results[0];
+			const result = batch.results[0];
 			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} final report ${result.report.id} in loop "${loopName}".` }],
-				details: { loopName, report: result.report, finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} final report ${result.item.id} in loop "${loopName}".` }],
+				details: { loopName, report: result.item, finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
 			};
 		},
 	});
