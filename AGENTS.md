@@ -11,7 +11,8 @@ This repository contains the source for your global pi agent instructions and su
 - Root-level files are for repository-local meta guidance and tooling. They are not part of the global agent payload unless the linking script says so.
 
 ## Guidelines
-- Avoid making massive single file extensions, unless its truly the best option(It probably isnt) 
+- Avoid making massive single file extensions, unless its truly the best option(It probably isnt)
+- Fast forward pushes to main are allowed, as long as gitleaks commit hook passes 
 
 ## Layout
 
