@@ -1,0 +1,49 @@
+{
+  "name": "@badliveware/pi-ralph-loop",
+  "version": "0.1.0",
+  "description": "Long-running iterative development loops for Pi.",
+  "type": "module",
+  "types": "./index.ts",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "ralph",
+    "loop"
+  ],
+  "license": "MIT",
+  "author": "BadLiveware",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BadLiveware/pi.git",
+    "directory": "agent/extensions/public/ralph-loop"
+  },
+  "bugs": {
+    "url": "https://github.com/BadLiveware/pi/issues"
+  },
+  "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/public/ralph-loop#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "README.md",
+    "LICENSE",
+    "index.ts",
+    "skills",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
