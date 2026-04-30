@@ -25,6 +25,8 @@ export interface PolicyFinding {
 	breakoutPackageIds: string[];
 	workerReportIds: string[];
 	advisoryHandoffIds: string[];
+	attemptIds: string[];
+	outsideRequestIds: string[];
 	suggestedTool?: string;
 }
 
@@ -40,6 +42,14 @@ export interface AuditorPolicyResult {
 	loopName: string;
 	recommended: boolean;
 	status: "no_review_needed" | "review_recommended" | "review_strongly_recommended";
+	summary: string;
+	findings: PolicyFinding[];
+}
+
+export interface BreakoutPolicyResult {
+	loopName: string;
+	recommended: boolean;
+	status: "no_breakout_needed" | "breakout_recommended" | "breakout_strongly_recommended";
 	summary: string;
 	findings: PolicyFinding[];
 }
@@ -64,7 +74,7 @@ function latestBreakoutPackageIds(state: LoopState): string[] {
 	return state.breakoutPackages.slice(-3).map((breakout) => breakout.id);
 }
 
-function finding(input: Omit<PolicyFinding, "criterionIds" | "artifactIds" | "finalReportIds" | "auditorReviewIds" | "breakoutPackageIds" | "workerReportIds" | "advisoryHandoffIds"> & Partial<Pick<PolicyFinding, "criterionIds" | "artifactIds" | "finalReportIds" | "auditorReviewIds" | "breakoutPackageIds" | "workerReportIds" | "advisoryHandoffIds">>): PolicyFinding {
+function finding(input: Omit<PolicyFinding, "criterionIds" | "artifactIds" | "finalReportIds" | "auditorReviewIds" | "breakoutPackageIds" | "workerReportIds" | "advisoryHandoffIds" | "attemptIds" | "outsideRequestIds"> & Partial<Pick<PolicyFinding, "criterionIds" | "artifactIds" | "finalReportIds" | "auditorReviewIds" | "breakoutPackageIds" | "workerReportIds" | "advisoryHandoffIds" | "attemptIds" | "outsideRequestIds">>): PolicyFinding {
 	return {
 		criterionIds: [],
 		artifactIds: [],
@@ -73,6 +83,8 @@ function finding(input: Omit<PolicyFinding, "criterionIds" | "artifactIds" | "fi
 		breakoutPackageIds: [],
 		workerReportIds: [],
 		advisoryHandoffIds: [],
+		attemptIds: [],
+		outsideRequestIds: [],
 		...input,
 	};
 }
@@ -201,6 +213,10 @@ export function evaluateCompletionPolicy(state: LoopState): CompletionPolicyResu
 	};
 }
 
+function failedOrBlockedAttempts(state: LoopState) {
+	return state.modeState.kind === "recursive" ? state.modeState.attempts.filter((attempt) => attempt.result === "worse" || attempt.result === "invalid" || attempt.result === "blocked") : [];
+}
+
 export function evaluateAuditorPolicy(state: LoopState): AuditorPolicyResult {
 	const findings: PolicyFinding[] = [];
 	const failedOrBlocked = criteriaByStatus(state, new Set(["failed", "blocked"]));
@@ -298,6 +314,122 @@ export function evaluateAuditorPolicy(state: LoopState): AuditorPolicyResult {
 	};
 }
 
+export function evaluateBreakoutPolicy(state: LoopState): BreakoutPolicyResult {
+	const findings: PolicyFinding[] = [];
+	const failedOrBlocked = criteriaByStatus(state, new Set(["failed", "blocked"]));
+	const pending = criteriaByStatus(state, new Set(["pending"]));
+	const skipped = criteriaByStatus(state, new Set(["skipped"]));
+	const reportsWithGaps = state.finalVerificationReports.filter((report) => report.unresolvedGaps.length > 0 || report.validation.some((record) => record.result !== "passed"));
+	const attemptsNeedingDecision = failedOrBlockedAttempts(state);
+	const openBreakouts = state.breakoutPackages.filter((breakout) => breakout.status === "open" || breakout.status === "draft");
+	const unresolvedOutsideRequests = state.outsideRequests.filter((request) => request.status === "requested" || request.status === "in_progress");
+	const concernedAudits = state.auditorReviews.filter((review) => review.status === "blocked" || review.requiredFollowups.length > 0);
+
+	if (failedOrBlocked.length > 0) {
+		findings.push(
+			finding({
+				id: "blocked-criteria-breakout",
+				severity: "warning",
+				recommendation: "breakout_package",
+				rationale: "Failed or blocked criteria should be resolved or packaged as an explicit decision before the loop continues as if the path is clear.",
+				criterionIds: failedOrBlocked.map((criterion) => criterion.id),
+				breakoutPackageIds: latestBreakoutPackageIds(state),
+				suggestedTool: "stardock_breakout",
+			}),
+		);
+	}
+
+	if (attemptsNeedingDecision.length >= 2) {
+		findings.push(
+			finding({
+				id: "repeated-attempt-failure-breakout",
+				severity: "warning",
+				recommendation: "breakout_package",
+				rationale: "Repeated blocked, invalid, or worse recursive attempts indicate a stuck loop that should package evidence, suspected causes, and a requested decision.",
+				attemptIds: attemptsNeedingDecision.map((attempt) => attempt.id),
+				breakoutPackageIds: latestBreakoutPackageIds(state),
+				suggestedTool: "stardock_breakout",
+			}),
+		);
+	}
+
+	if (pending.length > 0 && state.iteration > 1 && state.verificationArtifacts.length === 0) {
+		findings.push(
+			finding({
+				id: "no-evidence-movement-breakout",
+				severity: "recommend",
+				recommendation: "breakout_package",
+				rationale: "Pending criteria without recorded verification artifacts after multiple iterations may indicate no evidence movement; package the gap or choose a narrower next move.",
+				criterionIds: pending.map((criterion) => criterion.id),
+				suggestedTool: "stardock_breakout",
+			}),
+		);
+	}
+
+	if (skipped.length > 0 || reportsWithGaps.length > 0) {
+		findings.push(
+			finding({
+				id: "evidence-gap-breakout",
+				severity: "recommend",
+				recommendation: "breakout_package",
+				rationale: "Skipped criteria or final-report gaps should be packaged when the loop needs an explicit decision about accepting, deferring, or closing evidence gaps.",
+				criterionIds: skipped.map((criterion) => criterion.id),
+				finalReportIds: reportsWithGaps.map((report) => report.id),
+				suggestedTool: "stardock_breakout",
+			}),
+		);
+	}
+
+	if (unresolvedOutsideRequests.length > 0 || concernedAudits.length > 0) {
+		findings.push(
+			finding({
+				id: "unresolved-decision-breakout",
+				severity: "recommend",
+				recommendation: "breakout_package",
+				rationale: "Unanswered outside requests or blocking auditor follow-ups are unresolved decisions that can be packaged into a breakout request with resume criteria.",
+				outsideRequestIds: unresolvedOutsideRequests.map((request) => request.id),
+				auditorReviewIds: concernedAudits.map((review) => review.id),
+				suggestedTool: "stardock_breakout",
+			}),
+		);
+	}
+
+	if (openBreakouts.length > 0) {
+		findings.push(
+			finding({
+				id: "existing-breakout-open",
+				severity: "info",
+				recommendation: "breakout_package",
+				rationale: "A breakout package is already open or drafted; update or resolve it rather than creating duplicate decision packets.",
+				breakoutPackageIds: openBreakouts.map((breakout) => breakout.id),
+				suggestedTool: "stardock_breakout",
+			}),
+		);
+	}
+
+	if (findings.length === 0) {
+		findings.push(
+			finding({
+				id: "no-breakout-trigger",
+				severity: "info",
+				recommendation: "ready",
+				rationale: "No obvious stuck-loop, unresolved-decision, or evidence-gap breakout trigger was detected. This is advisory and does not replace judgment.",
+				breakoutPackageIds: latestBreakoutPackageIds(state),
+			}),
+		);
+	}
+
+	const recommended = findings.some((item) => item.recommendation === "breakout_package" && item.id !== "existing-breakout-open");
+	const status: BreakoutPolicyResult["status"] = findings.some((item) => item.severity === "warning" || item.severity === "blocker") ? "breakout_strongly_recommended" : recommended ? "breakout_recommended" : "no_breakout_needed";
+	return {
+		loopName: state.name,
+		recommended,
+		status,
+		summary: recommended ? "Breakout policy recommends packaging unresolved decisions, repeated failures, or evidence gaps before continuing." : "Breakout policy found no obvious breakout trigger.",
+		findings,
+	};
+}
+
 function formatFinding(finding: PolicyFinding): string[] {
 	const lines = [`- ${finding.id} [${finding.severity}/${finding.recommendation}] ${compactText(finding.rationale, 220)}`];
 	if (finding.suggestedTool) lines.push(`  Suggested tool: ${finding.suggestedTool}`);
@@ -309,6 +441,8 @@ function formatFinding(finding: PolicyFinding): string[] {
 		finding.breakoutPackageIds.length ? `breakoutPackages=${finding.breakoutPackageIds.join(",")}` : "",
 		finding.workerReportIds.length ? `workerReports=${finding.workerReportIds.join(",")}` : "",
 		finding.advisoryHandoffIds.length ? `advisoryHandoffs=${finding.advisoryHandoffIds.join(",")}` : "",
+		finding.attemptIds.length ? `attempts=${finding.attemptIds.join(",")}` : "",
+		finding.outsideRequestIds.length ? `outsideRequests=${finding.outsideRequestIds.join(",")}` : "",
 	].filter(Boolean);
 	if (refs.length) lines.push(`  Refs: ${refs.join("; ")}`);
 	return lines;
@@ -354,13 +488,31 @@ export function formatAuditorPolicy(state: LoopState): string {
 	return lines.join("\n");
 }
 
+export function formatBreakoutPolicy(state: LoopState): string {
+	const result = evaluateBreakoutPolicy(state);
+	const lines = [
+		`Breakout trigger policy for ${state.name}`,
+		`Recommended: ${result.recommended ? "yes" : "no"}`,
+		`Status: ${result.status}`,
+		...formatPolicyHeader(state),
+		"",
+		result.summary,
+		"",
+		"Findings",
+		...result.findings.flatMap(formatFinding),
+		"",
+		"Policy note: recommendations are advisory. Stardock does not create breakout packages, stop loops, call models, spawn agents, run providers/processes, or enforce gates from this policy surface.",
+	];
+	return lines.join("\n");
+}
+
 export function registerPolicyTool(pi: ExtensionAPI, deps: PolicyToolDeps): void {
 	pi.registerTool({
 		name: "stardock_policy",
 		label: "Inspect Stardock Governance Policy",
-		description: "Read-only governance policy recommendations for Stardock loops. V1 supports completion readiness checks without enforcing gates.",
+		description: "Read-only governance policy recommendations for Stardock loops. Supports completion readiness, auditor trigger, and breakout trigger checks without enforcing gates.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("completion"), Type.Literal("auditor")], { description: "completion returns readiness findings; auditor returns auditor-trigger recommendations." }),
+			action: Type.Union([Type.Literal("completion"), Type.Literal("auditor"), Type.Literal("breakout")], { description: "completion returns readiness findings; auditor returns auditor-trigger recommendations; breakout returns breakout-package trigger recommendations." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -371,6 +523,10 @@ export function registerPolicyTool(pi: ExtensionAPI, deps: PolicyToolDeps): void
 			if (params.action === "auditor") {
 				const result = evaluateAuditorPolicy(state);
 				return { content: [{ type: "text", text: formatAuditorPolicy(state) }], details: { loopName, policy: result } };
+			}
+			if (params.action === "breakout") {
+				const result = evaluateBreakoutPolicy(state);
+				return { content: [{ type: "text", text: formatBreakoutPolicy(state) }], details: { loopName, policy: result } };
 			}
 			const result = evaluateCompletionPolicy(state);
 			return { content: [{ type: "text", text: formatCompletionPolicy(state) }], details: { loopName, policy: result } };
