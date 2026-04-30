@@ -25,14 +25,15 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
 ## Workflow
 
 1. Prepare clear task content with goals, checklist/criteria, and validation expectations.
-2. Start the loop with `stardock_start`; it creates `.stardock/<name>.md` from `taskContent`.
-3. Work one bounded iteration.
-4. Record progress and verification evidence in the task file.
-5. For recursive loops, use `stardock_attempt_report` when available.
-6. Call `stardock_done` to proceed to the next iteration.
-7. Output `<promise>COMPLETE</promise>` only when the scoped work is done.
+2. Start the loop with `stardock_start`; it creates `.stardock/runs/<name>/task.md` from `taskContent`.
+3. Use `stardock_state` to inspect current loop state when you need status, paths, attempts, or governor decisions without reading `.stardock/` files directly.
+4. Work one bounded iteration.
+5. Record progress and verification evidence in the task file.
+6. For recursive loops, use `stardock_attempt_report` when available.
+7. Call `stardock_done` to proceed to the next iteration.
+8. Output `<promise>COMPLETE</promise>` only when the scoped work is done.
 
-If outside-help/governor requests appear, inspect them with `stardock_outside_requests`, fetch ready-to-copy work with `stardock_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `stardock_outside_answer`. Use `stardock_govern` for an immediate manual governor review request and payload without spawning subagents.
+If outside-help/governor requests appear, inspect them with `stardock_outside_requests`, fetch ready-to-copy work with `stardock_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `stardock_outside_answer`. Use `stardock_govern` for an immediate manual governor review request and payload without spawning subagents. Stardock keeps governor requests to one per iteration, so a manual governor request/decision suppresses the automatic cadence request for that same iteration.
 
 ## Commands
 

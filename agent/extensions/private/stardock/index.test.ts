@@ -81,6 +81,7 @@ test("stardock registers tools and commands", () => {
 		const { tools, commands, handlers } = makeHarness(cwd);
 		assert.ok(tools.has("stardock_start"));
 		assert.ok(tools.has("stardock_done"));
+		assert.ok(tools.has("stardock_state"));
 		assert.ok(tools.has("stardock_attempt_report"));
 		assert.ok(tools.has("stardock_govern"));
 		assert.ok(tools.has("stardock_outside_payload"));
@@ -139,6 +140,49 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		assert.match(messages[1].content, /STARDOCK LOOP: Demo_Loop \| Iteration 2\/3/);
 		const nextState = JSON.parse(fs.readFileSync(demoStatePath, "utf-8"));
 		assert.equal(nextState.iteration, 2);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_state lists and inspects loop summaries", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const stateTool = tools.get("stardock_state");
+		assert.ok(start);
+		assert.ok(stateTool);
+
+		await start.execute(
+			"tool-state-start",
+			{
+				name: "State Loop",
+				mode: "recursive",
+				taskContent: "# State task\n",
+				objective: "Inspect loop state without reading files directly",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const listResult = await stateTool.execute("tool-state-list", {}, undefined, undefined, ctx);
+		assert.match(listResult.content[0].text, /State_Loop: ▶ active \(iteration 1\/3\)/);
+		assert.equal(listResult.details.loops[0].stateFile, path.join(".stardock", "runs", "State_Loop", "state.json"));
+
+		const inspectResult = await stateTool.execute(
+			"tool-state-inspect",
+			{ loopName: "State_Loop", includeDetails: true },
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(inspectResult.content[0].text, /Objective: Inspect loop state without reading files directly/);
+		assert.equal(inspectResult.details.loop.taskFile, path.join(".stardock", "runs", "State_Loop", "task.md"));
+		assert.equal(inspectResult.details.loop.recursive.objective, "Inspect loop state without reading files directly");
+		assert.equal(inspectResult.details.loop.modeState.kind, "recursive");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -539,6 +583,63 @@ test("stardock_attempt_report records structured recursive attempt data", async 
 		assert.equal(state.modeState.attempts[0].result, "improved");
 		assert.equal(state.modeState.attempts[0].kept, true);
 		assert.deepEqual(state.modeState.attempts[0].followupIdeas, ["Use attempt kinds for drift detection"]);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("governor cadence does not duplicate a same-iteration manual governor request", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const done = tools.get("stardock_done");
+		const govern = tools.get("stardock_govern");
+		const answerOutside = tools.get("stardock_outside_answer");
+		assert.ok(start);
+		assert.ok(done);
+		assert.ok(govern);
+		assert.ok(answerOutside);
+
+		await start.execute(
+			"tool-dedupe-start",
+			{
+				name: "Dedupe Loop",
+				mode: "recursive",
+				taskContent: "# Dedupe task\n",
+				objective: "Avoid duplicate governor requests",
+				maxIterations: 3,
+				governEvery: 1,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const governResult = await govern.execute("tool-govern", { loopName: "Dedupe_Loop" }, undefined, undefined, ctx);
+		assert.equal(governResult.details.request.id, "governor-manual-1");
+		await answerOutside.execute(
+			"tool-answer",
+			{
+				loopName: "Dedupe_Loop",
+				requestId: "governor-manual-1",
+				answer: "Continue once to confirm state propagation.",
+				verdict: "continue",
+				rationale: "Manual governor review covers this iteration.",
+				requiredNextMove: "Confirm there is no duplicate cadence request.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-done", {}, undefined, undefined, ctx);
+
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Dedupe_Loop"), "utf-8"));
+		assert.equal(state.outsideRequests.length, 1);
+		assert.equal(state.outsideRequests[0].id, "governor-manual-1");
+		assert.doesNotMatch(messages[1].content, /Pending Outside Requests/);
+		assert.match(messages[1].content, /Latest Governor Steer/);
+		assert.match(messages[1].content, /Confirm there is no duplicate cadence request/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

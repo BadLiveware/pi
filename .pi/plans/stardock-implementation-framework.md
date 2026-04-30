@@ -85,6 +85,7 @@ Implemented behavior:
 - Tools:
   - `stardock_start`
   - `stardock_done`
+  - `stardock_state`
   - `stardock_attempt_report`
   - `stardock_govern`
   - `stardock_outside_requests`
@@ -120,7 +121,8 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - After `stardock_done`, answered governor decisions remained in `.stardock/` state with structured `decision` fields and a `consumedAt` timestamp, giving the next prompt/state a durable steer.
 - The first private loop created untracked `.stardock/` files until `.gitignore` was updated; keep runtime loop state ignored by default.
 - New managed loops now use per-run folders under `.stardock/runs/` so task files and state files for different runs are easy to distinguish.
-- `governEvery: 1` can create an automatic governor request for the same iteration immediately after a manual governor request was answered. This is usable but noisy; future request handling should consider deduping equivalent governor requests or suppressing automatic cadence requests when a fresh manual decision already exists for that iteration.
+- `governEvery: 1` originally created an automatic governor request for the same iteration immediately after a manual governor request was answered. This was noisy and is now suppressed by keeping governor requests to one per iteration.
+- `stardock_state` now gives agents a compact read-only state/list surface so dogfood runs do not require direct reads of ignored `.stardock/` files.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -704,6 +706,7 @@ Completed implementation is intentionally compacted here; use commit history and
 | Future automation design gates | Done | `417f768`; subagent and evolve plans written. |
 | Private Stardock extension shell | Done | `fceb41d`; extension moved to `agent/extensions/private/stardock/`; public Ralph path removed; clean `stardock_*`, `/stardock`, and `.stardock/` surface implemented. |
 | Per-run Stardock storage | Done | Managed runs use `.stardock/runs/<name>/task.md` and `state.json`; archives use `.stardock/archive/<name>/`. |
+| Recursive dogfood stabilization | Done | Governor requests dedupe by iteration; `stardock_state` lists/inspects loop state without reading runtime files directly. |
 
 ### Next implementation candidates
 

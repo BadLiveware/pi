@@ -393,6 +393,10 @@ export default function (pi: ExtensionAPI) {
 		return next;
 	}
 
+	function findGovernorRequestForIteration(state: LoopState, iteration = state.iteration): OutsideRequest | undefined {
+		return state.outsideRequests.find((request) => request.kind === "governor_review" && request.requestedByIteration === iteration);
+	}
+
 	function buildRecentAttemptSummary(modeState: RecursiveModeState, count = 3): string {
 		const attempts = modeState.attempts.slice(-count);
 		return attempts.length > 0 ? attempts.map(formatAttemptForPayload).join("\n") : "- No structured attempt reports yet.";
@@ -410,6 +414,8 @@ export default function (pi: ExtensionAPI) {
 	}
 
 	function createGovernorRequest(state: LoopState, modeState: RecursiveModeState, trigger: OutsideRequestTrigger, idPrefix = "governor"): OutsideRequest {
+		const existing = findGovernorRequestForIteration(state);
+		if (existing) return existing;
 		return addOutsideRequest(state, {
 			id: `${idPrefix}-${state.iteration}`,
 			kind: "governor_review",
@@ -632,6 +638,58 @@ export default function (pi: ExtensionAPI) {
 		const status = `${STATUS_ICONS[l.status]} ${l.status}`;
 		const iter = l.maxIterations > 0 ? `${l.iteration}/${l.maxIterations}` : `${l.iteration}`;
 		return `${l.name}: ${status} (iteration ${iter})`;
+	}
+
+	function summarizeLoopState(ctx: ExtensionContext, state: LoopState, archived = false, includeDetails = false): Record<string, unknown> {
+		const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
+		const outsideRequests = state.outsideRequests;
+		const pendingRequests = pendingOutsideRequests(state);
+		const latestAttempt = attempts.at(-1);
+		return {
+			name: state.name,
+			mode: state.mode,
+			status: state.status,
+			active: state.active,
+			iteration: state.iteration,
+			maxIterations: state.maxIterations,
+			taskFile: state.taskFile,
+			stateFile: path.relative(ctx.cwd, existingStatePath(ctx, state.name, archived)),
+			startedAt: state.startedAt,
+			completedAt: state.completedAt,
+			recursive:
+				state.modeState.kind === "recursive"
+					? {
+							objective: state.modeState.objective,
+							attempts: attempts.length,
+							reportedAttempts: attempts.filter((attempt) => attempt.status === "reported").length,
+							latestAttempt: latestAttempt
+								? {
+										id: latestAttempt.id,
+										iteration: latestAttempt.iteration,
+										status: latestAttempt.status,
+										kind: latestAttempt.kind,
+										result: latestAttempt.result,
+										summary: latestAttempt.summary,
+									}
+								: undefined,
+						}
+					: undefined,
+			outsideRequests: {
+				total: outsideRequests.length,
+				pending: pendingRequests.length,
+				answered: outsideRequests.filter((request) => request.status === "answered").length,
+				latestGovernorDecision: latestGovernorDecision(state),
+			},
+			...(includeDetails ? { modeState: state.modeState, requests: state.outsideRequests } : {}),
+		};
+	}
+
+	function formatStateSummary(state: LoopState): string {
+		const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
+		const reported = attempts.filter((attempt) => attempt.status === "reported").length;
+		const requestText = state.outsideRequests.length > 0 ? `, outside ${pendingOutsideRequests(state).length}/${state.outsideRequests.length} pending` : "";
+		const attemptText = attempts.length > 0 ? `, attempts ${reported}/${attempts.length} reported` : "";
+		return `${formatLoop(state)}${attemptText}${requestText}`;
 	}
 
 	function updateUI(ctx: ExtensionContext): void {
@@ -1541,6 +1599,54 @@ Examples:
 			return {
 				content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.` }],
 				details: {},
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "stardock_state",
+		label: "Inspect Stardock State",
+		description: "Inspect Stardock loop state or list loops without reading .stardock files directly.",
+		parameters: Type.Object({
+			loopName: Type.Optional(Type.String({ description: "Loop name to inspect. Omit to list loops." })),
+			archived: Type.Optional(Type.Boolean({ description: "Inspect archived loops instead of current runs. Default false." })),
+			includeDetails: Type.Optional(Type.Boolean({ description: "Include full mode state and outside requests in details. Default false." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const archived = params.archived === true;
+			const includeDetails = params.includeDetails === true;
+			if (params.loopName) {
+				const state = loadState(ctx, params.loopName, archived);
+				if (!state) return { content: [{ type: "text", text: `Loop "${params.loopName}" not found.` }], details: { loopName: params.loopName, archived } };
+				const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
+				const latestDecision = latestGovernorDecision(state);
+				const lines = [
+					`Loop: ${state.name}`,
+					`Status: ${state.status}`,
+					`Mode: ${state.mode}`,
+					`Iteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
+					`Task file: ${state.taskFile}`,
+					`State file: ${path.relative(ctx.cwd, existingStatePath(ctx, state.name, archived))}`,
+					state.modeState.kind === "recursive" ? `Objective: ${state.modeState.objective}` : undefined,
+					attempts.length > 0 ? `Attempts: ${attempts.filter((attempt) => attempt.status === "reported").length}/${attempts.length} reported` : undefined,
+					`Outside requests: ${pendingOutsideRequests(state).length}/${state.outsideRequests.length} pending`,
+					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
+				].filter((line): line is string => Boolean(line));
+				return {
+					content: [{ type: "text", text: lines.join("\n") }],
+					details: { loopName: state.name, archived, loop: summarizeLoopState(ctx, state, archived, includeDetails) },
+				};
+			}
+
+			const loops = listLoops(ctx, archived).sort((a, b) => a.name.localeCompare(b.name));
+			const label = archived ? "Archived Stardock loops" : "Stardock loops";
+			return {
+				content: [{ type: "text", text: loops.length > 0 ? `${label}:\n${loops.map(formatStateSummary).join("\n")}` : `No ${archived ? "archived " : ""}Stardock loops found.` }],
+				details: {
+					archived,
+					currentLoop,
+					loops: loops.map((state) => summarizeLoopState(ctx, state, archived, includeDetails)),
+				},
 			};
 		},
 	});
