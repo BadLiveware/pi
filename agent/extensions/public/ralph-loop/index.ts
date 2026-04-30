@@ -355,10 +355,20 @@ export default function (pi: ExtensionAPI) {
 
 	// --- Arg parsing ---
 
+	function isImplementedMode(mode: string): mode is "checklist" {
+		return mode === "checklist";
+	}
+
+	function unsupportedModeMessage(mode: string): string {
+		if (mode === "recursive" || mode === "evolve") return `Ralph mode "${mode}" is planned but not implemented yet.`;
+		return `Unsupported Ralph mode "${mode}". Supported mode: checklist.`;
+	}
+
 	function parseArgs(argsStr: string) {
 		const tokens = argsStr.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
 		const result = {
 			name: "",
+			mode: "checklist",
 			maxIterations: 50,
 			itemsPerIteration: 0,
 			reflectEvery: 0,
@@ -370,6 +380,9 @@ export default function (pi: ExtensionAPI) {
 			const next = tokens[i + 1];
 			if (tok === "--max-iterations" && next) {
 				result.maxIterations = parseInt(next, 10) || 0;
+				i++;
+			} else if (tok === "--mode" && next) {
+				result.mode = next.replace(/^"|"$/g, "");
 				i++;
 			} else if (tok === "--items-per-iteration" && next) {
 				result.itemsPerIteration = parseInt(next, 10) || 0;
@@ -397,6 +410,11 @@ export default function (pi: ExtensionAPI) {
 					"Usage: /ralph start <name|path> [--items-per-iteration N] [--reflect-every N] [--max-iterations N]",
 					"warning",
 				);
+				return;
+			}
+
+			if (!isImplementedMode(args.mode)) {
+				ctx.ui.notify(unsupportedModeMessage(args.mode), "warning");
 				return;
 			}
 
@@ -719,12 +737,22 @@ Examples:
 		],
 		parameters: Type.Object({
 			name: Type.String({ description: "Loop name (e.g., 'refactor-auth')" }),
+			mode: Type.Optional(
+				Type.Union([Type.Literal("checklist"), Type.Literal("recursive"), Type.Literal("evolve")], {
+					description: "Loop mode. checklist is implemented; recursive/evolve are planned.",
+				}),
+			),
 			taskContent: Type.String({ description: "Task in markdown with goals and checklist" }),
 			itemsPerIteration: Type.Optional(Type.Number({ description: "Suggest N items per turn (0 = no limit)" })),
 			reflectEvery: Type.Optional(Type.Number({ description: "Reflect every N iterations" })),
 			maxIterations: Type.Optional(Type.Number({ description: "Max iterations (default: 50)", default: 50 })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const mode = params.mode ?? "checklist";
+			if (!isImplementedMode(mode)) {
+				return { content: [{ type: "text", text: unsupportedModeMessage(mode) }], details: { mode } };
+			}
+
 			const loopName = sanitize(params.name);
 			const taskFile = path.join(RALPH_DIR, `${loopName}.md`);
 

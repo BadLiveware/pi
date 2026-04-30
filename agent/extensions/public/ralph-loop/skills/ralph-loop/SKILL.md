@@ -10,6 +10,7 @@ Use the `ralph_start` tool to begin a loop:
 ```
 ralph_start({
   name: "loop-name",
+  mode: "checklist",       // Optional; checklist is the implemented mode
   taskContent: "# Task\n\n## Goals\n- Goal 1\n\n## Checklist\n- [ ] Item 1\n- [ ] Item 2",
   maxIterations: 50,        // Default: 50
   itemsPerIteration: 3,     // Optional: suggest N items per turn
@@ -29,7 +30,7 @@ ralph_start({
 
 ## User Commands
 
-- `/ralph start <name|path>` - Start a new loop.
+- `/ralph start <name|path> [--mode checklist]` - Start a new loop.
 - `/ralph resume <name>` - Resume loop.
 - `/ralph stop` - Pause loop (when agent idle).
 - `/ralph-stop` - Stop active loop (idle only).

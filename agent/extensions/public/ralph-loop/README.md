@@ -28,7 +28,7 @@ A loop sends an iteration prompt to the agent. The agent works on the task file,
 <promise>COMPLETE</promise>
 ```
 
-The extension preserves the current Ralph state-file shape for compatibility with existing `.ralph` directories.
+The extension preserves top-level Ralph state fields for compatibility with existing `.ralph` directories. Old state files without mode metadata are migrated to schema version 2 as `checklist` loops when loaded.
 
 ## Agent tools
 
@@ -42,6 +42,7 @@ Example:
 ```json
 {
   "name": "refactor-auth",
+  "mode": "checklist",
   "taskContent": "# Task\n\n## Goals\n- Improve auth boundaries\n\n## Checklist\n- [ ] Map current flow\n- [ ] Refactor handler",
   "itemsPerIteration": 3,
   "reflectEvery": 10,
@@ -68,6 +69,7 @@ Options for `/ralph start`:
 
 | Option | Description |
 | --- | --- |
+| `--mode checklist` | Select the loop mode. `checklist` is the only implemented mode; `recursive` and `evolve` are reserved. |
 | `--max-iterations N` | Stop after N iterations. Default: 50. |
 | `--items-per-iteration N` | Prompt hint to process roughly N items per turn. |
 | `--reflect-every N` | Insert a reflection checkpoint every N iterations. |

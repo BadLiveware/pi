@@ -91,6 +91,7 @@ test("ralph_start writes task state and ralph_done queues next iteration", async
 			"tool-1",
 			{
 				name: "Demo Loop",
+				mode: "checklist",
 				taskContent: "# Task\n\n## Checklist\n- [ ] First item\n",
 				maxIterations: 3,
 				itemsPerIteration: 1,
@@ -109,6 +110,8 @@ test("ralph_start writes task state and ralph_done queues next iteration", async
 		assert.equal(fs.readFileSync(taskPath, "utf-8"), "# Task\n\n## Checklist\n- [ ] First item\n");
 		const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
 		assert.equal(state.status, "active");
+		assert.equal(state.mode, "checklist");
+		assert.deepEqual(state.modeState, { kind: "checklist" });
 		assert.equal(state.iteration, 1);
 		assert.equal(state.itemsPerIteration, 1);
 
@@ -212,6 +215,38 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 		assert.equal(migrated.iteration, 2);
 		assert.equal(migrated.status, "active");
 		assert.equal(migrated.active, true);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("unsupported mode does not create a loop", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-ralph-loop-test-"));
+	try {
+		const { tools, commands, messages, notifications, ctx } = makeHarness(cwd);
+		const start = tools.get("ralph_start");
+		assert.ok(start);
+
+		const toolResult = await start.execute(
+			"tool-unsupported",
+			{
+				name: "Recursive Loop",
+				mode: "recursive",
+				taskContent: "# Task\n",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(toolResult.content[0].text, /planned but not implemented/);
+		assert.equal(messages.length, 0);
+		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "Recursive_Loop.state.json")), false);
+
+		const ralph = commands.get("ralph");
+		assert.ok(ralph);
+		await ralph.handler("start cmd-recursive --mode recursive", ctx);
+		assert.ok(notifications.some((message) => message.includes('Ralph mode "recursive" is planned but not implemented yet.')));
+		assert.equal(fs.existsSync(path.join(cwd, ".ralph", "cmd-recursive.state.json")), false);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
