@@ -4,7 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-import { batchFailureDetails, describeBatchMutation, normalizeBatchInputs, runOrderedBatch } from "./app/batch.ts";
+import { runFinalReportRecord } from "./app/final-report-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type FinalValidationRecord, type FinalVerificationReport, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isFinalVerificationStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList } from "./state/migration.ts";
@@ -170,18 +170,13 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 					details: { loopName, finalVerificationReports: state.finalVerificationReports },
 				};
 			}
-			const inputs = normalizeBatchInputs(params, params.reports);
-			const batch = runOrderedBatch(inputs.inputs, inputs.isBatch, (input) => {
-				const result = recordFinalVerificationReport(ctx, loopName, input);
-				return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
-			});
-			if (!batch.ok) return { content: [{ type: "text", text: batch.error }], details: batchFailureDetails(loopName, batch) };
+			const response = runFinalReportRecord(loopName, params, { record: (input) => recordFinalVerificationReport(ctx, loopName, input) });
+			if (response.error) return { content: [{ type: "text", text: response.contentText }], details: response.details };
 			deps.updateUI(ctx);
-			const updatedState = batch.lastState;
-			const response = describeBatchMutation(batch, { verb: "Recorded", singularName: "report", pluralName: "final reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} final report ${report.id}` });
+			const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
 			return {
-				content: [{ type: "text", text: `${response.contentText} in loop "${loopName}".` }],
-				details: { loopName, [response.detailKey]: response.detailValue, finalVerificationReports: updatedState.finalVerificationReports, ...deps.optionalLoopDetails(ctx, updatedState, params) },
+				content: [{ type: "text", text: response.contentText }],
+				details,
 			};
 		},
 	});
