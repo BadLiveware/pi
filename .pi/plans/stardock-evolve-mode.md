@@ -1,4 +1,4 @@
-# Ralph Evolve Mode Plan
+# Stardock Evolve Mode Plan
 
 ## Status
 
@@ -27,7 +27,7 @@ Support metric-driven optimization loops inspired by OpenEvolve:
 seed candidate -> mutate -> evaluate -> archive -> select next candidate
 ```
 
-Ralph should remain inspectable and interruptible. The extension should not become an unbounded autonomous optimizer.
+Stardock should remain inspectable and interruptible. The extension should not become an unbounded autonomous optimizer.
 
 Evolve mode should also follow the context-routing rule: prompts receive bounded candidate/archive summaries, selected criterion IDs, and the next requested mutation, not the full canonical plan or full evaluator logs. Entering evolve execution and applying candidate patches should require auditor review or explicit user approval.
 
@@ -98,7 +98,7 @@ interface EvolveModeState {
 
 ## Ownership and invariants
 
-- Ralph state owns candidate metadata, not large evaluator output.
+- Stardock state owns candidate metadata, not large evaluator output.
 - Large outputs and patches live in artifact files referenced by path.
 - Evaluator command must be user-provided and workspace-local.
 - Candidate application must be explicit and reversible.

@@ -1,17 +1,17 @@
-# Ralph Subagent-Driven Recursive Mode Plan
+# Stardock Subagent-Driven Recursive Mode Plan
 
 ## Status
 
-Design gate, not implementation-ready. The current Ralph extension owns durable loop state, attempt reports, outside requests, and ready-to-copy governor/researcher payloads. Subagent execution should remain parent/orchestrator-driven until Pi exposes an extension API that can safely run and supervise subagents with inspectable ownership boundaries.
+Design gate, not implementation-ready. The current Ralph implementation owns durable loop state, attempt reports, outside requests, and ready-to-copy governor/researcher payloads. Subagent execution should remain parent/orchestrator-driven until Pi exposes an extension API that can safely run and supervise subagents with inspectable ownership boundaries.
 
 ## Decision
 
-Do not make `ralph-loop` spawn subagents directly yet. The next safe shape is an advisory, parent-orchestrated workflow:
+Do not make Stardock spawn subagents directly yet. The next safe shape is an advisory, parent-orchestrated workflow:
 
-1. Ralph creates durable outside requests and payloads.
+1. Stardock creates durable outside requests and payloads.
 2. The parent/orchestrator agent runs `subagent` or other tools using those payloads.
-3. The parent records answers with `ralph_outside_answer` and attempt outcomes with `ralph_attempt_report`.
-4. Ralph includes recorded decisions in the next recursive prompt as constraints.
+3. The parent records answers with `stardock_outside_answer`/`sd_outside_answer` and attempt outcomes with `stardock_attempt_report`/`sd_attempt_report`.
+4. Stardock includes recorded decisions in the next recursive prompt as constraints.
 
 Only after that workflow is dogfooded should the extension add a direct subagent-driven mode.
 
@@ -59,16 +59,17 @@ Worker briefs should be verification-led when criteria exist: route selected cri
 ## Context and constraints
 
 - Current safe boundary: extension state and prompts are deterministic and inspectable.
-- Current tools already support:
+- Current Ralph tools already prove the equivalent concepts:
   - `ralph_govern`
   - `ralph_outside_payload`
   - `ralph_outside_answer`
   - `ralph_attempt_report`
+- Future Stardock tools can use clean `stardock_*`/`sd_*` names without preserving the Ralph names.
 - Extension-side automatic subagent execution risks hidden edits, unclear ownership, interruption ambiguity, and hard-to-review agent fanout.
 - User must be able to inspect and interrupt between attempts.
 - Implementer attempts must stay bounded: one decision, one attempt, one report.
 - Prefer low-risk exploration and test-runner subagents before implementer subagents.
-- Checklist mode compatibility and v1 state migration must remain unaffected.
+- Checklist mode should remain simple, but legacy v1 state migration is not a requirement for private Stardock unless there is active local state worth importing.
 
 ## Subagent role order
 
@@ -152,7 +153,7 @@ Do not add this state until an execution path exists that can maintain it reliab
 
 ## Ownership and change authority
 
-- Ralph extension owns `.ralph/*.state.json`, prompt construction, and request/answer recording.
+- Stardock extension owns its private state path, prompt construction, and request/answer recording.
 - Parent/orchestrator owns tool execution, subagent invocation, review, and whether to apply edits.
 - Implementer subagents must not own the overall loop direction.
 - Governor decisions may constrain the next prompt but should remain inspectable and rejectable with a recorded reason.
@@ -174,9 +175,9 @@ Do not add this state until an execution path exists that can maintain it reliab
 
 If direct subagent support is later added, start with **advisory-only direct subagents**, especially explorer, test-runner, and auditor roles:
 
-1. Ralph creates a `WorkerRun` from a pending `OutsideRequest`, auditor request, or governor-selected brief.
+1. Stardock creates a `WorkerRun` from a pending `OutsideRequest`, auditor request, or governor-selected brief.
 2. The worker returns text plus artifact refs only; no file edits are applied automatically.
-3. Ralph records the answer into the request, audit record, or worker report.
+3. Stardock records the answer into the request, audit record, or worker report.
 4. The next prompt consumes the compact answer and artifact summaries.
 5. The parent/user can inspect all state before the next attempt.
 
@@ -234,12 +235,12 @@ Before editing workers:
 
 Next implementable slice, when justified:
 
-1. Add `ralph_worker_payload` only if `ralph_outside_payload` is insufficient.
+1. Add `stardock_worker_payload`/`sd_worker_payload` only if outside payload helpers are insufficient.
 2. Add `WorkerRun` state behind a feature flag or explicit mode option.
 3. Implement advisory-only explorer payload/execution first, if a safe extension API exists.
 4. Add test-runner worker handling with log artifacts and compact summaries.
 5. Add auditor worker handling for oversight payloads and findings before any editing workers.
-6. Record worker answers through the same `ralph_outside_answer`/report/audit path.
+6. Record worker answers through the same `stardock_outside_answer`/`sd_outside_answer`/report/audit path.
 7. Keep checklist and ordinary recursive mode unaffected.
 
 ## Non-goals
