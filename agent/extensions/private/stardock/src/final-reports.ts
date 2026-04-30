@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type FinalValidationRecord, type FinalVerificationReport, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isFinalVerificationStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
@@ -11,7 +12,7 @@ import { loadState, saveState } from "./state/store.ts";
 export interface FinalReportToolDeps {
 	getCurrentLoop(): string | null;
 	updateUI(ctx: ExtensionContext): void;
-	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean }): Record<string, unknown>;
+	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; followupTool?: FollowupToolRequest }): Record<string, unknown>;
 }
 
 export function migrateFinalValidationRecords(value: unknown): FinalValidationRecord[] {
@@ -141,6 +142,7 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 			performanceNotes: Type.Optional(Type.Array(Type.String(), { description: "Performance notes or measurement gaps." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
+			followupTool: FollowupToolParameter,
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();

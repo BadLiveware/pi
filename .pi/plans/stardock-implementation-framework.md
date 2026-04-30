@@ -743,6 +743,7 @@ Do not restart the completed implementation path. Future implementation should b
 3. **Criteria-aware context packet expansion**
    - Initial IterationBrief v1 state and `stardock_brief` update/list/activation support exists.
    - Manual brief dogfood found the data shape usable; agent-operability refinement added `activate: true`, optional `includeState`, and capped `includePromptPreview` for create-and-use workflows.
+   - Initial local `followupTool` support lets mutating Stardock tools attach read-only `stardock_state` or `stardock_policy` output after a mutation; unknown or mutating followups are rejected instead of executed. Keep existing `include*` flags as compatibility sugar while preferring `followupTool` for new post-action context.
    - Governor-selected brief v1 exists as explicit `source: "governor"` plus optional `requestId` metadata linked to a governor-review outside request; no hidden model call, auto-distillation, or silent activation is performed.
    - Brief lifecycle policy v1 adds opt-in `stardock_done` cleanup with `briefLifecycle: "complete" | "clear"`, while default behavior keeps the active brief.
    - Later, add stronger policy or reports for when a governor-sourced brief should supersede full task replay across multiple attempts.

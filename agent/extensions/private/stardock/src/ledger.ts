@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact } from "./state/core.ts";
 import { isArtifactKind, isCriterionStatus, normalizeId, normalizeIds, rebuildRequirementTrace } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
@@ -11,7 +12,7 @@ import { loadState, saveState } from "./state/store.ts";
 export interface LedgerToolDeps {
 	getCurrentLoop(): string | null;
 	updateUI(ctx: ExtensionContext): void;
-	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean }): Record<string, unknown>;
+	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; followupTool?: FollowupToolRequest }): Record<string, unknown>;
 }
 
 export function criterionCounts(ledger: CriterionLedger): Record<CriterionStatus, number> & { total: number } {
@@ -179,6 +180,7 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 			artifacts: Type.Optional(Type.Array(artifactInputSchema, { description: "Batch artifacts for recordArtifacts." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
+			followupTool: FollowupToolParameter,
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();

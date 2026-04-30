@@ -7,6 +7,7 @@ import * as path from "node:path";
 import { registerCommands } from "./src/runtime/commands.ts";
 import { registerCoreTools } from "./src/runtime/core-tools.ts";
 import { registerFeatureTools } from "./src/runtime/feature-tools.ts";
+import { runFollowupTool, type FollowupToolRequest } from "./src/runtime/followups.ts";
 import { registerLifecycleHooks } from "./src/runtime/hooks.ts";
 import { completeLoop, type LoopRuntimeRef, pauseLoop, stopLoop } from "./src/runtime/lifecycle.ts";
 import { buildPrompt } from "./src/runtime/prompts.ts";
@@ -25,12 +26,14 @@ export default function (pi: ExtensionAPI) {
 			updateStardockUI(ctx, ref.currentLoop);
 		},
 		buildPrompt,
-		optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; includePromptPreview?: boolean }): Record<string, unknown> {
+		optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; includePromptPreview?: boolean; followupTool?: FollowupToolRequest }): Record<string, unknown> {
 			const content = tryRead(path.resolve(ctx.cwd, state.taskFile));
+			const followup = runFollowupTool(ctx, ref.currentLoop, options.followupTool, ["optionalLoopDetails"]);
 			return {
 				...(options.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}),
 				...(options.includeOverview ? { overview: formatRunOverview(ctx, state, false) } : {}),
 				...(options.includePromptPreview && content ? { promptPreview: compactText(buildPrompt(state, content, "iteration"), 4000) } : {}),
+				...(followup ? { followupTool: followup } : {}),
 			};
 		},
 		pauseLoop(ctx: ExtensionContext, state: LoopState, message?: string): void {

@@ -102,6 +102,43 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 		assert.match(briefResult.details.promptPreview, /## Active Iteration Brief/);
 		assert.match(briefResult.details.promptPreview, /c-one \[pending\]/);
 		assert.equal(briefResult.details.promptPreview.includes("Keep default prompts compatible"), false);
+
+		const followupResult = await brief.execute(
+			"tool-ergonomics-followup",
+			{
+				action: "upsert",
+				loopName: "Ergonomics_Loop",
+				id: "b-two",
+				objective: "Use generic read-only followups.",
+				task: "Attach state output without bespoke include flags.",
+				followupTool: { name: "stardock_state", args: { loopName: "Ergonomics_Loop", view: "overview", includeDetails: true } },
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(followupResult.content[0].text, /Created brief b-two/);
+		assert.equal(followupResult.details.followupTool.name, "stardock_state");
+		assert.match(followupResult.details.followupTool.content, /Stardock run: Ergonomics_Loop/);
+		assert.equal(followupResult.details.followupTool.details.loop.name, "Ergonomics_Loop");
+
+		const rejectedFollowup = await brief.execute(
+			"tool-ergonomics-rejected-followup",
+			{
+				action: "upsert",
+				loopName: "Ergonomics_Loop",
+				id: "b-three",
+				objective: "Reject mutating followups.",
+				task: "Do not allow followupTool to perform a mutation.",
+				followupTool: { name: "stardock_brief", args: { action: "upsert", loopName: "Ergonomics_Loop" } },
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(rejectedFollowup.content[0].text, /Created brief b-three/);
+		assert.equal(rejectedFollowup.details.followupTool.details.ok, false);
+		assert.equal(rejectedFollowup.details.followupTool.details.reason, "unsupported_or_mutating");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

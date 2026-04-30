@@ -13,6 +13,7 @@ import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
 import { applyActiveBriefLifecycle } from "../briefs.ts";
+import { FollowupToolParameter, withFollowupTool } from "./followups.ts";
 import { buildPrompt, createModeState, getModeHandler, isImplementedMode, unsupportedModeMessage } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
 
@@ -100,6 +101,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 		parameters: Type.Object({
 			briefLifecycle: Type.Optional(Type.Union([Type.Literal("keep"), Type.Literal("complete"), Type.Literal("clear")], { description: "Opt-in active brief lifecycle action after the completed iteration. Default keep preserves existing behavior." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
+			followupTool: FollowupToolParameter,
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			if (!runtime.ref.currentLoop) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
@@ -129,7 +131,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			}
 			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"), { deliverAs: "followUp" });
 			const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
-			return { content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } };
+			return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
 		},
 	});
 

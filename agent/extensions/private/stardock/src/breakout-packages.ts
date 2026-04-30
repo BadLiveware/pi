@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type BreakoutPackage, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBreakoutPackageStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
@@ -12,7 +13,7 @@ import { loadState, saveState } from "./state/store.ts";
 export interface BreakoutToolDeps {
 	getCurrentLoop(): string | null;
 	updateUI(ctx: ExtensionContext): void;
-	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean }): Record<string, unknown>;
+	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; followupTool?: FollowupToolRequest }): Record<string, unknown>;
 }
 
 function compactList(items: string[], maxItems = 8, maxLength = 180): string[] {
@@ -198,6 +199,7 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 			recommendedNextActions: Type.Optional(Type.Array(Type.String(), { description: "Compact recommended next actions." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
+			followupTool: FollowupToolParameter,
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();

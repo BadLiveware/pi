@@ -4,6 +4,7 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type ChangedFileReport, compactText, type LoopState, nextSequentialId, type WorkerReport } from "./state/core.ts";
 import { isAdvisoryHandoffRole, isValidationResult, isWorkerReportStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
@@ -12,7 +13,7 @@ import { loadState, saveState } from "./state/store.ts";
 export interface WorkerReportToolDeps {
 	getCurrentLoop(): string | null;
 	updateUI(ctx: ExtensionContext): void;
-	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean }): Record<string, unknown>;
+	optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; followupTool?: FollowupToolRequest }): Record<string, unknown>;
 }
 
 function compactList(items: string[], maxItems = 8, maxLength = 180): string[] {
@@ -195,6 +196,7 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 			reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective parent review hints." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
+			followupTool: FollowupToolParameter,
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();
