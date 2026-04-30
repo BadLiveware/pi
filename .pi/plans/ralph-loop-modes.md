@@ -142,6 +142,7 @@ interface WorkerReport {
   behaviorChanged: string[];
   evaluatedCriteria: string[];
   validation: Array<{ command: string; result: "passed" | "failed" | "skipped"; summary: string }>;
+  verificationArtifacts: VerificationArtifact[];
   failureDiagnoses: FailureDiagnosis[];
   risks: string[];
   openQuestions: string[];
@@ -182,12 +183,35 @@ interface Criterion {
   testMethod?: string;
   status: "pending" | "passed" | "failed" | "skipped" | "blocked";
   evidence?: string;
+  redEvidence?: string;
+  greenEvidence?: string;
   lastCheckedAt?: string;
 }
 
 interface CriterionLedger {
   criteria: Criterion[];
   requirementTrace: Array<{ requirement: string; criterionIds: string[] }>;
+}
+
+interface BaselineValidation {
+  command: string;
+  result: "passed" | "failed" | "skipped" | "blocked";
+  summary: string;
+  evidencePath?: string;
+}
+
+interface VerificationArtifact {
+  kind: "test" | "smoke" | "curl" | "browser" | "screenshot" | "walkthrough" | "benchmark";
+  command?: string;
+  path?: string;
+  summary: string;
+  criterionIds?: string[];
+}
+
+interface EvidenceJournal {
+  path: string;
+  summary: string;
+  artifactIds: string[];
 }
 
 interface FailureDiagnosis {
@@ -215,9 +239,25 @@ interface FinalVerificationReport {
     blocked: number;
   };
   validationCommands: string[];
+  artifacts: VerificationArtifact[];
   integrationEvidence?: string;
   unresolvedGaps: string[];
   completionRationale: string;
+}
+
+interface CompoundLearning {
+  reusablePrompt?: string;
+  reusableValidation?: string;
+  skillUpdateCandidate?: string;
+  toolImprovementCandidate?: string;
+  projectConventionLearned?: string;
+}
+
+interface HandoffExplanation {
+  path: string;
+  scope: string;
+  intendedReader: "maintainer" | "reviewer" | "operator";
+  summary: string;
 }
 ```
 
@@ -236,6 +276,15 @@ original requirement → criterion → attempt/report → evidence
 
 Quality profiles can be a later option, not a default. If added, they should raise verification standards deliberately, for example `functional` → `integration` → `production` → `polish`, instead of encouraging premature polish on discardable work.
 
+The [Agentic Engineering Patterns guide](https://simonwillison.net/guides/agentic-engineering-patterns/) adds several verification and context-management practices that fit this design:
+
+- **Baseline validation**: when a validation command exists, first run the relevant tests/checks before changes so the loop knows the starting state and primes the worker with project-native validation.
+- **Red/green evidence**: criteria backed by new tests should record that the test failed before implementation and passed after implementation.
+- **Manual testing artifacts**: smoke commands, `curl` checks, browser automation, screenshots, and benchmarks count as evidence when linked to criteria.
+- **Evidence journals**: long command logs, screenshots, and walkthroughs should live as artifact files with compact summaries in state/prompt context.
+- **Compound learning**: finalization can optionally propose reusable prompt, validation, skill, tool, or project-convention updates discovered during the loop.
+- **Cognitive debt gates**: large or complex agent-generated changes may require a walkthrough or maintainer-facing explanation before final completion.
+
 ## Remaining future work summary
 
 The practical implementation path is complete through bounded recursive/governor workflow. Remaining work is design-gated and should be driven by dogfood evidence:
@@ -243,25 +292,28 @@ The practical implementation path is complete through bounded recursive/governor
 1. **Verification-led context routing**
    - add a `CriterionLedger` after dogfooding confirms the right criterion granularity;
    - route `criterionIds`, pass conditions, and test methods into `IterationBrief` instead of replaying the full plan;
-   - update criterion status from worker evidence and failure diagnoses.
+   - record baseline validation and red/green evidence when a criterion is backed by new tests;
+   - update criterion status from worker evidence, verification artifacts, and failure diagnoses.
 2. **Context packet routing**
    - add `GovernorState` and `IterationBrief` only after manual governor/payload workflows show what context is repeatedly needed;
    - make prompts brief-by-default and source the canonical plan selectively;
    - keep large artifacts referenced, not pasted.
 3. **Worker/subagent handoff quality**
-   - define a durable `WorkerReport` contract with evaluated criteria, validation evidence, and failure diagnoses;
+   - define a durable `WorkerReport` contract with evaluated criteria, validation evidence, verification artifact refs, and failure diagnoses;
    - add selective parent review policy so the governor does not duplicate worker work;
    - implement advisory-only subagent flow before any editing flow.
-4. **Completion and breakout gates**
+4. **Completion, breakout, and learning gates**
    - add `FinalVerificationReport` before making completion fully criteria-aware;
    - add `BreakoutPackage` for repeated failures, blocked criteria, or loops with no criterion movement;
+   - add optional compound-learning proposals and cognitive-debt walkthrough requirements for large/complex changes;
    - keep quality-profile escalation optional and explicit.
 5. **Subagent-driven recursive mode**
    - use `.pi/plans/ralph-subagent-recursive-mode.md` as the design gate;
+   - start with exploration and test-runner subagents before implementer subagents;
    - do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, and edit ownership are safe.
 6. **Evolve mode**
    - use `.pi/plans/ralph-evolve-mode.md` as the design gate;
-   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, and dogfood evidence are available.
+   - implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, and dogfood evidence are available.
 
 ## Architecture decision
 
@@ -296,7 +348,7 @@ interface LoopState {
 
 Compatibility rule: missing `schemaVersion` or `mode` means `schemaVersion: 1`, `mode: "checklist"`, and `modeState` is synthesized from the existing fields. Missing `outsideRequests` is synthesized as an empty list.
 
-Future schema revisions may add `criterionLedger`, `governorState`, and final verification records. Keep them additive and migratable; older checklist/recursive loops must remain valid with empty synthesized ledgers.
+Future schema revisions may add `criterionLedger`, `governorState`, baseline validation, verification artifacts, compound-learning proposals, handoff explanations, and final verification records. Keep them additive and migratable; older checklist/recursive loops must remain valid with empty synthesized ledgers/artifact lists.
 
 ### Mode interface
 
@@ -523,28 +575,33 @@ Completed implementation is intentionally compacted here; use commit history and
 Do not restart the completed implementation path. Future implementation should begin with one of these design-gated slices:
 
 1. **Criterion ledger prototype**
-   - Add additive state for criteria, pass conditions, test methods, status, and evidence.
+   - Add additive state for criteria, pass conditions, test methods, status, evidence, optional red/green evidence, and baseline validation.
    - Add a plan/task-file distillation path that can create or update criteria without replacing the canonical plan.
-   - Add tests for migration, status updates, prompt caps, and requirement-to-criterion traceability.
-2. **Criteria-aware context packet routing**
+   - Add tests for migration, status updates, prompt caps, baseline evidence, and requirement-to-criterion traceability.
+2. **Verification artifact handling**
+   - Add artifact refs for tests, smoke commands, `curl`, browser/screenshot checks, walkthroughs, and benchmarks.
+   - Store long logs/screenshots outside state and include only compact summaries in prompts.
+   - Add final-report support for artifact lists and unresolved validation gaps.
+3. **Criteria-aware context packet routing**
    - Add `GovernorState` and `IterationBrief` after dogfooding confirms the needed fields.
    - Change recursive prompt generation so a governor-selected brief, not the full canonical plan, becomes the normal worker prompt.
    - Include selected `criterionIds`, required context, and verification requirements; keep large artifacts referenced.
    - Add tests that the prompt includes only selected context and still preserves required constraints.
-3. **Worker report / selective review workflow**
-   - Define `WorkerReport` state and payload expectations, including evaluated criteria and failure diagnoses.
+4. **Worker report / selective review workflow**
+   - Define `WorkerReport` state and payload expectations, including evaluated criteria, artifact refs, and failure diagnoses.
    - Add request payload guidance telling workers which files/symbols the parent should inspect and why.
    - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
-4. **Breakout and final verification reports**
+5. **Breakout, final verification, and compound learning reports**
    - Add `BreakoutPackage` for repeated criterion failures, blocked criteria, or no criterion movement.
-   - Add `FinalVerificationReport` so completion summarizes criteria status, validation commands, integration evidence, and unresolved gaps.
-5. **Advisory subagent workflow**
-   - Start with advisory-only worker runs if a safe extension/subagent API exists.
+   - Add `FinalVerificationReport` so completion summarizes criteria status, validation commands, artifacts, integration evidence, and unresolved gaps.
+   - Add optional compound-learning proposals and cognitive-debt handoff explanations.
+6. **Advisory subagent workflow**
+   - Start with exploration and test-runner subagents if a safe extension/subagent API exists.
    - Do not apply edits automatically.
-   - Persist worker run payload, result, failure, and artifacts.
-6. **Evolve mode**
+   - Persist worker run payload, result, failure, artifact refs, and summaries.
+7. **Evolve mode**
    - Start only after `.pi/plans/ralph-evolve-mode.md` gates are satisfied.
-   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence handling, and isolation choice before implementation.
+   - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence/artifact handling, and isolation choice before implementation.
 
 ### Completion boundary
 
@@ -573,7 +630,9 @@ After behavior changes:
   - completion marker completes without extension error
 - smoke criteria-aware loop after criterion-led changes:
   - distills or records criteria without losing the canonical plan
+  - records baseline validation and red/green evidence when available
   - routes only selected criteria into the next prompt
+  - stores long logs/screenshots as artifact refs, not prompt text
   - updates criterion status from evidence
   - produces breakout/final verification reports when triggered
 
@@ -585,6 +644,8 @@ After behavior changes:
   - Mitigation: cap prompt summaries and move large artifacts to separate files.
 - Risk: criteria ledger creates false precision or duplicates the plan.
   - Mitigation: keep criteria binary/testable, preserve source refs, and route criterion IDs plus selected context instead of copying the full plan.
+- Risk: evidence artifacts grow without bound or become unreadable.
+  - Mitigation: store large logs/screenshots outside state, cap summaries, and require final reports to name only decision-relevant artifacts.
 - Risk: outside research creates distracting work or loops forever.
   - Mitigation: make outside requests data-only first, with explicit budgets/triggers.
 - Risk: evolve mode mutates code unsafely.
@@ -594,11 +655,10 @@ After behavior changes:
 
 ## Execution recommendation
 
-The initial implementation path is complete through basic recursive outside/governor workflow. Next execution should not restart at task 1. Use this order instead:
+The initial mode-aware/recursive implementation path is complete. Next execution should not restart at task 1. Use this order instead:
 
-1. Dogfood recursive mode on one or two real debugging or optimization tasks.
-2. Record where task-file-only attempt reports are insufficient.
-3. If needed, add structured attempt reporting and ready-to-copy governor/researcher prompts.
-4. Add `governEvery`, stagnation, or scaffolding-drift triggers only after attempt data can support them.
-5. Consider semi-automatic governor helpers after the manual workflow is stable.
-6. Treat subagent-driven recursive mode and `evolve` mode as follow-up projects with separate plans.
+1. Dogfood recursive mode with the current attempt-report/governor tools on one or two real debugging or optimization tasks.
+2. Prototype the criterion ledger and baseline/red-green evidence only after dogfooding confirms the right granularity.
+3. Add verification artifacts and compact final reports before adding any direct subagent automation.
+4. Add exploration/test-runner subagents before implementer subagents.
+5. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates.

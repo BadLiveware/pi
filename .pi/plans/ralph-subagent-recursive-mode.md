@@ -67,7 +67,18 @@ Worker briefs should be verification-led when criteria exist: route selected cri
 - Extension-side automatic subagent execution risks hidden edits, unclear ownership, interruption ambiguity, and hard-to-review agent fanout.
 - User must be able to inspect and interrupt between attempts.
 - Implementer attempts must stay bounded: one decision, one attempt, one report.
+- Prefer low-risk exploration and test-runner subagents before implementer subagents.
 - Checklist mode compatibility and v1 state migration must remain unaffected.
+
+## Subagent role order
+
+Direct subagent support, if added, should progress through roles in this order:
+
+1. **Explorer** — advisory only. Returns file/symbol map, relevant tests, validation commands, context gaps, and risk notes. It should not edit files.
+2. **Test runner** — advisory only. Runs noisy validation, stores full logs as artifacts, and returns compact failure summaries tied to criteria.
+3. **Researcher** — advisory only. Supplies ideas, examples, or failure analysis when requested by the governor.
+4. **Governor** — advisory direction-setting role; should remain separate from implementer execution.
+5. **Implementer** — bounded attempt only, and only after edit ownership/isolation is solved.
 
 ## Data/state shape
 
@@ -82,6 +93,14 @@ Existing state remains the source of truth:
 Future direct subagent mode may add:
 
 ```ts
+interface VerificationArtifact {
+  kind: "test" | "smoke" | "curl" | "browser" | "screenshot" | "walkthrough" | "benchmark";
+  command?: string;
+  path?: string;
+  summary: string;
+  criterionIds?: string[];
+}
+
 interface FailureDiagnosis {
   criterionId: string;
   observedFailure: string;
@@ -97,6 +116,7 @@ interface WorkerReport {
   behaviorChanged: string[];
   evaluatedCriteria: string[];
   validation: Array<{ command: string; result: "passed" | "failed" | "skipped"; summary: string }>;
+  verificationArtifacts: VerificationArtifact[];
   failureDiagnoses: FailureDiagnosis[];
   risks: string[];
   openQuestions: string[];
@@ -107,7 +127,7 @@ interface WorkerReport {
 interface WorkerRun {
   id: string;
   requestId: string;
-  role: "governor" | "implementer" | "researcher";
+  role: "explorer" | "test_runner" | "governor" | "implementer" | "researcher";
   status: "queued" | "running" | "answered" | "failed" | "dismissed";
   startedAt?: string;
   completedAt?: string;
@@ -142,15 +162,15 @@ Do not add this state until an execution path exists that can maintain it reliab
 
 ## Chosen future shape
 
-If direct subagent support is later added, start with **advisory-only direct subagents**:
+If direct subagent support is later added, start with **advisory-only direct subagents**, especially explorer and test-runner roles:
 
-1. Ralph creates a `WorkerRun` from a pending `OutsideRequest`.
-2. The worker returns text only; no file edits are applied automatically.
-3. Ralph records the answer into the request.
-4. The next prompt consumes the answer.
+1. Ralph creates a `WorkerRun` from a pending `OutsideRequest` or governor-selected brief.
+2. The worker returns text plus artifact refs only; no file edits are applied automatically.
+3. Ralph records the answer into the request or worker report.
+4. The next prompt consumes the compact answer and artifact summaries.
 5. The parent/user can inspect all state before the next attempt.
 
-Only after advisory mode proves useful should parent-applied patches or worktree implementation attempts be considered.
+Only after advisory explorer/test-runner mode proves useful should parent-applied patches or worktree implementation attempts be considered.
 
 ## Boundaries, contracts, and invariants
 
@@ -161,7 +181,8 @@ Only after advisory mode proves useful should parent-applied patches or worktree
 - Editing workers require an explicit edit policy and rollback story before implementation.
 - No background fanout without user-visible state and interruption points.
 - No worker should receive the entire canonical plan by default; prompts should be selected context packets.
-- Worker reports must identify evaluated criteria, changed files, validation evidence, risks, and which files are worth parent review.
+- Worker reports must identify evaluated criteria, changed files, validation evidence, artifact refs, risks, and which files are worth parent review.
+- Large or complex worker-produced changes may require a maintainer-facing walkthrough before final completion to avoid cognitive debt.
 
 ## Performance shape
 
@@ -203,9 +224,10 @@ Next implementable slice, when justified:
 
 1. Add `ralph_worker_payload` only if `ralph_outside_payload` is insufficient.
 2. Add `WorkerRun` state behind a feature flag or explicit mode option.
-3. Implement advisory-only worker execution, if a safe extension API exists.
-4. Record worker answers through the same `ralph_outside_answer` path.
-5. Keep checklist and ordinary recursive mode unaffected.
+3. Implement advisory-only explorer payload/execution first, if a safe extension API exists.
+4. Add test-runner worker handling with log artifacts and compact summaries.
+5. Record worker answers through the same `ralph_outside_answer`/report path.
+6. Keep checklist and ordinary recursive mode unaffected.
 
 ## Non-goals
 

@@ -15,6 +15,7 @@ Evolve mode should be implemented only when all of these are true:
 - candidate archive size and prompt summary bounds exist;
 - candidate isolation strategy is chosen;
 - criterion/evidence handling exists so candidate prompts do not replay the full plan;
+- verification artifact handling exists for evaluator logs, benchmark outputs, and screenshots if relevant;
 - recursive dogfooding shows that attempt logs are insufficient for metric-driven candidate selection.
 
 ## Purpose
@@ -40,6 +41,7 @@ Gather this from recursive dogfooding first:
 - How many candidates are useful before prompt/archive bloat appears.
 - Whether evaluator runtime is short and deterministic enough for interactive loops.
 - Whether a criterion ledger is sufficient to trace requirements to candidate evidence.
+- Whether evaluator output should be stored as artifacts, evidence journals, or compact metric summaries.
 
 ## Data/state shape
 
@@ -76,6 +78,7 @@ interface EvolveCandidate {
   primaryScore?: number;
   criterionIds: string[];
   evidenceSummary?: string;
+  verificationArtifacts: Array<{ kind: "benchmark" | "test" | "smoke"; path?: string; summary: string }>;
   status: "accepted" | "rejected" | "invalid" | "best";
   evaluatorOutputFile?: string;
   createdAt: string;
@@ -176,6 +179,7 @@ Evolve prompts are specialized `IterationBrief`s for candidate work. They should
 - current best candidate summary;
 - bounded archive summary;
 - evaluator command and constraints;
+- baseline/current-best metric evidence when available;
 - selected criteria and pass conditions relevant to the candidate;
 - one requested mutation/candidate action;
 - explicit instruction to record candidate metadata, criterion evidence, and validation result.
@@ -194,8 +198,9 @@ First implementation tests:
 
 - start evolve mode validates required setup and bounds;
 - invalid setup fails without writing partial loop state;
+- baseline evaluator evidence can be recorded before candidate changes;
 - candidate metadata is capped and persisted;
-- evaluator output is byte-capped;
+- evaluator output is byte-capped and linked as an artifact when useful;
 - archive truncates at `archiveSize`;
 - prompt includes only bounded candidate summaries and selected criteria;
 - checklist and recursive modes remain unchanged.
@@ -215,6 +220,7 @@ Do not implement evolve mode until:
 - candidate isolation choice is accepted;
 - expected archive/prompt sizes are documented;
 - criteria-to-candidate evidence handling is designed;
+- evaluator artifact handling and baseline comparison are designed;
 - user approves moving from design to implementation.
 
 ## Non-goals
