@@ -10,6 +10,9 @@ This repository contains the source for your global pi agent instructions and su
 - Do not edit `~/.pi/agent` directly unless you are debugging the live environment and the user explicitly wants that.
 - Root-level files are for repository-local meta guidance and tooling. They are not part of the global agent payload unless the linking script says so.
 
+## Guidelines
+- Avoid making massive single file extensions, unless its truly the best option(It probably isnt) 
+
 ## Layout
 
 - `agent/AGENTS.md` is the global always-loaded instruction file.
