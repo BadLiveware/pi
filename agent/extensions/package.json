@@ -27,7 +27,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --experimental-strip-types --test public/**/*.test.ts private/**/*.test.ts",
+    "test": "node --experimental-strip-types --test \"public/**/*.test.ts\" \"private/**/*.test.ts\"",
     "test:footer": "node --experimental-strip-types --test public/footer-framework/*.test.ts",
     "pack:public": "./scripts/pack-public.sh"
   },

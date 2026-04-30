@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import stardockLoop from "./index.ts";
+import stardockLoop from "../index.ts";
 
 export function makeHarness(cwd: string) {
 	const tools = new Map<string, any>();
