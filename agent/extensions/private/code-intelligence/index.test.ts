@@ -425,10 +425,20 @@ test("usage tracking records sanitized code-intel metadata", async () => {
 	const resultEvent = { toolName: "code_intel_syntax_search", toolCallId: "usage-test", input, details: result.details, content: result.content, isError: false };
 	for (const handler of handlers.get("tool_result") ?? []) await handler(resultEvent, ctx);
 
+	const impactInput = { symbols: ["sensitiveSymbolName"], confirmReferences: "typescript", maxReferenceRoots: 2, maxReferenceResults: 5, includeReferenceDeclarations: true };
+	const impactCallEvent = { toolName: "code_intel_impact_map", toolCallId: "usage-impact-test", input: impactInput };
+	for (const handler of handlers.get("tool_call") ?? []) await handler(impactCallEvent, ctx);
+	const impactResultEvent = { toolName: "code_intel_impact_map", toolCallId: "usage-impact-test", input: impactInput, details: { ok: true, rootSymbols: ["sensitiveSymbolName"], related: [], coverage: { truncated: false } }, isError: false };
+	for (const handler of handlers.get("tool_result") ?? []) await handler(impactResultEvent, ctx);
+
 	const usageLog = fs.readFileSync(process.env.PI_CODE_INTEL_USAGE_LOG as string, "utf-8");
 	assert.match(usageLog, /code_intel_syntax_search/);
 	assert.match(usageLog, /patternLength/);
+	assert.match(usageLog, /confirmReferences/);
+	assert.match(usageLog, /typescript/);
+	assert.match(usageLog, /maxReferenceRoots/);
 	assert.doesNotMatch(usageLog, /authenticate\(\$A\)/);
+	assert.doesNotMatch(usageLog, /sensitiveSymbolName/);
 });
 
 test("custom render cards keep code-intel results compact", async () => {
