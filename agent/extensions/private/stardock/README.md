@@ -11,6 +11,7 @@ Architecture diagrams: see [`docs/architecture-diagrams.md`](docs/architecture-d
 - Extension source: `agent/extensions/private/stardock/`
 - Registered from: `agent/extensions/package.json`
 - State directory: `.stardock/`
+- Source layout: `index.ts` owns extension orchestration and shared command/tool registration; `src/state.ts` holds shared state/persistence helpers; feature slices such as `src/final-reports.ts` keep feature-owned migration, formatting, behavior, schemas, and registration together.
 
 Stardock stores loop state in the current workspace, with one folder per run:
 

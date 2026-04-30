@@ -6,619 +6,80 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
-
-const STARDOCK_DIR = ".stardock";
-const COMPLETE_MARKER = "<promise>COMPLETE</promise>";
-
-const DEFAULT_TEMPLATE = `# Task
-
-Describe your task here.
-
-## Goals
-- Goal 1
-- Goal 2
-
-## Checklist
-- [ ] Item 1
-- [ ] Item 2
-
-## Notes
-(Update this as you work)
-`;
-
-const DEFAULT_REFLECT_INSTRUCTIONS = `REFLECTION CHECKPOINT
-
-Pause and reflect on your progress:
-1. What has been accomplished so far?
-2. What's working well?
-3. What's not working or blocking progress?
-4. Should the approach be adjusted?
-5. What are the next priorities?
-
-Update the task file with your reflection, then continue working.`;
-
-type LoopStatus = "active" | "paused" | "completed";
-type LoopMode = "checklist" | "recursive" | "evolve";
-
-interface ChecklistModeState {
-	kind: "checklist";
-}
-
-type RecursiveResetPolicy = "manual" | "revert_failed_attempts" | "keep_best_only";
-type RecursiveStopCriterion = "target_reached" | "idea_exhaustion" | "max_failed_attempts" | "max_iterations" | "user_decision";
-type RecursiveAttemptStatus = "pending_report" | "reported";
-type RecursiveAttemptKind = "candidate_change" | "setup" | "refactor" | "instrumentation" | "benchmark_scaffold" | "research" | "other";
-type RecursiveAttemptResult = "improved" | "neutral" | "worse" | "invalid" | "blocked";
-
-interface RecursiveAttempt {
-	id: string;
-	iteration: number;
-	createdAt: string;
-	updatedAt?: string;
-	status: RecursiveAttemptStatus;
-	kind?: RecursiveAttemptKind;
-	hypothesis?: string;
-	actionSummary?: string;
-	validation?: string;
-	result?: RecursiveAttemptResult;
-	kept?: boolean;
-	evidence?: string;
-	followupIdeas?: string[];
-	summary: string;
-}
-
-interface RecursiveModeState {
-	kind: "recursive";
-	objective: string;
-	baseline?: string;
-	validationCommand?: string;
-	resetPolicy: RecursiveResetPolicy;
-	stopWhen: RecursiveStopCriterion[];
-	maxFailedAttempts?: number;
-	outsideHelpEvery?: number;
-	governEvery?: number;
-	outsideHelpOnStagnation: boolean;
-	attempts: RecursiveAttempt[];
-}
-
-interface EvolveModeState {
-	kind: "evolve";
-}
-
-type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;
-type PromptReason = "iteration" | "reflection";
-type StateView = "summary" | "overview" | "timeline";
-type OutsideRequestKind = "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review";
-type OutsideRequestStatus = "requested" | "in_progress" | "answered" | "dismissed";
-type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane";
-
-interface GovernorDecision {
-	verdict: "continue" | "pivot" | "stop" | "measure" | "exploit_scaffold" | "ask_user";
-	rationale: string;
-	requiredNextMove?: string;
-	forbiddenNextMoves?: string[];
-	evidenceGaps?: string[];
-}
-
-interface OutsideRequest {
-	id: string;
-	kind: OutsideRequestKind;
-	status: OutsideRequestStatus;
-	requestedAt: string;
-	requestedByIteration: number;
-	trigger: OutsideRequestTrigger;
-	prompt: string;
-	answer?: string;
-	decision?: GovernorDecision;
-	consumedAt?: string;
-}
-
-type CriterionStatus = "pending" | "passed" | "failed" | "skipped" | "blocked";
-type VerificationArtifactKind = "test" | "smoke" | "curl" | "browser" | "screenshot" | "walkthrough" | "benchmark" | "log" | "other";
-
-interface Criterion {
-	id: string;
-	taskId?: string;
-	sourceRef?: string;
-	requirement?: string;
-	description: string;
-	passCondition: string;
-	testMethod?: string;
-	status: CriterionStatus;
-	evidence?: string;
-	redEvidence?: string;
-	greenEvidence?: string;
-	lastCheckedAt?: string;
-}
-
-interface CriterionLedger {
-	criteria: Criterion[];
-	requirementTrace: Array<{ requirement: string; criterionIds: string[] }>;
-}
-
-interface VerificationArtifact {
-	id: string;
-	kind: VerificationArtifactKind;
-	command?: string;
-	path?: string;
-	summary: string;
-	criterionIds?: string[];
-	createdAt: string;
-}
-
-type IterationBriefStatus = "draft" | "active" | "completed" | "dismissed";
-type IterationBriefSource = "manual" | "governor";
-type BriefLifecycleAction = "keep" | "complete" | "clear";
-type FinalVerificationStatus = "draft" | "passed" | "failed" | "partial";
-type ValidationResult = "passed" | "failed" | "skipped";
-
-interface FinalValidationRecord {
-	command?: string;
-	result: ValidationResult;
-	summary: string;
-	artifactIds?: string[];
-}
-
-interface FinalVerificationReport {
-	id: string;
-	status: FinalVerificationStatus;
-	summary: string;
-	criterionIds: string[];
-	artifactIds: string[];
-	validation: FinalValidationRecord[];
-	unresolvedGaps: string[];
-	compatibilityNotes: string[];
-	securityNotes: string[];
-	performanceNotes: string[];
-	createdAt: string;
-	updatedAt: string;
-}
-
-interface IterationBrief {
-	id: string;
-	status: IterationBriefStatus;
-	source: IterationBriefSource;
-	requestId?: string;
-	objective: string;
-	task: string;
-	criterionIds: string[];
-	acceptanceCriteria: string[];
-	verificationRequired: string[];
-	requiredContext: string[];
-	constraints: string[];
-	avoid: string[];
-	outputContract: string;
-	sourceRefs: string[];
-	createdAt: string;
-	updatedAt: string;
-	completedAt?: string;
-}
-
-interface LoopModeHandler {
-	mode: LoopMode;
-	buildPrompt(state: LoopState, taskContent: string, reason: PromptReason): string;
-	buildSystemInstructions(state: LoopState): string;
-	onIterationDone(state: LoopState): void;
-	summarize(state: LoopState): string[];
-}
-
-interface LoopState {
-	schemaVersion: 3;
-	name: string;
-	taskFile: string;
-	mode: LoopMode;
-	iteration: number;
-	maxIterations: number;
-	itemsPerIteration: number; // Prompt hint only - "process N items per turn"
-	reflectEvery: number; // Reflect every N iterations
-	reflectInstructions: string;
-	active: boolean; // Backwards compat
-	status: LoopStatus;
-	startedAt: string;
-	completedAt?: string;
-	lastReflectionAt: number; // Last iteration we reflected at
-	modeState: LoopModeState;
-	outsideRequests: OutsideRequest[];
-	criterionLedger: CriterionLedger;
-	verificationArtifacts: VerificationArtifact[];
-	briefs: IterationBrief[];
-	currentBriefId?: string;
-	finalVerificationReports: FinalVerificationReport[];
-}
-
-const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };
+import {
+	COMPLETE_MARKER,
+	DEFAULT_REFLECT_INSTRUCTIONS,
+	DEFAULT_TEMPLATE,
+	type BriefLifecycleAction,
+	type Criterion,
+	type CriterionLedger,
+	type CriterionStatus,
+	type FinalVerificationReport,
+	type FinalValidationRecord,
+	type GovernorDecision,
+	type IterationBrief,
+	type LoopMode,
+	type LoopModeHandler,
+	type LoopModeState,
+	type LoopState,
+	type LoopStatus,
+	type OutsideRequest,
+	type OutsideRequestKind,
+	type OutsideRequestTrigger,
+	type PromptReason,
+	type RecursiveAttempt,
+	type RecursiveAttemptKind,
+	type RecursiveAttemptResult,
+	type RecursiveModeState,
+	type RecursiveResetPolicy,
+	type RecursiveStopCriterion,
+	type StateView,
+	type VerificationArtifact,
+	type VerificationArtifactKind,
+	STARDOCK_DIR,
+	STATUS_ICONS,
+	archiveDir,
+	compactText,
+	defaultCriterionLedger,
+	defaultModeState,
+	defaultRecursiveModeState,
+	defaultTaskFile,
+	ensureDir,
+	existingStatePath,
+	isArtifactKind,
+	isBriefSource,
+	isBriefStatus,
+	isCriterionStatus,
+	isFinalVerificationStatus,
+	isValidationResult,
+	legacyPath,
+	listLoops,
+	loadState,
+	migrateFinalValidationRecords,
+	migrateState,
+	normalizeId,
+	normalizeIds,
+	normalizeMode,
+	normalizeStringList,
+	numberOrDefault,
+	rebuildRequirementTrace,
+	runDir,
+	safeMtimeMs,
+	sanitize,
+	saveState,
+	statePath,
+	stardockDir,
+	stringOrDefault,
+	taskPath,
+	tryDelete,
+	tryRead,
+	tryRemoveDir,
+} from "./src/state.ts";
+import { registerFinalReportTool } from "./src/final-reports.ts";
 
 export default function (pi: ExtensionAPI) {
 	let currentLoop: string | null = null;
 
-	// --- File helpers ---
-
-	const stardockDir = (ctx: ExtensionContext) => path.resolve(ctx.cwd, STARDOCK_DIR);
-	const runsDir = (ctx: ExtensionContext) => path.join(stardockDir(ctx), "runs");
-	const archiveDir = (ctx: ExtensionContext) => path.join(stardockDir(ctx), "archive");
-	const sanitize = (name: string) => name.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_");
-
-	function runDir(ctx: ExtensionContext, name: string, archived = false): string {
-		return path.join(archived ? archiveDir(ctx) : runsDir(ctx), sanitize(name));
-	}
-
-	function statePath(ctx: ExtensionContext, name: string, archived = false): string {
-		return path.join(runDir(ctx, name, archived), "state.json");
-	}
-
-	function taskPath(ctx: ExtensionContext, name: string, archived = false): string {
-		return path.join(runDir(ctx, name, archived), "task.md");
-	}
-
-	function defaultTaskFile(name: string): string {
-		return path.join(STARDOCK_DIR, "runs", sanitize(name), "task.md");
-	}
-
-	function legacyPath(ctx: ExtensionContext, name: string, ext: string, archived = false): string {
-		const dir = archived ? archiveDir(ctx) : stardockDir(ctx);
-		return path.join(dir, `${sanitize(name)}${ext}`);
-	}
-
-	function existingStatePath(ctx: ExtensionContext, name: string, archived = false): string {
-		const currentPath = statePath(ctx, name, archived);
-		return fs.existsSync(currentPath) ? currentPath : legacyPath(ctx, name, ".state.json", archived);
-	}
-
-	function ensureDir(filePath: string): void {
-		const dir = path.dirname(filePath);
-		if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-	}
-
-	function tryDelete(filePath: string): void {
-		try {
-			if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-		} catch {
-			/* ignore */
-		}
-	}
-
-	function tryRead(filePath: string): string | null {
-		try {
-			return fs.readFileSync(filePath, "utf-8");
-		} catch {
-			return null;
-		}
-	}
-
-	function safeMtimeMs(filePath: string): number {
-		try {
-			return fs.statSync(filePath).mtimeMs;
-		} catch {
-			return 0;
-		}
-	}
-
-	function tryRemoveDir(dirPath: string): boolean {
-		try {
-			if (fs.existsSync(dirPath)) {
-				fs.rmSync(dirPath, { recursive: true, force: true });
-			}
-			return true;
-		} catch {
-			return false;
-		}
-	}
-
-	// --- State management ---
-
-	function normalizeMode(value: unknown): LoopMode {
-		return value === "recursive" || value === "evolve" || value === "checklist" ? value : "checklist";
-	}
-
-	function defaultRecursiveModeState(objective = "Continue improving the task outcome"): RecursiveModeState {
-		return {
-			kind: "recursive",
-			objective,
-			resetPolicy: "manual",
-			stopWhen: ["target_reached", "idea_exhaustion", "max_iterations"],
-			outsideHelpOnStagnation: false,
-			attempts: [],
-		};
-	}
-
-	function defaultModeState(mode: LoopMode): LoopModeState {
-		if (mode === "recursive") return defaultRecursiveModeState();
-		if (mode === "evolve") return { kind: "evolve" };
-		return { kind: "checklist" };
-	}
-
-	function migrateModeState(mode: LoopMode, rawModeState: unknown): LoopModeState {
-		if (rawModeState && typeof rawModeState === "object" && (rawModeState as { kind?: unknown }).kind === mode) {
-			if (mode === "recursive") {
-				const raw = rawModeState as Partial<RecursiveModeState>;
-				return {
-					...defaultRecursiveModeState(raw.objective),
-					...raw,
-					attempts: Array.isArray(raw.attempts) ? raw.attempts : [],
-					outsideHelpOnStagnation: raw.outsideHelpOnStagnation === true,
-				};
-			}
-			return rawModeState as LoopModeState;
-		}
-		return defaultModeState(mode);
-	}
-
-	function numberOrDefault(value: unknown, fallback: number): number {
-		return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-	}
-
-	function stringOrDefault(value: unknown, fallback: string): string {
-		return typeof value === "string" ? value : fallback;
-	}
-
-	function migrateOutsideRequests(value: unknown): OutsideRequest[] {
-		return Array.isArray(value) ? (value as OutsideRequest[]) : [];
-	}
-
-	function defaultCriterionLedger(): CriterionLedger {
-		return { criteria: [], requirementTrace: [] };
-	}
-
-	function isCriterionStatus(value: unknown): value is CriterionStatus {
-		return ["pending", "passed", "failed", "skipped", "blocked"].includes(String(value));
-	}
-
-	function isArtifactKind(value: unknown): value is VerificationArtifactKind {
-		return ["test", "smoke", "curl", "browser", "screenshot", "walkthrough", "benchmark", "log", "other"].includes(String(value));
-	}
-
-	function normalizeStringList(value: unknown): string[] {
-		if (!Array.isArray(value)) return [];
-		const items = value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
-		return [...new Set(items)];
-	}
-
-	function normalizeIds(value: unknown): string[] | undefined {
-		const ids = normalizeStringList(value);
-		return ids.length > 0 ? ids : undefined;
-	}
-
-	function normalizeId(value: unknown, fallback: string): string {
-		const raw = typeof value === "string" ? value.trim() : "";
-		const normalized = raw.replace(/[^a-zA-Z0-9_.:-]/g, "_").replace(/_+/g, "_");
-		return normalized || fallback;
-	}
-
-	function rebuildRequirementTrace(criteria: Criterion[]): CriterionLedger["requirementTrace"] {
-		const byRequirement = new Map<string, Set<string>>();
-		for (const criterion of criteria) {
-			const requirement = criterion.requirement?.trim();
-			if (!requirement) continue;
-			const ids = byRequirement.get(requirement) ?? new Set<string>();
-			ids.add(criterion.id);
-			byRequirement.set(requirement, ids);
-		}
-		return [...byRequirement.entries()].map(([requirement, ids]) => ({ requirement, criterionIds: [...ids].sort() }));
-	}
-
-	function migrateCriterionLedger(value: unknown): CriterionLedger {
-		if (!value || typeof value !== "object") return defaultCriterionLedger();
-		const raw = value as { criteria?: unknown };
-		const criteria = Array.isArray(raw.criteria)
-			? raw.criteria
-					.map((item, index): Criterion | null => {
-						if (!item || typeof item !== "object") return null;
-						const criterion = item as Partial<Criterion> & Record<string, unknown>;
-						const description = typeof criterion.description === "string" ? criterion.description.trim() : "";
-						const passCondition = typeof criterion.passCondition === "string" ? criterion.passCondition.trim() : "";
-						if (!description || !passCondition) return null;
-						return {
-							id: normalizeId(criterion.id, `c${index + 1}`),
-							taskId: typeof criterion.taskId === "string" && criterion.taskId.trim() ? criterion.taskId.trim() : undefined,
-							sourceRef: typeof criterion.sourceRef === "string" && criterion.sourceRef.trim() ? criterion.sourceRef.trim() : undefined,
-							requirement: typeof criterion.requirement === "string" && criterion.requirement.trim() ? criterion.requirement.trim() : undefined,
-							description,
-							passCondition,
-							testMethod: typeof criterion.testMethod === "string" && criterion.testMethod.trim() ? criterion.testMethod.trim() : undefined,
-							status: isCriterionStatus(criterion.status) ? criterion.status : "pending",
-							evidence: typeof criterion.evidence === "string" && criterion.evidence.trim() ? criterion.evidence.trim() : undefined,
-							redEvidence: typeof criterion.redEvidence === "string" && criterion.redEvidence.trim() ? criterion.redEvidence.trim() : undefined,
-							greenEvidence: typeof criterion.greenEvidence === "string" && criterion.greenEvidence.trim() ? criterion.greenEvidence.trim() : undefined,
-							lastCheckedAt: typeof criterion.lastCheckedAt === "string" ? criterion.lastCheckedAt : undefined,
-						};
-					})
-					.filter((criterion): criterion is Criterion => criterion !== null)
-			: [];
-		return { criteria, requirementTrace: rebuildRequirementTrace(criteria) };
-	}
-
-	function migrateVerificationArtifacts(value: unknown): VerificationArtifact[] {
-		if (!Array.isArray(value)) return [];
-		return value
-			.map((item, index): VerificationArtifact | null => {
-				if (!item || typeof item !== "object") return null;
-				const artifact = item as Partial<VerificationArtifact> & Record<string, unknown>;
-				const summary = typeof artifact.summary === "string" ? artifact.summary.trim() : "";
-				if (!summary) return null;
-				return {
-					id: normalizeId(artifact.id, `a${index + 1}`),
-					kind: isArtifactKind(artifact.kind) ? artifact.kind : "other",
-					command: typeof artifact.command === "string" && artifact.command.trim() ? artifact.command.trim() : undefined,
-					path: typeof artifact.path === "string" && artifact.path.trim() ? artifact.path.trim() : undefined,
-					summary,
-					criterionIds: normalizeIds(artifact.criterionIds),
-					createdAt: typeof artifact.createdAt === "string" ? artifact.createdAt : new Date().toISOString(),
-				};
-			})
-			.filter((artifact): artifact is VerificationArtifact => artifact !== null);
-	}
-
-	function isBriefStatus(value: unknown): value is IterationBriefStatus {
-		return ["draft", "active", "completed", "dismissed"].includes(String(value));
-	}
-
-	function isFinalVerificationStatus(value: unknown): value is FinalVerificationStatus {
-		return ["draft", "passed", "failed", "partial"].includes(String(value));
-	}
-
-	function isValidationResult(value: unknown): value is ValidationResult {
-		return ["passed", "failed", "skipped"].includes(String(value));
-	}
-
-	function isBriefSource(value: unknown): value is IterationBriefSource {
-		return ["manual", "governor"].includes(String(value));
-	}
-
-	function migrateBriefs(value: unknown): IterationBrief[] {
-		if (!Array.isArray(value)) return [];
-		return value
-			.map((item, index): IterationBrief | null => {
-				if (!item || typeof item !== "object") return null;
-				const brief = item as Partial<IterationBrief> & Record<string, unknown>;
-				const objective = typeof brief.objective === "string" ? brief.objective.trim() : "";
-				const task = typeof brief.task === "string" ? brief.task.trim() : "";
-				if (!objective || !task) return null;
-				const now = new Date().toISOString();
-				return {
-					id: normalizeId(brief.id, `b${index + 1}`),
-					status: isBriefStatus(brief.status) ? brief.status : "draft",
-					source: isBriefSource(brief.source) ? brief.source : "manual",
-					requestId: typeof brief.requestId === "string" && brief.requestId.trim() ? brief.requestId.trim() : undefined,
-					objective,
-					task,
-					criterionIds: normalizeStringList(brief.criterionIds),
-					acceptanceCriteria: normalizeStringList(brief.acceptanceCriteria),
-					verificationRequired: normalizeStringList(brief.verificationRequired),
-					requiredContext: normalizeStringList(brief.requiredContext),
-					constraints: normalizeStringList(brief.constraints),
-					avoid: normalizeStringList(brief.avoid),
-					outputContract: typeof brief.outputContract === "string" && brief.outputContract.trim() ? brief.outputContract.trim() : "Record changed files, validation evidence, risks, and the suggested next move.",
-					sourceRefs: normalizeStringList(brief.sourceRefs),
-					createdAt: typeof brief.createdAt === "string" ? brief.createdAt : now,
-					updatedAt: typeof brief.updatedAt === "string" ? brief.updatedAt : now,
-					completedAt: typeof brief.completedAt === "string" ? brief.completedAt : undefined,
-				};
-			})
-			.filter((brief): brief is IterationBrief => brief !== null);
-	}
-
-	function migrateCurrentBriefId(value: unknown, briefs: IterationBrief[]): string | undefined {
-		const id = typeof value === "string" ? value.trim() : "";
-		if (id && briefs.some((brief) => brief.id === id && brief.status === "active")) return id;
-		return briefs.find((brief) => brief.status === "active")?.id;
-	}
-
-	function migrateFinalValidationRecords(value: unknown): FinalValidationRecord[] {
-		if (!Array.isArray(value)) return [];
-		return value
-			.map((item): FinalValidationRecord | null => {
-				if (!item || typeof item !== "object") return null;
-				const record = item as Partial<FinalValidationRecord> & Record<string, unknown>;
-				const summary = typeof record.summary === "string" ? record.summary.trim() : "";
-				if (!summary) return null;
-				return {
-					command: typeof record.command === "string" && record.command.trim() ? compactText(record.command, 240) : undefined,
-					result: isValidationResult(record.result) ? record.result : "skipped",
-					summary: compactText(summary, 500) ?? summary,
-					artifactIds: normalizeIds(record.artifactIds),
-				};
-			})
-			.filter((record): record is FinalValidationRecord => record !== null);
-	}
-
-	function migrateFinalVerificationReports(value: unknown): FinalVerificationReport[] {
-		if (!Array.isArray(value)) return [];
-		return value
-			.map((item, index): FinalVerificationReport | null => {
-				if (!item || typeof item !== "object") return null;
-				const report = item as Partial<FinalVerificationReport> & Record<string, unknown>;
-				const summary = typeof report.summary === "string" ? report.summary.trim() : "";
-				if (!summary) return null;
-				const now = new Date().toISOString();
-				return {
-					id: normalizeId(report.id, `fr${index + 1}`),
-					status: isFinalVerificationStatus(report.status) ? report.status : "draft",
-					summary: compactText(summary, 500) ?? summary,
-					criterionIds: normalizeStringList(report.criterionIds),
-					artifactIds: normalizeStringList(report.artifactIds),
-					validation: migrateFinalValidationRecords(report.validation),
-					unresolvedGaps: normalizeStringList(report.unresolvedGaps).map((gap) => compactText(gap, 240) ?? gap),
-					compatibilityNotes: normalizeStringList(report.compatibilityNotes).map((note) => compactText(note, 240) ?? note),
-					securityNotes: normalizeStringList(report.securityNotes).map((note) => compactText(note, 240) ?? note),
-					performanceNotes: normalizeStringList(report.performanceNotes).map((note) => compactText(note, 240) ?? note),
-					createdAt: typeof report.createdAt === "string" ? report.createdAt : now,
-					updatedAt: typeof report.updatedAt === "string" ? report.updatedAt : now,
-				};
-			})
-			.filter((report): report is FinalVerificationReport => report !== null);
-	}
-
-	function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
-		const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
-		const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
-		const status = raw.status === "active" || raw.status === "completed" || raw.status === "paused" ? raw.status : raw.active ? "active" : "paused";
-		const mode = normalizeMode(raw.mode);
-		const name = stringOrDefault(raw.name, "stardock");
-		const briefs = migrateBriefs(raw.briefs);
-		return {
-			schemaVersion: 3,
-			name,
-			taskFile: stringOrDefault(raw.taskFile, defaultTaskFile(name)),
-			mode,
-			iteration: numberOrDefault(raw.iteration, 0),
-			maxIterations: numberOrDefault(raw.maxIterations, 50),
-			itemsPerIteration: numberOrDefault(raw.itemsPerIteration, 0),
-			reflectEvery,
-			reflectInstructions: stringOrDefault(raw.reflectInstructions, DEFAULT_REFLECT_INSTRUCTIONS),
-			active: status === "active",
-			status,
-			startedAt: stringOrDefault(raw.startedAt, new Date().toISOString()),
-			completedAt: typeof raw.completedAt === "string" ? raw.completedAt : undefined,
-			lastReflectionAt,
-			modeState: migrateModeState(mode, raw.modeState),
-			outsideRequests: migrateOutsideRequests(raw.outsideRequests),
-			criterionLedger: migrateCriterionLedger(raw.criterionLedger),
-			verificationArtifacts: migrateVerificationArtifacts(raw.verificationArtifacts),
-			briefs,
-			currentBriefId: migrateCurrentBriefId(raw.currentBriefId, briefs),
-			finalVerificationReports: migrateFinalVerificationReports(raw.finalVerificationReports),
-		};
-	}
-
-	function readStateFile(filePath: string): LoopState | null {
-		const content = tryRead(filePath);
-		return content ? migrateState(JSON.parse(content)) : null;
-	}
-
-	function loadState(ctx: ExtensionContext, name: string, archived = false): LoopState | null {
-		return readStateFile(existingStatePath(ctx, name, archived));
-	}
-
-	function saveState(ctx: ExtensionContext, state: LoopState, archived = false): void {
-		state.active = state.status === "active";
-		const filePath = statePath(ctx, state.name, archived);
-		ensureDir(filePath);
-		fs.writeFileSync(filePath, JSON.stringify(state, null, 2), "utf-8");
-	}
-
-	function listLoops(ctx: ExtensionContext, archived = false): LoopState[] {
-		const currentDir = archived ? archiveDir(ctx) : runsDir(ctx);
-		const legacyDir = archived ? archiveDir(ctx) : stardockDir(ctx);
-		const byName = new Map<string, LoopState>();
-
-		if (fs.existsSync(currentDir)) {
-			for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
-				if (!entry.isDirectory()) continue;
-				const state = readStateFile(path.join(currentDir, entry.name, "state.json"));
-				if (state) byName.set(state.name, state);
-			}
-		}
-
-		if (fs.existsSync(legacyDir)) {
-			for (const entry of fs.readdirSync(legacyDir, { withFileTypes: true })) {
-				if (!entry.isFile() || !entry.name.endsWith(".state.json")) continue;
-				const state = readStateFile(path.join(legacyDir, entry.name));
-				if (state && !byName.has(state.name)) byName.set(state.name, state);
-			}
-		}
-
-		return [...byName.values()];
-	}
 
 	// --- Loop state transitions ---
 
@@ -1262,61 +723,6 @@ export default function (pi: ExtensionAPI) {
 		return lines.join("\n");
 	}
 
-	function formatFinalReportOverview(state: LoopState): string {
-		const lines = [`Final verification reports for ${state.name}`, `Reports: ${state.finalVerificationReports.length} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`];
-		if (state.finalVerificationReports.length > 0) {
-			lines.push("");
-			for (const report of state.finalVerificationReports.slice(0, 8)) {
-				lines.push(`- ${report.id} [${report.status}] ${compactText(report.summary, 140)}`);
-				if (report.criterionIds.length) lines.push(`  Criteria: ${report.criterionIds.join(",")}`);
-				if (report.artifactIds.length) lines.push(`  Artifacts: ${report.artifactIds.join(",")}`);
-				if (report.unresolvedGaps.length) lines.push(`  Gaps: ${report.unresolvedGaps.slice(0, 3).map((gap) => compactText(gap, 100)).join("; ")}`);
-			}
-			if (state.finalVerificationReports.length > 8) lines.push(`... ${state.finalVerificationReports.length - 8} more reports`);
-		}
-		return lines.join("\n");
-	}
-
-	function recordFinalVerificationReport(ctx: ExtensionContext, loopName: string, input: Partial<FinalVerificationReport> & { summary?: string }): { ok: true; state: LoopState; report: FinalVerificationReport; created: boolean } | { ok: false; error: string } {
-		const state = loadState(ctx, loopName);
-		if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
-		const id = normalizeId(input.id, nextSequentialId("fr", state.finalVerificationReports));
-		const existingIndex = state.finalVerificationReports.findIndex((report) => report.id === id);
-		const existing = existingIndex >= 0 ? state.finalVerificationReports[existingIndex] : undefined;
-		const summary = typeof input.summary === "string" && input.summary.trim() ? input.summary.trim() : existing?.summary;
-		if (!summary) return { ok: false, error: "Final verification report requires summary." };
-		const criterionIds = input.criterionIds !== undefined ? normalizeStringList(input.criterionIds) : existing?.criterionIds ?? [];
-		const artifactIds = input.artifactIds !== undefined ? normalizeStringList(input.artifactIds) : existing?.artifactIds ?? [];
-		const criterionSet = new Set(state.criterionLedger.criteria.map((criterion) => criterion.id));
-		const artifactSet = new Set(state.verificationArtifacts.map((artifact) => artifact.id));
-		const missingCriterion = criterionIds.find((criterionId) => !criterionSet.has(criterionId));
-		if (missingCriterion) return { ok: false, error: `Criterion "${missingCriterion}" not found in loop "${loopName}".` };
-		const validation = input.validation !== undefined ? migrateFinalValidationRecords(input.validation) : existing?.validation ?? [];
-		const allArtifactIds = [...artifactIds, ...validation.flatMap((record) => record.artifactIds ?? [])];
-		const missingArtifact = allArtifactIds.find((artifactId) => !artifactSet.has(artifactId));
-		if (missingArtifact) return { ok: false, error: `Artifact "${missingArtifact}" not found in loop "${loopName}".` };
-		const now = new Date().toISOString();
-		const report: FinalVerificationReport = {
-			id,
-			status: isFinalVerificationStatus(input.status) ? input.status : existing?.status ?? "draft",
-			summary: compactText(summary, 500) ?? summary,
-			criterionIds,
-			artifactIds,
-			validation,
-			unresolvedGaps: input.unresolvedGaps !== undefined ? normalizeStringList(input.unresolvedGaps).map((gap) => compactText(gap, 240) ?? gap) : existing?.unresolvedGaps ?? [],
-			compatibilityNotes: input.compatibilityNotes !== undefined ? normalizeStringList(input.compatibilityNotes).map((note) => compactText(note, 240) ?? note) : existing?.compatibilityNotes ?? [],
-			securityNotes: input.securityNotes !== undefined ? normalizeStringList(input.securityNotes).map((note) => compactText(note, 240) ?? note) : existing?.securityNotes ?? [],
-			performanceNotes: input.performanceNotes !== undefined ? normalizeStringList(input.performanceNotes).map((note) => compactText(note, 240) ?? note) : existing?.performanceNotes ?? [],
-			createdAt: existing?.createdAt ?? now,
-			updatedAt: now,
-		};
-		if (existingIndex >= 0) state.finalVerificationReports[existingIndex] = report;
-		else state.finalVerificationReports.push(report);
-		state.finalVerificationReports.sort((a, b) => a.id.localeCompare(b.id));
-		saveState(ctx, state);
-		updateUI(ctx);
-		return { ok: true, state, report, created: existingIndex < 0 };
-	}
 
 	// --- UI ---
 
@@ -2679,63 +2085,16 @@ Examples:
 		},
 	});
 
-	const finalValidationRecordInputSchema = Type.Object({
-		command: Type.Optional(Type.String({ description: "Validation command, check, or manual verification performed." })),
-		result: Type.Union([Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped")], { description: "Validation result." }),
-		summary: Type.String({ description: "Compact validation summary." }),
-		artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids supporting this validation record." })),
-	});
 
-	pi.registerTool({
-		name: "stardock_final_report",
-		label: "Manage Stardock Final Verification Report",
-		description: "Record or inspect compact final verification reports for a Stardock loop.",
-		parameters: Type.Object({
-			action: Type.Union([Type.Literal("list"), Type.Literal("record")], { description: "list returns final reports; record creates or updates one compact report." }),
-			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
-			id: Type.Optional(Type.String({ description: "Report id. Generated for record when omitted." })),
-			status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("partial")], { description: "Final verification status." })),
-			summary: Type.Optional(Type.String({ description: "Compact final verification summary. Required for new reports." })),
-			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids covered by this report." })),
-			artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Verification artifact ids referenced by this report." })),
-			validation: Type.Optional(Type.Array(finalValidationRecordInputSchema, { description: "Validation commands/checks and compact results." })),
-			unresolvedGaps: Type.Optional(Type.Array(Type.String(), { description: "Known unresolved gaps or skipped verification." })),
-			compatibilityNotes: Type.Optional(Type.Array(Type.String(), { description: "Compatibility notes or public contract considerations." })),
-			securityNotes: Type.Optional(Type.Array(Type.String(), { description: "Security notes or verification gaps." })),
-			performanceNotes: Type.Optional(Type.Array(Type.String(), { description: "Performance notes or measurement gaps." })),
-			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
-			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
-		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const loopName = params.loopName ?? currentLoop;
-			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
-			const state = loadState(ctx, loopName);
-			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
-			if (params.action === "list") {
-				return {
-					content: [{ type: "text", text: formatFinalReportOverview(state) }],
-					details: { loopName, finalVerificationReports: state.finalVerificationReports },
-				};
-			}
-			const result = recordFinalVerificationReport(ctx, loopName, {
-				id: params.id,
-				status: params.status,
-				summary: params.summary,
-				criterionIds: params.criterionIds,
-				artifactIds: params.artifactIds,
-				validation: params.validation,
-				unresolvedGaps: params.unresolvedGaps,
-				compatibilityNotes: params.compatibilityNotes,
-				securityNotes: params.securityNotes,
-				performanceNotes: params.performanceNotes,
-			});
-			if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName } };
-			return {
-				content: [{ type: "text", text: `${result.created ? "Recorded" : "Updated"} final report ${result.report.id} in loop "${loopName}".` }],
-				details: { loopName, report: result.report, finalVerificationReports: result.state.finalVerificationReports, ...optionalLoopDetails(ctx, result.state, params) },
-			};
+	registerFinalReportTool(
+		pi,
+		{
+			getCurrentLoop: () => currentLoop,
+			updateUI,
+			optionalLoopDetails,
 		},
-	});
+		formatCriterionCounts,
+	);
 
 	const criterionInputSchema = Type.Object({
 		id: Type.Optional(Type.String()),
