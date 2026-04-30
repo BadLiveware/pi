@@ -41,6 +41,8 @@ Use `stardock_final_report` before claiming substantial work complete when crite
 
 Use `stardock_auditor` when a bounded oversight review should inspect criteria, artifacts, final reports, attempts, and governor/outside-request context. `payload` builds a ready-to-copy manual auditor task; `record` stores a compact result with status, summary, focus, linked criteria/artifacts/final reports, concerns, recommendations, and required follow-ups; `list` inspects reviews. Auditor reviews are data-only in this slice: Stardock does not call a model, spawn subagents, mutate implementation state, or block completion automatically.
 
+Use `stardock_handoff` when work should be packaged for a human, agent, model, CLI, or future provider adapter without binding Stardock to that provider. `payload` builds a provider-neutral task, `record` stores the compact returned result, and `list` inspects handoffs. Treat `provider` metadata as optional and opaque; do not make provider session IDs or transcript formats the source of truth. This is a decoupling firewall, not execution: Stardock does not call `pi-subagents`, spawn agents, run models/processes, or apply returned edits.
+
 If outside-help/governor requests appear, inspect them with `stardock_outside_requests`, fetch ready-to-copy work with `stardock_outside_payload`, satisfy them manually or with a parent/orchestrator workflow, then record answers with `stardock_outside_answer`. Use `stardock_govern` for an immediate manual governor review request and payload without spawning subagents. Stardock keeps governor requests to one per iteration, so a manual governor request/decision suppresses the automatic cadence request for that same iteration.
 
 ## Commands

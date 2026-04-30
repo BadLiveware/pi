@@ -151,6 +151,8 @@ export type BriefLifecycleAction = "keep" | "complete" | "clear";
 export type FinalVerificationStatus = "draft" | "passed" | "failed" | "partial";
 export type ValidationResult = "passed" | "failed" | "skipped";
 export type AuditorReviewStatus = "draft" | "passed" | "concerns" | "blocked";
+export type AdvisoryHandoffRole = "explorer" | "test_runner" | "researcher" | "reviewer" | "governor" | "auditor" | "implementer";
+export type AdvisoryHandoffStatus = "draft" | "requested" | "answered" | "failed" | "dismissed";
 
 export interface FinalValidationRecord {
 	command?: string;
@@ -185,6 +187,27 @@ export interface AuditorReview {
 	concerns: string[];
 	recommendations: string[];
 	requiredFollowups: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface AdvisoryHandoff {
+	id: string;
+	role: AdvisoryHandoffRole;
+	status: AdvisoryHandoffStatus;
+	objective: string;
+	summary: string;
+	criterionIds: string[];
+	artifactIds: string[];
+	finalReportIds: string[];
+	contextRefs: string[];
+	constraints: string[];
+	requestedOutput: string;
+	provider?: Record<string, unknown>;
+	resultSummary?: string;
+	concerns: string[];
+	recommendations: string[];
+	artifactRefs: string[];
 	createdAt: string;
 	updatedAt: string;
 }
@@ -240,6 +263,7 @@ export interface LoopState {
 	currentBriefId?: string;
 	finalVerificationReports: FinalVerificationReport[];
 	auditorReviews: AuditorReview[];
+	advisoryHandoffs: AdvisoryHandoff[];
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };

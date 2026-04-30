@@ -759,10 +759,12 @@ Do not restart the completed implementation path. Future implementation should b
    - Initial manual `FinalVerificationReport` state and `stardock_final_report` list/record support exists for compact criteria coverage, validation records, artifact refs, unresolved gaps, and compatibility/security/performance notes.
    - Later, add policy for when completion should require or recommend a final report, and how reports interact with auditor review.
    - Add optional compound-learning proposals and cognitive-debt handoff explanations.
-7. **Advisory subagent workflow**
-   - Start with exploration and test-runner subagents if a safe extension/subagent API exists.
+7. **Advisory handoff / subagent firewall workflow**
+   - Initial provider-neutral `stardock_handoff` support exists for ready-to-copy advisory payloads and compact result records.
+   - Keep Stardock-owned handoff semantics separate from provider execution details; `pi-subagents` is only one possible future adapter.
+   - Start future execution with exploration and test-runner providers only after a safe adapter boundary exists.
    - Do not apply edits automatically.
-   - Persist worker run payload, result, failure, artifact refs, and summaries.
+   - Persist provider-neutral payloads, result summaries, concerns, recommendations, artifact refs, and optional opaque provider metadata.
 8. **Evolve mode**
    - Start only after `.pi/plans/stardock-evolve-mode.md` gates are satisfied.
    - Require evaluator timeout/output caps, archive caps, candidate summary bounds, criterion/evidence/artifact handling, auditor gates, and isolation choice before implementation.

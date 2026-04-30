@@ -2,18 +2,18 @@
 
 ## Status
 
-Design gate, not implementation-ready. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, and ready-to-copy governor/researcher payloads. Subagent execution should remain parent/orchestrator-driven until Pi exposes an extension API that can safely run and supervise subagents with inspectable ownership boundaries.
+Design gate for execution, not implementation-ready for direct spawning. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, ready-to-copy governor/researcher payloads, and provider-neutral advisory handoffs. Subagent execution should remain parent/orchestrator-driven until Pi exposes or Stardock chooses an execution adapter that can safely run and supervise providers with inspectable ownership boundaries.
 
 ## Decision
 
-Do not make Stardock spawn subagents directly yet. The next safe shape is an advisory, parent-orchestrated workflow:
+Do not make Stardock spawn subagents directly yet. The safe shape is an advisory, parent-orchestrated workflow behind a provider-neutral firewall:
 
-1. Stardock creates durable outside requests and payloads.
-2. The parent/orchestrator agent runs `subagent` or other tools using those payloads.
-3. The parent records answers with `stardock_outside_answer`/`sd_outside_answer` and attempt outcomes with `stardock_attempt_report`/`sd_attempt_report`.
-4. Stardock includes recorded decisions in the next recursive prompt as constraints.
+1. Stardock creates durable outside requests, briefs, auditor reviews, or `AdvisoryHandoff` payloads using Stardock-owned concepts.
+2. The parent/orchestrator may run any provider (`pi-subagents`, another extension, a CLI, a human review, or a future adapter) using those payloads.
+3. The parent records compact answers with `stardock_outside_answer`, `stardock_attempt_report`, `stardock_auditor`, or `stardock_handoff`.
+4. Stardock includes recorded decisions/results in later prompts as constraints or evidence.
 
-Only after that workflow is dogfooded should the extension add a direct subagent-driven mode.
+Only after this provider-neutral workflow is dogfooded should the extension add a direct execution adapter. The current `pi-subagents` extension is one possible future adapter, not a state contract.
 
 ## Context routing principle
 
@@ -64,6 +64,8 @@ Worker briefs should be verification-led when criteria exist: route selected cri
   - `stardock_outside_payload`
   - `stardock_outside_answer`
   - `stardock_attempt_report`
+  - `stardock_auditor`
+  - `stardock_handoff`
 - `sd_*` aliases remain optional future ergonomics only; they are not implemented now.
 - Extension-side automatic subagent execution risks hidden edits, unclear ownership, interruption ambiguity, and hard-to-review agent fanout.
 - User must be able to inspect and interrupt between attempts.
@@ -93,7 +95,34 @@ Existing state remains the source of truth:
 - `GovernorDecision`: recorded steer for subsequent prompts.
 - `AuditorReview`: recorded oversight findings for governor decisions and gated moves.
 
-Future direct subagent mode may add:
+Current provider-neutral firewall state includes:
+
+```ts
+interface AdvisoryHandoff {
+  id: string;
+  role: "explorer" | "test_runner" | "researcher" | "reviewer" | "governor" | "auditor" | "implementer";
+  status: "draft" | "requested" | "answered" | "failed" | "dismissed";
+  objective: string;
+  summary: string;
+  criterionIds: string[];
+  artifactIds: string[];
+  finalReportIds: string[];
+  contextRefs: string[];
+  constraints: string[];
+  requestedOutput: string;
+  provider?: Record<string, unknown>; // opaque adapter metadata only
+  resultSummary?: string;
+  concerns: string[];
+  recommendations: string[];
+  artifactRefs: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+`AdvisoryHandoff` is the firewall: Stardock owns objective, role, evidence links, output contract, and compact result fields. Provider run IDs, transcript URLs, model names, and runner-specific status belong only in opaque optional `provider` metadata and must not become the source of truth.
+
+Future direct execution adapters may add:
 
 ```ts
 interface VerificationArtifact {
@@ -149,7 +178,7 @@ interface WorkerRun {
 }
 ```
 
-Do not add this state until an execution path exists that can maintain it reliably.
+Do not add provider-specific execution state until an execution path exists that can maintain it reliably. Keep adapter metadata optional, opaque, and replaceable.
 
 ## Ownership and change authority
 

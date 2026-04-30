@@ -4,6 +4,9 @@
 
 import {
 	DEFAULT_REFLECT_INSTRUCTIONS,
+	type AdvisoryHandoff,
+	type AdvisoryHandoffRole,
+	type AdvisoryHandoffStatus,
 	type AuditorReview,
 	type AuditorReviewStatus,
 	type Criterion,
@@ -185,6 +188,19 @@ export function isAuditorReviewStatus(value: unknown): value is AuditorReviewSta
 	return ["draft", "passed", "concerns", "blocked"].includes(String(value));
 }
 
+export function isAdvisoryHandoffRole(value: unknown): value is AdvisoryHandoffRole {
+	return ["explorer", "test_runner", "researcher", "reviewer", "governor", "auditor", "implementer"].includes(String(value));
+}
+
+export function isAdvisoryHandoffStatus(value: unknown): value is AdvisoryHandoffStatus {
+	return ["draft", "requested", "answered", "failed", "dismissed"].includes(String(value));
+}
+
+function normalizeProviderMetadata(value: unknown): Record<string, unknown> | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	return Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 20));
+}
+
 export function isBriefSource(value: unknown): value is IterationBriefSource {
 	return ["manual", "governor"].includes(String(value));
 }
@@ -300,6 +316,39 @@ export function migrateAuditorReviews(value: unknown): AuditorReview[] {
 		.filter((review): review is AuditorReview => review !== null);
 }
 
+export function migrateAdvisoryHandoffs(value: unknown): AdvisoryHandoff[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item, index): AdvisoryHandoff | null => {
+			if (!item || typeof item !== "object") return null;
+			const handoff = item as Partial<AdvisoryHandoff> & Record<string, unknown>;
+			const objective = typeof handoff.objective === "string" ? handoff.objective.trim() : "";
+			if (!objective) return null;
+			const now = new Date().toISOString();
+			return {
+				id: normalizeId(handoff.id, `ah${index + 1}`),
+				role: isAdvisoryHandoffRole(handoff.role) ? handoff.role : "explorer",
+				status: isAdvisoryHandoffStatus(handoff.status) ? handoff.status : "draft",
+				objective: compactText(objective, 500) ?? objective,
+				summary: typeof handoff.summary === "string" && handoff.summary.trim() ? compactText(handoff.summary.trim(), 500) ?? handoff.summary.trim() : compactText(objective, 160) ?? objective,
+				criterionIds: normalizeStringList(handoff.criterionIds),
+				artifactIds: normalizeStringList(handoff.artifactIds),
+				finalReportIds: normalizeStringList(handoff.finalReportIds),
+				contextRefs: normalizeStringList(handoff.contextRefs).map((ref) => compactText(ref, 240) ?? ref),
+				constraints: normalizeStringList(handoff.constraints).map((constraint) => compactText(constraint, 240) ?? constraint),
+				requestedOutput: typeof handoff.requestedOutput === "string" && handoff.requestedOutput.trim() ? compactText(handoff.requestedOutput.trim(), 500) ?? handoff.requestedOutput.trim() : "Return a compact advisory report with evidence, risks, recommendations, and follow-ups.",
+				provider: normalizeProviderMetadata(handoff.provider),
+				resultSummary: typeof handoff.resultSummary === "string" && handoff.resultSummary.trim() ? compactText(handoff.resultSummary.trim(), 500) ?? handoff.resultSummary.trim() : undefined,
+				concerns: normalizeStringList(handoff.concerns).map((concern) => compactText(concern, 240) ?? concern),
+				recommendations: normalizeStringList(handoff.recommendations).map((recommendation) => compactText(recommendation, 240) ?? recommendation),
+				artifactRefs: normalizeStringList(handoff.artifactRefs).map((ref) => compactText(ref, 240) ?? ref),
+				createdAt: typeof handoff.createdAt === "string" ? handoff.createdAt : now,
+				updatedAt: typeof handoff.updatedAt === "string" ? handoff.updatedAt : now,
+			};
+		})
+		.filter((handoff): handoff is AdvisoryHandoff => handoff !== null);
+}
+
 export function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 	const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 	const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
@@ -330,5 +379,6 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		currentBriefId: migrateCurrentBriefId(raw.currentBriefId, briefs),
 		finalVerificationReports: migrateFinalVerificationReports(raw.finalVerificationReports),
 		auditorReviews: migrateAuditorReviews(raw.auditorReviews),
+		advisoryHandoffs: migrateAdvisoryHandoffs(raw.advisoryHandoffs),
 	};
 }

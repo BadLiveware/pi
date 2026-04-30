@@ -84,6 +84,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 				: undefined,
 		},
 		auditorReviews: state.auditorReviews,
+		advisoryHandoffs: state.advisoryHandoffs,
 		briefs: {
 			total: state.briefs.length,
 			currentBriefId: state.currentBriefId,
@@ -113,8 +114,9 @@ export function formatStateSummary(state: LoopState): string {
 	const criteriaText = state.criterionLedger.criteria.length > 0 ? `, criteria ${criterionCounts(state.criterionLedger).passed}/${state.criterionLedger.criteria.length} passed` : "";
 	const artifactsText = state.verificationArtifacts.length > 0 ? `, artifacts ${state.verificationArtifacts.length}` : "";
 	const reportsText = state.finalVerificationReports.length > 0 ? `, final reports ${state.finalVerificationReports.length}` : "";
+	const handoffText = state.advisoryHandoffs.length > 0 ? `, handoffs ${state.advisoryHandoffs.length}` : "";
 	const briefText = state.currentBriefId ? `, brief ${state.currentBriefId}` : "";
-	return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}${reportsText}${briefText}`;
+	return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}${reportsText}${handoffText}${briefText}`;
 }
 
 function compactViewText(value: string | undefined, maxLength = 160): string | undefined {
@@ -202,7 +204,7 @@ export function formatRunOverview(ctx: ExtensionContext, state: LoopState, archi
 	}
 
 	lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
-	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Auditor reviews: ${state.auditorReviews.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
+	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Auditor reviews: ${state.auditorReviews.length}`, `  Advisory handoffs: ${state.advisoryHandoffs.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
 	if (activeBrief) {
 		lines.push("", "Active brief", `  ${activeBrief.id}: ${compactViewText(activeBrief.objective, 180)}`, `  Task: ${compactViewText(activeBrief.task, 180)}`);
 		if (activeBrief.criterionIds.length) lines.push(`  Criteria: ${activeBrief.criterionIds.join(", ")}`);

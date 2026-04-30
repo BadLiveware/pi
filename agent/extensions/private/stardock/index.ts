@@ -76,6 +76,7 @@ import {
 	tryRead,
 	tryRemoveDir,
 } from "./src/state.ts";
+import { registerAdvisoryHandoffTool } from "./src/advisory-handoffs.ts";
 import { registerAttemptReportTool } from "./src/attempt-reports.ts";
 import { registerAuditorTool } from "./src/auditor-reviews.ts";
 import { applyActiveBriefLifecycle, appendActiveBriefPromptSection, appendTaskSourceSection, currentBrief, registerBriefTool } from "./src/briefs.ts";
@@ -597,6 +598,7 @@ export default function (pi: ExtensionAPI) {
 				briefs: [],
 				finalVerificationReports: [],
 				auditorReviews: [],
+				advisoryHandoffs: [],
 			};
 
 			saveState(ctx, state);
@@ -1041,6 +1043,7 @@ Examples:
 				briefs: [],
 				finalVerificationReports: [],
 				auditorReviews: [],
+				advisoryHandoffs: [],
 			};
 
 			saveState(ctx, state);
@@ -1197,6 +1200,12 @@ Examples:
 
 
 	registerBriefTool(pi, {
+		getCurrentLoop: () => currentLoop,
+		updateUI,
+		optionalLoopDetails,
+	});
+
+	registerAdvisoryHandoffTool(pi, {
 		getCurrentLoop: () => currentLoop,
 		updateUI,
 		optionalLoopDetails,
