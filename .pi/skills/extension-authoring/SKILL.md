@@ -73,6 +73,14 @@ The skill should include:
 - safe defaults, persistence behavior, and fallback/reset commands
 - examples of user requests mapped to tool/command actions
 
+## Structure
+
+- Prefer Vertical Slice Architecture over broad technical-category splits.
+- For each feature or workflow, keep owned behavior, formatting, schemas, prompt sections, command/tool registration, and tests together when practical.
+- Keep shared core modules small: cross-slice types, persistence, migration, path helpers, and tiny utilities only.
+- Avoid root-level “god” files for implementation or tests. When tests become more than a small smoke file, move them under `test/` and split by the same feature/workflow slices.
+- For integration-style extension tests, prefer `test/<feature>.test.ts` plus `test/test-harness.ts` over colocating many large test files in the package root.
+
 ## Implementation Checklist
 
 Before finishing an extension change:
