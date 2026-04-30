@@ -123,6 +123,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - New managed loops now use per-run folders under `.stardock/runs/` so task files and state files for different runs are easy to distinguish.
 - `governEvery: 1` originally created an automatic governor request for the same iteration immediately after a manual governor request was answered. This was noisy and is now suppressed by keeping governor requests to one per iteration.
 - `stardock_state` now gives agents a compact read-only state/list surface so dogfood runs do not require direct reads of ignored `.stardock/` files.
+- `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views provide the first operational "what is happening" visualization for a run.
 
 ## Updated design direction: context routing, not prompt replay
 
@@ -707,6 +708,7 @@ Completed implementation is intentionally compacted here; use commit history and
 | Private Stardock extension shell | Done | `fceb41d`; extension moved to `agent/extensions/private/stardock/`; public Ralph path removed; clean `stardock_*`, `/stardock`, and `.stardock/` surface implemented. |
 | Per-run Stardock storage | Done | Managed runs use `.stardock/runs/<name>/task.md` and `state.json`; archives use `.stardock/archive/<name>/`. |
 | Recursive dogfood stabilization | Done | Governor requests dedupe by iteration; `stardock_state` lists/inspects loop state without reading runtime files directly. |
+| Operational run visualization | Done | `/stardock view`, `/stardock timeline`, and `stardock_state` overview/timeline views show status, progress, latest governor decision, and event flow. |
 
 ### Next implementation candidates
 

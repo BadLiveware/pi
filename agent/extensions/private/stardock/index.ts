@@ -87,6 +87,7 @@ interface EvolveModeState {
 
 type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;
 type PromptReason = "iteration" | "reflection";
+type StateView = "summary" | "overview" | "timeline";
 type OutsideRequestKind = "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review";
 type OutsideRequestStatus = "requested" | "in_progress" | "answered" | "dismissed";
 type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane";
@@ -692,6 +693,98 @@ export default function (pi: ExtensionAPI) {
 		return `${formatLoop(state)}${attemptText}${requestText}`;
 	}
 
+	function compactText(value: string | undefined, maxLength = 160): string | undefined {
+		if (!value) return undefined;
+		const compact = value.replace(/\s+/g, " ").trim();
+		return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact;
+	}
+
+	function formatRequestTitle(request: OutsideRequest): string {
+		const decision = request.decision ? ` · ${request.decision.verdict}` : "";
+		return `${request.kind} ${request.id} · ${request.status}${decision}`;
+	}
+
+	function formatRunTimeline(state: LoopState): string {
+		type TimelineItem = { time: number; order: number; lines: string[] };
+		const items: TimelineItem[] = [
+			{
+				time: Date.parse(state.startedAt) || 0,
+				order: 0,
+				lines: [`Start · ${state.startedAt}`, `  Mode: ${state.mode}`],
+			},
+		];
+
+		if (state.modeState.kind === "recursive") {
+			for (const attempt of state.modeState.attempts) {
+				const result = attempt.result ? ` · ${attempt.result}` : "";
+				const kind = attempt.kind ? ` · ${attempt.kind}` : "";
+				const summary = compactText(attempt.summary || attempt.hypothesis || attempt.actionSummary);
+				items.push({
+					time: Date.parse(attempt.updatedAt ?? attempt.createdAt) || 0,
+					order: attempt.iteration * 10 + 1,
+					lines: [`Attempt ${attempt.iteration} · ${attempt.status}${kind}${result}`, summary ? `  ${summary}` : "  No summary recorded."],
+				});
+			}
+		}
+
+		for (const request of state.outsideRequests) {
+			const nextMove = compactText(request.decision?.requiredNextMove);
+			const answer = compactText(request.answer);
+			items.push({
+				time: Date.parse(request.consumedAt ?? request.requestedAt) || 0,
+				order: request.requestedByIteration * 10 + 2,
+				lines: [
+					`Request ${request.requestedByIteration} · ${formatRequestTitle(request)}`,
+					nextMove ? `  Next: ${nextMove}` : answer ? `  Answer: ${answer}` : `  Trigger: ${request.trigger}`,
+				],
+			});
+		}
+
+		if (state.completedAt) {
+			items.push({
+				time: Date.parse(state.completedAt) || Number.MAX_SAFE_INTEGER,
+				order: Number.MAX_SAFE_INTEGER,
+				lines: [`Complete · ${state.completedAt}`, `  Final status: ${state.status}`],
+			});
+		}
+
+		const lines = [`Timeline: ${state.name}`];
+		items
+			.sort((a, b) => a.time - b.time || a.order - b.order)
+			.forEach((item, index) => {
+				lines.push(`${index + 1}. ${item.lines[0]}`);
+				lines.push(...item.lines.slice(1));
+			});
+		return lines.join("\n");
+	}
+
+	function formatRunOverview(ctx: ExtensionContext, state: LoopState, archived = false): string {
+		const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
+		const reported = attempts.filter((attempt) => attempt.status === "reported").length;
+		const pending = pendingOutsideRequests(state).length;
+		const latestDecision = latestGovernorDecision(state);
+		const lines = [
+			`Stardock run: ${state.name}`,
+			`Status: ${STATUS_ICONS[state.status]} ${state.status} · ${state.mode} · iteration ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
+			`Task: ${state.taskFile}`,
+			`State: ${path.relative(ctx.cwd, existingStatePath(ctx, state.name, archived))}`,
+		];
+
+		if (state.modeState.kind === "recursive") {
+			lines.push("", "Objective", `  ${state.modeState.objective}`);
+			if (state.modeState.baseline) lines.push(`  Baseline: ${state.modeState.baseline}`);
+			if (state.modeState.validationCommand) lines.push(`  Validation: ${state.modeState.validationCommand}`);
+		}
+
+		lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
+		if (latestDecision) {
+			lines.push("", "Latest governor decision", `  Verdict: ${latestDecision.verdict}`, `  Rationale: ${compactText(latestDecision.rationale, 220) ?? "none"}`);
+			if (latestDecision.requiredNextMove) lines.push(`  Required next move: ${latestDecision.requiredNextMove}`);
+		}
+		lines.push("", formatRunTimeline(state));
+		return lines.join("\n");
+	}
+
 	function updateUI(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
 
@@ -976,6 +1069,28 @@ export default function (pi: ExtensionAPI) {
 		return { modeState: state };
 	}
 
+	function parseLoopViewArgs(rest: string): { loopName?: string; archived: boolean } {
+		const tokens = rest.trim().split(/\s+/).filter(Boolean);
+		const archived = tokens.includes("--archived");
+		const loopName = tokens.find((token) => token !== "--archived");
+		return { loopName, archived };
+	}
+
+	function selectLoopForView(ctx: ExtensionContext, loopName: string | undefined, archived: boolean): LoopState | null {
+		if (loopName) return loadState(ctx, loopName, archived);
+		if (currentLoop) {
+			const current = loadState(ctx, currentLoop, archived);
+			if (current) return current;
+		}
+		const loops = listLoops(ctx, archived);
+		if (loops.length === 0) return null;
+		return loops.reduce((best, candidate) => {
+			const bestMtime = safeMtimeMs(existingStatePath(ctx, best.name, archived));
+			const candidateMtime = safeMtimeMs(existingStatePath(ctx, candidate.name, archived));
+			return candidateMtime > bestMtime ? candidate : best;
+		});
+	}
+
 	function parseArgs(argsStr: string) {
 		const tokens = argsStr.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
 		const result = {
@@ -1187,6 +1302,26 @@ export default function (pi: ExtensionAPI) {
 			ctx.ui.notify(`Stardock loops:\n${loops.map((l) => formatLoop(l)).join("\n")}`, "info");
 		},
 
+		view(rest, ctx) {
+			const args = parseLoopViewArgs(rest);
+			const state = selectLoopForView(ctx, args.loopName, args.archived);
+			if (!state) {
+				ctx.ui.notify(args.loopName ? `Loop "${args.loopName}" not found.` : "No Stardock loops found.", "warning");
+				return;
+			}
+			ctx.ui.notify(formatRunOverview(ctx, state, args.archived), "info");
+		},
+
+		timeline(rest, ctx) {
+			const args = parseLoopViewArgs(rest);
+			const state = selectLoopForView(ctx, args.loopName, args.archived);
+			if (!state) {
+				ctx.ui.notify(args.loopName ? `Loop "${args.loopName}" not found.` : "No Stardock loops found.", "warning");
+				return;
+			}
+			ctx.ui.notify(formatRunTimeline(state), "info");
+		},
+
 		cancel(rest, ctx) {
 			const loopName = rest.trim();
 			if (!loopName) {
@@ -1369,6 +1504,8 @@ Commands:
   /stardock stop                         Pause current loop
   /stardock resume <name>                Resume a paused loop
   /stardock status                       Show all loops
+  /stardock view [loop] [--archived]     Show run overview and timeline
+  /stardock timeline [loop] [--archived] Show run timeline only
   /stardock cancel <name>                Delete loop state
   /stardock archive <name>               Move loop to archive
   /stardock clean [--all]                Clean completed loops
@@ -1611,10 +1748,16 @@ Examples:
 			loopName: Type.Optional(Type.String({ description: "Loop name to inspect. Omit to list loops." })),
 			archived: Type.Optional(Type.Boolean({ description: "Inspect archived loops instead of current runs. Default false." })),
 			includeDetails: Type.Optional(Type.Boolean({ description: "Include full mode state and outside requests in details. Default false." })),
+			view: Type.Optional(
+				Type.Union([Type.Literal("summary"), Type.Literal("overview"), Type.Literal("timeline")], {
+					description: "Text view to return for one loop. summary is compact; overview includes timeline; timeline returns only timeline.",
+				}),
+			),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const archived = params.archived === true;
 			const includeDetails = params.includeDetails === true;
+			const view = (params.view ?? "summary") as StateView;
 			if (params.loopName) {
 				const state = loadState(ctx, params.loopName, archived);
 				if (!state) return { content: [{ type: "text", text: `Loop "${params.loopName}" not found.` }], details: { loopName: params.loopName, archived } };
@@ -1632,9 +1775,10 @@ Examples:
 					`Outside requests: ${pendingOutsideRequests(state).length}/${state.outsideRequests.length} pending`,
 					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
 				].filter((line): line is string => Boolean(line));
+				const text = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : lines.join("\n");
 				return {
-					content: [{ type: "text", text: lines.join("\n") }],
-					details: { loopName: state.name, archived, loop: summarizeLoopState(ctx, state, archived, includeDetails) },
+					content: [{ type: "text", text }],
+					details: { loopName: state.name, archived, view, loop: summarizeLoopState(ctx, state, archived, includeDetails) },
 				};
 			}
 

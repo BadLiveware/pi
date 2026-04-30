@@ -26,7 +26,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | --- | --- |
 | `stardock_start` | Create `.stardock/runs/<name>/task.md`, write task content, save loop state, and queue iteration 1. |
 | `stardock_done` | Mark the current iteration complete and queue the next iteration, unless max iterations has been reached. |
-| `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. |
+| `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
@@ -42,6 +42,8 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | `/stardock stop` | Pause the current loop. |
 | `/stardock-stop` | Stop the active loop when the agent is idle. |
 | `/stardock status` | Show active and paused loops. |
+| `/stardock view [loop] [--archived]` | Show what is happening in a run: status, objective, progress, latest governor decision, and timeline. |
+| `/stardock timeline [loop] [--archived]` | Show only the run timeline. |
 | `/stardock list --archived` | Show archived loops. |
 | `/stardock govern [loop]` | Create or reuse a manual governor review request and show its payload. |
 | `/stardock outside [loop]` | Show outside-help/governor requests for a loop. |
@@ -69,6 +71,17 @@ Options for `/stardock start`:
 | `--outside-help-every N` | Recursive cue interval for requesting outside help. Also acts as governor cadence when `governEvery` is omitted. |
 | `--govern-every N` | Recursive interval for governor review requests. |
 | `--outside-help-on-stagnation` | Cue outside help when structured attempt results stagnate or show scaffolding drift. |
+
+## Understanding a run
+
+Use `/stardock view [loop]` when you want to know what is happening. It summarizes the run status, objective, attempts, outside requests, latest governor decision, and a chronological timeline. Use `/stardock timeline [loop]` when you only want the event sequence.
+
+Agents can request the same views through `stardock_state`:
+
+```js
+stardock_state({ loopName: "run-name", view: "overview" })
+stardock_state({ loopName: "run-name", view: "timeline" })
+```
 
 ## Modes
 

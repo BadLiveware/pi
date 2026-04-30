@@ -188,6 +188,85 @@ test("stardock_state lists and inspects loop summaries", async () => {
 	}
 });
 
+test("stardock view and timeline show operational run flow", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, commands, notifications, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const report = tools.get("stardock_attempt_report");
+		const govern = tools.get("stardock_govern");
+		const answerOutside = tools.get("stardock_outside_answer");
+		const stateTool = tools.get("stardock_state");
+		assert.ok(start);
+		assert.ok(report);
+		assert.ok(govern);
+		assert.ok(answerOutside);
+		assert.ok(stateTool);
+
+		await start.execute(
+			"tool-viz-start",
+			{
+				name: "Viz Loop",
+				mode: "recursive",
+				taskContent: "# Visualize task\n",
+				objective: "Understand what is happening in a Stardock workflow",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await report.execute(
+			"tool-viz-report",
+			{
+				loopName: "Viz_Loop",
+				iteration: 1,
+				kind: "other",
+				hypothesis: "A timeline makes workflow state understandable.",
+				actionSummary: "Recorded one visualization attempt.",
+				validation: "Focused visualization assertions passed.",
+				result: "improved",
+				kept: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await govern.execute("tool-viz-govern", { loopName: "Viz_Loop" }, undefined, undefined, ctx);
+		await answerOutside.execute(
+			"tool-viz-answer",
+			{
+				loopName: "Viz_Loop",
+				requestId: "governor-manual-1",
+				answer: "Continue by checking the timeline output.",
+				verdict: "continue",
+				rationale: "The run has enough events to display.",
+				requiredNextMove: "Review the overview and timeline.",
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const overview = await stateTool.execute("tool-viz-state", { loopName: "Viz_Loop", view: "overview" }, undefined, undefined, ctx);
+		assert.match(overview.content[0].text, /Stardock run: Viz_Loop/);
+		assert.match(overview.content[0].text, /Progress\n  Attempts: 1\/1 reported/);
+		assert.match(overview.content[0].text, /Timeline: Viz_Loop/);
+		assert.match(overview.content[0].text, /Attempt 1 · reported · other · improved/);
+		assert.match(overview.content[0].text, /Request 1 · governor_review governor-manual-1 · answered · continue/);
+
+		const stardock = commands.get("stardock");
+		assert.ok(stardock);
+		await stardock.handler("view Viz_Loop", ctx);
+		assert.match(notifications.at(-1) ?? "", /Stardock run: Viz_Loop/);
+		await stardock.handler("timeline Viz_Loop", ctx);
+		assert.match(notifications.at(-1) ?? "", /Timeline: Viz_Loop/);
+		assert.match(notifications.at(-1) ?? "", /Review the overview and timeline/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("completion marker completes loop without queuing a user message", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

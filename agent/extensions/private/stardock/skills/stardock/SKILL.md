@@ -26,7 +26,7 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
 
 1. Prepare clear task content with goals, checklist/criteria, and validation expectations.
 2. Start the loop with `stardock_start`; it creates `.stardock/runs/<name>/task.md` from `taskContent`.
-3. Use `stardock_state` to inspect current loop state when you need status, paths, attempts, or governor decisions without reading `.stardock/` files directly.
+3. Use `/stardock view [loop]` or `stardock_state({ loopName, view: "overview" })` when the user asks what is happening in a run; use `view: "timeline"` or `/stardock timeline [loop]` when they want the event sequence.
 4. Work one bounded iteration.
 5. Record progress and verification evidence in the task file.
 6. For recursive loops, use `stardock_attempt_report` when available.
@@ -42,6 +42,8 @@ If outside-help/governor requests appear, inspect them with `stardock_outside_re
 - `/stardock stop` — pause the current loop when idle.
 - `/stardock-stop` — stop active loop when idle.
 - `/stardock status` — show loops.
+- `/stardock view [loop] [--archived]` — show run overview, progress, latest governor decision, and timeline.
+- `/stardock timeline [loop] [--archived]` — show only the run timeline.
 - `/stardock list --archived` — show archived loops.
 - `/stardock govern [loop]` — create a manual governor review request and payload.
 - `/stardock outside [loop]` — show outside-help/governor requests.
