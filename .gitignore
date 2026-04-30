@@ -1,6 +1,7 @@
 # Pi runtime/session artifacts
 .pi/tasks/
 .ralph/
+.stardock/
 outputs/
 papers/
 

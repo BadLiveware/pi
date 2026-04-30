@@ -112,6 +112,13 @@ Implemented behavior:
   - `stardock_govern` creates a manual governor request and payload without calling a model or spawning subagents;
   - recorded governor decisions appear as constraints in subsequent recursive prompts.
 
+Dogfood notes from `dogfood-stardock-recursive-mode`:
+
+- Attempt reporting, manual governor payload creation, and `stardock_outside_answer` worked as a coherent parent-orchestrated workflow.
+- After `stardock_done`, answered governor decisions remained in `.stardock/` state with structured `decision` fields and a `consumedAt` timestamp, giving the next prompt/state a durable steer.
+- The first private loop created untracked `.stardock/` files until `.gitignore` was updated; keep runtime loop state ignored by default.
+- `governEvery: 1` can create an automatic governor request for the same iteration immediately after a manual governor request was answered. This is usable but noisy; future request handling should consider deduping equivalent governor requests or suppressing automatic cadence requests when a fresh manual decision already exists for that iteration.
+
 ## Updated design direction: context routing, not prompt replay
 
 Dogfooding showed that repeating the canonical task or plan each iteration is often the wrong context shape. The canonical plan can be larger than what the next worker needs and can distract the agent from the specific next move.
