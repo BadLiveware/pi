@@ -288,17 +288,18 @@ interface BreakoutPackage {
 }
 
 interface FinalVerificationReport {
-  criteriaSummary: {
-    passed: number;
-    failed: number;
-    skipped: number;
-    blocked: number;
-  };
-  validationCommands: string[];
-  artifacts: VerificationArtifact[];
-  integrationEvidence?: string;
+  id: string;
+  status: "draft" | "passed" | "failed" | "partial";
+  summary: string;
+  criterionIds: string[];
+  artifactIds: string[];
+  validation: Array<{ command?: string; result: "passed" | "failed" | "skipped"; summary: string; artifactIds?: string[] }>;
   unresolvedGaps: string[];
-  completionRationale: string;
+  compatibilityNotes: string[];
+  securityNotes: string[];
+  performanceNotes: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface CompoundLearning {
@@ -472,12 +473,13 @@ interface LoopState {
   verificationArtifacts: VerificationArtifact[];
   briefs: IterationBrief[];
   currentBriefId?: string;
+  finalVerificationReports: FinalVerificationReport[];
 }
 ```
 
 Private Stardock schema rule: current `.stardock/runs/<name>/state.json` state is schema-versioned and mode-aware. Missing mode metadata in private state can be treated as checklist state for local resilience, and legacy flat `.stardock/<name>.state.json` files remain readable enough to resume and rewrite into the run-folder layout. `.ralph/` compatibility is not required. Add a one-shot importer only if active local state is worth preserving.
 
-Future schema revisions may add `governorState`, auditor reviews, baseline validation, compound-learning proposals, handoff explanations, final verification records, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/brief/audit lists.
+Future schema revisions may add `governorState`, auditor reviews, baseline validation, compound-learning proposals, handoff explanations, and stronger artifact/archive policy. Keep them additive and migratable; older private checklist/recursive loops must remain valid with empty synthesized ledgers/artifact/brief/final-report/audit lists.
 
 ### Mode interface
 
@@ -753,7 +755,8 @@ Do not restart the completed implementation path. Future implementation should b
    - Add a policy that parent/governor reads touched files only for risk, ambiguity, failed validation, public contract changes, or explicit review hints.
 6. **Breakout, final verification, and compound learning reports**
    - Add `BreakoutPackage` for repeated criterion failures, blocked criteria, or no criterion movement.
-   - Add `FinalVerificationReport` so completion summarizes criteria status, validation commands, artifacts, integration evidence, and unresolved gaps.
+   - Initial manual `FinalVerificationReport` state and `stardock_final_report` list/record support exists for compact criteria coverage, validation records, artifact refs, unresolved gaps, and compatibility/security/performance notes.
+   - Later, add policy for when completion should require or recommend a final report, and how reports interact with auditor review.
    - Add optional compound-learning proposals and cognitive-debt handoff explanations.
 7. **Advisory subagent workflow**
    - Start with exploration and test-runner subagents if a safe extension/subagent API exists.

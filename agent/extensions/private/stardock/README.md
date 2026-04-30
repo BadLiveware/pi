@@ -29,6 +29,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | `stardock_state` | List loops or inspect one loop's compact structured state without reading `.stardock/` files directly. Use `view: "overview"` or `view: "timeline"` for operational views. Includes criteria, active brief, and verification artifact counts. |
 | `stardock_ledger` | Inspect or update the loop's criterion ledger and compact verification artifact refs. Supports `list`, `upsertCriterion`, `upsertCriteria`, `recordArtifact`, and `recordArtifacts`, with optional post-mutation state/overview details. |
 | `stardock_brief` | Inspect or update manual or governor-sourced IterationBrief context packets. Supports `list`, `upsert`, `activate`, `clear`, and `complete`; `upsert` can also activate the brief and return optional state or prompt preview details. |
+| `stardock_final_report` | Record or inspect compact final verification reports with criteria coverage, validation records, artifact refs, unresolved gaps, and risk notes. |
 | `stardock_attempt_report` | Record structured hypothesis/action/validation/result data for one recursive attempt. |
 | `stardock_govern` | Create or reuse a manual governor review request and return its payload. |
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
@@ -87,6 +88,8 @@ Use `stardock_brief` when a loop needs a selected context packet for the next bo
 Briefs default to `source: "manual"`. Use `source: "governor"` plus an optional `requestId` that points at a `governor_review` outside request when a governor decision selected the bounded context. Governor-sourced briefs are still explicit data records: Stardock does not call a model, distill plans automatically, spawn workers, or activate a brief unless the tool call uses `activate: true` or a separate `activate` action.
 
 When finishing an iteration, `stardock_done` keeps the active brief by default. Pass `briefLifecycle: "complete"` to mark the active brief completed and return the next prompt to the normal task shape, or `briefLifecycle: "clear"` to deactivate it back to draft without marking it done. Add `includeState: true` when you want the lifecycle result and compact loop summary in the same tool response.
+
+Use `stardock_final_report` near completion to record a bounded evidence summary. Reports can link criteria and artifact IDs, include compact validation records with `passed`/`failed`/`skipped` results, list unresolved gaps, and capture compatibility/security/performance notes. Reports are manual and optional in this slice: Stardock does not require one before completion, run validators, call models, or paste long logs/screenshots into state.
 
 Agents can request the same views through `stardock_state`:
 
