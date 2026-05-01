@@ -1,0 +1,48 @@
+{
+  "name": "@badliveware/pi-rich-output",
+  "version": "0.1.0",
+  "description": "Terminal-friendly structured timeline cards for Pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "rich-output",
+    "timeline",
+    "terminal"
+  ],
+  "license": "MIT",
+  "author": "BadLiveware",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BadLiveware/pi.git",
+    "directory": "agent/extensions/public/rich-output"
+  },
+  "bugs": {
+    "url": "https://github.com/BadLiveware/pi/issues"
+  },
+  "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/public/rich-output#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "assets",
+    "index.ts",
+    "src",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

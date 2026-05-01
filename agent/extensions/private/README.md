@@ -11,7 +11,6 @@ Do not publish packages from this directory as-is. If a private extension become
 | Package | Purpose |
 | --- | --- |
 | `code-intelligence` | Local Tree-sitter/LSP/rg routing tools for impact maps, syntax search, and scoped read-next maps. |
-| `rich-output` | Prototype structured timeline output, including terminal-native blocks, diagrams, charts, and artifact-backed previews. |
 | `stardock` | Private governed implementation framework for persistent multi-iteration work loops and verification ledgers. |
 
 These packages are linked/used locally from this repository and are not part of the public npm release set.

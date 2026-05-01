@@ -27,6 +27,7 @@ all_packages=(
   "footer-framework"
   "model-catalog"
   "tool-feedback"
+  "rich-output"
 )
 
 packages=()

@@ -19,9 +19,9 @@
       "./public/footer-framework/index.ts",
       "./public/model-catalog/index.ts",
       "./public/tool-feedback/index.ts",
+      "./public/rich-output/index.ts",
       "./private/stardock/index.ts",
-      "./private/code-intelligence/index.ts",
-      "./private/rich-output/index.ts"
+      "./private/code-intelligence/index.ts"
     ],
     "skills": [
       "./private/stardock/skills"

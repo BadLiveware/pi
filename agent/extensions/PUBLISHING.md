@@ -13,6 +13,7 @@ Publishing is intentionally manual and tag-triggered. Pushing to `main` does **n
 | `footer-framework` | `@badliveware/pi-footer-framework` |
 | `model-catalog` | `@badliveware/pi-model-catalog` |
 | `tool-feedback` | `@badliveware/pi-tool-feedback` |
+| `rich-output` | `@badliveware/pi-rich-output` |
 
 ## Prerequisites
 
@@ -29,7 +30,7 @@ The publish workflow uses npm trusted publishing through GitHub Actions OIDC. It
 npm trusted publisher configuration currently requires the package to already exist on the npm registry. For a brand-new package, do a one-time manual publish first:
 
 ```bash
-cd agent/extensions/public/model-catalog
+cd agent/extensions/public/rich-output
 npm publish --access public --otp <one-time-password>
 ```
 
@@ -71,7 +72,7 @@ npm run pack:public
 To dry-run one package:
 
 ```bash
-./scripts/pack-public.sh model-catalog
+./scripts/pack-public.sh rich-output
 ```
 
 ## Publish one package with a tag
@@ -85,8 +86,8 @@ pi-ext/<extension-name>/v<package-version>
 Examples:
 
 ```bash
-git tag pi-ext/model-catalog/v0.1.0
-git push origin pi-ext/model-catalog/v0.1.0
+git tag pi-ext/rich-output/v0.1.0
+git push origin pi-ext/rich-output/v0.1.0
 ```
 
 ```bash

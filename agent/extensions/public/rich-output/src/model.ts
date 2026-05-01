@@ -315,7 +315,7 @@ export function demoCard(): RichOutputCard {
 			{ type: "diagram", format: "mermaid", render: "svg", label: "Mermaid SVG artifact", text: "flowchart LR\n  Agent --> Tool\n  Tool --> Timeline\n  Timeline --> Ghostty" },
 			{ type: "sparkline", label: "latency", values: [18, 16, 21, 15, 14, 17, 12, 11, 13, 10] },
 			{ type: "image", label: "Generated inline PNG chart", values: [3, 5, 4, 8, 6, 9, 7, 11, 10, 12], maxWidthCells: 36 },
-			{ type: "link", label: "Open rich-output source", path: `${process.cwd()}/agent/extensions/private/rich-output/index.ts` },
+			{ type: "link", label: "Open rich-output source", url: "https://github.com/BadLiveware/pi/tree/main/agent/extensions/public/rich-output" },
 			{ type: "progress", label: "Blocks", value: 13, total: 15 },
 			{ type: "callout", tone: "warning", text: "Demo-only: images should stay opt-in and text fallbacks should remain useful." },
 		],

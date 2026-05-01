@@ -37,7 +37,7 @@ jobs:
           package_json="$package_dir/package.json"
 
           case "$extension" in
-            compaction-continue|pr-upstream-status|footer-framework|model-catalog|tool-feedback) ;;
+            compaction-continue|pr-upstream-status|footer-framework|model-catalog|tool-feedback|rich-output) ;;
             *)
               echo "Unknown publishable extension: $extension" >&2
               exit 1
