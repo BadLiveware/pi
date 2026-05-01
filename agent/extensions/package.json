@@ -18,6 +18,7 @@
       "./public/pr-upstream-status/index.ts",
       "./public/footer-framework/index.ts",
       "./public/model-catalog/index.ts",
+      "./public/tool-feedback/index.ts",
       "./private/stardock/index.ts",
       "./private/code-intelligence/index.ts"
     ],

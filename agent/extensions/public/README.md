@@ -23,3 +23,4 @@ Public extensions should:
 | `@badliveware/pi-pr-upstream-status` | [`pr-upstream-status`](./pr-upstream-status) |
 | `@badliveware/pi-footer-framework` | [`footer-framework`](./footer-framework) |
 | `@badliveware/pi-model-catalog` | [`model-catalog`](./model-catalog) |
+| `@badliveware/pi-tool-feedback` | [`tool-feedback`](./tool-feedback) |

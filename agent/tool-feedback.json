@@ -1,0 +1,10 @@
+{
+  "mode": "both",
+  "watch": [
+    { "prefix": "code_intel_" }
+  ],
+  "cooldownTurns": 0,
+  "skipWhenPendingMessages": true,
+  "appendSessionEntries": true,
+  "log": true
+}
