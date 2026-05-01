@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
@@ -380,7 +380,8 @@ function fitRenderedLine(line: string, width: number): string {
 }
 
 interface MermaidRenderResult {
-	path?: string;
+	svgPath?: string;
+	pngPath?: string;
 	error?: string;
 }
 
@@ -389,24 +390,35 @@ function mermaidSource(block: RichBlock): string | undefined {
 	return block.text?.trim();
 }
 
-function renderMermaidSvg(source: string): MermaidRenderResult {
+function runMermaid(sourcePath: string, outputPath: string): string | undefined {
+	const result = spawnSync("mmdc", ["-i", sourcePath, "-o", outputPath, "-b", "transparent"], {
+		encoding: "utf8",
+		timeout: 15_000,
+		maxBuffer: 1024 * 1024,
+	});
+	if (result.error) return result.error.message;
+	if (result.status !== 0) return (result.stderr || result.stdout || `mmdc exited ${result.status}`).trim();
+	return undefined;
+}
+
+function renderMermaidArtifacts(source: string): MermaidRenderResult {
 	const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
 	const dir = join(tmpdir(), "pi-rich-output-mermaid");
 	const inputPath = join(dir, `${hash}.mmd`);
-	const outputPath = join(dir, `${hash}.svg`);
+	const svgPath = join(dir, `${hash}.svg`);
+	const pngPath = join(dir, `${hash}.png`);
 	try {
 		mkdirSync(dir, { recursive: true });
-		if (!existsSync(outputPath)) {
-			writeFileSync(inputPath, source, "utf8");
-			const result = spawnSync("mmdc", ["-i", inputPath, "-o", outputPath, "-b", "transparent"], {
-				encoding: "utf8",
-				timeout: 15_000,
-				maxBuffer: 1024 * 1024,
-			});
-			if (result.error) return { error: result.error.message };
-			if (result.status !== 0) return { error: (result.stderr || result.stdout || `mmdc exited ${result.status}`).trim() };
+		writeFileSync(inputPath, source, "utf8");
+		if (!existsSync(svgPath)) {
+			const error = runMermaid(inputPath, svgPath);
+			if (error) return { error };
 		}
-		return { path: outputPath };
+		if (!existsSync(pngPath)) {
+			const error = runMermaid(inputPath, pngPath);
+			if (error) return { svgPath, error };
+		}
+		return { svgPath, pngPath };
 	} catch (error) {
 		return { error: error instanceof Error ? error.message : String(error) };
 	}
@@ -500,8 +512,8 @@ function blockLines(block: RichBlock, theme: any, width: number): string[] {
 			const target = linkTarget(block);
 			const label = block.label ?? block.text ?? target ?? "link";
 			if (!target) return [theme.fg("accent", label)];
-			const rendered = getCapabilities().hyperlinks ? hyperlink(theme.fg("accent", label), target) : `${theme.fg("accent", label)} ${theme.fg("dim", target)}`;
-			return [rendered];
+			const renderedLabel = getCapabilities().hyperlinks ? hyperlink(theme.fg("accent", label), target) : theme.fg("accent", label);
+			return [`${renderedLabel} ${theme.fg("dim", target)}`];
 		}
 		case "sparkline": {
 			const values = block.values ?? [];
@@ -565,17 +577,24 @@ class RichOutputComponent implements Component {
 		if (!source) return blockLines(block, this.theme, width);
 		let result = this.mermaidCache.get(source);
 		if (!result) {
-			result = renderMermaidSvg(source);
+			result = renderMermaidArtifacts(source);
 			this.mermaidCache.set(source, result);
 		}
 		const lines: string[] = [this.theme.fg("accent", block.label ?? "Mermaid diagram")];
-		if (result.path) {
-			const url = `file://${result.path}`;
-			const link = getCapabilities().hyperlinks ? hyperlink("open SVG", url) : url;
-			lines.push(`${this.theme.fg("dim", "svg")} ${link}`);
-		} else {
-			lines.push(this.theme.fg("warning", `Mermaid render failed: ${result.error ?? "unknown error"}`));
+		if (result.pngPath) {
+			const image = new Image(readFileSync(result.pngPath).toString("base64"), "image/png", { fallbackColor: (text) => this.theme.fg("dim", text) }, {
+				filename: block.label ?? "Mermaid diagram",
+				maxWidthCells: block.maxWidthCells ?? Math.min(64, Math.max(16, width - 2)),
+				maxHeightCells: block.maxHeightCells ?? 16,
+			});
+			lines.push(...image.render(width));
 		}
+		if (result.svgPath) {
+			const url = `file://${result.svgPath}`;
+			const link = getCapabilities().hyperlinks ? hyperlink("open SVG", url) : "open SVG";
+			lines.push(`${this.theme.fg("dim", "svg")} ${link} ${this.theme.fg("dim", result.svgPath)}`);
+		}
+		if (result.error) lines.push(this.theme.fg("warning", `Mermaid render failed: ${result.error}`));
 		lines.push(...wrapTextWithAnsi(source, width).map((line) => this.theme.fg("dim", line)));
 		return lines;
 	}
