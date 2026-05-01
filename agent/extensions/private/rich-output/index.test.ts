@@ -186,8 +186,8 @@ describe("rich-output", () => {
 
 			const rendered = component.render(100).join("\n");
 			assert.match(rendered, /Flow/);
-			assert.match(rendered, /svg open SVG \/tmp\/pi-rich-output-mermaid\/.*\.svg/);
-			assert.match(rendered, /flowchart LR/);
+			assert.match(rendered, /svg \/tmp\/pi-rich-output-mermaid\/.*\.svg/);
+			assert.doesNotMatch(rendered, /flowchart LR/);
 			const svgPath = rendered.match(/(\/tmp\/pi-rich-output-mermaid\/[^\s]+\.svg)/)?.[1];
 			assert.ok(svgPath);
 			assert.equal(existsSync(svgPath), true);
@@ -212,7 +212,27 @@ describe("rich-output", () => {
 
 			const renderedLines = component.render(100);
 			assert.ok(renderedLines.some((line: string) => line.includes("\x1b_G")));
-			assert.match(renderedLines.join("\n"), /open SVG/);
+			assert.match(renderedLines.join("\n"), /svg .*\/tmp\/pi-rich-output-mermaid\/.*\.svg/);
+		} finally {
+			resetCapabilitiesCache();
+		}
+	});
+
+	it("can show Mermaid source when explicitly requested", async () => {
+		setCapabilities({ images: null, hyperlinks: false, trueColor: true });
+		try {
+			const { renderers } = loadExtension();
+			const renderer = renderers.get("rich-output:card");
+			const component = renderer({
+				details: {
+					kind: "note",
+					title: "Mermaid source block",
+					blocks: [{ type: "diagram", format: "mermaid", render: "svg", showSource: true, label: "Flow", text: "flowchart LR\n  A --> B" }],
+					createdAt: "2026-05-01T00:00:00.000Z",
+				},
+			}, { expanded: false }, theme);
+
+			assert.match(component.render(100).join("\n"), /flowchart LR/);
 		} finally {
 			resetCapabilitiesCache();
 		}

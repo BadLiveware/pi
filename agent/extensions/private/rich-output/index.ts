@@ -41,6 +41,7 @@ interface RichBlock {
 	maxHeightCells?: number;
 	format?: string;
 	render?: "auto" | "text" | "svg";
+	showSource?: boolean;
 }
 
 interface RichOutputCard {
@@ -64,6 +65,10 @@ function stringValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+	return typeof value === "boolean" ? value : undefined;
 }
 
 function arrayValue(value: unknown): unknown[] {
@@ -212,6 +217,7 @@ function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 			maxHeightCells: numberValue(block.maxHeightCells),
 			format: stringValue(block.format),
 			render: stringValue(block.render) as RichBlock["render"],
+			showSource: booleanValue(block.showSource),
 		};
 	}).filter((block): block is RichBlock => Boolean(block));
 	return blocks.length > 0 ? blocks : undefined;
@@ -390,8 +396,10 @@ function mermaidSource(block: RichBlock): string | undefined {
 	return block.text?.trim();
 }
 
+const MERMAID_RENDER_VERSION = "dark-v1";
+
 function runMermaid(sourcePath: string, outputPath: string): string | undefined {
-	const result = spawnSync("mmdc", ["-i", sourcePath, "-o", outputPath, "-b", "transparent"], {
+	const result = spawnSync("mmdc", ["-i", sourcePath, "-o", outputPath, "-t", "dark", "-b", "transparent"], {
 		encoding: "utf8",
 		timeout: 15_000,
 		maxBuffer: 1024 * 1024,
@@ -402,7 +410,7 @@ function runMermaid(sourcePath: string, outputPath: string): string | undefined 
 }
 
 function renderMermaidArtifacts(source: string): MermaidRenderResult {
-	const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+	const hash = createHash("sha256").update(MERMAID_RENDER_VERSION).update("\0").update(source).digest("hex").slice(0, 16);
 	const dir = join(tmpdir(), "pi-rich-output-mermaid");
 	const inputPath = join(dir, `${hash}.mmd`);
 	const svgPath = join(dir, `${hash}.svg`);
@@ -591,11 +599,15 @@ class RichOutputComponent implements Component {
 		}
 		if (result.svgPath) {
 			const url = `file://${result.svgPath}`;
-			const link = getCapabilities().hyperlinks ? hyperlink("open SVG", url) : "open SVG";
-			lines.push(`${this.theme.fg("dim", "svg")} ${link} ${this.theme.fg("dim", result.svgPath)}`);
+			const target = this.theme.fg("dim", result.svgPath);
+			const renderedTarget = getCapabilities().hyperlinks ? hyperlink(target, url) : target;
+			lines.push(`${this.theme.fg("dim", "svg")} ${renderedTarget}`);
 		}
 		if (result.error) lines.push(this.theme.fg("warning", `Mermaid render failed: ${result.error}`));
-		lines.push(...wrapTextWithAnsi(source, width).map((line) => this.theme.fg("dim", line)));
+		const renderedSuccessfully = Boolean(result.pngPath || result.svgPath);
+		if (block.showSource === true || !renderedSuccessfully) {
+			lines.push(...wrapTextWithAnsi(source, width).map((line) => this.theme.fg("dim", line)));
+		}
 		return lines;
 	}
 
@@ -691,6 +703,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 				maxHeightCells: Type.Optional(Type.Number()),
 				format: Type.Optional(Type.String()),
 				render: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("text"), Type.Literal("svg")])),
+				showSource: Type.Optional(Type.Boolean()),
 			}), { description: "Generic terminal-native components to render. Prefer blocks when the output is not domain-specific." })),
 			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details for legacy rendering." })),
 			payload: Type.Optional(Type.Unknown({ description: "Optional legacy structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
