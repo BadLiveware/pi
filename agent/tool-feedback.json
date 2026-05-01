@@ -3,6 +3,25 @@
   "watch": [
     { "prefix": "code_intel_" }
   ],
+  "feedbackFields": [
+    {
+      "name": "rankingQuality",
+      "type": "enum",
+      "values": ["good", "mixed", "poor", "unknown"],
+      "description": "How good was result ranking for the task?"
+    },
+    {
+      "name": "queryFit",
+      "type": "enum",
+      "values": ["good", "too_broad", "too_narrow", "unknown"],
+      "description": "Did the map fit the requested scope?"
+    },
+    {
+      "name": "latencyAcceptable",
+      "type": "yes_no_unknown",
+      "description": "Did latency feel acceptable for this use?"
+    }
+  ],
   "cooldownTurns": 0,
   "skipWhenPendingMessages": true,
   "appendSessionEntries": true,
