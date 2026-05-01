@@ -11,7 +11,6 @@ const defaultMaxLines = 500;
 const grandfatheredMaxLines = new Map(Object.entries({
 	"agent/extensions/private/code-intelligence/index.test.ts": 505,
 	"agent/extensions/private/code-intelligence/src/tree-sitter.ts": 1050,
-	"agent/extensions/private/rich-output/index.ts": 1026,
 	"agent/extensions/private/stardock/src/policy.ts": 536,
 	"agent/extensions/private/stardock/src/state/migration.ts": 501,
 	"agent/extensions/private/stardock/test/lifecycle.test.ts": 523,
