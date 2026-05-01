@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { describe, it } from "node:test";
 import { resetCapabilitiesCache, setCapabilities } from "@mariozechner/pi-tui";
 import richOutput from "./index.ts";
@@ -164,6 +165,32 @@ describe("rich-output", () => {
 			assert.match(rendered, /file:\/\/\/tmp\/example\.ts/);
 			assert.match(rendered, /demo chart/);
 			assert.match(rendered, /\[image\/png\] 320x120/);
+		} finally {
+			resetCapabilitiesCache();
+		}
+	});
+
+	it("renders Mermaid diagram blocks to SVG artifacts", async () => {
+		setCapabilities({ images: null, hyperlinks: false, trueColor: true });
+		try {
+			const { renderers } = loadExtension();
+			const renderer = renderers.get("rich-output:card");
+			const component = renderer({
+				details: {
+					kind: "note",
+					title: "Mermaid block",
+					blocks: [{ type: "diagram", format: "mermaid", render: "svg", label: "Flow", text: "flowchart LR\n  A --> B" }],
+					createdAt: "2026-05-01T00:00:00.000Z",
+				},
+			}, { expanded: false }, theme);
+
+			const rendered = component.render(100).join("\n");
+			assert.match(rendered, /Flow/);
+			assert.match(rendered, /svg file:\/\//);
+			assert.match(rendered, /flowchart LR/);
+			const svgPath = rendered.match(/file:\/\/([^\s]+\.svg)/)?.[1];
+			assert.ok(svgPath);
+			assert.equal(existsSync(svgPath), true);
 		} finally {
 			resetCapabilitiesCache();
 		}

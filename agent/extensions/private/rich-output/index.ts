@@ -1,3 +1,8 @@
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import * as zlib from "node:zlib";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -34,6 +39,8 @@ interface RichBlock {
 	alt?: string;
 	maxWidthCells?: number;
 	maxHeightCells?: number;
+	format?: string;
+	render?: "auto" | "text" | "svg";
 }
 
 interface RichOutputCard {
@@ -203,6 +210,8 @@ function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 			alt: stringValue(block.alt),
 			maxWidthCells: numberValue(block.maxWidthCells),
 			maxHeightCells: numberValue(block.maxHeightCells),
+			format: stringValue(block.format),
+			render: stringValue(block.render) as RichBlock["render"],
 		};
 	}).filter((block): block is RichBlock => Boolean(block));
 	return blocks.length > 0 ? blocks : undefined;
@@ -370,6 +379,39 @@ function fitRenderedLine(line: string, width: number): string {
 	return !isTerminalImageLine(line) && visibleWidth(line) > width ? truncateToWidth(line, width) : line;
 }
 
+interface MermaidRenderResult {
+	path?: string;
+	error?: string;
+}
+
+function mermaidSource(block: RichBlock): string | undefined {
+	if (block.format !== "mermaid") return undefined;
+	return block.text?.trim();
+}
+
+function renderMermaidSvg(source: string): MermaidRenderResult {
+	const hash = createHash("sha256").update(source).digest("hex").slice(0, 16);
+	const dir = join(tmpdir(), "pi-rich-output-mermaid");
+	const inputPath = join(dir, `${hash}.mmd`);
+	const outputPath = join(dir, `${hash}.svg`);
+	try {
+		mkdirSync(dir, { recursive: true });
+		if (!existsSync(outputPath)) {
+			writeFileSync(inputPath, source, "utf8");
+			const result = spawnSync("mmdc", ["-i", inputPath, "-o", outputPath, "-b", "transparent"], {
+				encoding: "utf8",
+				timeout: 15_000,
+				maxBuffer: 1024 * 1024,
+			});
+			if (result.error) return { error: result.error.message };
+			if (result.status !== 0) return { error: (result.stderr || result.stdout || `mmdc exited ${result.status}`).trim() };
+		}
+		return { path: outputPath };
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 function tableLines(columns: string[], rows: unknown[][], theme: any, width: number): string[] {
 	if (columns.length === 0) return [];
 	const maxWidth = Math.max(20, width);
@@ -485,6 +527,7 @@ function blockLines(block: RichBlock, theme: any, width: number): string[] {
 class RichOutputComponent implements Component {
 	private card: RichOutputCard;
 	private theme: any;
+	private mermaidCache = new Map<string, MermaidRenderResult>();
 
 	constructor(card: RichOutputCard, theme: any) {
 		this.card = card;
@@ -499,7 +542,11 @@ class RichOutputComponent implements Component {
 		if (blocks && blocks.length > 0) {
 			if (this.card.summary) lines.push("");
 			for (const block of blocks) {
-				const rendered = block.type === "image" ? this.renderImageBlock(block, width) : blockLines(block, this.theme, width);
+				const rendered = block.type === "image"
+					? this.renderImageBlock(block, width)
+					: block.type === "diagram" && mermaidSource(block) && block.render !== "text"
+						? this.renderMermaidDiagramBlock(block, width)
+						: blockLines(block, this.theme, width);
 				if (rendered.length > 0) lines.push(...rendered, "");
 			}
 			while (lines.at(-1) === "") lines.pop();
@@ -511,6 +558,26 @@ class RichOutputComponent implements Component {
 			lines.push(...md.render(width));
 		}
 		return lines.map((line) => fitRenderedLine(line, width));
+	}
+
+	private renderMermaidDiagramBlock(block: RichBlock, width: number): string[] {
+		const source = mermaidSource(block);
+		if (!source) return blockLines(block, this.theme, width);
+		let result = this.mermaidCache.get(source);
+		if (!result) {
+			result = renderMermaidSvg(source);
+			this.mermaidCache.set(source, result);
+		}
+		const lines: string[] = [this.theme.fg("accent", block.label ?? "Mermaid diagram")];
+		if (result.path) {
+			const url = `file://${result.path}`;
+			const link = getCapabilities().hyperlinks ? hyperlink("open SVG", url) : url;
+			lines.push(`${this.theme.fg("dim", "svg")} ${link}`);
+		} else {
+			lines.push(this.theme.fg("warning", `Mermaid render failed: ${result.error ?? "unknown error"}`));
+		}
+		lines.push(...wrapTextWithAnsi(source, width).map((line) => this.theme.fg("dim", line)));
+		return lines;
 	}
 
 	private renderImageBlock(block: RichBlock, width: number): string[] {
@@ -551,6 +618,7 @@ function demoCard(): RichOutputCard {
 			{ type: "badge", tone: "success", text: "Ghostty-friendly: Kitty images + OSC 8 links + truecolor glyphs" },
 			{ type: "formula", latex: "\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}" },
 			{ type: "diagram", edges: [["Agent", "Tool"], ["Tool", "Timeline renderer"], ["Renderer", "Ghostty image path"]] },
+			{ type: "diagram", format: "mermaid", render: "svg", label: "Mermaid SVG artifact", text: "flowchart LR\n  Agent --> Tool\n  Tool --> Timeline\n  Timeline --> Ghostty" },
 			{ type: "sparkline", label: "latency", values: [18, 16, 21, 15, 14, 17, 12, 11, 13, 10] },
 			{ type: "image", label: "Generated inline PNG chart", values: [3, 5, 4, 8, 6, 9, 7, 11, 10, 12], maxWidthCells: 36 },
 			{ type: "link", label: "Open rich-output source", path: `${process.cwd()}/agent/extensions/private/rich-output/index.ts` },
@@ -602,6 +670,8 @@ export default function richOutput(pi: ExtensionAPI): void {
 				alt: Type.Optional(Type.String()),
 				maxWidthCells: Type.Optional(Type.Number()),
 				maxHeightCells: Type.Optional(Type.Number()),
+				format: Type.Optional(Type.String()),
+				render: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("text"), Type.Literal("svg")])),
 			}), { description: "Generic terminal-native components to render. Prefer blocks when the output is not domain-specific." })),
 			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details for legacy rendering." })),
 			payload: Type.Optional(Type.Unknown({ description: "Optional legacy structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
