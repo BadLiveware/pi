@@ -10,6 +10,7 @@ function loadExtension() {
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();
 	const sentUserMessages: Array<{ content: unknown; options: unknown }> = [];
+	const sentMessages: Array<{ message: unknown; options: unknown }> = [];
 	const entries: Array<{ customType: string; data: unknown }> = [];
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
 	const pi = {
@@ -27,6 +28,10 @@ function loadExtension() {
 		sendUserMessage(content: unknown, options: unknown) {
 			sentUserMessages.push({ content, options });
 		},
+		sendMessage(message: unknown, options: unknown) {
+			sentMessages.push({ message, options });
+		},
+		registerMessageRenderer() {},
 		appendEntry(customType: string, data: unknown) {
 			entries.push({ customType, data });
 		},
@@ -43,7 +48,7 @@ function loadExtension() {
 		},
 		hasPendingMessages: () => false,
 	};
-	return { handlers, tools, commands, sentUserMessages, entries, statuses, ctx };
+	return { handlers, tools, commands, sentUserMessages, sentMessages, entries, statuses, ctx };
 }
 
 async function emit(handlers: Map<string, Array<(event: any, ctx: any) => any>>, eventName: string, event: any, ctx: any): Promise<void> {
@@ -78,7 +83,7 @@ async function withConfig(config: unknown, run: () => Promise<void>): Promise<vo
 describe("tool-feedback", () => {
 	it("records passive turn summaries and asks for feedback after watched tools", async () => {
 		await withConfig({ mode: "both", watch: [{ prefix: "code_intel_" }] }, async () => {
-			const { handlers, sentUserMessages, entries, statuses, ctx } = loadExtension();
+			const { handlers, sentUserMessages, sentMessages, entries, statuses, ctx } = loadExtension();
 			await emit(handlers, "session_start", {}, ctx);
 			assert.deepEqual(statuses.at(-1), { key: "tool-feedback", value: "tf:both" });
 			await emit(handlers, "agent_start", {}, ctx);
@@ -96,9 +101,11 @@ describe("tool-feedback", () => {
 			assert.equal(summary.anyTruncated, true);
 			assert.deepEqual(summary.confirmReferences, ["typescript"]);
 			assert.deepEqual(summary.categoriesAfterFirstWatchedCall, ["read"]);
-			assert.equal(sentUserMessages.length, 1);
-			assert.match(String(sentUserMessages[0].content), /tool_feedback/);
-			assert.deepEqual(sentUserMessages[0].options, { deliverAs: "followUp" });
+			assert.equal(sentUserMessages.length, 0);
+			assert.equal(sentMessages.length, 1);
+			assert.deepEqual(sentMessages[0].options, { triggerTurn: true });
+			assert.match(JSON.stringify(sentMessages[0].message), /tool-feedback:request/);
+			assert.match(JSON.stringify(sentMessages[0].message), /tool_feedback/);
 
 			const log = fs.readFileSync(feedbackLogPath(`tool-feedback-test-${process.pid}`), "utf-8");
 			assert.match(log, /turn_summary/);
@@ -136,7 +143,7 @@ describe("tool-feedback", () => {
 
 	it("does not let cooldown suppress the first eligible feedback prompt", async () => {
 		await withConfig({ mode: "ask-agent", watch: [{ name: "example_tool" }], cooldownTurns: 5 }, async () => {
-			const { handlers, sentUserMessages, ctx } = loadExtension();
+			const { handlers, sentMessages, ctx } = loadExtension();
 			await emit(handlers, "agent_start", {}, ctx);
 			await emit(handlers, "turn_start", { turnIndex: 0, timestamp: 100 }, ctx);
 			await emit(handlers, "tool_call", { toolName: "example_tool", toolCallId: "watched", input: {} }, ctx);
@@ -144,8 +151,8 @@ describe("tool-feedback", () => {
 			await emit(handlers, "turn_end", { turnIndex: 0, message: {}, toolResults: [] }, ctx);
 			await emit(handlers, "agent_end", { messages: [] }, ctx);
 
-			assert.equal(sentUserMessages.length, 1);
-			assert.match(String(sentUserMessages[0].content), /example_tool/);
+			assert.equal(sentMessages.length, 1);
+			assert.match(JSON.stringify(sentMessages[0].message), /example_tool/);
 		});
 	});
 

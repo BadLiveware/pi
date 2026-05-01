@@ -1,5 +1,6 @@
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import {
 	appendLog,
 	categoryForTool,
@@ -28,12 +29,32 @@ import {
 
 export { feedbackLogPath, loadToolFeedbackConfig } from "./src/core.ts";
 
+const MESSAGE_TYPE_TOOL_FEEDBACK_REQUEST = "tool-feedback:request";
+
+interface FeedbackRequestDetails {
+	kind: "tool_feedback_request";
+	watchedTools: string[];
+	flags: string[];
+}
+
 function runtimeModeFromArgs(args: string): FeedbackMode | undefined {
 	return args === "off" || args === "passive" || args === "ask-agent" || args === "both" ? args : undefined;
 }
 
 function statusText(loaded: LoadedConfig): string {
 	return `tool-feedback ${loaded.config.mode}; watching ${loaded.config.watch.map((rule) => rule.name ?? `${rule.prefix}*`).join(", ") || "nothing"}`;
+}
+
+function feedbackRequestDetails(agent: AgentUsage): FeedbackRequestDetails {
+	return {
+		kind: "tool_feedback_request",
+		watchedTools: unique(agent.watchedCalls.map((call) => call.toolName)),
+		flags: [
+			agent.watchedResults.some((result) => result.truncated) ? "truncated" : undefined,
+			agent.afterWatchedCategories.includes("bash:search") ? "follow-up-search" : undefined,
+			agent.afterWatchedCategories.includes("read") ? "source-read" : undefined,
+		].filter((flag): flag is string => Boolean(flag)),
+	};
 }
 
 function statePayload(loaded: LoadedConfig, agent: AgentUsage | undefined): Record<string, unknown> {
@@ -57,6 +78,16 @@ function statePayload(loaded: LoadedConfig, agent: AgentUsage | undefined): Reco
 	};
 }
 
+function registerFeedbackRequestRenderer(pi: ExtensionAPI): void {
+	pi.registerMessageRenderer<FeedbackRequestDetails>(MESSAGE_TYPE_TOOL_FEEDBACK_REQUEST, (message, _options, theme) => {
+		const details = message.details;
+		if (!details || details.kind !== "tool_feedback_request") return undefined;
+		const watched = details.watchedTools.join(", ") || "watched tools";
+		const flags = details.flags.length > 0 ? theme.fg("muted", ` · ${details.flags.join(", ")}`) : "";
+		return new Text(`${theme.fg("warning", "✦ tool feedback requested ")}${theme.fg("accent", watched)}${flags}`);
+	});
+}
+
 export default function toolFeedback(pi: ExtensionAPI): void {
 	let loadedConfig: LoadedConfig | undefined;
 	let runtimeMode: FeedbackMode | undefined;
@@ -66,6 +97,8 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 	let currentAgent: AgentUsage | undefined;
 	let lastPromptedTurn = Number.NEGATIVE_INFINITY;
 	const pendingCalls = new Map<string, WatchedToolCall & { startedAt: number }>();
+
+	registerFeedbackRequestRenderer(pi);
 
 	const getLoadedConfig = (ctx: ExtensionContext): LoadedConfig => {
 		loadedConfig = loadToolFeedbackConfig(ctx);
@@ -221,7 +254,15 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 		if (config.skipWhenPendingMessages && ctx.hasPendingMessages()) return;
 		if (activeTurnIndex - lastPromptedTurn <= config.cooldownTurns) return;
 		lastPromptedTurn = activeTurnIndex;
-		pi.sendUserMessage(feedbackPrompt(config, agent), { deliverAs: "followUp" });
+		pi.sendMessage(
+			{
+				customType: MESSAGE_TYPE_TOOL_FEEDBACK_REQUEST,
+				content: feedbackPrompt(config, agent),
+				display: true,
+				details: feedbackRequestDetails(agent),
+			},
+			{ triggerTurn: true },
+		);
 	});
 
 	pi.on("session_shutdown", async () => {

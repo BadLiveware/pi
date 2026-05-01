@@ -1,12 +1,12 @@
 # Pi Tool Feedback
 
-Generic watched-tool feedback for Pi. It records passive per-turn summaries when selected tools are used, and can optionally ask the agent for one structured feedback record at the end of a prompt.
+Generic watched-tool feedback for Pi. It records passive per-turn summaries when selected tools are used, and can optionally queue a non-user feedback task for the agent at the end of a prompt.
 
 Use it when you are dogfooding a tool, extension, MCP server, or workflow and want low-friction signals such as “was this useful?”, “did truncation hurt?”, and “did the agent still need follow-up search?”.
 
 ## How it works
 
-Configure tool names or prefixes to watch. The extension listens to Pi tool events, records sanitized turn summaries, and exposes a `tool_feedback` tool that the agent can call when prompted.
+Configure tool names or prefixes to watch. The extension listens to Pi tool events, records sanitized turn summaries, and exposes a `tool_feedback` tool that the agent can call when prompted. Active feedback requests are delivered as Pi custom messages with `triggerTurn`, not as user messages.
 
 It does not record raw tool inputs, raw outputs, prompts, file contents, or shell commands in its JSONL log. Optional free-form notes are stored in session entries, while logs keep only note length/hash.
 
