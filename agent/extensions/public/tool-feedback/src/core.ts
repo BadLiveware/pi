@@ -134,11 +134,11 @@ const DEFAULT_TASK_PROMPT = [
 
 const BASE_FIELD_PROMPT = [
 	"Base `tool_feedback` field values:",
-	"- perceivedUsefulness: high | medium | low | none | unknown",
-	"- wouldUseAgainSameSituation: yes | no | unsure | unknown",
-	"- followupWasRoutine, followupNeededBecauseToolWasInsufficient, outputSeemedTooNoisy, outputSeemedIncomplete, missedImportantContext: yes | no | unknown",
-	"- confidence: high | medium | low",
-	"- improvement (optional): better_ranking | higher_cap | better_summary | better_docs | less_noise | faster | other",
+	"- perceivedUsefulness: `high`, `medium`, `low`, `none`, or `unknown`",
+	"- wouldUseAgainSameSituation: `yes`, `no`, `unsure`, or `unknown`",
+	"- followupWasRoutine, followupNeededBecauseToolWasInsufficient, outputSeemedTooNoisy, outputSeemedIncomplete, missedImportantContext: `yes`, `no`, or `unknown`",
+	"- confidence: `high`, `medium`, or `low`",
+	"- improvement (optional): `better_ranking`, `higher_cap`, `better_summary`, `better_docs`, `less_noise`, `faster`, or `other`",
 	"Use `fieldResponses` only for configured extra fields. You do not need to inspect extension source to answer this prompt.",
 ].join("\n");
 
