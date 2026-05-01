@@ -173,16 +173,14 @@ describe("rich-output", () => {
 	it("renders Mermaid diagram blocks to SVG artifacts", async () => {
 		setCapabilities({ images: null, hyperlinks: false, trueColor: true });
 		try {
-			const { renderers } = loadExtension();
+			const { tools, renderers, messages } = loadExtension();
+			await tools.get("rich_output_present").execute("call", {
+				kind: "note",
+				title: "Mermaid block",
+				blocks: [{ type: "diagram", format: "mermaid", render: "svg", label: "Flow", text: "flowchart LR\n  A --> B" }],
+			}, undefined, undefined, {});
 			const renderer = renderers.get("rich-output:card");
-			const component = renderer({
-				details: {
-					kind: "note",
-					title: "Mermaid block",
-					blocks: [{ type: "diagram", format: "mermaid", render: "svg", label: "Flow", text: "flowchart LR\n  A --> B" }],
-					createdAt: "2026-05-01T00:00:00.000Z",
-				},
-			}, { expanded: false }, theme);
+			const component = renderer(messages[0], { expanded: false }, theme);
 
 			const rendered = component.render(100).join("\n");
 			assert.match(rendered, /Flow/);
@@ -199,16 +197,14 @@ describe("rich-output", () => {
 	it("renders Mermaid PNG previews inline when Kitty images are available", async () => {
 		setCapabilities({ images: "kitty", hyperlinks: true, trueColor: true });
 		try {
-			const { renderers } = loadExtension();
+			const { tools, renderers, messages } = loadExtension();
+			await tools.get("rich_output_present").execute("call", {
+				kind: "note",
+				title: "Mermaid image block",
+				blocks: [{ type: "diagram", format: "mermaid", render: "svg", label: "Flow", text: "flowchart LR\n  A --> B" }],
+			}, undefined, undefined, {});
 			const renderer = renderers.get("rich-output:card");
-			const component = renderer({
-				details: {
-					kind: "note",
-					title: "Mermaid image block",
-					blocks: [{ type: "diagram", format: "mermaid", render: "svg", label: "Flow", text: "flowchart LR\n  A --> B" }],
-					createdAt: "2026-05-01T00:00:00.000Z",
-				},
-			}, { expanded: false }, theme);
+			const component = renderer(messages[0], { expanded: false }, theme);
 
 			const renderedLines = component.render(100);
 			assert.ok(renderedLines.some((line: string) => line.includes("\x1b_G")));
@@ -221,18 +217,38 @@ describe("rich-output", () => {
 	it("can show Mermaid source when explicitly requested", async () => {
 		setCapabilities({ images: null, hyperlinks: false, trueColor: true });
 		try {
+			const { tools, renderers, messages } = loadExtension();
+			await tools.get("rich_output_present").execute("call", {
+				kind: "note",
+				title: "Mermaid source block",
+				blocks: [{ type: "diagram", format: "mermaid", render: "svg", showSource: true, label: "Flow", text: "flowchart LR\n  A --> B" }],
+			}, undefined, undefined, {});
+			const renderer = renderers.get("rich-output:card");
+			const component = renderer(messages[0], { expanded: false }, theme);
+
+			assert.match(component.render(100).join("\n"), /flowchart LR/);
+		} finally {
+			resetCapabilitiesCache();
+		}
+	});
+
+	it("does not render Mermaid artifacts from the component render path", async () => {
+		setCapabilities({ images: null, hyperlinks: false, trueColor: true });
+		try {
 			const { renderers } = loadExtension();
 			const renderer = renderers.get("rich-output:card");
 			const component = renderer({
 				details: {
 					kind: "note",
-					title: "Mermaid source block",
-					blocks: [{ type: "diagram", format: "mermaid", render: "svg", showSource: true, label: "Flow", text: "flowchart LR\n  A --> B" }],
+					title: "Unprepared Mermaid block",
+					blocks: [{ type: "diagram", format: "mermaid", render: "svg", label: "Flow", text: "flowchart LR\n  A --> B" }],
 					createdAt: "2026-05-01T00:00:00.000Z",
 				},
 			}, { expanded: false }, theme);
 
-			assert.match(component.render(100).join("\n"), /flowchart LR/);
+			const rendered = component.render(100).join("\n");
+			assert.match(rendered, /flowchart LR/);
+			assert.doesNotMatch(rendered, /svg \/tmp\/pi-rich-output-mermaid/);
 		} finally {
 			resetCapabilitiesCache();
 		}

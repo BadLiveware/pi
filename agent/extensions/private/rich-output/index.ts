@@ -42,6 +42,9 @@ interface RichBlock {
 	format?: string;
 	render?: "auto" | "text" | "svg";
 	showSource?: boolean;
+	svgPath?: string;
+	pngPath?: string;
+	renderError?: string;
 }
 
 interface RichOutputCard {
@@ -218,6 +221,9 @@ function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 			format: stringValue(block.format),
 			render: stringValue(block.render) as RichBlock["render"],
 			showSource: booleanValue(block.showSource),
+			svgPath: stringValue(block.svgPath),
+			pngPath: stringValue(block.pngPath),
+			renderError: stringValue(block.renderError),
 		};
 	}).filter((block): block is RichBlock => Boolean(block));
 	return blocks.length > 0 ? blocks : undefined;
@@ -432,6 +438,22 @@ function renderMermaidArtifacts(source: string): MermaidRenderResult {
 	}
 }
 
+
+function prepareBlocks(blocks: RichBlock[] | undefined): RichBlock[] | undefined {
+	if (!blocks) return undefined;
+	return blocks.map((block) => {
+		const source = mermaidSource(block);
+		if (!source || block.render === "text" || block.pngPath || block.svgPath || block.renderError) return block;
+		const result = renderMermaidArtifacts(source);
+		return {
+			...block,
+			svgPath: result.svgPath,
+			pngPath: result.pngPath,
+			renderError: result.error,
+		};
+	});
+}
+
 function tableLines(columns: string[], rows: unknown[][], theme: any, width: number): string[] {
 	if (columns.length === 0) return [];
 	const maxWidth = Math.max(20, width);
@@ -547,8 +569,6 @@ function blockLines(block: RichBlock, theme: any, width: number): string[] {
 class RichOutputComponent implements Component {
 	private card: RichOutputCard;
 	private theme: any;
-	private mermaidCache = new Map<string, MermaidRenderResult>();
-
 	constructor(card: RichOutputCard, theme: any) {
 		this.card = card;
 		this.theme = theme;
@@ -583,11 +603,7 @@ class RichOutputComponent implements Component {
 	private renderMermaidDiagramBlock(block: RichBlock, width: number): string[] {
 		const source = mermaidSource(block);
 		if (!source) return blockLines(block, this.theme, width);
-		let result = this.mermaidCache.get(source);
-		if (!result) {
-			result = renderMermaidArtifacts(source);
-			this.mermaidCache.set(source, result);
-		}
+		const result: MermaidRenderResult = { svgPath: block.svgPath, pngPath: block.pngPath, error: block.renderError };
 		const lines: string[] = [this.theme.fg("accent", block.label ?? "Mermaid diagram")];
 		if (result.pngPath) {
 			const image = new Image(readFileSync(result.pngPath).toString("base64"), "image/png", { fallbackColor: (text) => this.theme.fg("dim", text) }, {
@@ -704,6 +720,9 @@ export default function richOutput(pi: ExtensionAPI): void {
 				format: Type.Optional(Type.String()),
 				render: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("text"), Type.Literal("svg")])),
 				showSource: Type.Optional(Type.Boolean()),
+				svgPath: Type.Optional(Type.String()),
+				pngPath: Type.Optional(Type.String()),
+				renderError: Type.Optional(Type.String()),
 			}), { description: "Generic terminal-native components to render. Prefer blocks when the output is not domain-specific." })),
 			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details for legacy rendering." })),
 			payload: Type.Optional(Type.Unknown({ description: "Optional legacy structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
@@ -717,7 +736,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 				summary: stringValue(input.summary),
 				markdown: stringValue(input.markdown),
 				payload: input.payload,
-				blocks: normalizeBlocks(input.blocks),
+				blocks: prepareBlocks(normalizeBlocks(input.blocks)),
 				createdAt: new Date().toISOString(),
 			};
 			pi.sendMessage({ customType: MESSAGE_TYPE, content: card.title, display: true, details: card });
@@ -740,7 +759,8 @@ export default function richOutput(pi: ExtensionAPI): void {
 	pi.registerCommand("rich-output-demo", {
 		description: "Show a prototype generic rich output timeline entry",
 		handler: async (_args, _ctx) => {
-			const card = demoCard();
+			const demo = demoCard();
+			const card = { ...demo, blocks: prepareBlocks(demo.blocks) };
 			pi.sendMessage({ customType: MESSAGE_TYPE, content: card.title, display: true, details: card });
 			pi.appendEntry(MESSAGE_TYPE, card);
 		},
