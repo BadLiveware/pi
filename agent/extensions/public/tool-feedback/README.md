@@ -10,6 +10,27 @@ Configure tool names or prefixes to watch. The extension listens to Pi tool even
 
 It does not record raw tool inputs, raw outputs, prompts, file contents, or shell commands in its JSONL log. Optional free-form notes are stored in session entries, while logs keep only note length/hash.
 
+## What feedback can and cannot tell you
+
+Agent self-feedback is useful as noisy operational feedback, not as a faithful explanation of the model's hidden reasoning. Treat it like a lightweight post-task survey and compare it with trace data.
+
+Good questions ask about the agent's observable experience:
+
+- Was the output useful, incomplete, noisy, or too slow?
+- Would you use this tool again in a similar situation?
+- Was follow-up work routine or did it feel compensatory?
+- What one missing capability or improvement would help most?
+- How confident are you in this report?
+
+Weak questions ask the agent to reconstruct why its internal reasoning happened:
+
+- What was the real causal contribution of this tool to your final answer?
+- Which hidden prompt feature or bias changed your reasoning?
+- Did your chain-of-thought faithfully describe the reason you chose an action?
+- Exactly how much would the outcome have changed without this tool?
+
+The extension therefore keeps objective trace facts in passive summaries and asks active prompts for subjective/counterfactual judgments. Use self-reports as candidate design signals, not ground truth.
+
 ## Install
 
 From a published package:
