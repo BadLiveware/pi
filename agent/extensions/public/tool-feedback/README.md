@@ -4,6 +4,8 @@ Generic watched-tool feedback for Pi. It records passive per-turn summaries when
 
 Use it when you are dogfooding a tool, extension, MCP server, or workflow and want low-friction subjective signals such as “did this feel useful?”, “did output feel incomplete or noisy?”, and “would the agent use it again?”. Objective trace facts such as truncation and follow-up tool categories stay in passive summaries.
 
+> Caveat: this is an experiment I am trying on my own Pi setup. I do not yet know whether agent self-feedback is broadly useful or reliable; treat the results as noisy design signals, not proof that a tool works better.
+
 ## How it works
 
 Configure tool names or prefixes to watch. The extension listens to Pi tool events, records sanitized turn summaries, and exposes a `tool_feedback` tool that the agent can call when prompted. Active feedback requests are delivered as Pi custom messages with `triggerTurn`, not as user messages. The request names the watched tools but does not include trace-derived facts, so the agent's self-report is less anchored by telemetry the extension already knows.
