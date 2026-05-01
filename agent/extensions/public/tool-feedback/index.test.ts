@@ -107,6 +107,9 @@ describe("tool-feedback", () => {
 			assert.match(JSON.stringify(sentMessages[0].message), /tool-feedback:request/);
 			const promptMessage = sentMessages[0].message as any;
 			assert.match(JSON.stringify(promptMessage), /tool_feedback/);
+			assert.match(promptMessage.content, /perceivedUsefulness: high \| medium \| low \| none \| unknown/);
+			assert.match(promptMessage.content, /improvement \(optional\): better_ranking \| higher_cap \| better_summary/);
+			assert.match(promptMessage.content, /do not need to inspect extension source/i);
 			assert.doesNotMatch(promptMessage.content, /Observed follow-up signals/);
 			assert.doesNotMatch(promptMessage.content, /truncated/);
 			assert.doesNotMatch(JSON.stringify(promptMessage.details), /truncated|source-read|follow-up-search/);

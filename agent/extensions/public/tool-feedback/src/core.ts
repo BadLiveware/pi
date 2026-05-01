@@ -132,6 +132,16 @@ const DEFAULT_TASK_PROMPT = [
 	"This is a dogfood feedback request, not new implementation work.",
 ].join("\n\n");
 
+const BASE_FIELD_PROMPT = [
+	"Base `tool_feedback` field values:",
+	"- perceivedUsefulness: high | medium | low | none | unknown",
+	"- wouldUseAgainSameSituation: yes | no | unsure | unknown",
+	"- followupWasRoutine, followupNeededBecauseToolWasInsufficient, outputSeemedTooNoisy, outputSeemedIncomplete, missedImportantContext: yes | no | unknown",
+	"- confidence: high | medium | low",
+	"- improvement (optional): better_ranking | higher_cap | better_summary | better_docs | less_noise | faster | other",
+	"Use `fieldResponses` only for configured extra fields. You do not need to inspect extension source to answer this prompt.",
+].join("\n");
+
 export const DEFAULT_CONFIG: ToolFeedbackConfig = {
 	mode: "passive",
 	watch: [],
@@ -405,7 +415,7 @@ function configuredFieldsPrompt(fields: FeedbackFieldConfig[]): string {
 
 export function feedbackPrompt(config: ToolFeedbackConfig, usage: AgentUsage): string {
 	const watchedTools = unique(usage.watchedCalls.map((call) => call.toolName)).join(", ");
-	return `${config.taskPrompt}\n\nWatched tools used: ${watchedTools || "unknown"}.${configuredFieldsPrompt(config.feedbackFields)}`;
+	return `${config.taskPrompt}\n\nWatched tools used: ${watchedTools || "unknown"}.\n\n${BASE_FIELD_PROMPT}${configuredFieldsPrompt(config.feedbackFields)}`;
 }
 
 function perceivedUsefulness(value: unknown): PerceivedUsefulness {
