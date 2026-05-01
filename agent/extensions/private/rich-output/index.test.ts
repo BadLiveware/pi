@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { resetCapabilitiesCache, setCapabilities } from "@mariozechner/pi-tui";
 import richOutput from "./index.ts";
 
 function loadExtension() {
@@ -133,6 +134,39 @@ describe("rich-output", () => {
 		assert.match(rendered, /Criteria/);
 		assert.match(rendered, /root/);
 		assert.match(rendered, /leaf/);
+	});
+
+	it("renders Ghostty-oriented demo blocks with text fallbacks", async () => {
+		setCapabilities({ images: null, hyperlinks: false, trueColor: true });
+		try {
+			const { renderers } = loadExtension();
+			const renderer = renderers.get("rich-output:card");
+			const component = renderer({
+				details: {
+					kind: "note",
+					title: "Ghostty blocks",
+					blocks: [
+						{ type: "capabilities" },
+						{ type: "badge", tone: "success", text: "ready" },
+						{ type: "sparkline", label: "latency", values: [5, 3, 8, 4] },
+						{ type: "link", label: "source", path: "/tmp/example.ts" },
+						{ type: "image", label: "demo chart", values: [1, 4, 2], maxWidthCells: 12 },
+					],
+					createdAt: "2026-05-01T00:00:00.000Z",
+				},
+			}, { expanded: false }, theme);
+
+			const rendered = component.render(100).join("\n");
+			assert.match(rendered, /images=no/);
+			assert.match(rendered, /truecolor=yes/);
+			assert.match(rendered, /● ready/);
+			assert.match(rendered, /latency/);
+			assert.match(rendered, /file:\/\/\/tmp\/example\.ts/);
+			assert.match(rendered, /demo chart/);
+			assert.match(rendered, /\[image\/png\] 320x120/);
+		} finally {
+			resetCapabilitiesCache();
+		}
 	});
 
 	it("provides a demo command", async () => {

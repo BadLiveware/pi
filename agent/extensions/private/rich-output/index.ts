@@ -1,13 +1,14 @@
+import * as zlib from "node:zlib";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, type Component, Markdown, type MarkdownTheme, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { Box, getCapabilities, hyperlink, Image, type Component, Markdown, type MarkdownTheme, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 
 const MESSAGE_TYPE = "rich-output:card";
 
 type RichOutputKind = "report" | "findings" | "validation" | "benchmark" | "stardock" | "table" | "note";
 type RichOutputStyle = "inline" | "card";
 
-type RichBlockType = "heading" | "text" | "formula" | "diagram" | "table" | "tree" | "progress" | "code" | "callout" | "kv" | "rule";
+type RichBlockType = "heading" | "text" | "formula" | "diagram" | "table" | "tree" | "progress" | "code" | "callout" | "kv" | "rule" | "link" | "sparkline" | "image" | "capabilities" | "badge";
 
 interface RichBlock {
 	type: RichBlockType;
@@ -25,6 +26,14 @@ interface RichBlock {
 	items?: unknown[];
 	nodes?: unknown[];
 	edges?: unknown[];
+	url?: string;
+	path?: string;
+	values?: number[];
+	data?: string;
+	mimeType?: string;
+	alt?: string;
+	maxWidthCells?: number;
+	maxHeightCells?: number;
 }
 
 interface RichOutputCard {
@@ -169,7 +178,7 @@ function markdownTheme(theme: any): MarkdownTheme {
 function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 	const blocks = arrayValue(value).filter(isRecord).map((block): RichBlock | undefined => {
 		const type = stringValue(block.type);
-		if (!type || !["heading", "text", "formula", "diagram", "table", "tree", "progress", "code", "callout", "kv", "rule"].includes(type)) return undefined;
+		if (!type || !["heading", "text", "formula", "diagram", "table", "tree", "progress", "code", "callout", "kv", "rule", "link", "sparkline", "image", "capabilities", "badge"].includes(type)) return undefined;
 		return {
 			type: type as RichBlockType,
 			text: stringValue(block.text),
@@ -186,6 +195,14 @@ function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 			items: arrayValue(block.items),
 			nodes: arrayValue(block.nodes),
 			edges: arrayValue(block.edges),
+			url: stringValue(block.url),
+			path: stringValue(block.path),
+			values: arrayValue(block.values).map((value) => numberValue(value)).filter((value): value is number => value !== undefined),
+			data: stringValue(block.data),
+			mimeType: stringValue(block.mimeType),
+			alt: stringValue(block.alt),
+			maxWidthCells: numberValue(block.maxWidthCells),
+			maxHeightCells: numberValue(block.maxHeightCells),
 		};
 	}).filter((block): block is RichBlock => Boolean(block));
 	return blocks.length > 0 ? blocks : undefined;
@@ -233,6 +250,116 @@ function progressLine(block: RichBlock, theme: any, width: number): string {
 	const filled = Math.round(barWidth * ratio);
 	const bar = `${"█".repeat(filled)}${"░".repeat(Math.max(0, barWidth - filled))}`;
 	return `${theme.fg("accent", label)}  ${bar}  ${value}/${total}`;
+}
+
+
+function sparkline(values: number[]): string {
+	if (values.length === 0) return "";
+	const ticks = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+	const min = Math.min(...values);
+	const max = Math.max(...values);
+	const span = max - min || 1;
+	return values.map((value) => ticks[Math.max(0, Math.min(ticks.length - 1, Math.round(((value - min) / span) * (ticks.length - 1))))]).join("");
+}
+
+const CRC_TABLE = (() => {
+	const table = new Uint32Array(256);
+	for (let n = 0; n < 256; n++) {
+		let c = n;
+		for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+		table[n] = c >>> 0;
+	}
+	return table;
+})();
+
+function crc32(buffer: Buffer): number {
+	let c = 0xffffffff;
+	for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8);
+	return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+	const typeBuffer = Buffer.from(type, "ascii");
+	const length = Buffer.alloc(4);
+	length.writeUInt32BE(data.length, 0);
+	const crc = Buffer.alloc(4);
+	crc.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])), 0);
+	return Buffer.concat([length, typeBuffer, data, crc]);
+}
+
+function encodePng(width: number, height: number, rgba: Buffer): string {
+	const header = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+	const ihdr = Buffer.alloc(13);
+	ihdr.writeUInt32BE(width, 0);
+	ihdr.writeUInt32BE(height, 4);
+	ihdr[8] = 8; // bit depth
+	ihdr[9] = 6; // RGBA
+	ihdr[10] = 0;
+	ihdr[11] = 0;
+	ihdr[12] = 0;
+	const scanlines = Buffer.alloc(height * (width * 4 + 1));
+	for (let y = 0; y < height; y++) {
+		scanlines[y * (width * 4 + 1)] = 0;
+		rgba.copy(scanlines, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4);
+	}
+	return Buffer.concat([
+		header,
+		pngChunk("IHDR", ihdr),
+		pngChunk("IDAT", zlib.deflateSync(scanlines)),
+		pngChunk("IEND", Buffer.alloc(0)),
+	]).toString("base64");
+}
+
+function demoChartPng(values: number[] = [3, 5, 4, 8, 6, 9, 7, 11, 10, 12]): string {
+	if (values.length === 0) values = [3, 5, 4, 8, 6, 9, 7, 11, 10, 12];
+	const width = 320;
+	const height = 120;
+	const rgba = Buffer.alloc(width * height * 4);
+	const min = Math.min(...values);
+	const max = Math.max(...values);
+	const span = max - min || 1;
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const offset = (y * width + x) * 4;
+			rgba[offset] = 20 + Math.floor((x / width) * 40);
+			rgba[offset + 1] = 24 + Math.floor((y / height) * 30);
+			rgba[offset + 2] = 38 + Math.floor((x / width) * 80);
+			rgba[offset + 3] = 255;
+		}
+	}
+	const plotTop = 14;
+	const plotBottom = height - 18;
+	const step = width / Math.max(1, values.length);
+	values.forEach((value, index) => {
+		const barHeight = Math.round(((value - min) / span) * (plotBottom - plotTop));
+		const x0 = Math.floor(index * step + 5);
+		const x1 = Math.floor((index + 1) * step - 5);
+		const y0 = plotBottom - barHeight;
+		for (let y = y0; y <= plotBottom; y++) {
+			for (let x = x0; x <= x1; x++) {
+				const offset = (y * width + x) * 4;
+				rgba[offset] = 94;
+				rgba[offset + 1] = 234;
+				rgba[offset + 2] = 212;
+				rgba[offset + 3] = 255;
+			}
+		}
+	});
+	return encodePng(width, height, rgba);
+}
+
+function linkTarget(block: RichBlock): string | undefined {
+	if (block.url) return block.url;
+	if (block.path) return block.path.startsWith("file://") ? block.path : `file://${block.path}`;
+	return undefined;
+}
+
+function capabilityLines(theme: any): string[] {
+	const caps = getCapabilities();
+	return [
+		`${theme.fg("accent", "terminal")} images=${caps.images ?? "no"} hyperlinks=${caps.hyperlinks ? "yes" : "no"} truecolor=${caps.trueColor ? "yes" : "no"}`,
+		`${theme.fg("dim", "ghostty demo")} use images for faithful diagrams/formulas, OSC 8 for file/artifact links, unicode/truecolor for compact status`,
+	];
 }
 
 function tableLines(columns: string[], rows: unknown[][], theme: any, width: number): string[] {
@@ -319,6 +446,29 @@ function blockLines(block: RichBlock, theme: any, width: number): string[] {
 		}
 		case "kv":
 			return [`${theme.fg("accent", block.label ?? "value")}: ${String(block.value ?? block.text ?? "")}`];
+		case "link": {
+			const target = linkTarget(block);
+			const label = block.label ?? block.text ?? target ?? "link";
+			if (!target) return [theme.fg("accent", label)];
+			const rendered = getCapabilities().hyperlinks ? hyperlink(theme.fg("accent", label), target) : `${theme.fg("accent", label)} ${theme.fg("dim", target)}`;
+			return [rendered];
+		}
+		case "sparkline": {
+			const values = block.values ?? [];
+			const label = block.label ? `${theme.fg("accent", block.label)} ` : "";
+			const range = values.length > 0 ? ` ${theme.fg("dim", `${Math.min(...values)}…${Math.max(...values)}`)}` : "";
+			return [`${label}${sparkline(values)}${range}`];
+		}
+		case "capabilities":
+			return capabilityLines(theme);
+		case "badge": {
+			const text = String(block.value ?? block.text ?? block.label ?? "badge");
+			return [theme.fg(styleForTone(theme, block.tone), `● ${text}`)];
+		}
+		case "image": {
+			const label = block.alt ?? block.label ?? "inline image";
+			return [theme.fg("dim", `[image: ${label}]`)];
+		}
 		case "rule":
 			return [theme.fg("dim", "─".repeat(Math.min(width, 80)))];
 	}
@@ -341,7 +491,7 @@ class RichOutputComponent implements Component {
 		if (blocks && blocks.length > 0) {
 			if (this.card.summary) lines.push("");
 			for (const block of blocks) {
-				const rendered = blockLines(block, this.theme, width);
+				const rendered = block.type === "image" ? this.renderImageBlock(block, width) : blockLines(block, this.theme, width);
 				if (rendered.length > 0) lines.push(...rendered, "");
 			}
 			while (lines.at(-1) === "") lines.pop();
@@ -353,6 +503,20 @@ class RichOutputComponent implements Component {
 			lines.push(...md.render(width));
 		}
 		return lines.map((line) => visibleWidth(line) > width ? truncateToWidth(line, width) : line);
+	}
+
+	private renderImageBlock(block: RichBlock, width: number): string[] {
+		const label = block.alt ?? block.label ?? "Ghostty inline image demo";
+		const data = block.data ?? demoChartPng(block.values);
+		const mimeType = block.mimeType ?? "image/png";
+		const image = new Image(data, mimeType, { fallbackColor: (text) => this.theme.fg("dim", text) }, {
+			filename: label,
+			maxWidthCells: block.maxWidthCells ?? Math.min(48, Math.max(12, width - 2)),
+			maxHeightCells: block.maxHeightCells ?? 12,
+		});
+		const captionTarget = linkTarget(block);
+		const captionText = captionTarget && getCapabilities().hyperlinks ? hyperlink(label, captionTarget) : label;
+		return [this.theme.fg("dim", captionText), ...image.render(width)];
 	}
 
 	invalidate(): void {}
@@ -375,10 +539,15 @@ function demoCard(): RichOutputCard {
 		title: "Rich output prototype",
 		summary: "Terminal-native blocks rendered from structured data.",
 		blocks: [
+			{ type: "capabilities" },
+			{ type: "badge", tone: "success", text: "Ghostty-friendly: Kitty images + OSC 8 links + truecolor glyphs" },
 			{ type: "formula", latex: "\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}" },
-			{ type: "diagram", edges: [["Agent", "Tool"], ["Tool", "Timeline renderer"]] },
-			{ type: "progress", label: "Blocks", value: 8, total: 10 },
-			{ type: "callout", tone: "warning", text: "This is a prototype; rendering is terminal-native and approximate." },
+			{ type: "diagram", edges: [["Agent", "Tool"], ["Tool", "Timeline renderer"], ["Renderer", "Ghostty image path"]] },
+			{ type: "sparkline", label: "latency", values: [18, 16, 21, 15, 14, 17, 12, 11, 13, 10] },
+			{ type: "image", label: "Generated inline PNG chart", values: [3, 5, 4, 8, 6, 9, 7, 11, 10, 12], maxWidthCells: 36 },
+			{ type: "link", label: "Open rich-output source", path: `${process.cwd()}/agent/extensions/private/rich-output/index.ts` },
+			{ type: "progress", label: "Blocks", value: 13, total: 15 },
+			{ type: "callout", tone: "warning", text: "Demo-only: images should stay opt-in and text fallbacks should remain useful." },
 		],
 		createdAt: new Date().toISOString(),
 	};
@@ -402,7 +571,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 			title: Type.String({ description: "Short title for the timeline entry." }),
 			summary: Type.Optional(Type.String({ description: "One or two sentence compact summary." })),
 			blocks: Type.Optional(Type.Array(Type.Object({
-				type: Type.Union([Type.Literal("heading"), Type.Literal("text"), Type.Literal("formula"), Type.Literal("diagram"), Type.Literal("table"), Type.Literal("tree"), Type.Literal("progress"), Type.Literal("code"), Type.Literal("callout"), Type.Literal("kv"), Type.Literal("rule")]),
+				type: Type.Union([Type.Literal("heading"), Type.Literal("text"), Type.Literal("formula"), Type.Literal("diagram"), Type.Literal("table"), Type.Literal("tree"), Type.Literal("progress"), Type.Literal("code"), Type.Literal("callout"), Type.Literal("kv"), Type.Literal("rule"), Type.Literal("link"), Type.Literal("sparkline"), Type.Literal("image"), Type.Literal("capabilities"), Type.Literal("badge")]),
 				text: Type.Optional(Type.String()),
 				level: Type.Optional(Type.Number()),
 				latex: Type.Optional(Type.String()),
@@ -417,6 +586,14 @@ export default function richOutput(pi: ExtensionAPI): void {
 				items: Type.Optional(Type.Array(Type.Unknown())),
 				nodes: Type.Optional(Type.Array(Type.Unknown())),
 				edges: Type.Optional(Type.Array(Type.Unknown())),
+				url: Type.Optional(Type.String()),
+				path: Type.Optional(Type.String()),
+				values: Type.Optional(Type.Array(Type.Number())),
+				data: Type.Optional(Type.String()),
+				mimeType: Type.Optional(Type.String()),
+				alt: Type.Optional(Type.String()),
+				maxWidthCells: Type.Optional(Type.Number()),
+				maxHeightCells: Type.Optional(Type.Number()),
 			}), { description: "Generic terminal-native components to render. Prefer blocks when the output is not domain-specific." })),
 			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details for legacy rendering." })),
 			payload: Type.Optional(Type.Unknown({ description: "Optional legacy structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
