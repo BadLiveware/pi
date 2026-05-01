@@ -74,6 +74,7 @@ describe("Ralph idle watch detection", () => {
 		assert.match(WATCHDOG_NUDGE_PROMPT, /Automated watchdog nudge/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /not a new user request/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /does not mean more work is required/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, /If this is a Ralph loop/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /<promise>COMPLETE<\/promise>/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /If unfinished in-scope work remains, continue/);
 	});
@@ -117,6 +118,21 @@ describe("Ralph idle watch detection", () => {
 		const analysis = analyzeRalphBranchForStall(entries, 123);
 		assert.equal(analysis.ralphDoneAfterPrompt, true);
 		assert.equal(analysis.shouldRecover, false);
+	});
+
+	it("does not arm Ralph recovery for ordinary sessions", () => {
+		const entries: SessionEntry[] = [
+			messageEntry("user-normal", "user", [{ type: "text", text: "Please inspect this bug." }]),
+			messageEntry("assistant-final", "assistant", [{ type: "text", text: "I'll continue with the next concrete step." }]),
+		];
+
+		const branchAnalysis = analyzeRalphBranchForStall(entries, 123);
+		assert.equal(branchAnalysis.prompt, undefined);
+		assert.equal(branchAnalysis.shouldRecover, false);
+
+		const compactionAnalysis = analyzeCompactionRecovery(entries, { hasActiveLoop: false, isOverflow: false, timestamp: 123 });
+		assert.equal(compactionAnalysis.shouldRecover, false);
+		assert.equal(compactionAnalysis.reason, "no-active-ralph-loop");
 	});
 
 	it("does not treat a stale active Ralph state as compaction work", () => {
