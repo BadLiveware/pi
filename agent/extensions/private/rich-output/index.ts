@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
@@ -13,7 +13,7 @@ const MESSAGE_TYPE = "rich-output:card";
 type RichOutputKind = "report" | "findings" | "validation" | "benchmark" | "stardock" | "table" | "note";
 type RichOutputStyle = "inline" | "card";
 
-type RichBlockType = "heading" | "text" | "formula" | "diagram" | "table" | "tree" | "progress" | "code" | "callout" | "kv" | "rule" | "link" | "sparkline" | "image" | "capabilities" | "badge";
+type RichBlockType = "heading" | "text" | "formula" | "diagram" | "table" | "tree" | "progress" | "code" | "callout" | "kv" | "rule" | "link" | "sparkline" | "image" | "capabilities" | "badge" | "chart";
 
 interface RichBlock {
 	type: RichBlockType;
@@ -46,6 +46,8 @@ interface RichBlock {
 	svgPath?: string;
 	pngPath?: string;
 	renderError?: string;
+	spec?: unknown;
+	jsonPath?: string;
 }
 
 interface RichOutputCard {
@@ -73,6 +75,16 @@ function numberValue(value: unknown): number | undefined {
 
 function booleanValue(value: unknown): boolean | undefined {
 	return typeof value === "boolean" ? value : undefined;
+}
+
+function displayString(value: unknown, fallback = ""): string {
+	if (typeof value === "string") return value;
+	if (value === undefined || value === null) return fallback;
+	try {
+		return String(value);
+	} catch {
+		return fallback;
+	}
 }
 
 function arrayValue(value: unknown): unknown[] {
@@ -157,7 +169,8 @@ function stardockMarkdown(payload: unknown): string | undefined {
 
 function generatedMarkdown(card: RichOutputCard): string {
 	const lines: string[] = [];
-	if (card.summary) lines.push(card.summary);
+	const summary = stringValue(card.summary);
+	if (summary) lines.push(summary);
 	const generated = card.kind === "findings"
 		? findingsMarkdown(card.payload)
 		: card.kind === "validation"
@@ -168,7 +181,8 @@ function generatedMarkdown(card: RichOutputCard): string {
 					? stardockMarkdown(card.payload)
 					: undefined;
 	if (generated) lines.push(generated);
-	if (card.markdown) lines.push(card.markdown);
+	const markdown = stringValue(card.markdown);
+	if (markdown) lines.push(markdown);
 	return lines.join("\n\n");
 }
 
@@ -194,7 +208,7 @@ function markdownTheme(theme: any): MarkdownTheme {
 function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 	const blocks = arrayValue(value).filter(isRecord).map((block): RichBlock | undefined => {
 		const type = stringValue(block.type);
-		if (!type || !["heading", "text", "formula", "diagram", "table", "tree", "progress", "code", "callout", "kv", "rule", "link", "sparkline", "image", "capabilities", "badge"].includes(type)) return undefined;
+		if (!type || !["heading", "text", "formula", "diagram", "table", "tree", "progress", "code", "callout", "kv", "rule", "link", "sparkline", "image", "capabilities", "badge", "chart"].includes(type)) return undefined;
 		return {
 			type: type as RichBlockType,
 			text: stringValue(block.text),
@@ -226,6 +240,8 @@ function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 			svgPath: stringValue(block.svgPath),
 			pngPath: stringValue(block.pngPath),
 			renderError: stringValue(block.renderError),
+			spec: block.spec,
+			jsonPath: stringValue(block.jsonPath),
 		};
 	}).filter((block): block is RichBlock => Boolean(block));
 	return blocks.length > 0 ? blocks : undefined;
@@ -390,7 +406,43 @@ function isTerminalImageLine(line: string): boolean {
 }
 
 function fitRenderedLine(line: string, width: number): string {
-	return !isTerminalImageLine(line) && visibleWidth(line) > width ? truncateToWidth(line, width) : line;
+	const safeWidth = Math.max(1, Math.floor(Number.isFinite(width) ? width : 80));
+	return !isTerminalImageLine(line) && visibleWidth(line) > safeWidth ? truncateToWidth(line, safeWidth) : line;
+}
+
+function clampCellCount(value: number | undefined, fallback: number, min: number, max: number): number {
+	const numeric = Number.isFinite(value) ? Math.floor(value as number) : fallback;
+	return Math.max(min, Math.min(max, numeric));
+}
+
+function safeJsonStringify(value: unknown): string | undefined {
+	try {
+		const json = JSON.stringify(value);
+		return typeof json === "string" ? json : undefined;
+	} catch (error) {
+		return undefined;
+	}
+}
+
+function readableArtifact(path: string | undefined): path is string {
+	return Boolean(path && existsSync(path));
+}
+
+function readImageBase64(path: string): string | undefined {
+	try {
+		const stat = statSync(path);
+		if (!stat.isFile() || stat.size > MAX_ARTIFACT_IMAGE_BYTES) return undefined;
+		return readFileSync(path).toString("base64");
+	} catch {
+		return undefined;
+	}
+}
+
+function validatedBase64Payload(value: string): string | undefined {
+	const payload = value.trim();
+	if (payload.length === 0 || payload.length > MAX_INLINE_IMAGE_BASE64_CHARS) return undefined;
+	if (!/^[A-Za-z0-9+/]+={0,2}$/.test(payload) || payload.length % 4 !== 0) return undefined;
+	return payload;
 }
 
 interface MermaidRenderResult {
@@ -413,6 +465,11 @@ const MAX_MERMAID_DIAGRAMS_PER_CARD = 4;
 const MAX_MERMAID_SOURCE_CHARS = 12_000;
 const MAX_RENDER_ERROR_CHARS = 360;
 const MAX_SOURCE_FALLBACK_CHARS = 2_000;
+const CHART_RENDER_VERSION = "vl-dark-v1";
+const MAX_CHART_SPEC_CHARS = 80_000;
+const MAX_CHARTS_PER_CARD = 4;
+const MAX_ARTIFACT_IMAGE_BYTES = 5_000_000;
+const MAX_INLINE_IMAGE_BASE64_CHARS = 2_000_000;
 
 function truncateMiddle(text: string, maxChars: number): string {
 	if (text.length <= maxChars) return text;
@@ -481,10 +538,88 @@ function renderMermaidArtifacts(source: string, widthCells: number): MermaidRend
 }
 
 
+
+interface ChartRenderResult {
+	jsonPath?: string;
+	svgPath?: string;
+	pngPath?: string;
+	error?: string;
+}
+
+function chartSpec(block: RichBlock): Record<string, unknown> | undefined {
+	if (block.type !== "chart" || block.format !== "vega-lite" || !isRecord(block.spec)) return undefined;
+	return block.spec;
+}
+
+function chartArtifactDir(): string {
+	const projectDir = join(process.cwd(), ".pi", "rich-output", "charts");
+	try {
+		mkdirSync(projectDir, { recursive: true });
+		return projectDir;
+	} catch {
+		const fallbackDir = join(tmpdir(), "pi-rich-output-charts");
+		mkdirSync(fallbackDir, { recursive: true });
+		return fallbackDir;
+	}
+}
+
+function runVlConvert(command: "vl2svg" | "vl2png", inputPath: string, outputPath: string): string | undefined {
+	const args = command === "vl2png"
+		? [command, "--input", inputPath, "--output", outputPath, "--theme", "dark", "--scale", "2"]
+		: [command, "--input", inputPath, "--output", outputPath, "--theme", "dark"];
+	const result = spawnSync("vl-convert", args, { encoding: "utf8", timeout: 15_000, maxBuffer: 1024 * 1024 });
+	if (result.error) return truncateRenderError(result.error.message);
+	if (result.status !== 0) return truncateRenderError(result.stderr || result.stdout || `vl-convert ${command} exited ${result.status}`);
+	return undefined;
+}
+
+function renderChartArtifacts(spec: Record<string, unknown>): ChartRenderResult {
+	try {
+		const specJson = safeJsonStringify(spec);
+		if (!specJson) return { error: "Vega-Lite spec could not be serialized; showing text fallback." };
+		if (specJson.length > MAX_CHART_SPEC_CHARS) return { error: `Vega-Lite spec exceeds ${MAX_CHART_SPEC_CHARS} characters; showing text fallback.` };
+		const hash = createHash("sha256").update(CHART_RENDER_VERSION).update("\0").update(specJson).digest("hex").slice(0, 16);
+		const dir = chartArtifactDir();
+		const jsonPath = join(dir, `${hash}.vl.json`);
+		const svgPath = join(dir, `${hash}.svg`);
+		const pngPath = join(dir, `${hash}.png`);
+		writeFileSync(jsonPath, specJson, "utf8");
+		if (!existsSync(svgPath)) {
+			const error = runVlConvert("vl2svg", jsonPath, svgPath);
+			if (error) return { jsonPath, error };
+		}
+		if (!existsSync(pngPath)) {
+			const error = runVlConvert("vl2png", jsonPath, pngPath);
+			if (error) return { jsonPath, svgPath, error };
+		}
+		return { jsonPath, svgPath, pngPath };
+	} catch (error) {
+		return { error: truncateRenderError(error instanceof Error ? error.message : String(error)) };
+	}
+}
+
+function prepareChartBlock(block: RichBlock): RichBlock {
+	const spec = chartSpec(block);
+	if (!spec || block.pngPath || block.svgPath || block.renderError) return block;
+	const result = renderChartArtifacts(spec);
+	return { ...block, jsonPath: result.jsonPath, svgPath: result.svgPath, pngPath: result.pngPath, renderError: result.error };
+}
+
 function prepareBlocks(blocks: RichBlock[] | undefined): RichBlock[] | undefined {
 	if (!blocks) return undefined;
 	let mermaidDiagramCount = 0;
+	let chartCount = 0;
 	return blocks.map((block) => {
+		if (block.type === "chart") {
+			if (chartSpec(block)) chartCount++;
+			if (chartCount > MAX_CHARTS_PER_CARD) {
+				return {
+					...block,
+					renderError: `Vega-Lite chart cap reached (${MAX_CHARTS_PER_CARD} rendered per entry); showing text fallback.`,
+				};
+			}
+			return prepareChartBlock(block);
+		}
 		const source = mermaidSource(block);
 		if (!source || block.render === "text" || block.pngPath || block.svgPath || block.renderError) return block;
 		if (source.length > MAX_MERMAID_SOURCE_CHARS) {
@@ -618,9 +753,27 @@ function blockLines(block: RichBlock, theme: any, width: number): string[] {
 			const label = block.alt ?? block.label ?? "inline image";
 			return [theme.fg("dim", `[image: ${label}]`)];
 		}
+		case "chart":
+			return [theme.fg("dim", `[chart: ${block.label ?? "Vega-Lite chart"}]`)];
 		case "rule":
-			return [theme.fg("dim", "─".repeat(Math.min(width, 80)))];
+			return [theme.fg("dim", "─".repeat(Math.max(1, Math.min(width, 80))))];
 	}
+}
+
+function coerceCard(value: unknown): RichOutputCard | undefined {
+	if (!isRecord(value)) return undefined;
+	const kind = stringValue(value.kind);
+	if (!kind || !["report", "findings", "validation", "benchmark", "stardock", "table", "note"].includes(kind)) return undefined;
+	return {
+		kind: kind as RichOutputKind,
+		style: value.style === "card" ? "card" : "inline",
+		title: stringValue(value.title) ?? "Rich output",
+		summary: stringValue(value.summary),
+		markdown: stringValue(value.markdown),
+		payload: value.payload,
+		blocks: normalizeBlocks(value.blocks),
+		createdAt: stringValue(value.createdAt) ?? "",
+	};
 }
 
 class RichOutputComponent implements Component {
@@ -632,29 +785,68 @@ class RichOutputComponent implements Component {
 	}
 
 	render(width: number): string[] {
+		const renderWidth = Math.max(1, Math.floor(Number.isFinite(width) ? width : 80));
 		const lines: string[] = [];
-		lines.push(`${this.theme.fg("accent", this.theme.bold(this.card.title))} ${this.theme.fg("dim", this.card.kind)}`);
-		if (this.card.summary) lines.push(...wrapTextWithAnsi(this.card.summary, width));
-		const blocks = this.card.blocks;
+		const title = displayString(this.card.title, "Rich output");
+		const kind = displayString(this.card.kind, "note");
+		lines.push(`${this.theme.fg("accent", this.theme.bold(title))} ${this.theme.fg("dim", kind)}`);
+		const summary = stringValue(this.card.summary);
+		if (summary) lines.push(...wrapTextWithAnsi(summary, renderWidth));
+		const blocks = Array.isArray(this.card.blocks) ? this.card.blocks : undefined;
 		if (blocks && blocks.length > 0) {
-			if (this.card.summary) lines.push("");
+			if (summary) lines.push("");
 			for (const block of blocks) {
-				const rendered = block.type === "image"
-					? this.renderImageBlock(block, width)
-					: block.type === "diagram" && mermaidSource(block) && block.render !== "text"
-						? this.renderMermaidDiagramBlock(block, width)
-						: blockLines(block, this.theme, width);
+				const rendered = this.renderBlockSafely(block, renderWidth);
 				if (rendered.length > 0) lines.push(...rendered, "");
 			}
 			while (lines.at(-1) === "") lines.pop();
-			return lines.map((line) => fitRenderedLine(line, width));
+			return lines.map((line) => fitRenderedLine(line, renderWidth));
 		}
 		const markdown = generatedMarkdown(this.card);
 		if (markdown) {
-			const md = new Markdown(markdown, 0, this.card.summary ? 1 : 0, markdownTheme(this.theme));
-			lines.push(...md.render(width));
+			const md = new Markdown(markdown, 0, summary ? 1 : 0, markdownTheme(this.theme));
+			lines.push(...md.render(renderWidth));
 		}
-		return lines.map((line) => fitRenderedLine(line, width));
+		return lines.map((line) => fitRenderedLine(line, renderWidth));
+	}
+
+	private renderBlockSafely(block: RichBlock, width: number): string[] {
+		try {
+			return block.type === "image"
+				? this.renderImageBlock(block, width)
+				: block.type === "chart"
+					? this.renderChartBlock(block, width)
+					: block.type === "diagram" && mermaidSource(block) && block.render !== "text"
+						? this.renderMermaidDiagramBlock(block, width)
+						: blockLines(block, this.theme, width);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return [this.theme.fg("warning", `Could not render ${block.type} block: ${truncateRenderError(message)}`)];
+		}
+	}
+
+	private renderChartBlock(block: RichBlock, width: number): string[] {
+		const lines: string[] = [this.theme.fg("accent", block.label ?? "Chart")];
+		const pngData = block.pngPath ? readImageBase64(block.pngPath) : undefined;
+		if (pngData) {
+			const image = new Image(pngData, "image/png", { fallbackColor: (text) => this.theme.fg("dim", text) }, {
+				filename: block.label ?? "Chart",
+				maxWidthCells: Math.min(clampCellCount(block.maxWidthCells, 120, 1, 240), Math.max(1, width - 2)),
+				maxHeightCells: clampCellCount(block.maxHeightCells, 18, 1, 80),
+			});
+			lines.push(...image.render(width));
+		} else if (block.pngPath) {
+			lines.push(this.theme.fg("warning", `Chart image unavailable: ${block.pngPath}`));
+		}
+		if (block.svgPath) lines.push(`${this.theme.fg("dim", "svg")} ${this.theme.fg(readableArtifact(block.svgPath) ? "dim" : "warning", block.svgPath)}`);
+		if (block.jsonPath) lines.push(`${this.theme.fg("dim", "spec")} ${this.theme.fg(readableArtifact(block.jsonPath) ? "dim" : "warning", block.jsonPath)}`);
+		if (block.renderError) lines.push(this.theme.fg("warning", `Chart render failed: ${block.renderError}`));
+		if (block.showSource === true && block.spec) {
+			const specJson = safeJsonStringify(block.spec);
+			if (specJson) lines.push(...wrapTextWithAnsi(truncateMiddle(specJson, MAX_SOURCE_FALLBACK_CHARS), width).map((line) => this.theme.fg("dim", line)));
+			else lines.push(this.theme.fg("warning", "Chart source unavailable: spec could not be serialized"));
+		}
+		return lines;
 	}
 
 	private renderMermaidDiagramBlock(block: RichBlock, width: number): string[] {
@@ -662,22 +854,26 @@ class RichOutputComponent implements Component {
 		if (!source) return blockLines(block, this.theme, width);
 		const result: MermaidRenderResult = { svgPath: block.svgPath, pngPath: block.pngPath, error: block.renderError };
 		const lines: string[] = [this.theme.fg("accent", block.label ?? "Mermaid diagram")];
-		if (result.pngPath) {
-			const image = new Image(readFileSync(result.pngPath).toString("base64"), "image/png", { fallbackColor: (text) => this.theme.fg("dim", text) }, {
+		const pngData = result.pngPath ? readImageBase64(result.pngPath) : undefined;
+		if (pngData) {
+			const image = new Image(pngData, "image/png", { fallbackColor: (text) => this.theme.fg("dim", text) }, {
 				filename: block.label ?? "Mermaid diagram",
-				maxWidthCells: Math.min(mermaidWidthCells(block), Math.max(16, width - 2)),
-				maxHeightCells: block.maxHeightCells ?? 16,
+				maxWidthCells: Math.min(mermaidWidthCells(block), Math.max(1, width - 2)),
+				maxHeightCells: clampCellCount(block.maxHeightCells, 16, 1, 80),
 			});
 			lines.push(...image.render(width));
+		} else if (result.pngPath) {
+			lines.push(this.theme.fg("warning", `Mermaid image unavailable: ${result.pngPath}`));
 		}
 		if (result.svgPath) {
 			const url = `file://${result.svgPath}`;
-			const target = this.theme.fg("dim", result.svgPath);
+			const style = readableArtifact(result.svgPath) ? "dim" : "warning";
+			const target = this.theme.fg(style, result.svgPath);
 			const renderedTarget = getCapabilities().hyperlinks ? hyperlink(target, url) : target;
 			lines.push(`${this.theme.fg("dim", "svg")} ${renderedTarget}`);
 		}
 		if (result.error) lines.push(this.theme.fg("warning", `Mermaid render failed: ${result.error}`));
-		const renderedSuccessfully = Boolean(result.pngPath || result.svgPath);
+		const renderedSuccessfully = Boolean(pngData || readableArtifact(result.svgPath));
 		if (block.showSource === true || !renderedSuccessfully) {
 			lines.push(...wrapTextWithAnsi(source, width).map((line) => this.theme.fg("dim", line)));
 		}
@@ -686,15 +882,16 @@ class RichOutputComponent implements Component {
 
 	private renderImageBlock(block: RichBlock, width: number): string[] {
 		const label = block.alt ?? block.label ?? "Ghostty inline image demo";
-		const data = block.data ?? demoChartPng(block.values);
+		const data = block.data ? validatedBase64Payload(block.data) : demoChartPng(block.values);
+		const captionTarget = linkTarget(block);
+		const captionText = captionTarget && getCapabilities().hyperlinks ? hyperlink(label, captionTarget) : label;
+		if (!data) return [this.theme.fg("dim", captionText), this.theme.fg("warning", "Image data unavailable: expected bounded base64 payload")];
 		const mimeType = block.mimeType ?? "image/png";
 		const image = new Image(data, mimeType, { fallbackColor: (text) => this.theme.fg("dim", text) }, {
 			filename: label,
-			maxWidthCells: block.maxWidthCells ?? Math.min(48, Math.max(12, width - 2)),
-			maxHeightCells: block.maxHeightCells ?? 12,
+			maxWidthCells: clampCellCount(block.maxWidthCells, Math.min(48, Math.max(1, width - 2)), 1, 240),
+			maxHeightCells: clampCellCount(block.maxHeightCells, 12, 1, 80),
 		});
-		const captionTarget = linkTarget(block);
-		const captionText = captionTarget && getCapabilities().hyperlinks ? hyperlink(label, captionTarget) : label;
 		return [this.theme.fg("dim", captionText), ...image.render(width)];
 	}
 
@@ -735,9 +932,9 @@ function demoCard(): RichOutputCard {
 
 export default function richOutput(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer<RichOutputCard>(MESSAGE_TYPE, (message, _options, theme) => {
-		const details = message.details;
-		if (!details || details.kind === undefined) return undefined;
-		return renderCard(details as RichOutputCard, theme);
+		const card = coerceCard(message.details);
+		if (!card) return undefined;
+		return renderCard(card, theme);
 	});
 
 	pi.registerTool({
@@ -751,7 +948,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 			title: Type.String({ description: "Short title for the timeline entry." }),
 			summary: Type.Optional(Type.String({ description: "One or two sentence compact summary." })),
 			blocks: Type.Optional(Type.Array(Type.Object({
-				type: Type.Union([Type.Literal("heading"), Type.Literal("text"), Type.Literal("formula"), Type.Literal("diagram"), Type.Literal("table"), Type.Literal("tree"), Type.Literal("progress"), Type.Literal("code"), Type.Literal("callout"), Type.Literal("kv"), Type.Literal("rule"), Type.Literal("link"), Type.Literal("sparkline"), Type.Literal("image"), Type.Literal("capabilities"), Type.Literal("badge")]),
+				type: Type.Union([Type.Literal("heading"), Type.Literal("text"), Type.Literal("formula"), Type.Literal("diagram"), Type.Literal("table"), Type.Literal("tree"), Type.Literal("progress"), Type.Literal("code"), Type.Literal("callout"), Type.Literal("kv"), Type.Literal("rule"), Type.Literal("link"), Type.Literal("sparkline"), Type.Literal("image"), Type.Literal("capabilities"), Type.Literal("badge"), Type.Literal("chart")]),
 				text: Type.Optional(Type.String()),
 				level: Type.Optional(Type.Number()),
 				latex: Type.Optional(Type.String()),
@@ -781,6 +978,8 @@ export default function richOutput(pi: ExtensionAPI): void {
 				svgPath: Type.Optional(Type.String()),
 				pngPath: Type.Optional(Type.String()),
 				renderError: Type.Optional(Type.String()),
+				spec: Type.Optional(Type.Unknown()),
+				jsonPath: Type.Optional(Type.String()),
 			}), { description: "Generic terminal-native components to render. Prefer blocks when the output is not domain-specific." })),
 			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details for legacy rendering." })),
 			payload: Type.Optional(Type.Unknown({ description: "Optional legacy structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
@@ -802,12 +1001,13 @@ export default function richOutput(pi: ExtensionAPI): void {
 			return { content: [{ type: "text", text: `presented ${card.kind}: ${card.title}` }], details: card };
 		},
 		renderCall(args, theme) {
-			const kind = stringValue((args as Record<string, unknown>).kind) ?? "entry";
-			const title = stringValue((args as Record<string, unknown>).title) ?? "Rich output";
+			const input: Record<string, unknown> = isRecord(args) ? args : {};
+			const kind = stringValue(input.kind) ?? "entry";
+			const title = stringValue(input.title) ?? "Rich output";
 			return new Text(`${theme.fg("accent", "rich_output_present")} ${theme.fg("dim", `${kind}: ${title}`)}`, 0, 0);
 		},
 		renderResult(result, _options, theme) {
-			const details = result.details as RichOutputCard | undefined;
+			const details = isRecord(result) ? coerceCard(result.details) : undefined;
 			const kind = details?.kind ?? "entry";
 			const title = details?.title ?? "Rich output";
 			return new Text(theme.fg("dim", `✓ presented ${kind}: ${title}`), 0, 0);

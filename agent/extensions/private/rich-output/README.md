@@ -101,6 +101,43 @@ Set `showSource: true` when the Mermaid source itself is important to review.
 }
 ```
 
+### Vega-Lite benchmark chart
+
+Use a chart when a table hides the shape of the result: top slow rows, before/after deltas, mode comparisons, distributions, or latency/resource tradeoffs.
+
+```json
+{
+  "kind": "benchmark",
+  "title": "Shim latency by mode",
+  "blocks": [
+    {
+      "type": "chart",
+      "format": "vega-lite",
+      "label": "p50 latency",
+      "maxWidthCells": 120,
+      "spec": {
+        "width": 640,
+        "height": 260,
+        "data": {
+          "values": [
+            { "query": "selector", "mode": "off", "p50_ms": 12.3 },
+            { "query": "selector", "mode": "prefer", "p50_ms": 8.4 },
+            { "query": "rate", "mode": "off", "p50_ms": 3503.2 },
+            { "query": "rate", "mode": "prefer", "p50_ms": 541.3 }
+          ]
+        },
+        "mark": "bar",
+        "encoding": {
+          "x": { "field": "query", "type": "nominal" },
+          "y": { "field": "p50_ms", "type": "quantitative" },
+          "color": { "field": "mode", "type": "nominal" }
+        }
+      }
+    }
+  ]
+}
+```
+
 ### Artifact link
 
 ```json
