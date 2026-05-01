@@ -169,6 +169,29 @@ describe("rich-output", () => {
 		}
 	});
 
+	it("preserves Kitty image escape sequences instead of truncating them", async () => {
+		setCapabilities({ images: "kitty", hyperlinks: true, trueColor: true });
+		try {
+			const { renderers } = loadExtension();
+			const renderer = renderers.get("rich-output:card");
+			const component = renderer({
+				details: {
+					kind: "note",
+					title: "Image block",
+					blocks: [{ type: "image", label: "demo chart", values: [1, 2, 3], maxWidthCells: 10 }],
+					createdAt: "2026-05-01T00:00:00.000Z",
+				},
+			}, { expanded: false }, theme);
+
+			const renderedLines = component.render(80);
+			const imageLine = renderedLines.find((line: string) => line.includes("\x1b_G"));
+			assert.ok(imageLine);
+			assert.doesNotMatch(imageLine, /\.\.\./);
+		} finally {
+			resetCapabilitiesCache();
+		}
+	});
+
 	it("provides a demo command", async () => {
 		const { commands, messages, entries } = loadExtension();
 		assert.ok(commands.has("rich-output-demo"));

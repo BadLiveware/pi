@@ -362,6 +362,14 @@ function capabilityLines(theme: any): string[] {
 	];
 }
 
+function isTerminalImageLine(line: string): boolean {
+	return line.includes("\x1b_G") || line.includes("\x1b]1337;File=");
+}
+
+function fitRenderedLine(line: string, width: number): string {
+	return !isTerminalImageLine(line) && visibleWidth(line) > width ? truncateToWidth(line, width) : line;
+}
+
 function tableLines(columns: string[], rows: unknown[][], theme: any, width: number): string[] {
 	if (columns.length === 0) return [];
 	const maxWidth = Math.max(20, width);
@@ -495,14 +503,14 @@ class RichOutputComponent implements Component {
 				if (rendered.length > 0) lines.push(...rendered, "");
 			}
 			while (lines.at(-1) === "") lines.pop();
-			return lines.map((line) => visibleWidth(line) > width ? truncateToWidth(line, width) : line);
+			return lines.map((line) => fitRenderedLine(line, width));
 		}
 		const markdown = generatedMarkdown(this.card);
 		if (markdown) {
 			const md = new Markdown(markdown, 0, this.card.summary ? 1 : 0, markdownTheme(this.theme));
 			lines.push(...md.render(width));
 		}
-		return lines.map((line) => visibleWidth(line) > width ? truncateToWidth(line, width) : line);
+		return lines.map((line) => fitRenderedLine(line, width));
 	}
 
 	private renderImageBlock(block: RichBlock, width: number): string[] {
