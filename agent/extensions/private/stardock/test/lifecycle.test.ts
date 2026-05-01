@@ -143,6 +143,210 @@ test("stardock_done supports explicit active brief lifecycle actions", async () 
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+test("completion marker completes active brief and clears current brief", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, handlers, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		assert.ok(start);
+		assert.ok(brief);
+
+		await start.execute(
+			"tool-complete-brief-start",
+			{
+				name: "Complete Brief Loop",
+				taskContent: "# Task\n\n## Checklist\n- [x] Done\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await brief.execute(
+			"tool-complete-brief-upsert",
+			{
+				action: "upsert",
+				loopName: "Complete_Brief_Loop",
+				id: "b-complete",
+				objective: "Finish the active brief with the loop.",
+				task: "Complete this brief when the loop completes normally.",
+				activate: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+		await agentEnd(
+			{
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
+					},
+				],
+			},
+			ctx,
+		);
+
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Brief_Loop"), "utf-8"));
+		assert.equal(state.status, "completed");
+		assert.equal(state.currentBriefId, undefined);
+		assert.equal(state.briefs[0].status, "completed");
+		assert.ok(state.briefs[0].completedAt);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("max iteration stop clears active brief back to draft", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		const done = tools.get("stardock_done");
+		assert.ok(start);
+		assert.ok(brief);
+		assert.ok(done);
+
+		await start.execute(
+			"tool-max-brief-start",
+			{
+				name: "Max Brief Loop",
+				taskContent: "# Task\n",
+				maxIterations: 1,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await brief.execute(
+			"tool-max-brief-upsert",
+			{
+				action: "upsert",
+				loopName: "Max_Brief_Loop",
+				id: "b-max",
+				objective: "Do not leave active brief after max iteration stop.",
+				task: "Clear this brief if the loop stops at max iterations.",
+				activate: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await done.execute("tool-max-done", {}, undefined, undefined, ctx);
+
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Max_Brief_Loop"), "utf-8"));
+		assert.equal(state.status, "completed");
+		assert.equal(state.currentBriefId, undefined);
+		assert.equal(state.briefs[0].status, "draft");
+		assert.equal(state.briefs[0].completedAt, undefined);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("task read failure pause clears active brief back to draft", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		const done = tools.get("stardock_done");
+		assert.ok(start);
+		assert.ok(brief);
+		assert.ok(done);
+
+		await start.execute(
+			"tool-pause-brief-start",
+			{
+				name: "Pause Brief Loop",
+				taskContent: "# Task\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await brief.execute(
+			"tool-pause-brief-upsert",
+			{
+				action: "upsert",
+				loopName: "Pause_Brief_Loop",
+				id: "b-pause",
+				objective: "Do not leave active brief after pause.",
+				task: "Clear this brief if the task file cannot be read.",
+				activate: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		fs.rmSync(taskPath(cwd, "Pause_Brief_Loop"));
+		await done.execute("tool-pause-done", {}, undefined, undefined, ctx);
+
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Pause_Brief_Loop"), "utf-8"));
+		assert.equal(state.status, "paused");
+		assert.equal(state.currentBriefId, undefined);
+		assert.equal(state.briefs[0].status, "draft");
+		assert.equal(state.briefs[0].completedAt, undefined);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("manual stop clears active brief back to draft", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, commands, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		const stop = commands.get("stardock-stop");
+		assert.ok(start);
+		assert.ok(brief);
+		assert.ok(stop);
+
+		await start.execute(
+			"tool-stop-brief-start",
+			{
+				name: "Stop Brief Loop",
+				taskContent: "# Task\n",
+				maxIterations: 3,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await brief.execute(
+			"tool-stop-brief-upsert",
+			{
+				action: "upsert",
+				loopName: "Stop_Brief_Loop",
+				id: "b-stop",
+				objective: "Do not leave active brief after manual stop.",
+				task: "Clear this brief if the loop is stopped manually.",
+				activate: true,
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await stop.handler("", ctx);
+
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Stop_Brief_Loop"), "utf-8"));
+		assert.equal(state.status, "completed");
+		assert.equal(state.currentBriefId, undefined);
+		assert.equal(state.briefs[0].status, "draft");
+		assert.equal(state.briefs[0].completedAt, undefined);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("completion marker completes loop without queuing a user message", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

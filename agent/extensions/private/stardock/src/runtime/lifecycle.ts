@@ -1,7 +1,8 @@
 /** Stardock loop lifecycle transitions. */
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { LoopState } from "../state/core.ts";
+import { applyActiveBriefLifecycle } from "../briefs.ts";
+import type { BriefLifecycleAction, LoopState } from "../state/core.ts";
 import { saveState } from "../state/store.ts";
 
 export interface LoopRuntimeRef {
@@ -9,6 +10,7 @@ export interface LoopRuntimeRef {
 }
 
 export function pauseLoop(ctx: ExtensionContext, ref: LoopRuntimeRef, updateUI: (ctx: ExtensionContext) => void, state: LoopState, message?: string): void {
+	applyActiveBriefLifecycle(state, "clear");
 	state.status = "paused";
 	state.active = false;
 	saveState(ctx, state);
@@ -17,7 +19,16 @@ export function pauseLoop(ctx: ExtensionContext, ref: LoopRuntimeRef, updateUI: 
 	if (message && ctx.hasUI) ctx.ui.notify(message, "info");
 }
 
-export function completeLoop(pi: ExtensionAPI, ctx: ExtensionContext, ref: LoopRuntimeRef, updateUI: (ctx: ExtensionContext) => void, state: LoopState, banner: string): void {
+export function completeLoop(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	ref: LoopRuntimeRef,
+	updateUI: (ctx: ExtensionContext) => void,
+	state: LoopState,
+	banner: string,
+	activeBriefLifecycle: BriefLifecycleAction = "complete",
+): void {
+	applyActiveBriefLifecycle(state, activeBriefLifecycle);
 	state.status = "completed";
 	state.completedAt = new Date().toISOString();
 	state.active = false;
@@ -36,6 +47,7 @@ export function completeLoop(pi: ExtensionAPI, ctx: ExtensionContext, ref: LoopR
 }
 
 export function stopLoop(ctx: ExtensionContext, ref: LoopRuntimeRef, updateUI: (ctx: ExtensionContext) => void, state: LoopState, message?: string): void {
+	applyActiveBriefLifecycle(state, "clear");
 	state.status = "completed";
 	state.completedAt = new Date().toISOString();
 	state.active = false;

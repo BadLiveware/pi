@@ -13,7 +13,7 @@ import { completeLoop, type LoopRuntimeRef, pauseLoop, stopLoop } from "./src/ru
 import { buildPrompt } from "./src/runtime/prompts.ts";
 import type { StardockRuntime } from "./src/runtime/types.ts";
 import { updateStardockUI } from "./src/runtime/ui.ts";
-import { compactText, type LoopState } from "./src/state/core.ts";
+import { type BriefLifecycleAction, compactText, type LoopState } from "./src/state/core.ts";
 import { tryRead } from "./src/state/paths.ts";
 import { formatRunOverview, summarizeLoopState } from "./src/views.ts";
 
@@ -39,8 +39,8 @@ export default function (pi: ExtensionAPI) {
 		pauseLoop(ctx: ExtensionContext, state: LoopState, message?: string): void {
 			pauseLoop(ctx, ref, runtime.updateUI, state, message);
 		},
-		completeLoop(ctx: ExtensionContext, state: LoopState, banner: string): void {
-			completeLoop(pi, ctx, ref, runtime.updateUI, state, banner);
+		completeLoop(ctx: ExtensionContext, state: LoopState, banner: string, activeBriefLifecycle?: BriefLifecycleAction): void {
+			completeLoop(pi, ctx, ref, runtime.updateUI, state, banner, activeBriefLifecycle);
 		},
 		stopLoop(ctx: ExtensionContext, state: LoopState, message?: string): void {
 			stopLoop(ctx, ref, runtime.updateUI, state, message);

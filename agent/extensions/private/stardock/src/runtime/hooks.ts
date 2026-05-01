@@ -34,7 +34,7 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 		if (state.maxIterations > 0 && state.iteration >= state.maxIterations) {
 			runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────
 ⚠️ STARDOCK LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
-───────────────────────────────────────────────────────────────────────`);
+───────────────────────────────────────────────────────────────────────`, "clear");
 		}
 	});
 

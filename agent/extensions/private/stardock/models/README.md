@@ -22,8 +22,9 @@ The model is intentionally a bounded abstraction. It checks lifecycle safety pro
 - active iterations stay inside the configured range
 - attempt records and outside requests only refer to reached iterations
 - pending attempt placeholders only exist for iterations already advanced past
+- active briefs only exist while a loop is active
 
-The model also names, but does not check by default, a stricter candidate invariant that active briefs should only exist while a loop is active. TLC found that this is not true for the current implementation because completion-marker/stop transitions preserve the active brief state; that may be acceptable context preservation or a future lifecycle-policy decision.
+The active-brief invariant captures the lifecycle policy that normal loop completion completes the active brief, while manual stop, max-iteration stop, and task-read-failure pause clear the brief back to draft.
 
 Run the passing safety model with:
 
@@ -32,14 +33,14 @@ tlc -cleanup -config agent/extensions/private/stardock/models/StardockRecursiveL
   agent/extensions/private/stardock/models/StardockRecursiveLifecycle.tla
 ```
 
-Run the stricter brief-lifecycle design question with:
+Run only the brief-lifecycle invariant focus config with:
 
 ```bash
 tlc -cleanup -config agent/extensions/private/stardock/models/StardockRecursiveLifecycleStrictBrief.cfg \
   agent/extensions/private/stardock/models/StardockRecursiveLifecycle.tla
 ```
 
-The strict config is expected to fail against current behavior if a loop completes while a brief is active.
+The strict config should now pass; it is kept as a small regression target for the active-brief lifecycle policy.
 
 Current default model constants:
 

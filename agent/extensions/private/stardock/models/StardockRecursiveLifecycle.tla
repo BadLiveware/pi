@@ -180,12 +180,15 @@ Done(action) ==
            scaffold1 == ScaffoldReqsFor(attempts1)
            brief1 == ApplyBriefLifecycle(action)
            nextIter == iteration + 1
+           brief2 == IF (nextIter > MaxIterations \/ ~taskReadable) /\ brief1 = "active"
+                     THEN "draft"
+                     ELSE brief1
        IN
        /\ attempts' = attempts1
        /\ governorReqs' = governor1
        /\ failureReqs' = failure1
        /\ scaffoldReqs' = scaffold1
-       /\ brief' = brief1
+       /\ brief' = brief2
        /\ taskReadable' = taskReadable
        /\ iteration' = nextIter
        /\ IF nextIter > MaxIterations THEN
@@ -207,8 +210,9 @@ CompletionMarker ==
     /\ currentLoop' = FALSE
     /\ pendingPrompt' = FALSE
     /\ iteration' = iteration
+    /\ brief' = IF brief = "active" THEN "completed" ELSE brief
     /\ UNCHANGED << taskReadable, attempts, governorReqs, failureReqs,
-                    scaffoldReqs, brief >>
+                    scaffoldReqs >>
 
 StopOrPause ==
     /\ status = "active"
@@ -216,8 +220,9 @@ StopOrPause ==
     /\ currentLoop' = FALSE
     /\ pendingPrompt' = FALSE
     /\ iteration' = iteration
+    /\ brief' = IF brief = "active" THEN "draft" ELSE brief
     /\ UNCHANGED << taskReadable, attempts, governorReqs, failureReqs,
-                    scaffoldReqs, brief >>
+                    scaffoldReqs >>
 
 Next ==
     \/ Start
@@ -265,9 +270,6 @@ OutsideRequestsDoNotOutliveRange ==
     /\ failureReqs \subseteq Iterations
     /\ scaffoldReqs \subseteq Iterations
 
-\* Candidate stricter invariant, intentionally not included in Safety:
-\* a completion marker or stop transition currently preserves the active brief.
-\* Keep this named property as a design question for future lifecycle policy work.
 ActiveBriefOnlyWhileLoopCanAdvance ==
     brief = "active" => status = "active"
 
@@ -281,5 +283,6 @@ Safety ==
     /\ PendingAttemptOnlyAfterDoneAdvanced
     /\ RequestsOnlyForReachedIterations
     /\ OutsideRequestsDoNotOutliveRange
+    /\ ActiveBriefOnlyWhileLoopCanAdvance
 
 =============================================================================

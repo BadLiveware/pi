@@ -116,7 +116,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			if (state.maxIterations > 0 && state.iteration > state.maxIterations) {
 				runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────
 ⚠️ STARDOCK LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
-───────────────────────────────────────────────────────────────────────`);
+───────────────────────────────────────────────────────────────────────`, "clear");
 				return { content: [{ type: "text", text: "Max iterations reached. Loop stopped." }], details: {} };
 			}
 
