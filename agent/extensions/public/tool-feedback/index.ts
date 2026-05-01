@@ -60,6 +60,7 @@ function statePayload(loaded: LoadedConfig, agent: AgentUsage | undefined): Reco
 		skipWhenPendingMessages: loaded.config.skipWhenPendingMessages,
 		appendSessionEntries: loaded.config.appendSessionEntries,
 		log: loaded.config.log,
+		feedbackFields: loaded.config.feedbackFields,
 		loadedConfig: loaded.paths,
 		diagnostics: loaded.diagnostics,
 		currentAgent: agent ? {
@@ -139,15 +140,16 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 			missedImportantContext: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether important context was later found outside the watched tool output." })),
 			confidence: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low")], { description: "Confidence in this subjective feedback." }),
 			improvement: Type.Optional(Type.Union([Type.Literal("better_ranking"), Type.Literal("higher_cap"), Type.Literal("better_summary"), Type.Literal("better_docs"), Type.Literal("less_noise"), Type.Literal("faster"), Type.Literal("other")], { description: "Most useful improvement area." })),
+			fieldResponses: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Responses for configured extra feedback fields. Use exact field names from the feedback prompt/config; invalid or unknown fields are recorded as errors and ignored." })),
 			note: Type.Optional(Type.String({ description: "Short optional note. Stored in the session entry; logs keep only length/hash." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const config = getConfig(ctx);
-			const record = feedbackRecord(params as Record<string, unknown>, ctx);
+			const record = feedbackRecord(params as Record<string, unknown>, ctx, config);
 			ensureAgent().feedbackRecorded = true;
 			if (config.appendSessionEntries) pi.appendEntry("tool-feedback:agent-feedback", record);
 			appendLog(config, record.sessionId, logSafeFeedbackRecord(record));
-			const payload = { recorded: true, watchedTools: record.watchedTools, perceivedUsefulness: record.perceivedUsefulness, confidence: record.confidence };
+			const payload = { recorded: true, watchedTools: record.watchedTools, perceivedUsefulness: record.perceivedUsefulness, confidence: record.confidence, fieldResponseErrors: record.fieldResponseErrors };
 			return { content: [{ type: "text", text: `Recorded feedback for ${record.watchedTools.length || 0} watched tool(s).` }], details: payload };
 		},
 	});

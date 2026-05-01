@@ -153,6 +153,57 @@ describe("tool-feedback", () => {
 		});
 	});
 
+	it("prompts for configured custom fields and validates fieldResponses", async () => {
+		await withConfig({
+			mode: "both",
+			watch: [{ name: "example_tool" }],
+			feedbackFields: [
+				{ name: "rankingQuality", type: "enum", values: ["good", "mixed", "poor", "unknown"], required: true, description: "How good was result ranking?" },
+				{ name: "latencyAcceptable", type: "yes_no_unknown", required: false },
+				{ name: "resultCount", type: "number", required: false },
+			],
+		}, async () => {
+			const { handlers, tools, sentMessages, entries, ctx } = loadExtension();
+			await emit(handlers, "agent_start", {}, ctx);
+			await emit(handlers, "turn_start", { turnIndex: 4, timestamp: 100 }, ctx);
+			await emit(handlers, "tool_call", { toolName: "example_tool", toolCallId: "watched", input: {} }, ctx);
+			await emit(handlers, "tool_result", { toolName: "example_tool", toolCallId: "watched", details: { ok: true }, isError: false }, ctx);
+			await emit(handlers, "turn_end", { turnIndex: 4, message: {}, toolResults: [] }, ctx);
+			await emit(handlers, "agent_end", { messages: [] }, ctx);
+
+			assert.equal(sentMessages.length, 1);
+			const promptMessage = sentMessages[0].message as any;
+			assert.match(promptMessage.content, /Configured extra feedback fields/);
+			assert.match(promptMessage.content, /rankingQuality/);
+			assert.match(promptMessage.content, /good \| mixed \| poor \| unknown/);
+			assert.match(promptMessage.content, /latencyAcceptable/);
+			const state = await tools.get("tool_feedback_state")!.execute("state", {}, undefined, undefined, ctx);
+			const statePayload = JSON.parse(state.content[0].text);
+			assert.equal(statePayload.feedbackFields[0].name, "rankingQuality");
+
+			const result = await tools.get("tool_feedback")!.execute("feedback", {
+				watchedTools: ["example_tool"],
+				perceivedUsefulness: "high",
+				wouldUseAgainSameSituation: "yes",
+				confidence: "high",
+				fieldResponses: {
+					rankingQuality: "poor",
+					latencyAcceptable: "yes",
+					resultCount: 12,
+					unknownField: "ignored",
+				},
+			}, undefined, undefined, ctx);
+
+			assert.deepEqual(result.details.fieldResponseErrors, [{ name: "unknownField", reason: "unknown configured field" }]);
+			const feedbackEntry = entries.find((entry) => entry.customType === "tool-feedback:agent-feedback");
+			assert.ok(feedbackEntry);
+			assert.deepEqual((feedbackEntry.data as any).fieldResponses, { rankingQuality: "poor", latencyAcceptable: "yes", resultCount: 12 });
+			assert.deepEqual((feedbackEntry.data as any).fieldResponseErrors, [{ name: "unknownField", reason: "unknown configured field" }]);
+			const log = fs.readFileSync(feedbackLogPath(`tool-feedback-test-${process.pid}`), "utf-8");
+			assert.match(log, /"fieldResponses":\{"rankingQuality":"poor","latencyAcceptable":"yes","resultCount":12\}/);
+		});
+	});
+
 	it("does not let cooldown suppress the first eligible feedback prompt", async () => {
 		await withConfig({ mode: "ask-agent", watch: [{ name: "example_tool" }], cooldownTurns: 5 }, async () => {
 			const { handlers, sentMessages, ctx } = loadExtension();

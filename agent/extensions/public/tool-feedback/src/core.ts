@@ -10,10 +10,26 @@ export type YesNoUnknown = "yes" | "no" | "unknown";
 export type WouldUseAgain = "yes" | "no" | "unsure" | "unknown";
 export type FeedbackConfidence = "high" | "medium" | "low";
 export type FeedbackImprovement = "better_ranking" | "higher_cap" | "better_summary" | "better_docs" | "less_noise" | "faster" | "other";
+export type FeedbackFieldType = "enum" | "yes_no_unknown" | "boolean" | "number";
 
 export interface WatchRule {
 	name?: string;
 	prefix?: string;
+}
+
+export interface FeedbackFieldConfig {
+	name: string;
+	type: FeedbackFieldType;
+	description?: string;
+	values?: string[];
+	required: boolean;
+}
+
+export type FeedbackFieldValue = string | number | boolean;
+
+export interface FeedbackFieldError {
+	name: string;
+	reason: string;
 }
 
 export interface ToolFeedbackConfig {
@@ -25,6 +41,7 @@ export interface ToolFeedbackConfig {
 	appendSessionEntries: boolean;
 	log: boolean;
 	taskPrompt: string;
+	feedbackFields: FeedbackFieldConfig[];
 }
 
 export interface LoadedConfig {
@@ -101,6 +118,8 @@ export interface FeedbackRecord {
 	missedImportantContext?: YesNoUnknown;
 	confidence: FeedbackConfidence;
 	improvement?: FeedbackImprovement;
+	fieldResponses?: Record<string, FeedbackFieldValue>;
+	fieldResponseErrors?: FeedbackFieldError[];
 	note?: string;
 	noteLength?: number;
 	noteHash?: string;
@@ -122,6 +141,7 @@ export const DEFAULT_CONFIG: ToolFeedbackConfig = {
 	appendSessionEntries: true,
 	log: true,
 	taskPrompt: DEFAULT_TASK_PROMPT,
+	feedbackFields: [],
 };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -161,6 +181,56 @@ function normalizeWatchRules(value: unknown): WatchRule[] {
 	return rules;
 }
 
+function isFeedbackFieldType(value: unknown): value is FeedbackFieldType {
+	return value === "enum" || value === "yes_no_unknown" || value === "boolean" || value === "number";
+}
+
+function normalizeFieldName(value: unknown): string | undefined {
+	const name = stringValue(value)?.trim();
+	if (!name || name.length > 64) return undefined;
+	return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(name) ? name : undefined;
+}
+
+function normalizeFeedbackFields(value: unknown, source: string, diagnostics: string[]): FeedbackFieldConfig[] {
+	if (!Array.isArray(value)) return [];
+	const fields: FeedbackFieldConfig[] = [];
+	const seen = new Set<string>();
+	for (const item of value) {
+		if (!isRecord(item)) {
+			diagnostics.push(`${source}: feedback field ignored because it is not an object`);
+			continue;
+		}
+		const name = normalizeFieldName(item.name);
+		if (!name) {
+			diagnostics.push(`${source}: feedback field ignored because name must match /^[a-zA-Z][a-zA-Z0-9_]*$/ and be <=64 chars`);
+			continue;
+		}
+		if (seen.has(name)) {
+			diagnostics.push(`${source}: duplicate feedback field "${name}" ignored`);
+			continue;
+		}
+		const type = isFeedbackFieldType(item.type) ? item.type : undefined;
+		if (!type) {
+			diagnostics.push(`${source}: feedback field "${name}" ignored because type is invalid`);
+			continue;
+		}
+		const values = type === "enum" ? normalizeStringArray(item.values).slice(0, 20) : undefined;
+		if (type === "enum" && (!values || values.length === 0)) {
+			diagnostics.push(`${source}: enum feedback field "${name}" ignored because values are missing`);
+			continue;
+		}
+		seen.add(name);
+		fields.push({
+			name,
+			type,
+			description: stringValue(item.description)?.trim().slice(0, 200) || undefined,
+			values,
+			required: booleanValue(item.required) ?? false,
+		});
+	}
+	return fields;
+}
+
 function agentDir(): string {
 	return process.env.PI_CODING_AGENT_DIR ?? process.env.PI_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
 }
@@ -187,6 +257,8 @@ function normalizeConfigPatch(input: unknown, base: ToolFeedbackConfig, source: 
 	next.appendSessionEntries = booleanValue(input.appendSessionEntries) ?? base.appendSessionEntries;
 	next.log = booleanValue(input.log) ?? base.log;
 	next.taskPrompt = stringValue(input.taskPrompt)?.trim() || base.taskPrompt;
+	if ("feedbackFields" in input) next.feedbackFields = normalizeFeedbackFields(input.feedbackFields, source, diagnostics);
+	if (isRecord(input.feedback) && "fields" in input.feedback) next.feedbackFields = normalizeFeedbackFields(input.feedback.fields, source, diagnostics);
 	return next;
 }
 
@@ -320,9 +392,20 @@ export function modeIncludesAsk(mode: FeedbackMode): boolean {
 	return mode === "ask-agent" || mode === "both";
 }
 
+function configuredFieldsPrompt(fields: FeedbackFieldConfig[]): string {
+	if (fields.length === 0) return "";
+	const lines = ["Configured extra feedback fields: answer these in `fieldResponses` using the exact field names and allowed values below."];
+	for (const field of fields) {
+		const required = field.required ? "required" : "optional";
+		const allowed = field.type === "enum" ? (field.values ?? []).join(" | ") : field.type === "yes_no_unknown" ? "yes | no | unknown" : field.type;
+		lines.push(`- ${field.name} (${required}, ${field.type}${field.description ? `, ${field.description}` : ""}): ${allowed}`);
+	}
+	return `\n\n${lines.join("\n")}`;
+}
+
 export function feedbackPrompt(config: ToolFeedbackConfig, usage: AgentUsage): string {
 	const watchedTools = unique(usage.watchedCalls.map((call) => call.toolName)).join(", ");
-	return `${config.taskPrompt}\n\nWatched tools used: ${watchedTools || "unknown"}.`;
+	return `${config.taskPrompt}\n\nWatched tools used: ${watchedTools || "unknown"}.${configuredFieldsPrompt(config.feedbackFields)}`;
 }
 
 function perceivedUsefulness(value: unknown): PerceivedUsefulness {
@@ -345,8 +428,49 @@ function improvement(value: unknown): FeedbackImprovement | undefined {
 	return value === "better_ranking" || value === "higher_cap" || value === "better_summary" || value === "better_docs" || value === "less_noise" || value === "faster" || value === "other" ? value : undefined;
 }
 
-export function feedbackRecord(input: Record<string, unknown>, ctx: ExtensionContext): FeedbackRecord {
+function validateFieldValue(field: FeedbackFieldConfig, value: unknown): { value?: FeedbackFieldValue; error?: string } {
+	if (value === undefined) return field.required ? { error: "required field missing" } : {};
+	if (field.type === "enum") {
+		if (typeof value === "string" && (field.values ?? []).includes(value)) return { value };
+		return { error: `expected one of ${(field.values ?? []).join(" | ")}` };
+	}
+	if (field.type === "yes_no_unknown") {
+		if (value === "yes" || value === "no" || value === "unknown") return { value };
+		return { error: "expected yes | no | unknown" };
+	}
+	if (field.type === "boolean") {
+		if (typeof value === "boolean") return { value };
+		return { error: "expected boolean" };
+	}
+	if (field.type === "number") {
+		if (typeof value === "number" && Number.isFinite(value)) return { value };
+		return { error: "expected finite number" };
+	}
+	return { error: "unsupported field type" };
+}
+
+function validateFieldResponses(input: unknown, fields: FeedbackFieldConfig[]): { responses?: Record<string, FeedbackFieldValue>; errors?: FeedbackFieldError[] } {
+	if (fields.length === 0) return {};
+	const raw = isRecord(input) ? input : {};
+	const responses: Record<string, FeedbackFieldValue> = {};
+	const errors: FeedbackFieldError[] = [];
+	for (const field of fields) {
+		const result = validateFieldValue(field, raw[field.name]);
+		if (result.value !== undefined) responses[field.name] = result.value;
+		if (result.error) errors.push({ name: field.name, reason: result.error });
+	}
+	for (const name of Object.keys(raw)) {
+		if (!fields.some((field) => field.name === name)) errors.push({ name, reason: "unknown configured field" });
+	}
+	return {
+		responses: Object.keys(responses).length > 0 ? responses : undefined,
+		errors: errors.length > 0 ? errors : undefined,
+	};
+}
+
+export function feedbackRecord(input: Record<string, unknown>, ctx: ExtensionContext, config?: ToolFeedbackConfig): FeedbackRecord {
 	const note = stringValue(input.note)?.trim();
+	const fields = validateFieldResponses(input.fieldResponses, config?.feedbackFields ?? []);
 	return {
 		version: 1,
 		kind: "agent_feedback",
@@ -363,6 +487,8 @@ export function feedbackRecord(input: Record<string, unknown>, ctx: ExtensionCon
 		missedImportantContext: yesNoUnknown(input.missedImportantContext),
 		confidence: confidence(input.confidence),
 		improvement: improvement(input.improvement),
+		fieldResponses: fields.responses,
+		fieldResponseErrors: fields.errors,
 		note,
 		noteLength: note ? note.length : undefined,
 		noteHash: note ? shortHash(note) : undefined,

@@ -61,6 +61,41 @@ Other options:
 }
 ```
 
+### Extra feedback fields
+
+The built-in feedback schema stays stable, but you can add project- or user-specific fields. The active prompt lists these fields and agents answer them inside `fieldResponses`.
+
+```json
+{
+  "mode": "both",
+  "watch": [{ "prefix": "code_intel_" }],
+  "feedbackFields": [
+    {
+      "name": "rankingQuality",
+      "type": "enum",
+      "values": ["good", "mixed", "poor", "unknown"],
+      "required": true,
+      "description": "How good was result ranking?"
+    },
+    {
+      "name": "latencyAcceptable",
+      "type": "yes_no_unknown"
+    }
+  ]
+}
+```
+
+Supported field types:
+
+| Type | Accepted values |
+| --- | --- |
+| `enum` | one of the configured `values` |
+| `yes_no_unknown` | `yes`, `no`, or `unknown` |
+| `boolean` | JSON boolean |
+| `number` | finite JSON number |
+
+Field names must match `/^[a-zA-Z][a-zA-Z0-9_]*$/`. Invalid, unknown, or missing required field responses are recorded in `fieldResponseErrors`; invalid values are not stored in `fieldResponses`.
+
 Set `PI_TOOL_FEEDBACK_CONFIG` to load an additional config file, `PI_TOOL_FEEDBACK_DIR` to change the JSONL log directory, or `PI_TOOL_FEEDBACK_LOG` to force one log file.
 
 Default log directory:
@@ -90,7 +125,10 @@ Records one structured feedback entry. Typical agent response after a feedback p
   "outputSeemedIncomplete": "yes",
   "missedImportantContext": "unknown",
   "confidence": "medium",
-  "improvement": "better_summary"
+  "improvement": "better_summary",
+  "fieldResponses": {
+    "rankingQuality": "mixed"
+  }
 }
 ```
 
