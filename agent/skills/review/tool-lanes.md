@@ -60,9 +60,28 @@ Use for auth, trust-boundary, config, protocol, serialization, infra, or secret-
 Examples: configured SAST/security checks, config compatibility search, auth wrapper inspection, secret scanning if already available.
 
 ### Lane F — Escalation
-Slow or expensive verification.
+Slow, expensive, or mutating verification.
 
-Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
+Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, temporary instrumentation, negative-control edits, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
+
+#### Mutating Verification Worktrees
+
+When a `full` or `audit` review needs to modify code to verify a concrete hypothesis, prefer an isolated temporary `git worktree` over mutating the main workspace.
+
+Good triggers:
+- mutation testing or manual negative controls;
+- temporary characterization tests, repro scripts, or harnesses;
+- temporary instrumentation/logging to prove a path;
+- trying a minimal fix to confirm root cause;
+- formatters, autofixers, analyzers, or generators that write files.
+
+Rules:
+- Start from a concrete review hypothesis; do not create a worktree for vague exploration.
+- Keep worktree edits as verification evidence, not accepted fixes.
+- Do not merge, cherry-pick, or apply worktree changes to the main workspace unless the user explicitly asks for a fix/apply step.
+- Record the base ref, worktree path, temporary diff summary, commands run, results, and cleanup status.
+- Clean up temporary worktrees when practical; preserve artifacts only under `.pi/review/<review-name>/` or a temp artifact directory when useful.
+- Watch for shared external resources such as ports, databases, caches, and background processes; isolate or serialize them when they can conflict across worktrees.
 
 ## Ephemeral Container Runners
 
