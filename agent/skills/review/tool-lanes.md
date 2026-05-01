@@ -5,7 +5,7 @@ This is a non-authoritative evidence menu for `standard`, `full`, and `audit` re
 ## Core Policy
 - Prefer repo-sanctioned commands from README, CI, package scripts, Makefile, justfile, taskfile, tox/nox, cargo aliases, or solution files.
 - Use language/tool examples only when no better project command exists.
-- Do not install, add, or configure tools without permission.
+- Do not install, add, or configure host tools without permission. If an unavailable tool is high-value enough, prefer an ephemeral container runner over mutating the host or repository.
 - Use lanes to support or reject concrete review candidates; do not turn unrelated tool output into review comments.
 - Scope commands to changed packages, impacted tests, or narrow queries when possible.
 - Record skipped lanes when they would matter but were unavailable, too slow, unsafe, missing credentials, or likely noisy.
@@ -47,6 +47,42 @@ Examples: configured SAST/security checks, config compatibility search, auth wra
 Slow or expensive verification.
 
 Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
+
+## Ephemeral Container Runners
+
+Use this only when a high-value review lane needs a tool that is not already available through project-native commands or the host environment. The goal is to avoid installing half the system package ecosystem for one review.
+
+Preferred pattern:
+
+1. Create a temporary directory outside the repo with `mktemp -d`.
+2. Write a minimal Dockerfile there with pinned-ish base image and tool version.
+3. Build with the temp directory as build context, not the repo, unless the tool truly needs repo files at build time.
+4. Run with the repository mounted read-only by default.
+5. Mount a separate temp output directory if the tool must write artifacts.
+6. Record the image/tool/version and command in validation notes.
+
+Example shape:
+
+```bash
+tmp="$(mktemp -d)"
+cat > "$tmp/Dockerfile" <<'EOF'
+FROM node:22-bookworm
+WORKDIR /work
+RUN npm install -g some-review-tool@1.2.3
+ENTRYPOINT ["some-review-tool"]
+EOF
+
+docker buildx build -t tmp-review-tool:some-review-tool-1.2.3 -f "$tmp/Dockerfile" "$tmp"
+docker run --rm -v "$PWD:/work:ro" tmp-review-tool:some-review-tool-1.2.3 ...
+```
+
+Safety rules:
+
+- Do not put temporary Dockerfiles or generated runner files in the repo unless the user wants them kept.
+- Do not pass secrets, credentials, SSH agents, host Docker socket, or privileged flags unless explicitly approved.
+- Do not use broad/unpinned images for consequential findings without noting the reproducibility gap.
+- Ask before long builds, large downloads, network-heavy scans, or writable repo mounts.
+- Clean up temporary directories and obvious temporary images/containers when practical.
 
 ## Trigger Matrix by Change Family
 
