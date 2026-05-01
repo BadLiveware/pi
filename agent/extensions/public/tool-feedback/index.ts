@@ -64,7 +64,7 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 	let sequence = 0;
 	let currentTurn: TurnUsage | undefined;
 	let currentAgent: AgentUsage | undefined;
-	let lastPromptedTurn = -1;
+	let lastPromptedTurn = Number.NEGATIVE_INFINITY;
 	const pendingCalls = new Map<string, WatchedToolCall & { startedAt: number }>();
 
 	const getLoadedConfig = (ctx: ExtensionContext): LoadedConfig => {

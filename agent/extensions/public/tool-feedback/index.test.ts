@@ -134,6 +134,21 @@ describe("tool-feedback", () => {
 		});
 	});
 
+	it("does not let cooldown suppress the first eligible feedback prompt", async () => {
+		await withConfig({ mode: "ask-agent", watch: [{ name: "example_tool" }], cooldownTurns: 5 }, async () => {
+			const { handlers, sentUserMessages, ctx } = loadExtension();
+			await emit(handlers, "agent_start", {}, ctx);
+			await emit(handlers, "turn_start", { turnIndex: 0, timestamp: 100 }, ctx);
+			await emit(handlers, "tool_call", { toolName: "example_tool", toolCallId: "watched", input: {} }, ctx);
+			await emit(handlers, "tool_result", { toolName: "example_tool", toolCallId: "watched", details: { ok: true }, isError: false }, ctx);
+			await emit(handlers, "turn_end", { turnIndex: 0, message: {}, toolResults: [] }, ctx);
+			await emit(handlers, "agent_end", { messages: [] }, ctx);
+
+			assert.equal(sentUserMessages.length, 1);
+			assert.match(String(sentUserMessages[0].content), /example_tool/);
+		});
+	});
+
 	it("honors off mode and exposes state", async () => {
 		await withConfig({ mode: "off", watch: [{ prefix: "code_intel_" }] }, async () => {
 			const { handlers, tools, sentUserMessages, entries, ctx } = loadExtension();
