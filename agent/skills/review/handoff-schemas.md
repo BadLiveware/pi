@@ -2,6 +2,14 @@
 
 Load this file only when delegating medium triage, scouts, verifier work, coverage-gap work, or when formatting structured handoffs.
 
+## Artifact Location Policy
+
+- Do not let review agents write findings into the reviewed repository root by default.
+- Prefer `output: false` for reviewer/scout/verifier subagents unless the user explicitly asked for saved artifacts.
+- If artifacts are useful for a multi-agent review, write them to a dedicated chain/temp artifact directory such as `{chain_dir}/triage.json`, `{chain_dir}/scout-impact.json`, `{chain_dir}/verified-findings.json`, or `{chain_dir}/review.md`.
+- Avoid cwd-relative filenames like `review.md`, `findings.json`, or `audit.md` when the subagent cwd is the target repo; they pollute the repo under review.
+- In final output, mention artifact paths only when artifacts were intentionally created.
+
 ## Impact Map
 
 ```json

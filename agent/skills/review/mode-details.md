@@ -8,12 +8,13 @@ Use these stages proportionally; do not turn them into audit paperwork for small
 1. **Change-family tagging**: API/contract, control-flow/state-machine, persistence/schema/migration, config/protocol/flag, auth/security boundary, performance/resource lifecycle, UI-only, docs-only, or test-only.
 2. **Impact map**: capture changed symbols, impacted callers/callees, relevant tests, config/schema/docs, public contract risks, and unchanged consumers worth inspecting.
 3. **Context packet**: summarize intent, change families, impact map, relevant project guidance, prior validation, and deterministic evidence already known. Keep snippets anchored and compact.
-4. **Deterministic evidence lane**: prefer project-native commands and existing configs. Record what was run, what failed/passed, and what was skipped because missing, expensive, risky, or noisy.
-5. **Candidate generation**: medium triage and scouts produce candidate issues only. They do not write final comments.
-6. **Clustering/dedupe**: merge duplicates by root cause, collapse symptoms into the underlying issue, and remove candidates already explained by stronger evidence.
-7. **Verification**: classify retained candidates as `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`.
-8. **Coverage-gap check**: when coverage looks weak or risk is high, ask what high-risk change family or changed contract was not inspected. Add at most 2 new candidates, then verify them.
-9. **Final ranking/reporting**: rank by severity, confidence, novelty, actionability, and duplicate/suppression concerns.
+4. **Artifact routing**: when delegating, prefer `output: false` unless the user asked for saved artifacts; if artifacts are needed, route them to `{chain_dir}` or another temp/dedicated artifact directory, not the reviewed repo root.
+5. **Deterministic evidence lane**: prefer project-native commands and existing configs. Record what was run, what failed/passed, and what was skipped because missing, expensive, risky, or noisy.
+6. **Candidate generation**: medium triage and scouts produce candidate issues only. They do not write final comments.
+7. **Clustering/dedupe**: merge duplicates by root cause, collapse symptoms into the underlying issue, and remove candidates already explained by stronger evidence.
+8. **Verification**: classify retained candidates as `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`.
+9. **Coverage-gap check**: when coverage looks weak or risk is high, ask what high-risk change family or changed contract was not inspected. Add at most 2 new candidates, then verify them.
+10. **Final ranking/reporting**: rank by severity, confidence, novelty, actionability, and duplicate/suppression concerns.
 
 ## Evidence Labels
 - `supported-deterministic`: compiler, analyzer, linter, test, build, or reproducible script evidence directly supports the finding.
