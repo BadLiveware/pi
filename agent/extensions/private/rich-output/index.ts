@@ -402,10 +402,21 @@ function mermaidSource(block: RichBlock): string | undefined {
 	return block.text?.trim();
 }
 
-const MERMAID_RENDER_VERSION = "dark-v1";
+const MERMAID_RENDER_VERSION = "dark-hires-v1";
+const DEFAULT_MERMAID_WIDTH_CELLS = 120;
+const MERMAID_PIXELS_PER_CELL = 12;
+const MERMAID_SCALE = 2;
 
-function runMermaid(sourcePath: string, outputPath: string): string | undefined {
-	const result = spawnSync("mmdc", ["-i", sourcePath, "-o", outputPath, "-t", "dark", "-b", "transparent"], {
+function mermaidWidthCells(block: RichBlock): number {
+	return Math.max(24, Math.min(180, Math.floor(block.maxWidthCells ?? DEFAULT_MERMAID_WIDTH_CELLS)));
+}
+
+function mermaidRenderWidthPx(widthCells: number): number {
+	return Math.max(960, Math.min(2400, widthCells * MERMAID_PIXELS_PER_CELL));
+}
+
+function runMermaid(sourcePath: string, outputPath: string, widthPx: number): string | undefined {
+	const result = spawnSync("mmdc", ["-i", sourcePath, "-o", outputPath, "-t", "dark", "-b", "transparent", "-w", String(widthPx), "-s", String(MERMAID_SCALE)], {
 		encoding: "utf8",
 		timeout: 15_000,
 		maxBuffer: 1024 * 1024,
@@ -415,8 +426,9 @@ function runMermaid(sourcePath: string, outputPath: string): string | undefined 
 	return undefined;
 }
 
-function renderMermaidArtifacts(source: string): MermaidRenderResult {
-	const hash = createHash("sha256").update(MERMAID_RENDER_VERSION).update("\0").update(source).digest("hex").slice(0, 16);
+function renderMermaidArtifacts(source: string, widthCells: number): MermaidRenderResult {
+	const widthPx = mermaidRenderWidthPx(widthCells);
+	const hash = createHash("sha256").update(MERMAID_RENDER_VERSION).update("\0").update(String(widthPx)).update("\0").update(source).digest("hex").slice(0, 16);
 	const dir = join(tmpdir(), "pi-rich-output-mermaid");
 	const inputPath = join(dir, `${hash}.mmd`);
 	const svgPath = join(dir, `${hash}.svg`);
@@ -425,11 +437,11 @@ function renderMermaidArtifacts(source: string): MermaidRenderResult {
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(inputPath, source, "utf8");
 		if (!existsSync(svgPath)) {
-			const error = runMermaid(inputPath, svgPath);
+			const error = runMermaid(inputPath, svgPath, widthPx);
 			if (error) return { error };
 		}
 		if (!existsSync(pngPath)) {
-			const error = runMermaid(inputPath, pngPath);
+			const error = runMermaid(inputPath, pngPath, widthPx);
 			if (error) return { svgPath, error };
 		}
 		return { svgPath, pngPath };
@@ -444,7 +456,7 @@ function prepareBlocks(blocks: RichBlock[] | undefined): RichBlock[] | undefined
 	return blocks.map((block) => {
 		const source = mermaidSource(block);
 		if (!source || block.render === "text" || block.pngPath || block.svgPath || block.renderError) return block;
-		const result = renderMermaidArtifacts(source);
+		const result = renderMermaidArtifacts(source, mermaidWidthCells(block));
 		return {
 			...block,
 			svgPath: result.svgPath,
@@ -608,7 +620,7 @@ class RichOutputComponent implements Component {
 		if (result.pngPath) {
 			const image = new Image(readFileSync(result.pngPath).toString("base64"), "image/png", { fallbackColor: (text) => this.theme.fg("dim", text) }, {
 				filename: block.label ?? "Mermaid diagram",
-				maxWidthCells: block.maxWidthCells ?? Math.min(64, Math.max(16, width - 2)),
+				maxWidthCells: Math.min(mermaidWidthCells(block), Math.max(16, width - 2)),
 				maxHeightCells: block.maxHeightCells ?? 16,
 			});
 			lines.push(...image.render(width));

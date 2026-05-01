@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { resetCapabilitiesCache, setCapabilities } from "@mariozechner/pi-tui";
 import richOutput from "./index.ts";
@@ -36,6 +36,11 @@ const theme = {
 	bg: (_style: string, text: string) => text,
 	bold: (text: string) => text,
 };
+
+function pngDimensions(path: string): { width: number; height: number } {
+	const buffer = readFileSync(path);
+	return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
 
 describe("rich-output", () => {
 	it("registers a presentation tool that sends a custom timeline card", async () => {
@@ -189,6 +194,9 @@ describe("rich-output", () => {
 			const svgPath = rendered.match(/(\/tmp\/pi-rich-output-mermaid\/[^\s]+\.svg)/)?.[1];
 			assert.ok(svgPath);
 			assert.equal(existsSync(svgPath), true);
+			const pngPath = ((messages[0] as any).details.blocks[0].pngPath) as string;
+			const dimensions = pngDimensions(pngPath);
+			assert.ok(dimensions.width >= 300);
 		} finally {
 			resetCapabilitiesCache();
 		}
