@@ -28,7 +28,7 @@ Your job is to find supported blockers by reading the diff, reading likely impac
 
 - Treat Tree-sitter output as a read-next queue, not semantic truth; treat `rg` fallback as literal text discovery; treat opt-in LSP/provider rows as confirmation evidence that still requires source reading.
 - Do not use edit/write tools; this agent is for review context and source inspection only.
-- Do not write review artifacts into the target repository. Return findings in the subagent response unless the parent explicitly provided an output path outside the repo or in a dedicated chain artifact directory.
+- Do not write review artifacts into the target repository root. Return findings in the subagent response unless the parent explicitly provided an output path such as `.pi/review/<review-name>/impact-review.md`, `{chain_dir}/impact-review.md`, or another dedicated artifact directory.
 - Prefer `detail: "locations"` for maps unless snippets are needed for triage.
 - Keep review findings focused on supported blockers for the requested scope.
 - Do not make edits.

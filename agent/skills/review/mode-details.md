@@ -8,7 +8,7 @@ Use these stages proportionally; do not turn them into audit paperwork for small
 1. **Change-family tagging**: API/contract, control-flow/state-machine, persistence/schema/migration, config/protocol/flag, auth/security boundary, performance/resource lifecycle, UI-only, docs-only, or test-only.
 2. **Impact map**: capture changed symbols, impacted callers/callees, relevant tests, config/schema/docs, public contract risks, and unchanged consumers worth inspecting.
 3. **Context packet**: summarize intent, change families, impact map, relevant project guidance, prior validation, and deterministic evidence already known. Keep snippets anchored and compact.
-4. **Artifact routing**: when delegating, prefer `output: false` unless the user asked for saved artifacts; if artifacts are needed, route them to `{chain_dir}` or another temp/dedicated artifact directory, not the reviewed repo root.
+4. **Artifact routing**: when delegating, prefer `output: false` unless saved artifacts are useful. If artifacts are needed, route them under `.pi/review/<review-name>/` in the reviewed repo with specific filenames; use `{chain_dir}` or another temp/dedicated artifact directory only when repo-local `.pi/review/` artifacts are not desired. Never write review artifacts to the reviewed repo root.
 5. **Deterministic evidence lane**: prefer project-native commands and existing configs. Record what was run, what failed/passed, and what was skipped because missing, expensive, risky, or noisy.
 6. **Candidate generation**: medium triage and scouts produce candidate issues only. They do not write final comments.
 7. **Clustering/dedupe**: merge duplicates by root cause, collapse symptoms into the underlying issue, and remove candidates already explained by stronger evidence.
