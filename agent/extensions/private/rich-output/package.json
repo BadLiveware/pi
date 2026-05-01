@@ -1,0 +1,27 @@
+{
+  "name": "@badliveware/pi-rich-output",
+  "version": "0.1.0",
+  "description": "Private prototype for structured rich timeline output in Pi.",
+  "private": true,
+  "type": "module",
+  "types": "./index.ts",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "rich-output"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
