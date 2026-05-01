@@ -39,6 +39,7 @@ describe("rich-output", () => {
 	it("registers a presentation tool that sends a custom timeline card", async () => {
 		const { tools, renderers, messages, entries } = loadExtension();
 		assert.ok(tools.has("rich_output_present"));
+		assert.equal(tools.get("rich_output_present").renderShell, "self");
 		assert.ok(renderers.has("rich-output:card"));
 
 		const result = await tools.get("rich_output_present").execute("call", {
@@ -81,8 +82,31 @@ describe("rich-output", () => {
 		assert.ok(component);
 		const rendered = component.render(100).join("\n");
 		assert.match(rendered, /Validation/);
+		assert.match(rendered, /Focused checks passed/);
 		assert.match(rendered, /npm test/);
 		assert.match(rendered, /PASSED/);
+	});
+
+	it("renders structured payload content even when collapsed", async () => {
+		const { renderers } = loadExtension();
+		const renderer = renderers.get("rich-output:card");
+		const component = renderer({
+			details: {
+				kind: "table",
+				title: "Routing matrix",
+				summary: "Choose the lightest workflow.",
+				payload: {
+					columns: ["Situation", "Path"],
+					rows: [["small edit", "task list"], ["recursive search", "Stardock"]],
+				},
+				createdAt: "2026-05-01T00:00:00.000Z",
+			},
+		}, { expanded: false }, theme);
+
+		const rendered = component.render(100).join("\n");
+		assert.match(rendered, /Choose the lightest workflow/);
+		assert.match(rendered, /small edit/);
+		assert.match(rendered, /Stardock/);
 	});
 
 	it("provides a demo command", async () => {

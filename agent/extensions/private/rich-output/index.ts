@@ -104,8 +104,8 @@ function stardockMarkdown(payload: unknown): string | undefined {
 }
 
 function generatedMarkdown(card: RichOutputCard): string {
-	const lines: string[] = [`# ${card.title}`];
-	if (card.summary) lines.push("", card.summary);
+	const lines: string[] = [];
+	if (card.summary) lines.push(card.summary);
 	const generated = card.kind === "findings"
 		? findingsMarkdown(card.payload)
 		: card.kind === "validation"
@@ -115,9 +115,9 @@ function generatedMarkdown(card: RichOutputCard): string {
 				: card.kind === "stardock"
 					? stardockMarkdown(card.payload)
 					: undefined;
-	if (generated) lines.push("", generated);
-	if (card.markdown) lines.push("", card.markdown);
-	return lines.join("\n");
+	if (generated) lines.push(generated);
+	if (card.markdown) lines.push(card.markdown);
+	return lines.join("\n\n");
 }
 
 function markdownTheme(theme: any): MarkdownTheme {
@@ -167,7 +167,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 		const card = details as RichOutputCard;
 		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
 		box.addChild(new Text(renderTitle(card, theme), 0, 0));
-		const markdown = expanded ? generatedMarkdown(card) : [card.summary, card.markdown].filter(Boolean).join("\n\n") || generatedMarkdown(card);
+		const markdown = generatedMarkdown(card);
 		box.addChild(new Markdown(markdown, 0, 1, markdownTheme(theme)));
 		return box;
 	});
@@ -176,6 +176,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 		name: "rich_output_present",
 		label: "Present Rich Output",
 		description: "Present a structured report, findings list, validation summary, benchmark table, Stardock status, or note as a custom Pi timeline card.",
+		renderShell: "self",
 		parameters: Type.Object({
 			kind: Type.Union([Type.Literal("report"), Type.Literal("findings"), Type.Literal("validation"), Type.Literal("benchmark"), Type.Literal("stardock"), Type.Literal("table"), Type.Literal("note")], { description: "Presentation intent for the renderer." }),
 			title: Type.String({ description: "Short title for the timeline card." }),
@@ -195,7 +196,18 @@ export default function richOutput(pi: ExtensionAPI): void {
 			};
 			pi.sendMessage({ customType: MESSAGE_TYPE, content: card.title, display: true, details: card });
 			pi.appendEntry(MESSAGE_TYPE, card);
-			return { content: [{ type: "text", text: `Presented ${card.kind} card: ${card.title}` }], details: card };
+			return { content: [{ type: "text", text: `presented ${card.kind}: ${card.title}` }], details: card };
+		},
+		renderCall(args, theme) {
+			const kind = stringValue((args as Record<string, unknown>).kind) ?? "card";
+			const title = stringValue((args as Record<string, unknown>).title) ?? "Rich output";
+			return new Text(`${theme.fg("accent", "rich_output_present")} ${theme.fg("dim", `${kind}: ${title}`)}`, 0, 0);
+		},
+		renderResult(result, _options, theme) {
+			const details = result.details as RichOutputCard | undefined;
+			const kind = details?.kind ?? "card";
+			const title = details?.title ?? "Rich output";
+			return new Text(theme.fg("dim", `✓ presented ${kind}: ${title}`), 0, 0);
 		},
 	});
 
