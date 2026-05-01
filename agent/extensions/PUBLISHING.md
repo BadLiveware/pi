@@ -12,6 +12,7 @@ Publishing is intentionally manual and tag-triggered. Pushing to `main` does **n
 | `pr-upstream-status` | `@badliveware/pi-pr-upstream-status` |
 | `footer-framework` | `@badliveware/pi-footer-framework` |
 | `model-catalog` | `@badliveware/pi-model-catalog` |
+| `tool-feedback` | `@badliveware/pi-tool-feedback` |
 
 ## Prerequisites
 
@@ -57,8 +58,9 @@ After trusted publishing works, prefer npm's package setting "Require two-factor
 ## Before tagging
 
 1. Bump the `version` in the target package's `package.json`.
-2. Commit the package changes and push them to `main`.
-3. Run local validation from `agent/extensions`:
+2. Update the target package's `CHANGELOG.md` with release notes for the new version.
+3. Commit the package changes and push them to `main`.
+4. Run local validation from `agent/extensions`:
 
 ```bash
 npm ci --no-audit --no-fund

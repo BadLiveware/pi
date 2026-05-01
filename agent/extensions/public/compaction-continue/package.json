@@ -25,6 +25,7 @@
   },
   "files": [
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "index.ts",
     "package.json"

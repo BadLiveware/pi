@@ -26,6 +26,7 @@ all_packages=(
   "pr-upstream-status"
   "footer-framework"
   "model-catalog"
+  "tool-feedback"
 )
 
 packages=()

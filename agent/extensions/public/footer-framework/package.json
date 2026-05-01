@@ -1,6 +1,6 @@
 {
   "name": "@badliveware/pi-footer-framework",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Configurable footer framework extension for Pi.",
   "type": "module",
   "types": "./index.ts",
@@ -26,6 +26,7 @@
   },
   "files": [
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "assets",
     "examples",
