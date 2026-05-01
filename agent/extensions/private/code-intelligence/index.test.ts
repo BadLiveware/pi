@@ -380,6 +380,27 @@ test("local map combines Tree-sitter and bounded rg evidence", { skip: !hasComma
 	assert.equal(localMap.detail, "locations");
 });
 
+test("local map ranks syntax-backed files above broad literal fallback", { skip: !hasCommand("rg") }, async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-local-ranking-"));
+	execFileSync("git", ["init", "-q"], { cwd: repo });
+	fs.mkdirSync(path.join(repo, "app"), { recursive: true });
+	fs.mkdirSync(path.join(repo, "docs"), { recursive: true });
+	fs.writeFileSync(path.join(repo, "app/workflow.ts"), `export function importantWorkflow(settings: { config: string }) {
+  return settings.config
+}
+`);
+	fs.writeFileSync(path.join(repo, "docs/noisy.txt"), Array.from({ length: 20 }, (_, index) => `config literal fallback ${index}`).join("\n"));
+	const tools = loadTools();
+	const { ctx } = mockContext(repo);
+	const localMap = parseToolResult(await tools.get("code_intel_local_map")!.execute("test", { anchors: ["importantWorkflow"], names: ["config"], language: "ts", maxPerName: 20, maxResults: 5 }, undefined, undefined, ctx));
+	assert.equal(localMap.ok, true);
+	assert.equal(localMap.summary.basis, "weightedTreeSitterSyntaxThenLiteralFallback");
+	assert.equal(localMap.summary.suggestedFiles[0].file, "app/workflow.ts");
+	assert.equal(localMap.summary.suggestedFiles[0].primaryCount > 0, true);
+	assert.equal(localMap.summary.literalFallbackFiles.some((file: any) => file.file === "docs/noisy.txt"), true);
+	assert.equal(localMap.summary.suggestedFiles.findIndex((file: any) => file.file === "app/workflow.ts") < localMap.summary.suggestedFiles.findIndex((file: any) => file.file === "docs/noisy.txt"), true);
+});
+
 test("impact map ranks common interface method roots after domain functions", async () => {
 	const repo = fixtureRepo();
 	const tools = loadTools();

@@ -554,9 +554,16 @@ function fileRank(record: SymbolRecord): number {
 }
 
 const LOW_SIGNAL_METHOD_NAMES = new Set(["String", "Set", "Error", "Unwrap", "MarshalJSON", "UnmarshalJSON", "Len", "Less", "Swap"]);
+const LOW_SIGNAL_HELPER_NAMES = new Set(["isRecord", "stringValue", "numberValue", "booleanValue", "arrayValue", "objectValue", "value", "values", "options", "config", "state", "data", "item", "items", "result", "results", "attempts", "outsideRequests"]);
+
+function isLowSignalName(name: string): boolean {
+	return LOW_SIGNAL_HELPER_NAMES.has(name) || name.length <= 3 || /^(is|as|to|from|get|set|has)[A-Z_]/.test(name);
+}
 
 function nameSignalRank(record: SymbolRecord): number {
-	return record.kind.startsWith("method_") && LOW_SIGNAL_METHOD_NAMES.has(record.name) ? 1 : 0;
+	if (record.kind.startsWith("method_") && LOW_SIGNAL_METHOD_NAMES.has(record.name)) return 2;
+	if (record.exported !== true && isLowSignalName(record.name)) return 1;
+	return 0;
 }
 
 function exportRank(record: SymbolRecord): number {
@@ -565,6 +572,36 @@ function exportRank(record: SymbolRecord): number {
 
 function compareDefinitions(left: SymbolRecord, right: SymbolRecord): number {
 	return fileRank(left) - fileRank(right) || definitionRank(left) - definitionRank(right) || nameSignalRank(left) - nameSignalRank(right) || exportRank(left) - exportRank(right) || left.file.localeCompare(right.file) || left.line - right.line || left.column - right.column || left.name.localeCompare(right.name);
+}
+
+function commonDirectoryDepth(left: string, right: string): number {
+	const leftParts = path.posix.dirname(left).split("/").filter(Boolean);
+	const rightParts = path.posix.dirname(right).split("/").filter(Boolean);
+	let depth = 0;
+	while (depth < leftParts.length && depth < rightParts.length && leftParts[depth] === rightParts[depth]) depth++;
+	return depth;
+}
+
+function candidateLocalityScore(candidate: SymbolRecord, root: SymbolRecord | undefined, changedFiles: string[]): number {
+	let score = 0;
+	const rootFile = root?.file;
+	if (rootFile) {
+		if (candidate.file === rootFile) score += 8;
+		else {
+			const sharedDepth = commonDirectoryDepth(candidate.file, rootFile);
+			score += Math.min(sharedDepth, 4) * 2;
+			if (path.posix.dirname(candidate.file) === path.posix.dirname(rootFile)) score += 6;
+			if (candidate.file.split("/")[0] === rootFile.split("/")[0]) score += 2;
+		}
+		if (isTestFile(candidate.file) && candidate.file.includes(path.posix.basename(rootFile).replace(/\.[^.]+$/, ""))) score += 5;
+	}
+	for (const changedFile of changedFiles) {
+		if (candidate.file === changedFile) score += 3;
+		else if (path.posix.dirname(candidate.file) === path.posix.dirname(changedFile)) score += 3;
+	}
+	if (isTestFile(candidate.file)) score += 1;
+	if (isLowSignalName(candidate.name)) score -= 3;
+	return score;
 }
 
 function changedFileDefinitions(definitions: SymbolRecord[], changedFiles: string[]): SymbolRecord[] {
@@ -679,6 +716,7 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 
 	const related: SymbolRecord[] = [];
 	const relatedSeen = new Set<string>();
+	const rootBySymbol = new Map(roots.map((root) => [root.name, root]));
 	for (const symbol of rootSymbols) {
 		for (const candidate of candidates) {
 			if (candidate.name !== symbol) continue;
@@ -687,13 +725,17 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 			else if (candidate.kind === "syntax_selector") reason = `selector/member expression with field/property name ${symbol}`;
 			else reason = `keyed field/object-literal property with key ${symbol}`;
 			addUnique(related, relatedSeen, { ...candidate, rootSymbol: symbol, reason });
-			if (related.length >= params.maxResults) break;
 		}
-		if (related.length >= params.maxResults) break;
 	}
+	const rootOrder = new Map(rootSymbols.map((symbol, index) => [symbol, index]));
+	const rankedRelated = related
+		.map((row, index) => ({ row, index, locality: candidateLocalityScore(row, rootBySymbol.get(row.rootSymbol ?? ""), changedFiles) }))
+		.sort((left, right) => right.locality - left.locality || (rootOrder.get(left.row.rootSymbol ?? "") ?? Number.MAX_SAFE_INTEGER) - (rootOrder.get(right.row.rootSymbol ?? "") ?? Number.MAX_SAFE_INTEGER) || left.index - right.index)
+		.map((entry) => entry.row)
+		.slice(0, params.maxResults);
 
 	const outputRoots = roots.map((root) => withoutSnippet(root, params.detail));
-	const outputRelated: Record<string, unknown>[] = related.map((row) => withoutSnippet(row, params.detail) as unknown as Record<string, unknown>);
+	const outputRelated: Record<string, unknown>[] = rankedRelated.map((row) => withoutSnippet(row, params.detail) as unknown as Record<string, unknown>);
 	return {
 		ok: true,
 		backend: "tree-sitter",

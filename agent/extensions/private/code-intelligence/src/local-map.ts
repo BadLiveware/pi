@@ -25,29 +25,68 @@ function rowsFromSection(section: Record<string, unknown>, key: "results" | "mat
 	return Array.isArray(section[key]) ? section[key].filter(isRecord) : [];
 }
 
-function addFileReason(files: Map<string, { count: number; reasons: Set<string> }>, file: unknown, reason: string): void {
+interface SuggestedFileInfo {
+	count: number;
+	score: number;
+	reasons: Set<string>;
+	literalCount: number;
+	primaryCount: number;
+	seenReasonHits: Map<string, number>;
+}
+
+function genericNamePenalty(name: string): number {
+	if (name.length <= 3) return 0.35;
+	if (/^(value|values|options|config|state|data|item|items|result|results|attempts|outsideRequests)$/i.test(name)) return 0.4;
+	if (/^(is|as|to|from|get|set|has)[A-Z_]/.test(name)) return 0.65;
+	if (/^(string|number|boolean|array|object|record)Value$/i.test(name)) return 0.55;
+	return 1;
+}
+
+function sectionWeight(sectionKind: string, rowKind?: unknown): number {
+	if (sectionKind === "tree_sitter_map") return 5;
+	if (sectionKind === "selector_syntax") return 4;
+	if (sectionKind === "literal") return 1;
+	if (typeof rowKind === "string" && rowKind.startsWith("syntax_")) return 4;
+	return 2;
+}
+
+function addFileReason(files: Map<string, SuggestedFileInfo>, file: unknown, reason: string, weight: number, isLiteral: boolean): void {
 	if (typeof file !== "string" || !file.trim()) return;
-	const entry = files.get(file) ?? { count: 0, reasons: new Set<string>() };
+	const entry = files.get(file) ?? { count: 0, score: 0, reasons: new Set<string>(), literalCount: 0, primaryCount: 0, seenReasonHits: new Map<string, number>() };
+	const priorReasonHits = entry.seenReasonHits.get(reason) ?? 0;
+	entry.seenReasonHits.set(reason, priorReasonHits + 1);
 	entry.count += 1;
+	if (isLiteral) entry.literalCount += 1;
+	else entry.primaryCount += 1;
 	entry.reasons.add(reason);
+	// Repeated hits from the same evidence lane are useful for recall, but should not
+	// let broad literal matches outrank one nearby syntax-backed file.
+	entry.score += weight / Math.max(1, Math.sqrt(priorReasonHits + 1));
 	files.set(file, entry);
 }
 
-function suggestedFilesFromSections(sections: Record<string, unknown>[]): Array<Record<string, unknown>> {
-	const files = new Map<string, { count: number; reasons: Set<string> }>();
+function suggestedFilesFromSections(sections: Record<string, unknown>[], options: { literalOnly?: boolean } = {}): Array<Record<string, unknown>> {
+	const files = new Map<string, SuggestedFileInfo>();
 	for (const section of sections) {
 		const sectionKind = typeof section.kind === "string" ? section.kind : "section";
 		const name = typeof section.name === "string" ? section.name : typeof section.query === "string" ? section.query : typeof section.pattern === "string" ? section.pattern : "unknown";
+		const isLiteral = sectionKind === "literal";
+		const penalty = genericNamePenalty(name);
 		const resolved = isRecord(section.resolved) ? section.resolved : undefined;
-		addFileReason(files, resolved?.file, `${sectionKind}:${name}`);
+		if (!options.literalOnly) addFileReason(files, resolved?.file, `${sectionKind}:${name}`, sectionWeight(sectionKind) * penalty * 1.5, isLiteral);
 		for (const key of ["callers", "results", "matches", "related"] as const) {
-			for (const row of rowsFromSection(section, key)) addFileReason(files, row.file, `${sectionKind}:${name}`);
+			for (const row of rowsFromSection(section, key)) {
+				if (options.literalOnly && !isLiteral) continue;
+				const rowName = typeof row.rootSymbol === "string" ? row.rootSymbol : typeof row.name === "string" ? row.name : name;
+				addFileReason(files, row.file, `${sectionKind}:${rowName}`, sectionWeight(sectionKind, row.kind) * genericNamePenalty(rowName), isLiteral);
+			}
 		}
 	}
 	return [...files.entries()]
-		.sort((left, right) => right[1].count - left[1].count || left[0].localeCompare(right[0]))
+		.filter(([, info]) => options.literalOnly ? info.literalCount > 0 : true)
+		.sort((left, right) => right[1].score - left[1].score || right[1].primaryCount - left[1].primaryCount || right[1].count - left[1].count || left[0].localeCompare(right[0]))
 		.slice(0, 12)
-		.map(([file, info]) => ({ file, count: info.count, reasons: [...info.reasons].slice(0, 6) }));
+		.map(([file, info]) => ({ file, count: info.count, score: Number(info.score.toFixed(2)), primaryCount: info.primaryCount, literalCount: info.literalCount, reasons: [...info.reasons].slice(0, 6) }));
 }
 
 function isIdentifier(name: string): boolean {
@@ -77,8 +116,9 @@ function parseRipgrepJsonLines(stdout: string, detail: ResultDetail, maxResults:
 		const data = event.data;
 		const pathData = isRecord(data.path) ? data.path : undefined;
 		const linesData = isRecord(data.lines) ? data.lines : undefined;
+		const file = typeof pathData?.text === "string" ? pathData.text.replace(/^\.\//, "") : undefined;
 		const row: Record<string, unknown> = {
-			file: typeof pathData?.text === "string" ? pathData.text : undefined,
+			file,
 			line: typeof data.line_number === "number" ? data.line_number : undefined,
 			column: Array.isArray(data.submatches) && isRecord(data.submatches[0]) && typeof data.submatches[0].start === "number" ? data.submatches[0].start + 1 : undefined,
 		};
@@ -175,8 +215,11 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		literalMatches.push(literal);
 	}
 
-	const sections = [...treeSitterMaps, ...syntaxMatches, ...literalMatches];
+	const primarySections = [...treeSitterMaps, ...syntaxMatches];
+	const sections = [...primarySections, ...literalMatches];
 	const suggestedFiles = suggestedFilesFromSections(sections).slice(0, maxResults);
+	const primarySuggestedFiles = suggestedFilesFromSections(primarySections).slice(0, maxResults);
+	const literalFallbackFiles = suggestedFilesFromSections(literalMatches, { literalOnly: true }).slice(0, Math.min(maxResults, 12));
 	const distributionRows = suggestedFiles.map((file) => ({ file: file.file }));
 	const truncated = anchors.length < normalizeStringArray(params.anchors).length || names.length < unique([...anchors, ...explicitNames]).length || suggestedFiles.length >= maxResults;
 
@@ -200,7 +243,9 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		summary: {
 			...summarizeFileDistribution(distributionRows),
 			suggestedFiles,
-			basis: "treeSitterMaps+syntaxMatches+literalMatches",
+			primarySuggestedFiles,
+			literalFallbackFiles,
+			basis: "weightedTreeSitterSyntaxThenLiteralFallback",
 		},
 		coverage: {
 			maxNames: LOCAL_MAP_MAX_NAMES,
