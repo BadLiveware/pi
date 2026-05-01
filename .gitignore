@@ -1,5 +1,7 @@
 # Pi runtime/session artifacts
 .pi/tasks/
+.pi/rich-output/
+agent/extensions/.pi/
 .ralph/
 .stardock/
 outputs/

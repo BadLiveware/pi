@@ -189,9 +189,9 @@ describe("rich-output", () => {
 
 			const rendered = component.render(100).join("\n");
 			assert.match(rendered, /Flow/);
-			assert.match(rendered, /svg \/tmp\/pi-rich-output-mermaid\/.*\.svg/);
+			assert.match(rendered, /svg .*rich-output\/mermaid\/.*\.svg/);
 			assert.doesNotMatch(rendered, /flowchart LR/);
-			const svgPath = rendered.match(/(\/tmp\/pi-rich-output-mermaid\/[^\s]+\.svg)/)?.[1];
+			const svgPath = rendered.match(/((?:\/[^\s]+)?\.pi\/rich-output\/mermaid\/[^\s]+\.svg|\/tmp\/pi-rich-output-mermaid\/[^\s]+\.svg)/)?.[1];
 			assert.ok(svgPath);
 			assert.equal(existsSync(svgPath), true);
 			const pngPath = ((messages[0] as any).details.blocks[0].pngPath) as string;
@@ -216,7 +216,7 @@ describe("rich-output", () => {
 
 			const renderedLines = component.render(100);
 			assert.ok(renderedLines.some((line: string) => line.includes("\x1b_G")));
-			assert.match(renderedLines.join("\n"), /svg .*\/tmp\/pi-rich-output-mermaid\/.*\.svg/);
+			assert.match(renderedLines.join("\n"), /svg .*rich-output\/mermaid\/.*\.svg/);
 		} finally {
 			resetCapabilitiesCache();
 		}
@@ -256,7 +256,7 @@ describe("rich-output", () => {
 
 			const rendered = component.render(100).join("\n");
 			assert.match(rendered, /flowchart LR/);
-			assert.doesNotMatch(rendered, /svg \/tmp\/pi-rich-output-mermaid/);
+			assert.doesNotMatch(rendered, /svg .*rich-output\/mermaid/);
 		} finally {
 			resetCapabilitiesCache();
 		}

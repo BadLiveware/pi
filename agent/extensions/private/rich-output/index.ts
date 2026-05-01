@@ -41,6 +41,7 @@ interface RichBlock {
 	maxHeightCells?: number;
 	format?: string;
 	render?: "auto" | "text" | "svg";
+	size?: "compact" | "normal" | "wide" | "full";
 	showSource?: boolean;
 	svgPath?: string;
 	pngPath?: string;
@@ -220,6 +221,7 @@ function normalizeBlocks(value: unknown): RichBlock[] | undefined {
 			maxHeightCells: numberValue(block.maxHeightCells),
 			format: stringValue(block.format),
 			render: stringValue(block.render) as RichBlock["render"],
+			size: stringValue(block.size) as RichBlock["size"],
 			showSource: booleanValue(block.showSource),
 			svgPath: stringValue(block.svgPath),
 			pngPath: stringValue(block.pngPath),
@@ -402,13 +404,29 @@ function mermaidSource(block: RichBlock): string | undefined {
 	return block.text?.trim();
 }
 
-const MERMAID_RENDER_VERSION = "dark-hires-v1";
+const MERMAID_RENDER_VERSION = "dark-hires-v2";
 const DEFAULT_MERMAID_WIDTH_CELLS = 120;
+const MAX_MERMAID_WIDTH_CELLS = 180;
 const MERMAID_PIXELS_PER_CELL = 12;
 const MERMAID_SCALE = 2;
+const MAX_MERMAID_DIAGRAMS_PER_CARD = 4;
+const MAX_MERMAID_SOURCE_CHARS = 12_000;
+const MAX_RENDER_ERROR_CHARS = 360;
+const MAX_SOURCE_FALLBACK_CHARS = 2_000;
+
+function truncateMiddle(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	const keep = Math.max(0, maxChars - 1);
+	return `${text.slice(0, keep)}…`;
+}
+
+function truncateRenderError(text: string): string {
+	return truncateMiddle(text.replace(/\s+/g, " ").trim(), MAX_RENDER_ERROR_CHARS);
+}
 
 function mermaidWidthCells(block: RichBlock): number {
-	return Math.max(24, Math.min(180, Math.floor(block.maxWidthCells ?? DEFAULT_MERMAID_WIDTH_CELLS)));
+	const preset = block.size === "compact" ? 72 : block.size === "wide" ? 150 : block.size === "full" ? MAX_MERMAID_WIDTH_CELLS : DEFAULT_MERMAID_WIDTH_CELLS;
+	return Math.max(24, Math.min(MAX_MERMAID_WIDTH_CELLS, Math.floor(block.maxWidthCells ?? preset)));
 }
 
 function mermaidRenderWidthPx(widthCells: number): number {
@@ -421,15 +439,27 @@ function runMermaid(sourcePath: string, outputPath: string, widthPx: number): st
 		timeout: 15_000,
 		maxBuffer: 1024 * 1024,
 	});
-	if (result.error) return result.error.message;
-	if (result.status !== 0) return (result.stderr || result.stdout || `mmdc exited ${result.status}`).trim();
+	if (result.error) return truncateRenderError(result.error.message);
+	if (result.status !== 0) return truncateRenderError(result.stderr || result.stdout || `mmdc exited ${result.status}`);
 	return undefined;
+}
+
+function mermaidArtifactDir(): string {
+	const projectDir = join(process.cwd(), ".pi", "rich-output", "mermaid");
+	try {
+		mkdirSync(projectDir, { recursive: true });
+		return projectDir;
+	} catch {
+		const fallbackDir = join(tmpdir(), "pi-rich-output-mermaid");
+		mkdirSync(fallbackDir, { recursive: true });
+		return fallbackDir;
+	}
 }
 
 function renderMermaidArtifacts(source: string, widthCells: number): MermaidRenderResult {
 	const widthPx = mermaidRenderWidthPx(widthCells);
 	const hash = createHash("sha256").update(MERMAID_RENDER_VERSION).update("\0").update(String(widthPx)).update("\0").update(source).digest("hex").slice(0, 16);
-	const dir = join(tmpdir(), "pi-rich-output-mermaid");
+	const dir = mermaidArtifactDir();
 	const inputPath = join(dir, `${hash}.mmd`);
 	const svgPath = join(dir, `${hash}.svg`);
 	const pngPath = join(dir, `${hash}.png`);
@@ -446,16 +476,31 @@ function renderMermaidArtifacts(source: string, widthCells: number): MermaidRend
 		}
 		return { svgPath, pngPath };
 	} catch (error) {
-		return { error: error instanceof Error ? error.message : String(error) };
+		return { error: truncateRenderError(error instanceof Error ? error.message : String(error)) };
 	}
 }
 
 
 function prepareBlocks(blocks: RichBlock[] | undefined): RichBlock[] | undefined {
 	if (!blocks) return undefined;
+	let mermaidDiagramCount = 0;
 	return blocks.map((block) => {
 		const source = mermaidSource(block);
 		if (!source || block.render === "text" || block.pngPath || block.svgPath || block.renderError) return block;
+		if (source.length > MAX_MERMAID_SOURCE_CHARS) {
+			return {
+				...block,
+				text: truncateMiddle(source, MAX_SOURCE_FALLBACK_CHARS),
+				renderError: `Mermaid source exceeds ${MAX_MERMAID_SOURCE_CHARS} characters; showing source fallback.`,
+			};
+		}
+		mermaidDiagramCount++;
+		if (mermaidDiagramCount > MAX_MERMAID_DIAGRAMS_PER_CARD) {
+			return {
+				...block,
+				renderError: `Mermaid diagram cap reached (${MAX_MERMAID_DIAGRAMS_PER_CARD} rendered per entry); showing source fallback.`,
+			};
+		}
 		const result = renderMermaidArtifacts(source, mermaidWidthCells(block));
 		return {
 			...block,
@@ -698,7 +743,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "rich_output_present",
 		label: "Present Rich Output",
-		description: "Present generic terminal-native rich output blocks or legacy structured report/findings/validation/table payloads in the Pi timeline.",
+		description: "Present generic terminal-native rich output blocks when structure or visuals help. Use prose by default for simple answers; use diagrams when they genuinely clarify complex flows, architecture, state, or relationships. Mermaid diagrams are pre-rendered and capped for safety; keep entries focused and avoid duplicating rendered diagrams with long source unless showSource is needed.",
 		renderShell: "self",
 		parameters: Type.Object({
 			kind: Type.Union([Type.Literal("report"), Type.Literal("findings"), Type.Literal("validation"), Type.Literal("benchmark"), Type.Literal("stardock"), Type.Literal("table"), Type.Literal("note")], { description: "Presentation intent for legacy payload renderers or broad grouping for generic blocks." }),
@@ -731,6 +776,7 @@ export default function richOutput(pi: ExtensionAPI): void {
 				maxHeightCells: Type.Optional(Type.Number()),
 				format: Type.Optional(Type.String()),
 				render: Type.Optional(Type.Union([Type.Literal("auto"), Type.Literal("text"), Type.Literal("svg")])),
+				size: Type.Optional(Type.Union([Type.Literal("compact"), Type.Literal("normal"), Type.Literal("wide"), Type.Literal("full")])),
 				showSource: Type.Optional(Type.Boolean()),
 				svgPath: Type.Optional(Type.String()),
 				pngPath: Type.Optional(Type.String()),
