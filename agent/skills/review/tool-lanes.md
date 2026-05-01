@@ -16,6 +16,22 @@ This is a non-authoritative evidence menu for `standard`, `full`, and `audit` re
 - `plausible-but-unverified`: LLM reasoning only.
 - `rejected`: verifier could not support the claim.
 
+## Question-to-Evidence Map
+
+Use this to choose an evidence style, not to create a checklist. Prefer project-native or already-available tools first; escalate only when the question is important enough.
+
+| Review question | Evidence style |
+| --- | --- |
+| Can this state machine reach an illegal state? | TLA+/PlusCal/Alloy, lightweight transition model, or property-test model |
+| Do random or adversarial inputs break invariants? | Property tests, fuzzing, generated corpus tests, boundary tables |
+| Are tests sensitive to the suspected bug? | Mutation testing, manual mutation, negative controls |
+| Are there data races or unsafe interleavings? | Race detectors, stress tests, scheduler/loom-style tests, formal model |
+| Did a public API, persisted behavior, or protocol stay compatible? | Contract tests, golden/approval tests, compatibility fixtures, differential tests |
+| Does this implementation match a trusted implementation or spec? | Differential/oracle testing, replay fixtures, conformance tests |
+| Is this security rule bypassable? | Threat model, authz/authn matrix tests, narrow SAST/policy queries |
+| Is this path too slow or unbounded? | Benchmarks, profilers, flamegraphs, allocation/resource tracing, stress tests |
+| Can schema/config/migration drift break users? | Migration tests, schema validation, config/default compatibility search |
+
 ## Lane Types
 
 ### Lane A — Native compile/type/lint
