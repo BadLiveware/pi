@@ -1,6 +1,6 @@
 {
   "name": "@badliveware/pi-rich-output",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Terminal-friendly structured timeline cards for Pi.",
   "type": "module",
   "keywords": [
