@@ -109,6 +109,32 @@ describe("rich-output", () => {
 		assert.match(rendered, /Stardock/);
 	});
 
+	it("renders generic terminal-native blocks", async () => {
+		const { tools, renderers, messages } = loadExtension();
+		await tools.get("rich_output_present").execute("call", {
+			kind: "note",
+			style: "inline",
+			title: "Generic blocks",
+			summary: "Formula, diagram, progress, and tree blocks.",
+			blocks: [
+				{ type: "formula", latex: "\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}" },
+				{ type: "diagram", edges: [["Agent", "Tool"], ["Tool", "Timeline"]] },
+				{ type: "progress", label: "Criteria", value: 5, total: 7 },
+				{ type: "tree", items: [{ label: "root", children: [{ label: "leaf" }] }] },
+			],
+		}, undefined, undefined, {});
+
+		const renderer = renderers.get("rich-output:card");
+		const component = renderer(messages[0], { expanded: false }, theme);
+		const rendered = component.render(100).join("\n");
+		assert.match(rendered, /∫/);
+		assert.match(rendered, /∞/);
+		assert.match(rendered, /Agent ─▶ Tool/);
+		assert.match(rendered, /Criteria/);
+		assert.match(rendered, /root/);
+		assert.match(rendered, /leaf/);
+	});
+
 	it("provides a demo command", async () => {
 		const { commands, messages, entries } = loadExtension();
 		assert.ok(commands.has("rich-output-demo"));

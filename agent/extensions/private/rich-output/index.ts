@@ -1,17 +1,40 @@
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Markdown, type MarkdownTheme, Text } from "@mariozechner/pi-tui";
+import { Box, type Component, Markdown, type MarkdownTheme, Text, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 
 const MESSAGE_TYPE = "rich-output:card";
 
 type RichOutputKind = "report" | "findings" | "validation" | "benchmark" | "stardock" | "table" | "note";
+type RichOutputStyle = "inline" | "card";
+
+type RichBlockType = "heading" | "text" | "formula" | "diagram" | "table" | "tree" | "progress" | "code" | "callout" | "kv" | "rule";
+
+interface RichBlock {
+	type: RichBlockType;
+	text?: string;
+	level?: number;
+	latex?: string;
+	fallback?: string;
+	language?: string;
+	tone?: "info" | "success" | "warning" | "error";
+	label?: string;
+	value?: string | number | boolean;
+	total?: number;
+	columns?: string[];
+	rows?: unknown[][];
+	items?: unknown[];
+	nodes?: unknown[];
+	edges?: unknown[];
+}
 
 interface RichOutputCard {
 	kind: RichOutputKind;
+	style?: RichOutputStyle;
 	title: string;
 	summary?: string;
 	markdown?: string;
 	payload?: unknown;
+	blocks?: RichBlock[];
 	createdAt: string;
 }
 
@@ -21,6 +44,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function arrayValue(value: unknown): unknown[] {
@@ -139,59 +166,271 @@ function markdownTheme(theme: any): MarkdownTheme {
 	};
 }
 
-function renderTitle(card: RichOutputCard, theme: any): string {
-	const kind = theme.fg("dim", card.kind);
-	return `${theme.fg("accent", theme.bold(card.title))} ${kind}`;
+function normalizeBlocks(value: unknown): RichBlock[] | undefined {
+	const blocks = arrayValue(value).filter(isRecord).map((block): RichBlock | undefined => {
+		const type = stringValue(block.type);
+		if (!type || !["heading", "text", "formula", "diagram", "table", "tree", "progress", "code", "callout", "kv", "rule"].includes(type)) return undefined;
+		return {
+			type: type as RichBlockType,
+			text: stringValue(block.text),
+			level: numberValue(block.level),
+			latex: stringValue(block.latex),
+			fallback: stringValue(block.fallback),
+			language: stringValue(block.language),
+			tone: stringValue(block.tone) as RichBlock["tone"],
+			label: stringValue(block.label),
+			value: typeof block.value === "string" || typeof block.value === "number" || typeof block.value === "boolean" ? block.value : undefined,
+			total: numberValue(block.total),
+			columns: arrayValue(block.columns).map((column) => stringValue(column)).filter((column): column is string => Boolean(column)),
+			rows: arrayValue(block.rows).filter(Array.isArray) as unknown[][],
+			items: arrayValue(block.items),
+			nodes: arrayValue(block.nodes),
+			edges: arrayValue(block.edges),
+		};
+	}).filter((block): block is RichBlock => Boolean(block));
+	return blocks.length > 0 ? blocks : undefined;
+}
+
+function approximateLatex(input: string): string {
+	let text = input;
+	const replacements: Array<[RegExp, string]> = [
+		[/\\infty/g, "∞"],
+		[/\\pi/g, "π"],
+		[/\\alpha/g, "α"],
+		[/\\beta/g, "β"],
+		[/\\gamma/g, "γ"],
+		[/\\Delta/g, "Δ"],
+		[/\\lambda/g, "λ"],
+		[/\\mu/g, "μ"],
+		[/\\sigma/g, "σ"],
+		[/\\theta/g, "θ"],
+		[/\\sum/g, "∑"],
+		[/\\int/g, "∫"],
+		[/\\sqrt\{([^{}]+)\}/g, "√($1)"],
+		[/\\cdot/g, "·"],
+		[/\\times/g, "×"],
+		[/\\leq?/g, "≤"],
+		[/\\geq?/g, "≥"],
+		[/\\neq/g, "≠"],
+		[/\\to/g, "→"],
+		[/\\,|\\;/g, " "],
+	];
+	for (const [pattern, replacement] of replacements) text = text.replace(pattern, replacement);
+	text = text.replace(/\^\{2\}|\^2/g, "²").replace(/\^\{3\}|\^3/g, "³").replace(/_\{([^{}]+)\}/g, "₍$1₎").replace(/\{([^{}]+)\}/g, "$1");
+	return text.replace(/\s+/g, " ").trim();
+}
+
+function styleForTone(theme: any, tone?: RichBlock["tone"]): string {
+	return tone === "error" ? "error" : tone === "warning" ? "warning" : tone === "success" ? "success" : "accent";
+}
+
+function progressLine(block: RichBlock, theme: any, width: number): string {
+	const label = block.label ?? "progress";
+	const value = typeof block.value === "number" ? block.value : Number(block.value ?? 0);
+	const total = block.total && block.total > 0 ? block.total : 100;
+	const ratio = Math.max(0, Math.min(1, value / total));
+	const barWidth = Math.max(6, Math.min(24, width - label.length - 16));
+	const filled = Math.round(barWidth * ratio);
+	const bar = `${"█".repeat(filled)}${"░".repeat(Math.max(0, barWidth - filled))}`;
+	return `${theme.fg("accent", label)}  ${bar}  ${value}/${total}`;
+}
+
+function tableLines(columns: string[], rows: unknown[][], theme: any, width: number): string[] {
+	if (columns.length === 0) return [];
+	const maxWidth = Math.max(20, width);
+	const natural = columns.map((column, index) => Math.max(visibleWidth(column), ...rows.map((row) => visibleWidth(escapeCell(row[index])))));
+	const borderOverhead = 3 * columns.length + 1;
+	let available = Math.max(columns.length * 4, maxWidth - borderOverhead);
+	const widths = natural.map((w) => Math.min(w, Math.max(4, Math.floor(available / columns.length))));
+	let used = widths.reduce((sum, w) => sum + w, 0);
+	for (let i = 0; used < available && i < widths.length; i = (i + 1) % widths.length) {
+		if (widths[i] < natural[i]) {
+			widths[i]++;
+			used++;
+		} else if (widths.every((w, idx) => w >= natural[idx])) break;
+	}
+	const fit = (value: unknown, index: number) => truncateToWidth(escapeCell(value), widths[index]).padEnd(widths[index]);
+	const border = (left: string, mid: string, right: string) => `${left}${widths.map((w) => "─".repeat(w + 2)).join(mid)}${right}`;
+	const line = (values: unknown[]) => `│ ${columns.map((_, index) => fit(values[index], index)).join(" │ ")} │`;
+	return [
+		theme.fg("dim", border("┌", "┬", "┐")),
+		line(columns.map((column) => theme.bold(column))),
+		theme.fg("dim", border("├", "┼", "┤")),
+		...rows.map(line),
+		theme.fg("dim", border("└", "┴", "┘")),
+	];
+}
+
+function diagramLines(block: RichBlock): string[] {
+	const edgeLines = block.edges?.map((edge) => {
+		if (Array.isArray(edge)) return edge.map((item) => String(item)).join(" ─▶ ");
+		if (isRecord(edge)) return `${edge.from ?? "?"} ─▶ ${edge.to ?? "?"}`;
+		return String(edge);
+	}) ?? [];
+	if (edgeLines.length > 0) return edgeLines;
+	return block.text ? block.text.split("\n") : [];
+}
+
+function treeLines(items: unknown[], theme: any, prefix = ""): string[] {
+	const lines: string[] = [];
+	items.forEach((item, index) => {
+		const last = index === items.length - 1;
+		const branch = last ? "└─ " : "├─ ";
+		const childPrefix = `${prefix}${last ? "   " : "│  "}`;
+		if (isRecord(item)) {
+			lines.push(`${theme.fg("dim", prefix + branch)}${String(item.label ?? item.name ?? "item")}`);
+			const children = arrayValue(item.children);
+			if (children.length > 0) lines.push(...treeLines(children, theme, childPrefix));
+		} else {
+			lines.push(`${theme.fg("dim", prefix + branch)}${String(item)}`);
+		}
+	});
+	return lines;
+}
+
+function blockLines(block: RichBlock, theme: any, width: number): string[] {
+	switch (block.type) {
+		case "heading": {
+			const marks = "#".repeat(Math.max(1, Math.min(4, Math.floor(block.level ?? 2))));
+			return [theme.fg("accent", theme.bold(`${marks} ${block.text ?? ""}`))];
+		}
+		case "text":
+			return wrapTextWithAnsi(block.text ?? "", width);
+		case "formula": {
+			const formula = block.fallback ?? (block.latex ? approximateLatex(block.latex) : block.text ?? "");
+			const raw = block.latex && formula !== block.latex ? theme.fg("dim", `  ${block.latex}`) : undefined;
+			return [theme.fg("accent", `ƒ ${formula}`), ...(raw ? [raw] : [])];
+		}
+		case "diagram":
+			return diagramLines(block).map((line) => theme.fg("accent", line));
+		case "table":
+			return tableLines(block.columns ?? [], block.rows ?? [], theme, width);
+		case "tree":
+			return treeLines(block.items ?? [], theme);
+		case "progress":
+			return [progressLine(block, theme, width)];
+		case "code": {
+			const language = block.language ? ` ${block.language}` : "";
+			return [theme.fg("dim", `┌─ code${language}`), ...(block.text ?? "").split("\n").map((line) => `│ ${line}`), theme.fg("dim", "└─")];
+		}
+		case "callout": {
+			const icon = block.tone === "error" ? "✖" : block.tone === "warning" ? "⚠" : block.tone === "success" ? "✓" : "ℹ";
+			return wrapTextWithAnsi(`${theme.fg(styleForTone(theme, block.tone), icon)} ${block.text ?? ""}`, width);
+		}
+		case "kv":
+			return [`${theme.fg("accent", block.label ?? "value")}: ${String(block.value ?? block.text ?? "")}`];
+		case "rule":
+			return [theme.fg("dim", "─".repeat(Math.min(width, 80)))];
+	}
+}
+
+class RichOutputComponent implements Component {
+	private card: RichOutputCard;
+	private theme: any;
+
+	constructor(card: RichOutputCard, theme: any) {
+		this.card = card;
+		this.theme = theme;
+	}
+
+	render(width: number): string[] {
+		const lines: string[] = [];
+		lines.push(`${this.theme.fg("accent", this.theme.bold(this.card.title))} ${this.theme.fg("dim", this.card.kind)}`);
+		if (this.card.summary) lines.push(...wrapTextWithAnsi(this.card.summary, width));
+		const blocks = this.card.blocks;
+		if (blocks && blocks.length > 0) {
+			if (this.card.summary) lines.push("");
+			for (const block of blocks) {
+				const rendered = blockLines(block, this.theme, width);
+				if (rendered.length > 0) lines.push(...rendered, "");
+			}
+			while (lines.at(-1) === "") lines.pop();
+			return lines.map((line) => visibleWidth(line) > width ? truncateToWidth(line, width) : line);
+		}
+		const markdown = generatedMarkdown(this.card);
+		if (markdown) {
+			const md = new Markdown(markdown, 0, this.card.summary ? 1 : 0, markdownTheme(this.theme));
+			lines.push(...md.render(width));
+		}
+		return lines.map((line) => visibleWidth(line) > width ? truncateToWidth(line, width) : line);
+	}
+
+	invalidate(): void {}
+}
+
+function renderCard(card: RichOutputCard, theme: any): Component {
+	const component = new RichOutputComponent(card, theme);
+	if (card.style === "card") {
+		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
+		box.addChild(component);
+		return box;
+	}
+	return component;
 }
 
 function demoCard(): RichOutputCard {
 	return {
-		kind: "validation",
+		kind: "note",
+		style: "inline",
 		title: "Rich output prototype",
-		summary: "Timeline-native card rendered from structured data, with Markdown fallback.",
-		payload: {
-			commands: [
-				{ command: "npm run typecheck", result: "passed", duration: "4.1s", summary: "TypeScript accepted the prototype." },
-				{ command: "npm test", result: "skipped", summary: "Demo card only; no runtime tests were launched." },
-			],
-			gaps: ["This is a first-pass renderer, not a full artifact framework."],
-		},
+		summary: "Terminal-native blocks rendered from structured data.",
+		blocks: [
+			{ type: "formula", latex: "\\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}" },
+			{ type: "diagram", edges: [["Agent", "Tool"], ["Tool", "Timeline renderer"]] },
+			{ type: "progress", label: "Blocks", value: 8, total: 10 },
+			{ type: "callout", tone: "warning", text: "This is a prototype; rendering is terminal-native and approximate." },
+		],
 		createdAt: new Date().toISOString(),
 	};
 }
 
 export default function richOutput(pi: ExtensionAPI): void {
-	pi.registerMessageRenderer<RichOutputCard>(MESSAGE_TYPE, (message, { expanded }, theme) => {
+	pi.registerMessageRenderer<RichOutputCard>(MESSAGE_TYPE, (message, _options, theme) => {
 		const details = message.details;
 		if (!details || details.kind === undefined) return undefined;
-		const card = details as RichOutputCard;
-		const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
-		box.addChild(new Text(renderTitle(card, theme), 0, 0));
-		const markdown = generatedMarkdown(card);
-		box.addChild(new Markdown(markdown, 0, 1, markdownTheme(theme)));
-		return box;
+		return renderCard(details as RichOutputCard, theme);
 	});
 
 	pi.registerTool({
 		name: "rich_output_present",
 		label: "Present Rich Output",
-		description: "Present a structured report, findings list, validation summary, benchmark table, Stardock status, or note as a custom Pi timeline card.",
+		description: "Present generic terminal-native rich output blocks or legacy structured report/findings/validation/table payloads in the Pi timeline.",
 		renderShell: "self",
 		parameters: Type.Object({
-			kind: Type.Union([Type.Literal("report"), Type.Literal("findings"), Type.Literal("validation"), Type.Literal("benchmark"), Type.Literal("stardock"), Type.Literal("table"), Type.Literal("note")], { description: "Presentation intent for the renderer." }),
-			title: Type.String({ description: "Short title for the timeline card." }),
-			summary: Type.Optional(Type.String({ description: "One or two sentence compact summary shown in collapsed rendering." })),
-			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details." })),
-			payload: Type.Optional(Type.Unknown({ description: "Optional structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
+			kind: Type.Union([Type.Literal("report"), Type.Literal("findings"), Type.Literal("validation"), Type.Literal("benchmark"), Type.Literal("stardock"), Type.Literal("table"), Type.Literal("note")], { description: "Presentation intent for legacy payload renderers or broad grouping for generic blocks." }),
+			style: Type.Optional(Type.Union([Type.Literal("inline"), Type.Literal("card")], { description: "Visual style. inline blends with normal timeline output; card adds a background box." })),
+			title: Type.String({ description: "Short title for the timeline entry." }),
+			summary: Type.Optional(Type.String({ description: "One or two sentence compact summary." })),
+			blocks: Type.Optional(Type.Array(Type.Object({
+				type: Type.Union([Type.Literal("heading"), Type.Literal("text"), Type.Literal("formula"), Type.Literal("diagram"), Type.Literal("table"), Type.Literal("tree"), Type.Literal("progress"), Type.Literal("code"), Type.Literal("callout"), Type.Literal("kv"), Type.Literal("rule")]),
+				text: Type.Optional(Type.String()),
+				level: Type.Optional(Type.Number()),
+				latex: Type.Optional(Type.String()),
+				fallback: Type.Optional(Type.String()),
+				language: Type.Optional(Type.String()),
+				tone: Type.Optional(Type.Union([Type.Literal("info"), Type.Literal("success"), Type.Literal("warning"), Type.Literal("error")])),
+				label: Type.Optional(Type.String()),
+				value: Type.Optional(Type.Unknown()),
+				total: Type.Optional(Type.Number()),
+				columns: Type.Optional(Type.Array(Type.String())),
+				rows: Type.Optional(Type.Array(Type.Array(Type.Unknown()))),
+				items: Type.Optional(Type.Array(Type.Unknown())),
+				nodes: Type.Optional(Type.Array(Type.Unknown())),
+				edges: Type.Optional(Type.Array(Type.Unknown())),
+			}), { description: "Generic terminal-native components to render. Prefer blocks when the output is not domain-specific." })),
+			markdown: Type.Optional(Type.String({ description: "Optional Markdown fallback or additional details for legacy rendering." })),
+			payload: Type.Optional(Type.Unknown({ description: "Optional legacy structured payload. Supported shapes include findings[], commands[], columns+rows, or Stardock status fields." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			const input = params as Record<string, unknown>;
 			const card: RichOutputCard = {
 				kind: input.kind as RichOutputKind,
+				style: input.style === "card" ? "card" : "inline",
 				title: stringValue(input.title) ?? "Rich output",
 				summary: stringValue(input.summary),
 				markdown: stringValue(input.markdown),
 				payload: input.payload,
+				blocks: normalizeBlocks(input.blocks),
 				createdAt: new Date().toISOString(),
 			};
 			pi.sendMessage({ customType: MESSAGE_TYPE, content: card.title, display: true, details: card });
@@ -199,20 +438,20 @@ export default function richOutput(pi: ExtensionAPI): void {
 			return { content: [{ type: "text", text: `presented ${card.kind}: ${card.title}` }], details: card };
 		},
 		renderCall(args, theme) {
-			const kind = stringValue((args as Record<string, unknown>).kind) ?? "card";
+			const kind = stringValue((args as Record<string, unknown>).kind) ?? "entry";
 			const title = stringValue((args as Record<string, unknown>).title) ?? "Rich output";
 			return new Text(`${theme.fg("accent", "rich_output_present")} ${theme.fg("dim", `${kind}: ${title}`)}`, 0, 0);
 		},
 		renderResult(result, _options, theme) {
 			const details = result.details as RichOutputCard | undefined;
-			const kind = details?.kind ?? "card";
+			const kind = details?.kind ?? "entry";
 			const title = details?.title ?? "Rich output";
 			return new Text(theme.fg("dim", `✓ presented ${kind}: ${title}`), 0, 0);
 		},
 	});
 
 	pi.registerCommand("rich-output-demo", {
-		description: "Show a prototype rich output timeline card",
+		description: "Show a prototype generic rich output timeline entry",
 		handler: async (_args, _ctx) => {
 			const card = demoCard();
 			pi.sendMessage({ customType: MESSAGE_TYPE, content: card.title, display: true, details: card });
