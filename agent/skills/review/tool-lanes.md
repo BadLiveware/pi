@@ -46,7 +46,7 @@ Examples: configured SAST/security checks, config compatibility search, auth wra
 ### Lane F — Escalation
 Slow or expensive verification.
 
-Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps. Use only when high risk, cheap enough for the context, or explicitly requested.
+Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
 
 ## Trigger Matrix by Change Family
 
@@ -56,7 +56,7 @@ Examples: mutation testing, fuzzing/property tests, generated verification scrip
 | Auth / security boundary | A, B/E, D | Use configured security checks or narrow trust-boundary queries. |
 | Config / protocol / env | A, B, C, D | Search compatibility flags, defaults, schemas, and consumers. |
 | Persistence / schema / query | A, B, C, D | Inspect migrations, models, serializers, queries, fixtures. |
-| Concurrency / lifecycle / perf-sensitive | A, B, D | Escalate to race/stress/property only when justified. |
+| Concurrency / lifecycle / perf-sensitive | A, B, D | Escalate to race/stress/property/formal-model checks only when justified. |
 | UI-only / docs-only / test-only | Maybe A | Skip heavier lanes unless shared contracts/config changed. |
 
 ## Language Menus

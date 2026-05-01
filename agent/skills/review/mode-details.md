@@ -63,7 +63,7 @@ Flow is standard hybrid, with these expanded expectations:
 - a stronger impact map including unchanged consumers and config/schema/protocol paths
 - Lane A/C/D evidence expected where practical; explain skipped lanes
 - Lane B/E used when the change family matches and existing/narrow checks are available
-- Lane F only for high-risk unclear issues where the extra cost is justified or explicitly requested
+- Lane F only for high-risk unclear issues where the extra cost is justified or explicitly requested; for complex state machines/concurrency, this may include a small TLA+/PlusCal or property-test model of the critical invariant
 - up to 2 medium triage reviewers
 - at most 3 targeted cheap scouts
 - a bounded coverage-gap check before final ranking
