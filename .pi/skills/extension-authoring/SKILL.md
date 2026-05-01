@@ -76,10 +76,12 @@ The skill should include:
 
 ## Structure
 
-- Prefer Vertical Slice Architecture over broad technical-category splits.
+- Start with Vertical Slice Architecture. Do not begin in a single-file prototype and plan to split later; create the feature/workflow module first and keep `index.ts` mostly registration and wiring.
 - For each feature or workflow, keep owned behavior, formatting, schemas, prompt sections, command/tool registration, and tests together when practical.
 - Keep shared core modules small: cross-slice types, persistence, migration, path helpers, and tiny utilities only.
 - Avoid root-level “god” files for implementation or tests. When tests become more than a small smoke file, move them under `test/` and split by the same feature/workflow slices.
+- If an existing file is already large, do not add behavior to it. Add a slice module and touch the large file only for integration wiring unless the user explicitly approves a temporary exception.
+- The extension workspace has a structure guard (`npm run check:structure`) that fails new oversized TypeScript files and fails if grandfathered large files grow. Treat that as a design signal to split code, not as an allowlist to casually update.
 - For integration-style extension tests, prefer `test/<feature>.test.ts` plus `test/test-harness.ts` over colocating many large test files in the package root.
 
 ## Implementation Checklist

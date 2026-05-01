@@ -11,7 +11,8 @@ This repository contains the source for your global pi agent instructions and su
 - Root-level files are for repository-local meta guidance and tooling. They are not part of the global agent payload unless the linking script says so.
 
 ## Guidelines
-- Avoid making massive single file extensions, unless its truly the best option(It probably isnt)
+- Start extension work with vertical slices. Put behavior, rendering, schemas, persistence, artifact handling, and tests in feature/workflow modules from the beginning; keep `index.ts` mostly registration and wiring.
+- Do not grow massive single-file extensions unless it is truly the best option (it probably is not). If an extension file is already large, add new behavior in a slice module instead of making the large file larger.
 - Fast forward pushes to main are allowed, as long as gitleaks commit hook passes 
 
 ## Layout
