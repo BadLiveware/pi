@@ -105,7 +105,11 @@ describe("tool-feedback", () => {
 			assert.equal(sentMessages.length, 1);
 			assert.deepEqual(sentMessages[0].options, { triggerTurn: true });
 			assert.match(JSON.stringify(sentMessages[0].message), /tool-feedback:request/);
-			assert.match(JSON.stringify(sentMessages[0].message), /tool_feedback/);
+			const promptMessage = sentMessages[0].message as any;
+			assert.match(JSON.stringify(promptMessage), /tool_feedback/);
+			assert.doesNotMatch(promptMessage.content, /Observed follow-up signals/);
+			assert.doesNotMatch(promptMessage.content, /truncated/);
+			assert.doesNotMatch(JSON.stringify(promptMessage.details), /truncated|source-read|follow-up-search/);
 
 			const log = fs.readFileSync(feedbackLogPath(`tool-feedback-test-${process.pid}`), "utf-8");
 			assert.match(log, /turn_summary/);
@@ -122,9 +126,14 @@ describe("tool-feedback", () => {
 			await emit(handlers, "tool_result", { toolName: "example_tool", toolCallId: "watched", details: { ok: true }, isError: false }, ctx);
 			await tools.get("tool_feedback")!.execute("feedback", {
 				watchedTools: ["example_tool"],
-				helped: "mixed",
-				outcome: "reduced_uncertainty",
-				neededFollowupSearch: true,
+				perceivedUsefulness: "medium",
+				wouldUseAgainSameSituation: "yes",
+				followupWasRoutine: "no",
+				followupNeededBecauseToolWasInsufficient: "yes",
+				outputSeemedTooNoisy: "no",
+				outputSeemedIncomplete: "unknown",
+				missedImportantContext: "unknown",
+				confidence: "medium",
 				note: "This note should stay in the session entry but not the JSONL log.",
 			}, undefined, undefined, ctx);
 			await emit(handlers, "turn_end", { turnIndex: 2, message: {}, toolResults: [] }, ctx);
@@ -133,6 +142,9 @@ describe("tool-feedback", () => {
 			assert.equal(sentUserMessages.length, 0);
 			const feedbackEntry = entries.find((entry) => entry.customType === "tool-feedback:agent-feedback");
 			assert.ok(feedbackEntry);
+			assert.equal((feedbackEntry.data as any).perceivedUsefulness, "medium");
+			assert.equal((feedbackEntry.data as any).wouldUseAgainSameSituation, "yes");
+			assert.equal((feedbackEntry.data as any).confidence, "medium");
 			assert.equal((feedbackEntry.data as any).note, "This note should stay in the session entry but not the JSONL log.");
 			const log = fs.readFileSync(feedbackLogPath(`tool-feedback-test-${process.pid}`), "utf-8");
 			assert.match(log, /agent_feedback/);

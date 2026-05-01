@@ -2,11 +2,11 @@
 
 Generic watched-tool feedback for Pi. It records passive per-turn summaries when selected tools are used, and can optionally queue a non-user feedback task for the agent at the end of a prompt.
 
-Use it when you are dogfooding a tool, extension, MCP server, or workflow and want low-friction signals such as “was this useful?”, “did truncation hurt?”, and “did the agent still need follow-up search?”.
+Use it when you are dogfooding a tool, extension, MCP server, or workflow and want low-friction subjective signals such as “did this feel useful?”, “did output feel incomplete or noisy?”, and “would the agent use it again?”. Objective trace facts such as truncation and follow-up tool categories stay in passive summaries.
 
 ## How it works
 
-Configure tool names or prefixes to watch. The extension listens to Pi tool events, records sanitized turn summaries, and exposes a `tool_feedback` tool that the agent can call when prompted. Active feedback requests are delivered as Pi custom messages with `triggerTurn`, not as user messages.
+Configure tool names or prefixes to watch. The extension listens to Pi tool events, records sanitized turn summaries, and exposes a `tool_feedback` tool that the agent can call when prompted. Active feedback requests are delivered as Pi custom messages with `triggerTurn`, not as user messages. The request names the watched tools but does not include trace-derived facts, so the agent's self-report is less anchored by telemetry the extension already knows.
 
 It does not record raw tool inputs, raw outputs, prompts, file contents, or shell commands in its JSONL log. Optional free-form notes are stored in session entries, while logs keep only note length/hash.
 
@@ -82,13 +82,14 @@ Records one structured feedback entry. Typical agent response after a feedback p
 ```json
 {
   "watchedTools": ["code_intel_impact_map"],
-  "helped": "yes",
-  "outcome": "chose_files",
-  "neededFollowupSearch": false,
-  "readReturnedFiles": true,
-  "outputTooNoisy": false,
-  "truncationHurt": false,
+  "perceivedUsefulness": "medium",
+  "wouldUseAgainSameSituation": "yes",
+  "followupWasRoutine": "yes",
+  "followupNeededBecauseToolWasInsufficient": "unknown",
+  "outputSeemedTooNoisy": "no",
+  "outputSeemedIncomplete": "yes",
   "missedImportantContext": "unknown",
+  "confidence": "medium",
   "improvement": "better_summary"
 }
 ```

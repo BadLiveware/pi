@@ -34,7 +34,6 @@ const MESSAGE_TYPE_TOOL_FEEDBACK_REQUEST = "tool-feedback:request";
 interface FeedbackRequestDetails {
 	kind: "tool_feedback_request";
 	watchedTools: string[];
-	flags: string[];
 }
 
 function runtimeModeFromArgs(args: string): FeedbackMode | undefined {
@@ -49,11 +48,6 @@ function feedbackRequestDetails(agent: AgentUsage): FeedbackRequestDetails {
 	return {
 		kind: "tool_feedback_request",
 		watchedTools: unique(agent.watchedCalls.map((call) => call.toolName)),
-		flags: [
-			agent.watchedResults.some((result) => result.truncated) ? "truncated" : undefined,
-			agent.afterWatchedCategories.includes("bash:search") ? "follow-up-search" : undefined,
-			agent.afterWatchedCategories.includes("read") ? "source-read" : undefined,
-		].filter((flag): flag is string => Boolean(flag)),
 	};
 }
 
@@ -83,8 +77,7 @@ function registerFeedbackRequestRenderer(pi: ExtensionAPI): void {
 		const details = message.details;
 		if (!details || details.kind !== "tool_feedback_request") return undefined;
 		const watched = details.watchedTools.join(", ") || "watched tools";
-		const flags = details.flags.length > 0 ? theme.fg("muted", ` · ${details.flags.join(", ")}`) : "";
-		return new Text(`${theme.fg("warning", "✦ tool feedback requested ")}${theme.fg("accent", watched)}${flags}`);
+		return new Text(`${theme.fg("warning", "✦ tool feedback requested ")}${theme.fg("accent", watched)}`);
 	});
 }
 
@@ -137,13 +130,14 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 		description: "Record concise structured feedback after using watched tools. This stores feedback only; it does not change the watched tool.",
 		parameters: Type.Object({
 			watchedTools: Type.Array(Type.String(), { description: "Watched tool names this feedback covers." }),
-			helped: Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("mixed"), Type.Literal("unknown")], { description: "Whether the watched tool helped the task." }),
-			outcome: Type.Union([Type.Literal("chose_files"), Type.Literal("found_issue"), Type.Literal("reduced_uncertainty"), Type.Literal("not_useful"), Type.Literal("blocked"), Type.Literal("other")], { description: "Primary outcome from using the watched tool." }),
-			neededFollowupSearch: Type.Optional(Type.Boolean({ description: "True if follow-up search/rg was still needed." })),
-			readReturnedFiles: Type.Optional(Type.Boolean({ description: "True if returned file/path candidates were read." })),
-			outputTooNoisy: Type.Optional(Type.Boolean({ description: "True if the output was too noisy to use efficiently." })),
-			truncationHurt: Type.Optional(Type.Boolean({ description: "True if result truncation materially hurt the task." })),
+			perceivedUsefulness: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low"), Type.Literal("none"), Type.Literal("unknown")], { description: "How useful the tool felt for this task." }),
+			wouldUseAgainSameSituation: Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unsure"), Type.Literal("unknown")], { description: "Whether you would use the same tool again for a similar situation." }),
+			followupWasRoutine: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether follow-up work felt routine rather than caused by tool insufficiency." })),
+			followupNeededBecauseToolWasInsufficient: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether follow-up work was needed because the watched tool was insufficient." })),
+			outputSeemedTooNoisy: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether the output felt too noisy to use efficiently." })),
+			outputSeemedIncomplete: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether the output felt incomplete for the task." })),
 			missedImportantContext: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether important context was later found outside the watched tool output." })),
+			confidence: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low")], { description: "Confidence in this subjective feedback." }),
 			improvement: Type.Optional(Type.Union([Type.Literal("better_ranking"), Type.Literal("higher_cap"), Type.Literal("better_summary"), Type.Literal("better_docs"), Type.Literal("less_noise"), Type.Literal("faster"), Type.Literal("other")], { description: "Most useful improvement area." })),
 			note: Type.Optional(Type.String({ description: "Short optional note. Stored in the session entry; logs keep only length/hash." })),
 		}),
@@ -153,7 +147,7 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 			ensureAgent().feedbackRecorded = true;
 			if (config.appendSessionEntries) pi.appendEntry("tool-feedback:agent-feedback", record);
 			appendLog(config, record.sessionId, logSafeFeedbackRecord(record));
-			const payload = { recorded: true, watchedTools: record.watchedTools, helped: record.helped, outcome: record.outcome };
+			const payload = { recorded: true, watchedTools: record.watchedTools, perceivedUsefulness: record.perceivedUsefulness, confidence: record.confidence };
 			return { content: [{ type: "text", text: `Recorded feedback for ${record.watchedTools.length || 0} watched tool(s).` }], details: payload };
 		},
 	});

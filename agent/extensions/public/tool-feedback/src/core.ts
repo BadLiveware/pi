@@ -5,9 +5,10 @@ import * as path from "node:path";
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 export type FeedbackMode = "off" | "passive" | "ask-agent" | "both";
-export type FeedbackHelped = "yes" | "no" | "mixed" | "unknown";
-export type FeedbackOutcome = "chose_files" | "found_issue" | "reduced_uncertainty" | "not_useful" | "blocked" | "other";
-export type MissedImportantContext = "yes" | "no" | "unknown";
+export type PerceivedUsefulness = "high" | "medium" | "low" | "none" | "unknown";
+export type YesNoUnknown = "yes" | "no" | "unknown";
+export type WouldUseAgain = "yes" | "no" | "unsure" | "unknown";
+export type FeedbackConfidence = "high" | "medium" | "low";
 export type FeedbackImprovement = "better_ranking" | "higher_cap" | "better_summary" | "better_docs" | "less_noise" | "faster" | "other";
 
 export interface WatchRule {
@@ -91,13 +92,14 @@ export interface FeedbackRecord {
 	sessionId: string;
 	repoRoot: string;
 	watchedTools: string[];
-	helped: FeedbackHelped;
-	outcome: FeedbackOutcome;
-	neededFollowupSearch?: boolean;
-	readReturnedFiles?: boolean;
-	outputTooNoisy?: boolean;
-	truncationHurt?: boolean;
-	missedImportantContext?: MissedImportantContext;
+	perceivedUsefulness: PerceivedUsefulness;
+	wouldUseAgainSameSituation: WouldUseAgain;
+	followupWasRoutine?: YesNoUnknown;
+	followupNeededBecauseToolWasInsufficient?: YesNoUnknown;
+	outputSeemedTooNoisy?: YesNoUnknown;
+	outputSeemedIncomplete?: YesNoUnknown;
+	missedImportantContext?: YesNoUnknown;
+	confidence: FeedbackConfidence;
 	improvement?: FeedbackImprovement;
 	note?: string;
 	noteLength?: number;
@@ -107,7 +109,7 @@ export interface FeedbackRecord {
 const CONFIG_FILE_NAME = "tool-feedback.json";
 const DEFAULT_TASK_PROMPT = [
 	"You used watched tools in the previous prompt. Please call `tool_feedback` once with concise structured feedback.",
-	"Focus on whether the tool helped the task, whether follow-up search/read work was still needed, whether output was too noisy or truncated, and what one improvement would help most.",
+	"Focus on your own experience using the tool: whether it seemed useful, whether it felt incomplete or noisy, whether follow-up work was routine or compensatory, whether you would use it again in the same situation, and what one improvement would help most.",
 	"This is a dogfood feedback request, not new implementation work.",
 ].join("\n\n");
 
@@ -320,24 +322,23 @@ export function modeIncludesAsk(mode: FeedbackMode): boolean {
 
 export function feedbackPrompt(config: ToolFeedbackConfig, usage: AgentUsage): string {
 	const watchedTools = unique(usage.watchedCalls.map((call) => call.toolName)).join(", ");
-	const flags = [
-		usage.watchedResults.some((result) => result.truncated) ? "some watched results were truncated" : undefined,
-		usage.afterWatchedCategories.includes("bash:search") ? "follow-up search happened after watched tool use" : undefined,
-		usage.afterWatchedCategories.includes("read") ? "source reads happened after watched tool use" : undefined,
-	].filter(Boolean).join("; ");
-	return `${config.taskPrompt}\n\nWatched tools used: ${watchedTools || "unknown"}.${flags ? `\nObserved follow-up signals: ${flags}.` : ""}`;
+	return `${config.taskPrompt}\n\nWatched tools used: ${watchedTools || "unknown"}.`;
 }
 
-function feedbackHelped(value: unknown): FeedbackHelped {
-	return value === "yes" || value === "no" || value === "mixed" || value === "unknown" ? value : "unknown";
+function perceivedUsefulness(value: unknown): PerceivedUsefulness {
+	return value === "high" || value === "medium" || value === "low" || value === "none" || value === "unknown" ? value : "unknown";
 }
 
-function feedbackOutcome(value: unknown): FeedbackOutcome {
-	return value === "chose_files" || value === "found_issue" || value === "reduced_uncertainty" || value === "not_useful" || value === "blocked" || value === "other" ? value : "other";
-}
-
-function missedContext(value: unknown): MissedImportantContext | undefined {
+function yesNoUnknown(value: unknown): YesNoUnknown | undefined {
 	return value === "yes" || value === "no" || value === "unknown" ? value : undefined;
+}
+
+function wouldUseAgain(value: unknown): WouldUseAgain {
+	return value === "yes" || value === "no" || value === "unsure" || value === "unknown" ? value : "unknown";
+}
+
+function confidence(value: unknown): FeedbackConfidence {
+	return value === "high" || value === "medium" || value === "low" ? value : "low";
 }
 
 function improvement(value: unknown): FeedbackImprovement | undefined {
@@ -353,13 +354,14 @@ export function feedbackRecord(input: Record<string, unknown>, ctx: ExtensionCon
 		sessionId: sessionIdFromContext(ctx),
 		repoRoot: ctx.cwd,
 		watchedTools: normalizeStringArray(input.watchedTools),
-		helped: feedbackHelped(input.helped),
-		outcome: feedbackOutcome(input.outcome),
-		neededFollowupSearch: booleanValue(input.neededFollowupSearch),
-		readReturnedFiles: booleanValue(input.readReturnedFiles),
-		outputTooNoisy: booleanValue(input.outputTooNoisy),
-		truncationHurt: booleanValue(input.truncationHurt),
-		missedImportantContext: missedContext(input.missedImportantContext),
+		perceivedUsefulness: perceivedUsefulness(input.perceivedUsefulness),
+		wouldUseAgainSameSituation: wouldUseAgain(input.wouldUseAgainSameSituation),
+		followupWasRoutine: yesNoUnknown(input.followupWasRoutine),
+		followupNeededBecauseToolWasInsufficient: yesNoUnknown(input.followupNeededBecauseToolWasInsufficient),
+		outputSeemedTooNoisy: yesNoUnknown(input.outputSeemedTooNoisy),
+		outputSeemedIncomplete: yesNoUnknown(input.outputSeemedIncomplete),
+		missedImportantContext: yesNoUnknown(input.missedImportantContext),
+		confidence: confidence(input.confidence),
 		improvement: improvement(input.improvement),
 		note,
 		noteLength: note ? note.length : undefined,
