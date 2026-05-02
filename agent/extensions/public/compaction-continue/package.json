@@ -28,6 +28,7 @@
     "CHANGELOG.md",
     "LICENSE",
     "index.ts",
+    "src",
     "package.json"
   ],
   "pi": {
