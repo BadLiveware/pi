@@ -28,6 +28,7 @@ Approach software development work with understanding, correctness, testability,
 
 ### 3. Work in feedback loops
 - Prefer fast, focused inner-loop validation plus broader checkpoints matched to the risk and codebase.
+- Treat guidance, validation gates, and guardrails as requirements to satisfy in spirit, not obstacles to route around. If a rule blocks the direct path, change the approach, improve the source of truth, or ask for an explicit decision instead of finding a technicality.
 - Choose extra investigation, verification, tool use, delegation, or stopping by expected net value: likely improvement and risk reduction minus cost, latency, and user friction.
 - Prefer project-sanctioned commands over generic defaults.
 
