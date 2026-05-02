@@ -119,8 +119,8 @@ Constraints:
 ## Escalation Hints
 Common targeted scouts:
 - `impact/caller`: changed contracts, artifacts, config, migrations, unchanged consumers
-- `correctness-path`: changed control/data paths, state transitions, error handling
-- `test-gap`: behavior changed but tests/fixtures/assertions do not prove it
+- `correctness-path`: changed control/data paths, state transitions, error handling; challenge guards that collapse richer state into one boolean/count/nil check
+- `test-gap`: behavior changed but tests/fixtures/assertions do not prove it; for registries, queues, caches, indexes, and stateful helpers, check no-entry, valid-entry, error/conflict/pending-only, and mixed-state cases when those states affect behavior
 - `config/protocol`: feature flags, compatibility modes, test-stack defaults, build/runtime contracts
 - `security-boundary`: trust boundaries, authz/authn, injection, secrets
-- `performance/resource`: concurrency, cleanup, lifecycle, memory bounds, hot paths
+- `performance/resource`: concurrency, cleanup, lifecycle, memory bounds, hot paths; challenge every new goroutine/ticker/watcher/reload loop for owner cancellation and test/handler recreation leaks
