@@ -13,6 +13,7 @@ This repository contains the source for your global pi agent instructions and su
 ## Guidelines
 - Start extension work with vertical slices. Put behavior, rendering, schemas, persistence, artifact handling, and tests in feature/workflow modules from the beginning; keep `index.ts` mostly registration and wiring.
 - Do not grow massive single-file extensions unless it is truly the best option (it probably is not). If an extension file is already large, add new behavior in a slice module instead of making the large file larger.
+- Never satisfy extension file-size guards by compressing formatting, merging readable statements onto one line, or deleting useful whitespace; split into slice modules instead.
 - Fast forward pushes to main are allowed, as long as gitleaks commit hook passes 
 
 ## Layout

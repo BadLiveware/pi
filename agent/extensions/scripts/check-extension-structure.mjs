@@ -70,7 +70,7 @@ if (failures.length > 0 || staleGrandfathered.length > 0) {
 		console.error("\nStale grandfathered entries:");
 		for (const rel of staleGrandfathered) console.error(`- ${rel}`);
 	}
-	console.error("\nSplit behavior into vertical slice modules instead of growing large files. Only update the grandfathered list when intentionally recording a smaller cap after refactoring, or with explicit reviewer/user approval for an exceptional large file.");
+	console.error("\nSplit behavior into vertical slice modules instead of growing large files. Do not line-count golf by compressing formatting or merging readable statements onto one line. If a grandfathered index.ts grows, move behavior into a named slice module and leave index.ts with imports/wiring only. Only update the grandfathered list when intentionally recording a smaller cap after refactoring, or with explicit reviewer/user approval for an exceptional large file.");
 	process.exit(1);
 }
 

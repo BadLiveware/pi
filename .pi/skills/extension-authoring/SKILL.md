@@ -82,6 +82,7 @@ The skill should include:
 - Avoid root-level “god” files for implementation or tests. When tests become more than a small smoke file, move them under `test/` and split by the same feature/workflow slices.
 - If an existing file is already large, do not add behavior to it. Add a slice module and touch the large file only for integration wiring unless the user explicitly approves a temporary exception.
 - The extension workspace has a structure guard (`npm run check:structure`) that fails new oversized TypeScript files and fails if grandfathered large files grow. Treat that as a design signal to split code, not as an allowlist to casually update.
+- Do not satisfy the structure guard by compressing formatting, merging readable statements onto one line, deleting useful whitespace, or otherwise line-count golfing. If a large `index.ts` grows, move behavior into a named slice module and leave `index.ts` with imports/wiring only; if that cannot be done safely in scope, stop and ask instead of shrinking formatting.
 - For integration-style extension tests, prefer `test/<feature>.test.ts` plus `test/test-harness.ts` over colocating many large test files in the package root.
 
 ## Implementation Checklist
