@@ -123,18 +123,17 @@ function latestLeafCompactionId(ctx: ExtensionContext): string | undefined {
 	return leaf?.type === "compaction" ? leaf.id : undefined;
 }
 
-function isContextLengthError(message: string | undefined): boolean {
-	return message?.includes("context_length_exceeded") === true || message?.includes("exceeds the context window") === true;
+function isContextLengthError(message: string | undefined): boolean { return message?.includes("context_length_exceeded") === true || message?.includes("exceeds the context window") === true; }
+
+export function assistantStoppedForContextLimit(message: unknown): boolean {
+	const stopReason = isRecord(message) && message.role === "assistant" && typeof message.stopReason === "string" ? message.stopReason : undefined;
+	return stopReason === "length" || (stopReason === "error" && isContextLengthError(isRecord(message) && typeof message.errorMessage === "string" ? message.errorMessage : undefined));
 }
 
 function isOverflowCompaction(ctx: ExtensionContext, compactionId: string): boolean {
 	const compaction = ctx.sessionManager.getEntry(compactionId) as { parentId?: string | null } | undefined;
-	if (!compaction?.parentId) return false;
-
-	const parent = ctx.sessionManager.getEntry(compaction.parentId) as
-		| { type?: string; message?: { role?: string; stopReason?: string; errorMessage?: string } }
-		| undefined;
-	return parent?.type === "message" && parent.message?.role === "assistant" && parent.message.stopReason === "error" && isContextLengthError(parent.message.errorMessage);
+	const parent = compaction?.parentId ? (ctx.sessionManager.getEntry(compaction.parentId) as { type?: string; message?: unknown } | undefined) : undefined;
+	return parent?.type === "message" && assistantStoppedForContextLimit(parent.message);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

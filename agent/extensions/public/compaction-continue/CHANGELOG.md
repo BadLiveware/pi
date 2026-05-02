@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Fixed post-compaction watchdog recovery for assistant turns that stop with `stopReason: "length"` instead of a structured context length error.
+- Added regression coverage for length-stopped assistant messages so overflow compactions can trigger a recovery nudge.
+
 ## 0.1.2
 
 - Added idle watchdog recovery for stalled Ralph turns where the assistant says it will continue but does not call `ralph_done`.

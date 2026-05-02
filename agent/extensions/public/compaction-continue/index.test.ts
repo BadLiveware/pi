@@ -5,6 +5,7 @@ import {
 	analyzeCompactionRecovery,
 	analyzeRalphBranchForStall,
 	assistantRequestsRalphContinuation,
+	assistantStoppedForContextLimit,
 	parseRalphPrompt,
 	WATCHDOG_NUDGE_PROMPT,
 } from "./index.ts";
@@ -157,6 +158,15 @@ describe("Ralph idle watch detection", () => {
 		const analysis = analyzeCompactionRecovery(entries, { hasActiveLoop: true, isOverflow: false, timestamp: 123 });
 		assert.equal(analysis.shouldRecover, false);
 		assert.equal(analysis.reason, "ralph-done-after-latest-prompt");
+	});
+
+	it("recognizes length-stopped assistant turns as context-limit stops", () => {
+		assert.equal(assistantStoppedForContextLimit({ role: "assistant", stopReason: "length" }), true);
+		assert.equal(
+			assistantStoppedForContextLimit({ role: "assistant", stopReason: "error", errorMessage: "context_length_exceeded" }),
+			true,
+		);
+		assert.equal(assistantStoppedForContextLimit({ role: "assistant", stopReason: "stop" }), false);
 	});
 
 	it("still recovers context-overflow compactions", () => {
