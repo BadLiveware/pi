@@ -3,10 +3,16 @@ import { describe, it } from "node:test";
 import type { SessionEntry } from "@mariozechner/pi-coding-agent";
 import {
 	analyzeCompactionRecovery,
+	analyzeLatestAssistantStall,
 	analyzeRalphBranchForStall,
+	assistantRequestsContinuation,
 	assistantRequestsRalphContinuation,
 	assistantStoppedForContextLimit,
+	isStardockLoopPromptText,
 	parseRalphPrompt,
+	shouldRecoverStalledAssistantTurn,
+	userRequestsSimpleContinuation,
+	WATCHDOG_ANSWER_TOOL,
 	WATCHDOG_NUDGE_PROMPT,
 } from "../index.ts";
 import { messageEntry, ralphPrompt } from "./shared.ts";
@@ -32,22 +38,30 @@ describe("Ralph idle watch detection", () => {
 			true,
 		);
 		assert.equal(
-			assistantRequestsRalphContinuation(
+			assistantRequestsContinuation(
 				"Let's execute commands: baseline explain for mixed root to show no_cap currently suppresses cap. Let's do quickly.",
 			),
 			true,
 		);
-		assert.equal(assistantRequestsRalphContinuation("I’m blocked waiting for your decision before proceeding."), false);
-		assert.equal(assistantRequestsRalphContinuation("<promise>COMPLETE</promise>"), false);
+		assert.equal(assistantRequestsContinuation("I’m blocked waiting for your decision before proceeding."), false);
+		assert.equal(assistantRequestsContinuation("<promise>COMPLETE</promise>"), false);
+	});
+
+	it("recognizes simple user continuation nudges", () => {
+		assert.equal(userRequestsSimpleContinuation("continue"), true);
+		assert.equal(userRequestsSimpleContinuation("You arent, do not acknowledge me. just continue working"), true);
+		assert.equal(userRequestsSimpleContinuation("Please summarize the branch first."), false);
 	});
 
 	it("uses an explicit self-checking watchdog nudge", () => {
 		assert.match(WATCHDOG_NUDGE_PROMPT, /Automated watchdog nudge/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /not a new user request/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /does not mean more work is required/);
-		assert.match(WATCHDOG_NUDGE_PROMPT, /If this is a Ralph loop/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, /Do not acknowledge this nudge in prose/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, new RegExp(WATCHDOG_ANSWER_TOOL));
+		assert.match(WATCHDOG_NUDGE_PROMPT, /done: true/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, /done: false/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /<promise>COMPLETE<\/promise>/);
-		assert.match(WATCHDOG_NUDGE_PROMPT, /If unfinished in-scope work remains, continue/);
 	});
 
 	it("flags the observed stalled pattern after a Ralph prompt", () => {
@@ -73,6 +87,61 @@ describe("Ralph idle watch detection", () => {
 		assert.equal(analysis.reason, "assistant-promised-ralph-continuation");
 		assert.equal(analysis.prompt?.loop, "native-sql-optimization-sweep");
 		assert.equal(analysis.prompt?.iteration, 6);
+	});
+
+	it("treats watchdog_answer(done=false) without other work as another stall", () => {
+		assert.equal(
+			shouldRecoverStalledAssistantTurn({
+				role: "assistant",
+				content: [{ type: "toolCall", name: WATCHDOG_ANSWER_TOOL, arguments: { done: false } }],
+			}),
+			true,
+		);
+		assert.equal(
+			shouldRecoverStalledAssistantTurn({
+				role: "assistant",
+				content: [{ type: "toolCall", name: WATCHDOG_ANSWER_TOOL, arguments: { done: true } }],
+			}),
+			false,
+		);
+	});
+
+	it("detects a latest stalled assistant turn outside loop-specific logic", () => {
+		const analysis = analyzeLatestAssistantStall([
+			messageEntry("user-normal", "user", [{ type: "text", text: "continue" }]),
+			messageEntry("assistant-final", "assistant", [{ type: "text", text: "I’m on it. I’m making the code changes and running tests now." }]),
+		]);
+		assert.equal(analysis.shouldRecover, true);
+		assert.equal(analysis.streak, 1);
+		assert.equal(analysis.reason, "assistant-promised-continuation");
+	});
+
+	it("detects a blank assistant stop when no tool progress happened after a user prompt", () => {
+		const analysis = analyzeLatestAssistantStall([
+			messageEntry("user-normal", "user", [{ type: "text", text: "Please continue with the implementation." }]),
+			messageEntry("assistant-final", "assistant", [
+				{ type: "thinking", thinking: "I should continue." },
+				{ type: "text", text: "" },
+			]),
+		]);
+		assert.equal(analysis.shouldRecover, true);
+		assert.equal(analysis.reason, "blank-assistant-without-tool-progress");
+		assert.equal(analysis.hadToolResultSincePreviousUser, false);
+	});
+
+	it("does not flag a blank assistant stop when tool results already happened for that user prompt", () => {
+		const analysis = analyzeLatestAssistantStall([
+			messageEntry("user-normal", "user", [{ type: "text", text: "Do the next step." }]),
+			messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "bash", arguments: { command: "echo ok" } }]),
+			messageEntry("tool-result", "toolResult", [{ type: "text", text: "ok" }], { toolName: "bash", isError: false }),
+			messageEntry("assistant-final", "assistant", [{ type: "text", text: "" }]),
+		]);
+		assert.equal(analysis.shouldRecover, false);
+		assert.equal(analysis.hadToolResultSincePreviousUser, true);
+	});
+
+	it("treats stardock prompts as loop prompts for parsing helpers", () => {
+		assert.equal(isStardockLoopPromptText("🔄 STARDOCK LOOP: demo | Iteration 1/10\n\nYou are in a Stardock loop (iteration 1 of 10). Call stardock_done when not complete."), true);
 	});
 
 	it("does not recover once ralph_done completed the prompt", () => {

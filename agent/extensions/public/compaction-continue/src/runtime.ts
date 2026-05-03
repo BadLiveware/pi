@@ -1,21 +1,24 @@
+import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import {
 	analyzeCompactionRecovery,
-	analyzeRalphBranchForStall,
+	analyzeLatestAssistantStall,
 	messageText,
-	parseRalphPrompt,
-	shouldRecoverStalledRalphTurn,
+	shouldRecoverStalledAssistantTurn,
+	userRequestsSimpleContinuation,
 } from "./analysis.ts";
-import type { CompactionRecoveryAnalysis, RalphBranchAnalysis, RalphPromptInfo } from "./analysis.ts";
+import type { CompactionRecoveryAnalysis } from "./analysis.ts";
 import { branchBeforeCompaction, findMostRecentActiveLoop, isOverflowCompaction, latestLeafCompactionId, messageRole } from "./loop-state.ts";
 import {
-	MAX_RALPH_IDLE_RECOVERIES_PER_PROMPT,
+	ASSISTANT_IDLE_DELAY_MS,
+	MAX_ASSISTANT_IDLE_RECOVERIES_PER_STREAK,
 	MESSAGE_TYPE_WATCHDOG_NUDGE,
-	RALPH_IDLE_DELAY_MS,
 	RECOVERY_DELAY_MS,
+	WATCHDOG_ANSWER_TOOL,
 	WATCHDOG_NUDGE_PROMPT,
 } from "./model.ts";
 import type { WatchdogNudgeDetails, WatchdogNudgeRequest } from "./model.ts";
+import { appendTrackingLog, loadTrackingConfig, makeTrackingEvent, trackingLogPath, type TrackingEvent, type TrackingSource } from "./tracking.ts";
 
 function registerWatchdogMessageRenderer(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer<WatchdogNudgeDetails>(MESSAGE_TYPE_WATCHDOG_NUDGE, (message, _options, theme) => {
@@ -34,23 +37,142 @@ function registerWatchdogMessageRenderer(pi: ExtensionAPI): void {
 export function registerCompactionContinue(pi: ExtensionAPI): void {
 	let enabled = true;
 	let pendingTimer: ReturnType<typeof setTimeout> | undefined;
-	let pendingRalphIdleTimer: ReturnType<typeof setTimeout> | undefined;
+	let pendingAssistantIdleTimer: ReturnType<typeof setTimeout> | undefined;
 	let lastRecoveredCompactionId: string | undefined;
 	let lastPreCompactionAnalysis: CompactionRecoveryAnalysis | undefined;
-	let lastRalphPrompt: RalphPromptInfo | undefined;
-	let ralphDoneAfterLastPrompt = false;
-	const ralphRecoveryCounts = new Map<string, number>();
+	let assistantIdleRecoveryStreak = 0;
+	let hadToolResultSinceLastUser = false;
+	let trackingEnabled = false;
+	let trackingAppendSessionEntries = true;
+	let trackingLogEnabled = true;
+	let trackingLoadedPaths: string[] = [];
+	let trackingDiagnostics: string[] = [];
+	let trackingMaxRecentEvents = 20;
+	const recentEvents: TrackingEvent[] = [];
 
 	registerWatchdogMessageRenderer(pi);
+
+	function refreshTrackingConfig(ctx: ExtensionContext): void {
+		const loaded = loadTrackingConfig(ctx);
+		trackingEnabled = loaded.config.enabled;
+		trackingAppendSessionEntries = loaded.config.appendSessionEntries;
+		trackingLogEnabled = loaded.config.log;
+		trackingLoadedPaths = loaded.paths;
+		trackingDiagnostics = loaded.diagnostics;
+		trackingMaxRecentEvents = loaded.config.maxRecentEvents;
+	}
+
+	function rememberEvent(event: TrackingEvent): void {
+		recentEvents.push(event);
+		if (recentEvents.length > trackingMaxRecentEvents) recentEvents.splice(0, recentEvents.length - trackingMaxRecentEvents);
+		if (trackingLogEnabled) appendTrackingLog(event);
+	}
+
+	function recordEvent(customType: string, event: TrackingEvent): void {
+		if (!trackingEnabled) return;
+		if (trackingAppendSessionEntries) pi.appendEntry(customType, event);
+		rememberEvent(event);
+	}
+
+	function recordCandidate(
+		ctx: ExtensionContext,
+		source: TrackingSource,
+		data: { recoveryKind?: string; reason: string; loop?: string; iteration?: number; compactionId?: string },
+	): void {
+		recordEvent(
+			"compaction-continue:watchdog-candidate",
+			makeTrackingEvent(ctx, {
+				kind: "watchdog_candidate",
+				source,
+				recoveryKind: data.recoveryKind,
+				reason: data.reason,
+				loop: data.loop,
+				iteration: data.iteration,
+				compactionId: data.compactionId,
+			}),
+		);
+	}
+
+	function recordSkip(
+		ctx: ExtensionContext,
+		data: { source: TrackingSource; skipReason: string; recoveryKind?: string; reason: string; loop?: string; iteration?: number; compactionId?: string },
+	): void {
+		recordEvent(
+			"compaction-continue:watchdog-skip",
+			makeTrackingEvent(ctx, {
+				kind: "watchdog_skip",
+				source: data.source,
+				skipReason: data.skipReason,
+				recoveryKind: data.recoveryKind,
+				reason: data.reason,
+				loop: data.loop,
+				iteration: data.iteration,
+				compactionId: data.compactionId,
+			}),
+		);
+	}
+
+	pi.registerTool({
+		name: "compaction_continue_state",
+		label: "Compaction Continue State",
+		description: "Inspect compaction-continue watchdog status and recent passive tracking events.",
+		parameters: Type.Object({}),
+		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+			refreshTrackingConfig(ctx);
+			const activeLoop = findMostRecentActiveLoop(ctx);
+			const payload = {
+				enabled,
+				assistantIdleRecoveryStreak,
+				lastRecoveredCompactionId,
+				activeLoop,
+				tracking: {
+					enabled: trackingEnabled,
+					appendSessionEntries: trackingAppendSessionEntries,
+					log: trackingLogEnabled,
+					loadedPaths: trackingLoadedPaths,
+					diagnostics: trackingDiagnostics,
+					maxRecentEvents: trackingMaxRecentEvents,
+					logPath: trackingLogPath(),
+				},
+				recentEvents,
+			};
+			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+		},
+	});
+
+	pi.registerTool({
+		name: WATCHDOG_ANSWER_TOOL,
+		label: "Watchdog Answer",
+		description: "Record whether a watchdog nudge found the previous task already complete. This self-check does not itself continue or stop work.",
+		parameters: Type.Object({
+			done: Type.Boolean({ description: "True when the prior task or loop is already complete; false when unfinished in-scope work remains." }),
+			confidence: Type.Optional(Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low")], { description: "Confidence in this watchdog self-check." })),
+			note: Type.Optional(Type.String({ description: "Short optional note about why the work is or is not done." })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			refreshTrackingConfig(ctx);
+			const activeLoop = findMostRecentActiveLoop(ctx);
+			const payload = makeTrackingEvent(ctx, {
+				kind: "watchdog_answer",
+				done: params.done === true,
+				confidence: typeof params.confidence === "string" ? params.confidence : undefined,
+				note: typeof params.note === "string" ? params.note : undefined,
+				loop: activeLoop?.name,
+				iteration: activeLoop?.iteration,
+			}) as Extract<TrackingEvent, { kind: "watchdog_answer" }>;
+			recordEvent("compaction-continue:watchdog-answer", payload);
+			return { content: [{ type: "text", text: `Recorded watchdog answer: ${payload.done ? "done" : "not done"}.` }], details: payload };
+		},
+	});
 
 	function updateStatus(ctx: ExtensionContext): void {
 		const state = enabled ? ctx.ui.theme.fg("success", "on") : ctx.ui.theme.fg("error", "off");
 		ctx.ui.setStatus("compaction-continue", `${ctx.ui.theme.fg("muted", "watchdog:")}${state}`);
 	}
 
-	function clearRalphIdleTimer(): void {
-		if (pendingRalphIdleTimer) clearTimeout(pendingRalphIdleTimer);
-		pendingRalphIdleTimer = undefined;
+	function clearAssistantIdleTimer(): void {
+		if (pendingAssistantIdleTimer) clearTimeout(pendingAssistantIdleTimer);
+		pendingAssistantIdleTimer = undefined;
 	}
 
 	function canSendNudge(ctx: ExtensionContext): boolean {
@@ -58,7 +180,18 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 	}
 
 	function sendNudge(ctx: ExtensionContext, request: WatchdogNudgeRequest): void {
-		pi.appendEntry("compaction-continue", request.entry);
+		recordEvent(
+			"compaction-continue:watchdog-nudge",
+			makeTrackingEvent(ctx, {
+				kind: "watchdog_nudge",
+				source: request.details.recoveryKind === "assistant-stall" ? "assistant-stall" : "compaction",
+				recoveryKind: request.details.recoveryKind,
+				reason: request.details.reason,
+				loop: request.details.loop,
+				iteration: request.details.iteration,
+				compactionId: request.details.compactionId,
+			}),
+		);
 		ctx.ui.notify(request.notification, "info");
 		pi.sendMessage(
 			{
@@ -71,31 +204,11 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 		);
 	}
 
-	function noteRalphPromptFromText(text: string, timestamp = Date.now()): void {
-		const prompt = parseRalphPrompt(text, timestamp);
-		if (!prompt) return;
-		lastRalphPrompt = prompt;
-		ralphDoneAfterLastPrompt = false;
-		clearRalphIdleTimer();
-	}
-
-	function syncRalphPromptFromBranch(ctx: ExtensionContext): RalphBranchAnalysis {
-		const analysis = analyzeRalphBranchForStall(ctx.sessionManager.getBranch());
-		if (analysis.prompt) {
-			lastRalphPrompt = analysis.prompt;
-			ralphDoneAfterLastPrompt = analysis.ralphDoneAfterPrompt;
-		}
-		return analysis;
-	}
-
 	function scheduleRecovery(compactionId: string, ctx: ExtensionContext, seedAnalysis?: CompactionRecoveryAnalysis): void {
 		if (pendingTimer) clearTimeout(pendingTimer);
 
 		pendingTimer = setTimeout(() => {
 			pendingTimer = undefined;
-			if (!enabled) return;
-			if (lastRecoveredCompactionId === compactionId) return;
-			if (!canSendNudge(ctx)) return;
 
 			const activeLoop = findMostRecentActiveLoop(ctx);
 			const analysis = analyzeCompactionRecovery(branchBeforeCompaction(ctx, compactionId), {
@@ -105,11 +218,25 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			const recovery = analysis.shouldRecover ? analysis : seedAnalysis?.shouldRecover ? seedAnalysis : undefined;
 			if (!recovery) return;
 
-			lastRecoveredCompactionId = compactionId;
 			const recoveryKind = recovery.kind ?? "overflow";
-			const title = recoveryKind === "ralph" ? "Unresolved Ralph loop after compaction" : "Context overflow compaction finished";
 			const loop = activeLoop?.name ?? recovery.ralph?.prompt?.loop;
 			const iteration = activeLoop?.iteration || recovery.ralph?.prompt?.iteration;
+			recordCandidate(ctx, "compaction", { recoveryKind, reason: recovery.reason, loop, iteration, compactionId });
+			if (!enabled) {
+				recordSkip(ctx, { source: "compaction", skipReason: "disabled", recoveryKind, reason: recovery.reason, loop, iteration, compactionId });
+				return;
+			}
+			if (lastRecoveredCompactionId === compactionId) {
+				recordSkip(ctx, { source: "compaction", skipReason: "already-recovered", recoveryKind, reason: recovery.reason, loop, iteration, compactionId });
+				return;
+			}
+			if (!canSendNudge(ctx)) {
+				recordSkip(ctx, { source: "compaction", skipReason: "not-idle-or-pending", recoveryKind, reason: recovery.reason, loop, iteration, compactionId });
+				return;
+			}
+
+			lastRecoveredCompactionId = compactionId;
+			const title = recoveryKind === "ralph" ? "Unresolved Ralph loop after compaction" : "Context overflow compaction finished";
 			sendNudge(ctx, {
 				content: WATCHDOG_NUDGE_PROMPT,
 				details: {
@@ -137,56 +264,48 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 		}, RECOVERY_DELAY_MS);
 	}
 
-	function scheduleRalphIdleRecovery(ctx: ExtensionContext, prompt: RalphPromptInfo, reason: string): void {
-		clearRalphIdleTimer();
-		const scheduledPromptKey = prompt.key;
-
-		pendingRalphIdleTimer = setTimeout(() => {
-			pendingRalphIdleTimer = undefined;
-			if (!enabled) return;
-			if (!canSendNudge(ctx)) return;
-
+	function scheduleAssistantIdleRecovery(ctx: ExtensionContext, reason: string): void {
+		clearAssistantIdleTimer();
+		pendingAssistantIdleTimer = setTimeout(() => {
+			pendingAssistantIdleTimer = undefined;
 			const activeLoop = findMostRecentActiveLoop(ctx);
-			if (!activeLoop) return;
-			if (!lastRalphPrompt || lastRalphPrompt.key !== scheduledPromptKey || ralphDoneAfterLastPrompt) return;
+			const loop = activeLoop?.name;
+			const iteration = activeLoop?.iteration;
+			recordCandidate(ctx, "assistant-stall", { recoveryKind: "assistant-stall", reason, loop, iteration });
+			if (!enabled) {
+				recordSkip(ctx, { source: "assistant-stall", skipReason: "disabled", recoveryKind: "assistant-stall", reason, loop, iteration });
+				return;
+			}
+			if (!canSendNudge(ctx)) {
+				recordSkip(ctx, { source: "assistant-stall", skipReason: "not-idle-or-pending", recoveryKind: "assistant-stall", reason, loop, iteration });
+				return;
+			}
+			if (assistantIdleRecoveryStreak <= 0 || assistantIdleRecoveryStreak > MAX_ASSISTANT_IDLE_RECOVERIES_PER_STREAK) {
+				recordSkip(ctx, { source: "assistant-stall", skipReason: "streak-cap", recoveryKind: "assistant-stall", reason, loop, iteration });
+				return;
+			}
 
-			const recoveries = ralphRecoveryCounts.get(scheduledPromptKey) ?? 0;
-			if (recoveries >= MAX_RALPH_IDLE_RECOVERIES_PER_PROMPT) return;
-			ralphRecoveryCounts.set(scheduledPromptKey, recoveries + 1);
-
-			const loop = activeLoop.name ?? prompt.loop;
-			const iteration = activeLoop.iteration || prompt.iteration;
 			sendNudge(ctx, {
 				content: WATCHDOG_NUDGE_PROMPT,
 				details: {
 					kind: "watchdog_nudge",
-					recoveryKind: "ralph-stall",
-					title: "Ralph loop appears idle",
+					recoveryKind: "assistant-stall",
+					title: "Assistant turn appears stalled",
 					reason,
 					loop,
 					iteration,
-					promptKey: scheduledPromptKey,
 				},
 				entry: {
-					kind: "ralph-stall",
+					kind: "assistant-stall",
 					loop,
 					iteration,
 					reason,
-					promptKey: scheduledPromptKey,
+					streak: assistantIdleRecoveryStreak,
 					timestamp: new Date().toISOString(),
 				},
-				notification: "Active Ralph loop went idle after saying it would continue; sending watchdog nudge.",
+				notification: "Assistant turn appears stalled after promising to continue; sending watchdog nudge.",
 			});
-		}, RALPH_IDLE_DELAY_MS);
-	}
-
-	function maybeWatchRalphStall(ctx: ExtensionContext, assistantMessage: unknown): void {
-		if (!enabled) return;
-		if (!findMostRecentActiveLoop(ctx)) return;
-		if (!lastRalphPrompt) syncRalphPromptFromBranch(ctx);
-		if (!lastRalphPrompt || ralphDoneAfterLastPrompt) return;
-		if (!shouldRecoverStalledRalphTurn(assistantMessage)) return;
-		scheduleRalphIdleRecovery(ctx, lastRalphPrompt, "assistant-promised-ralph-continuation");
+		}, ASSISTANT_IDLE_DELAY_MS);
 	}
 
 	function reportStatus(args: string, ctx: ExtensionContext): void {
@@ -194,19 +313,19 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 		if (value === "on" || value === "enable") enabled = true;
 		else if (value === "off" || value === "disable") enabled = false;
 
+		refreshTrackingConfig(ctx);
 		updateStatus(ctx);
 		const activeLoop = findMostRecentActiveLoop(ctx);
-		const analysis = syncRalphPromptFromBranch(ctx);
 		ctx.ui.notify(
 			`Compaction continue: ${enabled ? "enabled" : "disabled"}${
 				activeLoop ? `\nActive loop: ${activeLoop.name} (iteration ${activeLoop.iteration})` : "\nNo active loop detected"
-			}${analysis.prompt && !analysis.ralphDoneAfterPrompt ? "\nRalph idle watch: armed" : ""}`,
+			}\nAssistant stall watch: ${enabled ? "armed" : "disabled"}${assistantIdleRecoveryStreak > 0 ? `\nCurrent stall streak: ${assistantIdleRecoveryStreak}` : ""}\nPassive tracking: ${trackingEnabled ? "enabled" : "disabled"}${trackingLoadedPaths.length > 0 ? `\nTracking config: ${trackingLoadedPaths.join(", ")}` : ""}`,
 			"info",
 		);
 	}
 
 	pi.registerCommand("compaction-continue", {
-		description: "Toggle/status for watchdog nudges after idle compactions and Ralph stalls",
+		description: "Toggle/status for watchdog nudges after idle compactions and stalled continuation turns",
 		handler: async (args, ctx) => reportStatus(args, ctx),
 	});
 
@@ -234,22 +353,36 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 	});
 
 	pi.on("message_end", async (event) => {
-		if (messageRole(event.message) === "user") noteRalphPromptFromText(messageText(event.message));
+		if (messageRole(event.message) !== "user") return;
+		hadToolResultSinceLastUser = false;
+		if (!userRequestsSimpleContinuation(messageText(event.message))) {
+			assistantIdleRecoveryStreak = 0;
+			clearAssistantIdleTimer();
+		}
 	});
 
-	pi.on("tool_result", async (event) => {
-		if (event.toolName !== "ralph_done" || event.isError) return;
-		ralphDoneAfterLastPrompt = true;
-		clearRalphIdleTimer();
+	pi.on("tool_result", async (_event) => {
+		hadToolResultSinceLastUser = true;
+		assistantIdleRecoveryStreak = 0;
+		clearAssistantIdleTimer();
 	});
 
 	pi.on("turn_end", async (event, ctx) => {
 		if (messageRole(event.message) !== "assistant") return;
-		maybeWatchRalphStall(ctx, event.message);
+		if (!shouldRecoverStalledAssistantTurn(event.message, { hadToolResultSincePreviousUser: hadToolResultSinceLastUser })) {
+			assistantIdleRecoveryStreak = 0;
+			clearAssistantIdleTimer();
+			return;
+		}
+		assistantIdleRecoveryStreak += 1;
+		scheduleAssistantIdleRecovery(ctx, "assistant-promised-continuation");
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		refreshTrackingConfig(ctx);
 		updateStatus(ctx);
+		recentEvents.length = 0;
+		hadToolResultSinceLastUser = false;
 
 		const compactionId = latestLeafCompactionId(ctx);
 		if (enabled && compactionId) {
@@ -260,15 +393,16 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			if (analysis.shouldRecover) scheduleRecovery(compactionId, ctx, analysis);
 		}
 
-		const ralphAnalysis = syncRalphPromptFromBranch(ctx);
-		if (enabled && ralphAnalysis.prompt && ralphAnalysis.shouldRecover) {
-			scheduleRalphIdleRecovery(ctx, ralphAnalysis.prompt, ralphAnalysis.reason ?? "assistant-promised-ralph-continuation");
+		const stallAnalysis = analyzeLatestAssistantStall(ctx.sessionManager.getBranch());
+		if (enabled && stallAnalysis.shouldRecover) {
+			assistantIdleRecoveryStreak = Math.max(assistantIdleRecoveryStreak, stallAnalysis.streak);
+			scheduleAssistantIdleRecovery(ctx, stallAnalysis.reason ?? "assistant-promised-continuation");
 		}
 	});
 
 	pi.on("session_shutdown", async () => {
 		if (pendingTimer) clearTimeout(pendingTimer);
 		pendingTimer = undefined;
-		clearRalphIdleTimer();
+		clearAssistantIdleTimer();
 	});
 }

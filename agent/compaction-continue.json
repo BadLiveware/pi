@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "appendSessionEntries": true,
+  "log": true,
+  "maxRecentEvents": 20
+}

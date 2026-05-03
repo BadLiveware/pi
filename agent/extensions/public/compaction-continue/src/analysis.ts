@@ -1,4 +1,5 @@
 import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import { WATCHDOG_ANSWER_TOOL } from "./model.ts";
 
 export interface RalphPromptInfo {
 	key: string;
@@ -16,6 +17,16 @@ export interface RalphBranchAnalysis {
 	latestAssistantHasToolCall: boolean;
 	shouldRecover: boolean;
 	reason?: string;
+}
+
+export interface AssistantStallAnalysis {
+	latestAssistantEntryId?: string;
+	latestAssistantText?: string;
+	latestAssistantHasToolCall: boolean;
+	shouldRecover: boolean;
+	streak: number;
+	reason?: string;
+	hadToolResultSincePreviousUser?: boolean;
 }
 
 export interface CompactionRecoveryAnalysis {
@@ -80,12 +91,37 @@ export function messageHasToolCall(message: unknown, toolName?: string): boolean
 	});
 }
 
+function toolCallBlocks(message: unknown): Array<Record<string, unknown>> {
+	return contentBlocks(message).filter((block): block is Record<string, unknown> => {
+		if (!isRecord(block)) return false;
+		const type = typeof block.type === "string" ? block.type : undefined;
+		return type === "toolCall" || type === "tool_use";
+	});
+}
+
+function hasNonWatchdogToolCall(message: unknown): boolean {
+	return toolCallBlocks(message).some((block) => block.name !== WATCHDOG_ANSWER_TOOL);
+}
+
+function watchdogAnswerDoneValue(message: unknown): boolean | undefined {
+	for (const block of toolCallBlocks(message)) {
+		if (block.name !== WATCHDOG_ANSWER_TOOL) continue;
+		const args = isRecord(block.arguments) ? block.arguments : undefined;
+		if (typeof args?.done === "boolean") return args.done;
+	}
+	return undefined;
+}
+
 function isRalphDoneToolResultMessage(message: unknown): boolean {
 	return messageRole(message) === "toolResult" && messageToolName(message) === "ralph_done" && !messageIsError(message);
 }
 
 export function isRalphLoopPromptText(text: string): boolean {
 	return /RALPH LOOP:/i.test(text) || (/You are in a Ralph loop/i.test(text) && /ralph_done/i.test(text));
+}
+
+export function isStardockLoopPromptText(text: string): boolean {
+	return /STARDOCK LOOP:/i.test(text) || (/You are in a Stardock loop/i.test(text) && /stardock_done/i.test(text));
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -113,7 +149,7 @@ export function parseRalphPrompt(text: string, timestamp = Date.now(), sourceEnt
 	return { ...prompt, key: makeRalphPromptKey(text, prompt) };
 }
 
-export function assistantRequestsRalphContinuation(text: string): boolean {
+export function assistantRequestsContinuation(text: string): boolean {
 	const normalized = text.replace(/[’]/g, "'").trim().toLowerCase();
 	if (!normalized) return false;
 	if (normalized.includes("<promise>complete</promise>")) return false;
@@ -123,7 +159,7 @@ export function assistantRequestsRalphContinuation(text: string): boolean {
 
 	return [
 		/\bi('ll| will)\s+(do|record|update|continue|proceed|work|start|run|check|inspect|implement|create|capture|execute)\b/,
-		/\bi('m| am)\s+(proceeding|continuing|working|going to|gonna)\b/,
+		/\bi('m| am)\s+(proceeding|continuing|working|going to|gonna|on it)\b/,
 		/\bproceeding with (that|this|it) now\b/,
 		/\bcontinue with (the )?(next|current|this)\b/,
 		/\bnext[, ]+i('ll| will)\b/,
@@ -132,9 +168,71 @@ export function assistantRequestsRalphContinuation(text: string): boolean {
 	].some((pattern) => pattern.test(normalized));
 }
 
+export function assistantRequestsRalphContinuation(text: string): boolean {
+	return assistantRequestsContinuation(text);
+}
+
+export function userRequestsSimpleContinuation(text: string): boolean {
+	const normalized = text.replace(/[’]/g, "'").trim().toLowerCase();
+	if (!normalized) return false;
+	return [
+		/^continue\b/,
+		/^keep going\b/,
+		/^go on\b/,
+		/^carry on\b/,
+		/^resume\b/,
+		/^proceed\b/,
+		/\bjust continue\b/,
+		/\bcontinue working\b/,
+		/\bdo not acknowledge me\b/,
+	].some((pattern) => pattern.test(normalized));
+}
+
+function isBlankAssistantStop(message: unknown): boolean {
+	return messageRole(message) === "assistant" && messageText(message).length === 0 && !messageHasToolCall(message);
+}
+
+export function shouldRecoverStalledAssistantTurn(message: unknown, options?: { hadToolResultSincePreviousUser?: boolean }): boolean {
+	if (hasNonWatchdogToolCall(message)) return false;
+	const watchdogDone = watchdogAnswerDoneValue(message);
+	if (watchdogDone === true) return false;
+	if (watchdogDone === false) return true;
+	if (assistantRequestsContinuation(messageText(message))) return true;
+	return isBlankAssistantStop(message) && options?.hadToolResultSincePreviousUser !== true;
+}
+
 export function shouldRecoverStalledRalphTurn(message: unknown): boolean {
-	if (messageHasToolCall(message)) return false;
-	return assistantRequestsRalphContinuation(messageText(message));
+	return shouldRecoverStalledAssistantTurn(message);
+}
+
+export function analyzeLatestAssistantStall(entries: SessionEntry[]): AssistantStallAnalysis {
+	const latest = entries.at(-1);
+	const message = latest ? entryMessage(latest) : undefined;
+	if (!latest || !message || messageRole(message) !== "assistant") {
+		return { latestAssistantHasToolCall: false, shouldRecover: false, streak: 0 };
+	}
+
+	let hadToolResultSincePreviousUser = false;
+	for (let i = entries.length - 2; i >= 0; i -= 1) {
+		const priorMessage = entryMessage(entries[i]);
+		if (!priorMessage) continue;
+		if (messageRole(priorMessage) === "user") break;
+		if (messageRole(priorMessage) === "toolResult") hadToolResultSincePreviousUser = true;
+	}
+
+	const latestAssistantText = messageText(message);
+	const latestAssistantHasToolCall = messageHasToolCall(message);
+	const shouldRecover = shouldRecoverStalledAssistantTurn(message, { hadToolResultSincePreviousUser });
+	const blankWithoutToolProgress = isBlankAssistantStop(message) && !hadToolResultSincePreviousUser;
+	return {
+		latestAssistantEntryId: latest.id,
+		latestAssistantText,
+		latestAssistantHasToolCall,
+		shouldRecover,
+		streak: shouldRecover ? 1 : 0,
+		reason: shouldRecover ? (blankWithoutToolProgress ? "blank-assistant-without-tool-progress" : "assistant-promised-continuation") : undefined,
+		hadToolResultSincePreviousUser,
+	};
 }
 
 function entryMessage(entry: SessionEntry): unknown | undefined {
@@ -171,7 +269,12 @@ export function analyzeRalphBranchForStall(entries: SessionEntry[], timestamp = 
 
 	const latestAssistantText = latestAssistant ? messageText(latestAssistant) : undefined;
 	const latestAssistantHasToolCall = latestAssistant ? messageHasToolCall(latestAssistant) : false;
-	const shouldRecover = Boolean(latestAssistant && !ralphDoneAfterPrompt && shouldRecoverStalledRalphTurn(latestAssistant));
+	let hadToolResultSincePrompt = false;
+	for (let i = promptIndex + 1; i < entries.length; i += 1) {
+		const candidate = entryMessage(entries[i]);
+		if (candidate && messageRole(candidate) === "toolResult") hadToolResultSincePrompt = true;
+	}
+	const shouldRecover = Boolean(latestAssistant && !ralphDoneAfterPrompt && shouldRecoverStalledAssistantTurn(latestAssistant, { hadToolResultSincePreviousUser: hadToolResultSincePrompt }));
 	return {
 		prompt,
 		ralphDoneAfterPrompt,

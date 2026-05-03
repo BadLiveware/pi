@@ -1,13 +1,15 @@
 {
   "name": "@badliveware/pi-compaction-continue",
-  "version": "0.1.3",
-  "description": "Watchdog nudge extension for Pi after idle compactions or stalled Ralph turns.",
+  "version": "0.1.5",
+  "description": "Watchdog nudge extension for Pi after idle compactions or stalled continuation turns.",
   "type": "module",
   "keywords": [
     "pi-package",
     "pi-extension",
     "compaction",
-    "ralph"
+    "ralph",
+    "watchdog",
+    "stall"
   ],
   "license": "MIT",
   "author": "BadLiveware",

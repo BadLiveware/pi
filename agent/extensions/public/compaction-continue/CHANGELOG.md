@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.5
+
+- Added opt-in passive tracking for watchdog detection, nudge, skip, and `watchdog_answer` events.
+- Added the `compaction_continue_state` tool plus config/log-path reporting for inspection and debugging.
+- Added user/project config loading for passive tracking, with tracking disabled by default unless enabled by config.
+
+## 0.1.4
+
+- Added generic stalled-turn watchdog recovery that is not tied to Ralph loops.
+- Added a `watchdog_answer` tool so nudge responses can self-check `done: true|false` before continuing or stopping.
+- Updated the watchdog prompt to require a tool answer instead of a prose acknowledgement, and to re-nudge when the agent answers `done: false` but still does not continue.
+
 ## 0.1.3
 
 - Fixed post-compaction watchdog recovery for assistant turns that stop with `stopReason: "length"` instead of a structured context length error.
