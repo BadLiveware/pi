@@ -4,13 +4,6 @@
 
 Approach software development work with understanding, correctness, testability, measurement, and reviewability.
 
-## Always Start Here
-
-- Read local project guidance first: `AGENTS.md`, `CLAUDE.md`, `README.md`, build/test files, CI, `.editorconfig`, and relevant architecture or contract docs.
-- Treat fully injected current-project guidance as already read; do not reread it just to satisfy this checklist. Reread only when it is missing/truncated, you need exact line text or freshness, or you switch to a different target repo/path whose guidance was not injected.
-- Treat local commands, constraints, and generated-file flows as part of the requirements.
-- Prefer changing sources of truth and regenerating derived outputs instead of hand-editing generated artifacts unless the project clearly expects otherwise.
-
 ## Core Operating Model
 
 ### 1. Align on the real problem
@@ -24,6 +17,8 @@ Approach software development work with understanding, correctness, testability,
 - Compatibility means externally relied-upon, documented, persisted, or shipped behavior. Do not preserve compatibility with the agent's own recent draft or intermediate implementation unless the user asks for it or a real contract/data/safety constraint requires it.
 - When docs, README text, examples, comments, tests, or config defaults are atomically changeable facts about the desired behavior, update them to match instead of preserving old behavior solely because they describe it. Treat them as compatibility constraints only when they represent an external promise, published contract, persisted data, or explicit user requirement.
 - Capture non-goals and scope boundaries.
+- Treat local commands, constraints, and generated-file flows as part of the requirements.
+- Prefer changing sources of truth and regenerating derived outputs instead of hand-editing generated artifacts unless the project clearly expects otherwise.
 - For non-trivial work, present the requirements or a short plan before major edits.
 
 ### 3. Work in feedback loops
