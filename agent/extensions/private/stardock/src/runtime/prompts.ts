@@ -2,10 +2,14 @@
  * Stardock prompt and mode helpers.
  */
 
-import { appendActiveBriefPromptSection, appendTaskSourceSection } from "../briefs.ts";
+import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendTaskSourceSection, currentBrief } from "../briefs.ts";
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
-import { type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS } from "../state/core.ts";
+import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS } from "../state/core.ts";
 import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/migration.ts";
+
+function compactBriefTask(brief: IterationBrief): string {
+	return compactText(brief.task, 120) ?? "(no task text)";
+}
 
 export function buildChecklistPrompt(state: LoopState, taskContent: string, reason: PromptReason): string {
 	const isReflection = reason === "reflection";
@@ -18,20 +22,18 @@ export function buildChecklistPrompt(state: LoopState, taskContent: string, reas
 	if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
 
 	appendActiveBriefPromptSection(parts, state);
+	appendLedgerSummarySection(parts, state);
 	appendTaskSourceSection(parts, state, taskContent);
 	parts.push(`\n## Instructions\n`);
 	parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /stardock-stop when idle to stop the loop.\n");
 	parts.push(`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`);
-
-	if (state.itemsPerIteration > 0) {
-		parts.push(`**THIS ITERATION: Process approximately ${state.itemsPerIteration} items, then call stardock_done.**\n`);
-		parts.push(`1. Work on the next ~${state.itemsPerIteration} items from your checklist`);
-	} else {
-		parts.push(`1. Continue working on the task`);
-	}
-	parts.push(`2. Update the task file (${state.taskFile}) with your progress`);
-	parts.push(`3. When FULLY COMPLETE, respond with: ${COMPLETE_MARKER}`);
-	parts.push(`4. Otherwise, call the stardock_done tool to proceed to next iteration`);
+	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
+	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
+	parts.push(`3. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
+	parts.push(`4. When the brief's criteria are satisfied, mark it complete with stardock_brief (action: "complete").`);
+	parts.push(`5. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
+	parts.push(`6. Otherwise, call the stardock_done tool to proceed to next iteration.`);
+	if (state.itemsPerIteration > 0) parts.push(`\nAim to make measurable progress on the brief this iteration.`);
 
 	return parts.join("\n");
 }
@@ -87,11 +89,16 @@ const checklistModeHandler: LoopModeHandler = {
 	mode: "checklist",
 	buildPrompt: buildChecklistPrompt,
 	buildSystemInstructions(state) {
-		let instructions = `You are in a Stardock loop working on: ${state.taskFile}\n`;
-		if (state.itemsPerIteration > 0) {
-			instructions += `- Work on ~${state.itemsPerIteration} items this iteration\n`;
+		const brief = currentBrief(state);
+		let instructions = `You are in a Stardock loop. Task file: ${state.taskFile}\n`;
+		if (!brief) {
+			instructions += `- No active brief — create one with stardock_brief to scope this iteration\n`;
+		} else {
+			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
+			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
+			instructions += `- Mark brief complete with stardock_brief when criteria are satisfied\n`;
 		}
-		instructions += `- Update the task file as you progress\n`;
+		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
 		instructions += `- When FULLY COMPLETE: ${COMPLETE_MARKER}\n`;
 		instructions += `- Otherwise, call stardock_done tool to proceed to next iteration`;
 		return instructions;

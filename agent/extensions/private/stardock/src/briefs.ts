@@ -6,7 +6,7 @@ import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agen
 import { Type } from "typebox";
 import { runBriefActivate, runBriefClear, runBriefComplete, runBriefUpsert } from "./app/brief-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
-import { type BriefLifecycleAction, compactText, type Criterion, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
+import { type BriefLifecycleAction, compactText, type Criterion, type CriterionStatus, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -216,19 +216,63 @@ export function appendActiveBriefPromptSection(parts: string[], state: LoopState
 	parts.push("### Output Contract", compactText(brief.outputContract, 240) ?? "Record changed files, validation evidence, risks, and the suggested next move.", "");
 }
 
-export function appendTaskSourceSection(parts: string[], state: LoopState, taskContent: string): void {
+export function appendTaskSourceSection(parts: string[], state: LoopState, _taskContent: string): void {
 	const brief = currentBrief(state);
 	if (!brief) {
-		parts.push(`## Current Task (from ${state.taskFile})\n\n${taskContent}\n\n---`);
+		parts.push(
+			"## Task Source",
+			`Task file: ${state.taskFile} (not loaded into this prompt)`,
+			"",
+			"**No active brief.** Create one with `stardock_brief` to scope this iteration:",
+			"- Set `objective` and `task` from the next chunk of work in your task file",
+			"- Add `criterionIds` if you've already created criteria with `stardock_ledger`",
+			"- Add `acceptanceCriteria` and `constraints` to keep the iteration bounded",
+			"- Use `activate: true` to make it the active brief immediately",
+			"",
+			"---",
+		);
 		return;
 	}
 	parts.push(
 		"## Task Source",
-		`Active brief ${brief.id} is the selected context for this iteration.`,
-		`Task file: ${state.taskFile}`,
-		"Full task content is omitted from this prompt; read the task file if additional source context is needed.",
+		`Active brief ${brief.id} scopes this iteration.`,
+		`Task file: ${state.taskFile} (reference only — not loaded into this prompt)`,
+		"Read the task file from disk if you need broader context beyond this brief.",
 		"---",
 	);
+}
+
+const STATUS_ORDER: CriterionStatus[] = ["failed", "blocked", "pending", "passed", "skipped"];
+const STATUS_ICON: Record<CriterionStatus, string> = { pending: "○", passed: "✓", failed: "✗", skipped: "⊘", blocked: "⊗" };
+
+export function appendLedgerSummarySection(parts: string[], state: LoopState): void {
+	const brief = currentBrief(state);
+	const criteria = brief?.criterionIds.length
+		? state.criterionLedger.criteria.filter((c) => brief.criterionIds.includes(c.id))
+		: state.criterionLedger.criteria;
+	if (criteria.length === 0) return;
+
+	const counts = { total: criteria.length, pending: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 };
+	for (const c of criteria) counts[c.status]++;
+	const summaryParts = [`${counts.passed}/${counts.total} passed`];
+	if (counts.failed) summaryParts.push(`${counts.failed} failed`);
+	if (counts.blocked) summaryParts.push(`${counts.blocked} blocked`);
+	if (counts.pending) summaryParts.push(`${counts.pending} pending`);
+
+	parts.push(`## Criteria (${summaryParts.join(", ")})`);
+	const sorted = [...criteria].sort((a, b) => {
+		const ai = STATUS_ORDER.indexOf(a.status);
+		const bi = STATUS_ORDER.indexOf(b.status);
+		if (ai !== bi) return ai - bi;
+		return a.id.localeCompare(b.id);
+	});
+	for (const c of sorted.slice(0, 10)) {
+		parts.push(`- ${STATUS_ICON[c.status]} **${c.id}** [${c.status}]: ${compactText(c.description, 120)}`);
+		parts.push(`  Pass: ${compactText(c.passCondition, 140)}`);
+		if (c.evidence) parts.push(`  Evidence: ${compactText(c.evidence, 140)}`);
+	}
+	if (sorted.length > 10) parts.push(`- ... ${sorted.length - 10} more criteria`);
+	parts.push("");
 }
 
 const briefInputSchema = Type.Object({

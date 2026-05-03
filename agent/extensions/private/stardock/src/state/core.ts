@@ -34,7 +34,7 @@ Pause and reflect on your progress:
 4. Should the approach be adjusted?
 5. What are the next priorities?
 
-Update the task file with your reflection, then continue working.`;
+Record your reflection in progress-log.md (next to the task file). Keep the task file lean for status/checklist items only. Then continue working.`;
 
 export type LoopStatus = "active" | "paused" | "completed";
 export type LoopMode = "checklist" | "recursive" | "evolve";

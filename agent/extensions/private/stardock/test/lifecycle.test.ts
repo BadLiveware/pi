@@ -118,7 +118,7 @@ test("stardock_done supports explicit active brief lifecycle actions", async () 
 		assert.equal(completed.details.brief.status, "completed");
 		assert.equal(completed.details.loop.briefs.currentBriefId, undefined);
 		assert.equal(messages.at(-1)?.content.includes("## Active Iteration Brief"), false);
-		assert.match(messages.at(-1)?.content ?? "", /Default task text returns after brief completion/);
+		assert.match(messages.at(-1)?.content ?? "", /No active brief/);
 
 		await brief.execute(
 			"tool-lifecycle-brief-clear",
