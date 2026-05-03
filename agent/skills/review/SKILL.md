@@ -41,6 +41,8 @@ Depths:
 
 Use `full` for auth/security, data loss, migrations/schema/config, concurrency/resource lifecycles, public APIs/contracts, performance-sensitive paths, broad cross-file changes, artifact/protocol contracts, or unclear intent.
 
+For correctness-critical paths (state machines, financial/safety calculations, data integrity constraints, authz logic), escalate depth by one tier unless you have deterministic test coverage that proves the relevant edge states and failure modes. Tests written by the same author as the code have a blind spot: they prove the code does what was thought about, not what was missed. When such paths can't be tested deterministically (timing-dependent, requires complex integration setup, probabilistic), escalate regardless of any partial coverage — the review is the last line of defense.
+
 If uncertain between two depths, choose the lower depth and escalate only when concrete risk appears — unless the user has explicitly requested the higher depth.
 
 ## Load Only What Applies
