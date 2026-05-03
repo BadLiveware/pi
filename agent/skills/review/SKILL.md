@@ -29,9 +29,9 @@ Review code as a high-signal risk assessment: scale effort to risk, retrieve the
 
 ## Choose Depth
 Common triggers:
-- **Agent self-review after a medium/major change:** default to `light` unless high-risk triggers appear; fix `supported-deterministic` and `supported-trace` in-scope issues found.
+- **Agent self-review after implementation:** default to `standard` for non-trivial implementation; reserve `light` for small/mechanical changes (docs typos, trivial renames, test-only fixes). Escalate to `full` when high-risk triggers appear (auth/security, data loss, migrations, concurrency, public contracts, performance).
 - **Major PR/feature mostly or fully done:** default to `standard`; use `full` for high-risk triggers below.
-- **User requests review:** infer `light`, `standard`, or `full` from risk and wording; state the chosen depth briefly.
+- **User requests review:** if the user names a specific depth (`audit`, `full`, `standard`, `light`), use it directly — do not infer a lower alternative. If no depth is specified, infer `light`, `standard`, `full`, or `audit` from risk and wording. State the chosen depth briefly.
 
 Depths:
 - `light`: local parent pass; no subagents by default. Use for small localized changes, docs/tests-only, mechanical refactors, or quick self-review.
@@ -41,7 +41,7 @@ Depths:
 
 Use `full` for auth/security, data loss, migrations/schema/config, concurrency/resource lifecycles, public APIs/contracts, performance-sensitive paths, broad cross-file changes, artifact/protocol contracts, or unclear intent.
 
-If uncertain between two depths, choose the lower depth and escalate only when concrete risk appears.
+If uncertain between two depths, choose the lower depth and escalate only when concrete risk appears — unless the user has explicitly requested the higher depth.
 
 ## Load Only What Applies
 - Self-review, user-requested review, review-and-fix, or PR readiness path: read `workflows.md`.

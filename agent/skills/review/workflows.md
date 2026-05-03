@@ -5,10 +5,10 @@ Load this file only after `SKILL.md` when a path-specific workflow applies.
 ## Self-review After Implementation
 Use when you are reviewing your own in-scope implementation work before claiming completion.
 
-1. Default to `light` unless high-risk triggers appear.
+1. Default to `standard` for non-trivial implementation; reserve `light` for small/mechanical changes (docs typos, trivial renames, test-only fixes).
 2. Inspect the current diff, changed tests, and validation output.
 3. Tag change families and make a compact impact sketch for changed contracts, callers, tests, and config touched by the diff.
-4. Escalate to `standard` if the impact sketch exposes high-risk cross-file, contract, config/protocol, security, lifecycle, or migration risk.
+4. Escalate to `full` if the impact sketch exposes high-risk cross-file, contract, config/protocol, security, lifecycle, or migration risk.
 5. Verify findings as `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`.
 6. Fix all safe `supported-deterministic` and `supported-trace` in-scope issues.
 7. Do not auto-fix plausible/unverified issues, out-of-scope issues, or issues needing product/architecture decisions.
@@ -24,12 +24,13 @@ If there are many supported issues:
 ## User-requested Review
 Use when the user asks for review, code review, PR review, or asks what issues exist.
 
-1. Infer `light`, `standard`, or `full` from risk and wording.
-2. State the selected depth briefly.
-3. If the user asked for review-only/findings/comments, do not edit files.
-4. If the user asked for review-and-fix, fix supported in-scope issues after verification and validate.
-5. For ambiguous requests, default to report-only unless the surrounding task scope already includes implementation.
-6. In final output, separate supported findings from `plausible-but-unverified` risks and validation gaps.
+1. If the user named a specific depth (`audit`, `full`, `standard`, `light`), use it — do not infer a lower alternative.
+2. Otherwise, infer `light`, `standard`, `full`, or `audit` from risk and wording.
+3. State the selected depth briefly.
+4. If the user asked for review-only/findings/comments, do not edit files.
+5. If the user asked for review-and-fix, fix supported in-scope issues after verification and validate.
+6. For ambiguous requests, default to report-only unless the surrounding task scope already includes implementation.
+7. In final output, separate supported findings from `plausible-but-unverified` risks and validation gaps.
 
 ## Major PR / Feature Readiness
 Use when a major feature or PR is mostly/fully done.
