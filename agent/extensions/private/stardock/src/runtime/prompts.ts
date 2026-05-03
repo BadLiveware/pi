@@ -11,7 +11,9 @@ function compactBriefTask(brief: IterationBrief): string {
 	return compactText(brief.task, 120) ?? "(no task text)";
 }
 
-export function buildChecklistPrompt(state: LoopState, taskContent: string, reason: PromptReason): string {
+// taskContent is accepted for interface compatibility with recursive mode's buildPrompt,
+// but the task file is never injected into checklist iteration prompts.
+export function buildChecklistPrompt(state: LoopState, _taskContent: string, reason: PromptReason): string {
 	const isReflection = reason === "reflection";
 	const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 	const header = `───────────────────────────────────────────────────────────────────────
@@ -23,7 +25,7 @@ export function buildChecklistPrompt(state: LoopState, taskContent: string, reas
 
 	appendActiveBriefPromptSection(parts, state);
 	appendLedgerSummarySection(parts, state);
-	appendTaskSourceSection(parts, state, taskContent);
+	appendTaskSourceSection(parts, state, _taskContent);
 	parts.push(`\n## Instructions\n`);
 	parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /stardock-stop when idle to stop the loop.\n");
 	parts.push(`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`);

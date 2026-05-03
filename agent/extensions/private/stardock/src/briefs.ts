@@ -219,18 +219,28 @@ export function appendActiveBriefPromptSection(parts: string[], state: LoopState
 export function appendTaskSourceSection(parts: string[], state: LoopState, _taskContent: string): void {
 	const brief = currentBrief(state);
 	if (!brief) {
-		parts.push(
-			"## Task Source",
-			`Task file: ${state.taskFile} (not loaded into this prompt)`,
-			"",
-			"**No active brief.** Create one with `stardock_brief` to scope this iteration:",
-			"- Set `objective` and `task` from the next chunk of work in your task file",
-			"- Add `criterionIds` if you've already created criteria with `stardock_ledger`",
-			"- Add `acceptanceCriteria` and `constraints` to keep the iteration bounded",
-			"- Use `activate: true` to make it the active brief immediately",
-			"",
-			"---",
-		);
+		if (state.mode === "checklist") {
+			parts.push(
+				"## Task Source",
+				`Task file: ${state.taskFile} (not loaded into this prompt)`,
+				"",
+				"**No active brief.** Create one with `stardock_brief` to scope this iteration:",
+				"- Set `objective` and `task` from the next chunk of work in your task file",
+				"- Add `criterionIds` if you've already created criteria with `stardock_ledger`",
+				"- Add `acceptanceCriteria` and `constraints` to keep the iteration bounded",
+				"- Use `activate: true` to make it the active brief immediately",
+				"",
+				"---",
+			);
+		} else {
+			parts.push(
+				"## Task Source",
+				`Task file: ${state.taskFile} (reference only — not loaded into this prompt)`,
+				"The recursive objective and recent attempts above scope this iteration.",
+				"Read the task file from disk if you need broader background context.",
+				"---",
+			);
+		}
 		return;
 	}
 	parts.push(
@@ -247,9 +257,13 @@ const STATUS_ICON: Record<CriterionStatus, string> = { pending: "○", passed: "
 
 export function appendLedgerSummarySection(parts: string[], state: LoopState): void {
 	const brief = currentBrief(state);
-	const criteria = brief?.criterionIds.length
+	let criteria = brief?.criterionIds.length
 		? state.criterionLedger.criteria.filter((c) => brief.criterionIds.includes(c.id))
 		: state.criterionLedger.criteria;
+	// When no brief scopes the view, only show actionable criteria to keep the prompt focused.
+	if (!brief) {
+		criteria = criteria.filter((c) => c.status === "pending" || c.status === "failed" || c.status === "blocked");
+	}
 	if (criteria.length === 0) return;
 
 	const counts = { total: criteria.length, pending: 0, passed: 0, failed: 0, skipped: 0, blocked: 0 };
