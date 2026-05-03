@@ -37,7 +37,7 @@ Approach software development work with understanding, correctness, testability,
 - Prefer vertical slices for non-trivial code organization: feature/workflow modules should own behavior plus their schemas, formatting, registration, and tests; keep shared core modules small and truly cross-cutting.
 - Introduce abstractions only when they improve clarity, testability, or meaningful reuse, and avoid speculative generalization.
 - Prefer names, structure, and small functions first.
-- Name and write produced artifacts for their domain behavior, role, or invariants, not for execution-plan labels like phases, steps, buckets, stages, or workstreams. Do not mention the plan, plan path, stage, checklist, or execution process in code, product docs, generated outputs, comments, or user-facing artifacts unless the product domain itself truly uses those concepts; keep plan metadata only in tasks, commits, `.ralph`, evidence logs, or plan files.
+- Name and write produced artifacts for their domain behavior, role, or invariants, not for execution-plan labels like phases, steps, buckets, stages, or workstreams. Do not mention the plan, plan path, stage, checklist, or execution process in code, product docs, generated outputs, comments, commit messages, or user-facing artifacts unless the product domain itself truly uses those concepts; keep plan metadata only in tasks, `.ralph`, evidence logs, or plan files.
 - Add comments only when they materially improve reviewability: explain why code exists; for cryptic or constraint-driven code explain how it works and what must remain true; mark compatibility shims, protocol quirks, workarounds, and `required by X` behavior, including removal conditions, when not obvious.
 - Do not add comments for straightforward code or restate what the code already says.
 
@@ -97,29 +97,8 @@ Approach software development work with understanding, correctness, testability,
 - Keep commits coherent and preserve the why.
 - Commit headers should briefly summarize the actual change, stay under 72 characters, and avoid source-only messages like `fix: address PR feedback` unless the source is itself relevant.
 - Non-trivial commits should include a short body explaining what changed and why, including relevant constraints, trade-offs, compatibility notes, or validation context.
+- Never use commit messages to report plan progress ("Completed phase 2", "Finished step 3"). Commits describe domain behavior, not checklist status.
 - Verify PR state before describing it; prefer stacked PRs when refactors should land before features.
-
-## Skills
-
-Use the available skills when they fit:
-- `requirements-discovery`
-- `goal-discovery`
-- `architecture-decision`
-- `planning`
-- Feynman research skills when planning depends on prior work, external evidence, papers, or comparing approaches
-- `commit`
-- `execute-plan`
-- `testability-feedback-loop`
-- `expected-value-decision-making`
-- `systematic-debugging`
-- `reliability-error-handling`
-- `performance-benchmarking`
-- `git-and-pr-review`
-- `address-pr-feedback`
-- `verification-before-completion`
-- `subagent-delegation`
-- `prompt-behavior-testing`
-- `writing-skills`
 
 ## Definition of Done
 
