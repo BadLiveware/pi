@@ -89,6 +89,20 @@ describe("Ralph idle watch detection", () => {
 		assert.equal(analysis.prompt?.iteration, 6);
 	});
 
+	it("does not flag an aborted assistant turn as a stall", () => {
+		assert.equal(
+			shouldRecoverStalledAssistantTurn({ role: "assistant", stopReason: "aborted", errorMessage: "Operation aborted", content: [] }),
+			false,
+		);
+		assert.equal(
+			analyzeLatestAssistantStall([
+				messageEntry("user-normal", "user", [{ type: "text", text: "summarize the branch" }]),
+				{ type: "message", id: "aborted-msg", timestamp: "2026-01-01T00:00:00.000Z", message: { role: "assistant", stopReason: "aborted", errorMessage: "Operation aborted", content: [] } },
+			]).shouldRecover,
+			false,
+		);
+	});
+
 	it("treats watchdog_answer(done=false) without other work as another stall", () => {
 		assert.equal(
 			shouldRecoverStalledAssistantTurn({

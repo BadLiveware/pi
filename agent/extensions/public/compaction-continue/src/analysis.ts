@@ -1,6 +1,8 @@
 import type { SessionEntry } from "@mariozechner/pi-coding-agent";
 import { WATCHDOG_ANSWER_TOOL } from "./model.ts";
 
+// Pattern catalog: PATTERNS.md — update when adding/removing/changing detection patterns.
+
 export interface RalphPromptInfo {
 	key: string;
 	loop?: string;
@@ -193,6 +195,7 @@ function isBlankAssistantStop(message: unknown): boolean {
 }
 
 export function shouldRecoverStalledAssistantTurn(message: unknown, options?: { hadToolResultSincePreviousUser?: boolean }): boolean {
+	if (isRecord(message) && message.stopReason === "aborted") return false;
 	if (hasNonWatchdogToolCall(message)) return false;
 	const watchdogDone = watchdogAnswerDoneValue(message);
 	if (watchdogDone === true) return false;
