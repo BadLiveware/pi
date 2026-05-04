@@ -5,60 +5,85 @@ description: Use when reviewing changed code, pull request diffs, or implementat
 
 # Code Review
 
-Review code as a high-signal risk assessment: scale effort to risk, retrieve the right unchanged context, verify likely real issues, explain consequence, and suppress speculative noise.
+Review code as a high-signal risk assessment: scale effort to risk, retrieve unchanged context, verify likely real issues, explain consequence, and suppress speculative noise.
 
 ## Core Rules
-- Pick the cheapest review depth that can catch the likely risk; a 5-minute code change should not trigger a 10-minute review cycle.
-- Tag change families early: API/contract, control-flow/state-machine, persistence/schema/migration, config/protocol/flag, auth/security boundary, performance/resource lifecycle, UI-only, docs-only, or test-only.
-- Prefer impact mapping and deterministic evidence before adding reviewers. More agents do not compensate for missing callers, configs, tests, or contract context.
-- For `standard` and `full`, build a compact impact map before delegation or final ranking: changed symbols, impacted callers/callees, relevant tests, config/schema/docs, public contract risks, and unchanged consumers worth inspecting.
-- Use deterministic tool lanes as a menu, not a checklist. Prefer project-native commands and existing configs; do not install tools, run broad noisy scans, or surface unrelated analyzer output unless the user asked for that scope.
-- For performance-sensitive changes, review the cost shape: scaling variables, nested loops, repeated scans/parses/shell-outs/queries, caps that only trim output, synchronous interactive work, cache growth, cancellation, and timeouts.
-- When a diff adds goroutines, tickers, watchers, informers, reload loops, background workers, or process-global caches, review lifecycle ownership: what starts it, what stops it, which owner/context/Close path controls it, whether tests or recreated handlers can leak it, and whether request-driven or lazy work would be simpler.
-- For guards based on booleans, counts, nil checks, or cached summaries, ask whether they collapse distinct meaningful states. If skipped states can still affect behavior, prefer a named domain predicate over incidental checks like `Len()` and expect tests for the edge states.
-- For complex state machines, concurrency, retries, queues, locks, lifecycle transitions, idempotency, or safety/liveness-sensitive algorithms, consider whether a small formal or executable model (for example TLA+, PlusCal, Alloy, or a property-test model) would expose missing invariants before implementation or review signoff. Use this selectively; do not make formal modeling a blanket requirement for ordinary code.
+- Pick the depth at which a missed bug becomes unacceptable, not the depth that is cheapest to run. Review cost is yours; miss cost is the user's. A 5-minute change with no high-risk triggers can stay light; the same change touching auth or a public contract cannot.
+- Tag change families early. For `standard`/`full`, build a compact impact map (changed symbols, callers/callees, tests, config/schema/docs, contract risks, unchanged consumers worth inspecting) before delegation or final ranking.
+- Use deterministic tool lanes as a menu, not a checklist. Prefer project-native commands and existing configs; do not install tools, run broad noisy scans, or surface unrelated analyzer output unless asked.
 - Keep candidate generation, clustering/dedupe, verification, and final comments separate. Triage and scouts produce candidates, not user-facing comments.
 - Label every retained candidate as `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`. Final findings should normally be `supported-deterministic` or `supported-trace`.
-- Require evidence for each finding. If a claim depends on unavailable runtime evidence, mark it uncertain, put it in a separate risk/gap section, or omit it.
-- Deduplicate and rank findings by root cause before presenting them. Fewer strong findings beat many weak comments.
-- Use caps to control hypothesis generation, fanout, and report readability; never silently drop verified supported issues.
-- When self-reviewing your own in-scope implementation work, fix all safe `supported-deterministic` and `supported-trace` in-scope issues before reporting, then re-run relevant validation.
-- Do not fix reviewed code when the user asked for review-only output, the issue is out of scope, or the fix needs a product/architecture decision.
-- Treat scouts, learned/project guidance, and corpus entries as hypothesis generators. Parent/verifier decides `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`.
-- Use the WIP failure-mode corpus only as a late, sparse, non-authoritative challenge pass after an unprimed review; keep an `outside-corpus` lane and reject forced fits.
+- Require evidence for each finding. If a claim depends on unavailable runtime evidence, mark it uncertain, separate it, or omit it.
+- Deduplicate and rank findings by root cause before presenting. Fewer strong findings beat many weak comments.
+- Caps control hypothesis generation, fanout, and report readability — never silently drop verified supported issues.
+- When self-reviewing your own in-scope work, fix all safe `supported-deterministic` and `supported-trace` issues before reporting, then re-run validation. Do not fix when the user asked for review-only output, the issue is out of scope, or it needs a product/architecture decision.
+- Treat scouts, project guidance, and corpus entries as hypothesis generators. Use the WIP failure-mode corpus only as a late, sparse challenge pass after an unprimed review; keep an `outside-corpus` lane and reject forced fits.
+
+Risk-specific review lenses (performance cost shape, lifecycle ownership for new background work, guards that collapse meaningful states, and formal-model-warranted concurrency or state machines) live in `mode-details.md` and are loaded with that file when standard/full applies.
 
 ## Choose Depth
-Common triggers:
-- **Agent self-review after implementation:** default to `standard` for non-trivial implementation; reserve `light` for small/mechanical changes (docs typos, trivial renames, test-only fixes). Escalate to `full` when high-risk triggers appear (auth/security, data loss, migrations, concurrency, public contracts, performance).
-- **Major PR/feature mostly or fully done:** default to `standard`; use `full` for high-risk triggers below.
-- **User requests review:** if the user names a specific depth (`audit`, `full`, `standard`, `light`), use it directly — do not infer a lower alternative. If no depth is specified, infer `light`, `standard`, `full`, or `audit` from risk and wording. State the chosen depth briefly.
 
-Depths:
-- `light`: local parent pass; no subagents by default. Use for small localized changes, docs/tests-only, mechanical refactors, or quick self-review.
+### High-risk triggers (route by these, not by feel)
+Before picking depth, enumerate which of these are present in the diff:
+- auth / security boundary
+- data loss, migrations, schema, persisted state
+- concurrency, resource lifecycles, background workers
+- public APIs / contracts / serialized formats
+- performance-sensitive paths
+- broad cross-file changes (>~5 files or multiple subsystems)
+- artifact / protocol contracts
+- correctness-critical paths (state machines, financial/safety calculations, data integrity, authz)
+- unclear intent or scope
+
+### Depth floors
+- `light` requires **positive justification, not just absence of triggers**: no trigger from the list above AND the diff is mechanically simple (typo, rename, test-only, docs-only, single-subsystem refactor) AND cross-file impact is obvious and contained. If any of these does not hold, depth floor is `standard`.
+- `standard` is the floor for non-trivial implementation, agent self-review of meaningful work, and major PR/feature readiness.
+- `full` floor: any high-risk trigger above. Correctness-critical paths follow an additional escalation rule in `mode-details.md`.
+- `audit`: only on explicit user request.
+
+### User-named depth
+If the user names a specific depth, use it directly — do not infer a lower alternative.
+
+### Anti-rationalization
+Agents tend to pick light by default. Treat any of these reasonings as a red flag, not a justification:
+- "I just wrote this, I know how it works" — author confidence does not lower review depth.
+- "This feels contained" — verify against the trigger list, not your gut.
+- "It's only N lines" — line count without trigger context is not a depth signal.
+- "I'd be done already if this were light" — that is review cost talking, not miss cost.
+
+State the chosen depth briefly for `standard`, `full`, or `audit`. `light` does not need an announcement, but if you picked light with any trigger present, state which one and why it does not lift the floor.
+
+### Depth definitions
+- `light`: local parent pass; no subagents by default.
 - `standard`: compact impact map, project-native evidence where cheap, 1 medium triage reviewer or local triage, at most 2 targeted cheap scouts, clustering/dedupe, and verifier only for retained candidates.
 - `full`: high-risk hybrid with a stronger impact/evidence lane, up to 2 medium triage reviewers, at most 3 targeted cheap scouts, bounded coverage-gap pass, and strong verification.
-- `audit`: exhaustive or many-agent review only when explicitly requested.
+- `audit`: exhaustive or many-agent review.
 
-Use `full` for auth/security, data loss, migrations/schema/config, concurrency/resource lifecycles, public APIs/contracts, performance-sensitive paths, broad cross-file changes, artifact/protocol contracts, or unclear intent.
+If uncertain between two depths *after* the trigger check, choose the higher depth — the trigger check has already filtered out cases where the lower depth is unambiguously fine.
 
-For correctness-critical paths (state machines, financial/safety calculations, data integrity constraints, authz logic), escalate depth by one tier unless you have deterministic test coverage that proves the relevant edge states and failure modes. Tests written by the same author as the code have a blind spot: they prove the code does what was thought about, not what was missed. When such paths can't be tested deterministically (timing-dependent, requires complex integration setup, probabilistic), escalate regardless of any partial coverage — the review is the last line of defense.
+## Load Plan
+After picking depth, batch-read the upfront column in parallel. Conditional loads fire only when their trigger appears.
 
-If uncertain between two depths, choose the lower depth and escalate only when concrete risk appears — unless the user has explicitly requested the higher depth.
+| Path | Load upfront | Conditional |
+|---|---|---|
+| `light` | — | — |
+| `standard` | `workflows.md`, `mode-details.md` | `tool-lanes.md` (selecting evidence lane), `handoff-schemas.md` (delegating), corpus path |
+| `full` | `workflows.md`, `mode-details.md`, `tool-lanes.md` | `handoff-schemas.md` (delegating), corpus path |
+| `audit` | `workflows.md`, `mode-details.md`, `tool-lanes.md`, `handoff-schemas.md` | corpus path |
+| Skill development / authoring | `future-ideas.md`, `validation-scenarios.md` | — |
 
-## Load Only What Applies
-- Self-review, user-requested review, review-and-fix, or PR readiness path: read `workflows.md`.
-- Standard/full/audit mechanics, impact mapping, evidence lanes, escalation rules, and cost controls: read `mode-details.md`.
-- Deterministic tooling examples: read `tool-lanes.md` only when selecting tools or deciding which evidence lane fits a non-trivial review.
-- Medium triage, scout, verifier, coverage-gap, and final report schemas/prompts: read `handoff-schemas.md` only when delegating or formatting structured handoffs.
-- Future architecture ideas: read `future-ideas.md` only when planning changes to this review system, not during normal reviews.
-- WIP corpus files: do not read by default. For standard/full review, after an unprimed pass, read only `wip/family-routing-table.md` when coverage looks weak or risk is high. Read other `wip/` files only for audit-style review or prompt-development work.
+Corpus path: after an unprimed pass, when coverage looks weak or risk is high, read `wip/family-routing-table.md`, then load only the 2–5 shortlisted `wip/families/<family>.md` files. Read `wip/medium-reviewer.prompt.md`, `wip/scout-prompts.md`, or `wip/verifier.prompt.md` only when delegating with that pack. Read `wip/README.md` and `wip/sources.md` only for prompt-development work.
+
+`validation-scenarios.md` is for skill development; do not load during normal review.
 
 ## Minimal Intake
 1. Inspect the diff: use `git diff`, or `git diff HEAD` when staged changes may matter.
 2. If there is no diff, review files the user named or files changed earlier in the session.
-3. Identify change intent, touched subsystems, changed public contracts, changed tests, validation output, and high-risk triggers.
+3. Identify change intent, touched subsystems, changed public contracts, changed tests, and validation output.
 4. Tag change families and make an impact sketch. For `standard`/`full`, turn it into a compact impact map before delegation or final ranking.
-5. Choose and state review depth.
+5. **Enumerate high-risk triggers** from the list in **Choose Depth**. Write them down explicitly, even if the answer is "none."
+6. Apply the depth floors. Pick the lowest depth permitted by the triggers and the light-requires-positive-justification rule. Announce depth for non-light.
+7. Batch-read the upfront load column for the chosen depth.
 
 ## Verification and Reporting Rules
 - Verify file/line anchors and referenced behavior against the current tree.
@@ -68,15 +93,16 @@ If uncertain between two depths, choose the lower depth and escalate only when c
 - Do not turn generic tool output into review comments. Keep only findings with a diff-connected consequence and current-tree evidence.
 - Report highest-value findings first, normally 1-5 inline unless the user asks for exhaustive review.
 - If more verified supported issues exist, add `Additional supported findings` with concise grouped bullets; do not silently drop them.
-- Include `Depth used`, change families, deterministic evidence run/skipped, validation/not-checked evidence, and no-findings summary when applicable.
+- Include `Depth used` (for non-light), change families, deterministic evidence run/skipped, validation/not-checked evidence, and no-findings summary when applicable.
 - Put `plausible-but-unverified` concerns in a separate section only when they are useful and clearly labeled; otherwise omit them.
 
 ## Common Failure Modes
-- “This is just a quick review, so no depth decision or impact map is needed.” Always scale and state depth; light should stay light, but non-trivial reviews need impact context.
-- “I reviewed each file separately, so cross-file contracts are covered.” Add impact/caller tracing for changed contracts and unchanged consumers.
-- “A tool reported it, so it is a review finding.” Only report diff-connected issues with consequence; suppress unrelated or pre-existing analyzer noise.
-- “The cap says 5 findings, so I can ignore the rest.” Caps limit candidate generation and inline report size, not verified issue handling.
-- “A subagent found it, so it is true.” Scouts only produce hypotheses; parent verification, clustering, and deduplication are mandatory.
-- “Medium triage should investigate everything.” Medium triage routes work; targeted scouts investigate selected paths.
-- “The coverage-gap pass should find more issues.” It only checks whether high-risk paths were not inspected; it is not a second broad review.
-- “The failure-mode corpus names this pattern, so it must be relevant.” Use the corpus only as a late challenge pass; reject forced fits and prefer `outside-corpus` when the mapping is weak.
+- "This is just a quick review, so light is fine." Agents reliably under-pick depth — this is a known bias. Light requires positive justification (no high-risk trigger AND mechanically simple AND obvious impact), not just the absence of a flagged concern. "I just wrote this," "this feels contained," and "it's only N lines" are rationalizations of the bias, not valid justifications.
+- "This is just a quick review, so no impact map is needed." Light should stay light, but non-trivial reviews need impact context.
+- "I reviewed each file separately, so cross-file contracts are covered." Add impact/caller tracing for changed contracts and unchanged consumers.
+- "A tool reported it, so it is a review finding." Only report diff-connected issues with consequence; suppress unrelated or pre-existing analyzer noise.
+- "The cap says 5 findings, so I can ignore the rest." Caps limit candidate generation and inline report size, not verified issue handling.
+- "A subagent found it, so it is true." Scouts only produce hypotheses; parent verification, clustering, and deduplication are mandatory.
+- "Medium triage should investigate everything." Medium triage routes work; targeted scouts investigate selected paths.
+- "The coverage-gap pass should find more issues." It only checks whether high-risk paths were not inspected; it is not a second broad review.
+- "The failure-mode corpus names this pattern, so it must be relevant." Use the corpus only as a late challenge pass; reject forced fits and prefer `outside-corpus` when the mapping is weak.

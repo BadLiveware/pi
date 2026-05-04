@@ -233,6 +233,8 @@ Each candidate must name the missing coverage path, affected change family, and 
 
 ## Final Finding Format
 
+Standard / full / audit:
+
 ```md
 - **Severity / confidence / evidence:** <critical|high|medium|low>, <high|medium|low>, <supported-deterministic|supported-trace>
   **Location:** `path:line`
@@ -242,4 +244,12 @@ Each candidate must name the missing coverage path, affected change family, and 
   **Suggested fix:** <concrete direction, not a vague preference>
 ```
 
-Also report depth used, change families, deterministic evidence run/skipped, validation/not-checked evidence, fixes applied for self-review/review-and-fix, plausible-but-unverified risks when useful, and additional supported findings when more verified issues exist than fit inline.
+Light (compact form):
+
+```md
+- `path:line` — <issue>. <consequence>. (<evidence label>)
+```
+
+Use the compact form when the review is `light` or when a self-review/review-and-fix turn produces a short finding list and the longer fields would be filler. Switch to the full form when severity, confidence, evidence detail, or suggested fix add real signal.
+
+Also report depth used (for non-light), change families, deterministic evidence run/skipped, validation/not-checked evidence, fixes applied for self-review/review-and-fix, plausible-but-unverified risks when useful, and additional supported findings when more verified issues exist than fit inline.

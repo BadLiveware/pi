@@ -26,7 +26,7 @@ Use when the user asks for review, code review, PR review, or asks what issues e
 
 1. If the user named a specific depth (`audit`, `full`, `standard`, `light`), use it — do not infer a lower alternative.
 2. Otherwise, infer `light`, `standard`, `full`, or `audit` from risk and wording.
-3. State the selected depth briefly.
+3. State the selected depth briefly for `standard`, `full`, or `audit`. `light` does not need an announcement.
 4. If the user asked for review-only/findings/comments, do not edit files.
 5. If the user asked for review-and-fix, fix supported in-scope issues after verification and validate.
 6. For ambiguous requests, default to report-only unless the surrounding task scope already includes implementation.

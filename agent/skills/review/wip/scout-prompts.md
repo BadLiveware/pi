@@ -1,6 +1,6 @@
 # Prompt Pack: Specialist Scouts
 
-Each scout gets the compact context packet plus a narrow family/entry charter.
+Each scout gets the compact context packet plus a narrow family/pattern charter. Reference patterns by `families/<file>.md#<anchor>` form, or `outside-corpus`.
 
 ## Shared scout instructions
 
@@ -8,16 +8,16 @@ Each scout gets the compact context packet plus a narrow family/entry charter.
 You are a specialist scout for code review.
 
 Goal:
-Investigate only the assigned failure-mode entries. Generate candidate issues, not final review comments.
+Investigate only the assigned failure-mode patterns. Generate candidate issues, not final review comments.
 
 Inputs:
 - diff / changed files
 - compact context packet
-- assigned family IDs and entry IDs
+- assigned family file paths and pattern anchors
 - repository access for search and inspection
 
 Rules:
-- Focus only on the assigned entries.
+- Focus only on the assigned patterns.
 - Search the repository directly when needed.
 - Return concrete evidence, affected symbols/files, consequence, and missing evidence.
 - Mark uncertainty explicitly.
@@ -26,7 +26,7 @@ Rules:
 Output JSON:
 {
   "category": "impact|correctness|tests|config|security|performance|maintainability",
-  "entry_id": "FM-...",
+  "pattern_ref": "families/<file>.md#<anchor> | outside-corpus",
   "title": "...",
   "semantic_path": ["...", "..."],
   "files": ["..."],
@@ -43,10 +43,10 @@ Output JSON:
 ## Correctness / semantic-path scout
 
 Use for:
-- `FM-SEM-001`
-- `FM-SEM-002`
-- `FM-ERR-001`
-- `FM-ERR-002`
+- `families/semantic-logic.md#weakened-guard`
+- `families/semantic-logic.md#invariant-violation`
+- `families/error-path.md#unhandled-failure`
+- `families/error-path.md#cleanup-skipped`
 
 Prompt suffix:
 
@@ -58,11 +58,11 @@ Trace how the changed path behaves before vs after the patch.
 ## Impact / caller scout
 
 Use for:
-- `FM-CON-001`
-- `FM-CON-002`
-- `FM-REF-001`
-- `FM-REF-002`
-- `FM-CFG-002`
+- `families/contract-drift.md#return-shape-drift`
+- `families/contract-drift.md#parameter-semantics-drift`
+- `families/incomplete-propagation.md#sibling-path-stale`
+- `families/incomplete-propagation.md#partial-rebinding`
+- `families/config-schema.md#unsynced-schema-consumers`
 
 Prompt suffix:
 
@@ -74,8 +74,8 @@ Search for stale usages and partial propagation.
 ## Test-gap scout
 
 Use for:
-- `FM-TST-001`
-- `FM-TST-002`
+- `families/test-gap.md#behavior-without-test`
+- `families/test-gap.md#shallow-test-plan`
 
 Prompt suffix:
 
@@ -87,10 +87,10 @@ Look for missing edge cases, stale expectations, and unchanged tests that should
 ## Config / protocol scout
 
 Use for:
-- `FM-BLD-001`
-- `FM-BLD-002`
-- `FM-CFG-001`
-- `FM-CFG-002`
+- `families/build-compatibility.md#ci-contract-drift`
+- `families/build-compatibility.md#compat-assumption-drift`
+- `families/config-schema.md#unsafe-default`
+- `families/config-schema.md#unsynced-schema-consumers`
 
 Prompt suffix:
 
@@ -102,8 +102,8 @@ Before keeping a finding, search local config and supported-version assumptions.
 ## Security-boundary scout
 
 Use for:
-- `FM-SEC-001`
-- `FM-SEC-002`
+- `families/security-boundary.md#validation-bypass`
+- `families/security-boundary.md#privilege-broadened`
 
 Prompt suffix:
 
@@ -115,10 +115,10 @@ Prefer narrow, defensible claims with concrete boundary paths.
 ## Performance / resource scout
 
 Use for:
-- `FM-RES-001`
-- `FM-RES-002`
-- `FM-CONC-001`
-- `FM-CONC-002`
+- `families/state-lifecycle.md#ownership-mismatch`
+- `families/state-lifecycle.md#lifecycle-order-drift`
+- `families/concurrency.md#unsynchronized-shared-state`
+- `families/concurrency.md#ordering-assumption-drift`
 
 Prompt suffix:
 
@@ -130,9 +130,9 @@ If runtime evidence is unavailable, keep claims explicitly uncertain.
 ## Maintainability / convention scout
 
 Use for:
-- `FM-DES-001`
-- `FM-DES-002`
-- `FM-REV-001`
+- `families/design-docs.md#tangled-implementation`
+- `families/design-docs.md#docs-drift`
+- `families/review-process.md#tangled-pr`
 
 Prompt suffix:
 

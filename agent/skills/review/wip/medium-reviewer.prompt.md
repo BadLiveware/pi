@@ -17,7 +17,7 @@ Inputs:
 - diff / changed files
 - any available tests, build output, or CI logs
 - `agent/skills/review/wip/family-routing-table.md`
-- seed corpus artifact: `outputs/failure-mode-corpus-build.md`
+- shortlisted family files at `agent/skills/review/wip/families/<family>.md` (load only after the unprimed pass and only those you shortlist)
 
 Process:
 1. Summarize change intent in 3-6 bullets.
@@ -26,9 +26,9 @@ Process:
    - list any important things you still feel uncertain about
 3. Decide whether a corpus challenge pass is needed.
    - Use it only if coverage feels weak, the change is high-risk, or there are obvious cross-file/runtime/config concerns.
-4. If a challenge pass is needed, use the routing table to select at most 2-5 likely families.
-5. For each selected family, name the most relevant entry IDs.
-6. For each selected entry, decide one of:
+4. If a challenge pass is needed, use the routing table to select at most 2-5 likely families; load only those family files.
+5. For each selected family, name the most relevant pattern anchors (`families/<file>.md#<anchor>`).
+6. For each selected pattern, decide one of:
    - `direct-question`: can be raised now from visible evidence
    - `needs-scout`: requires repository or runtime investigation
    - `drop`: not enough evidence or too speculative
@@ -59,19 +59,19 @@ Output format:
 - `yes|no`: why
 
 ## Selected failure-mode families
-- `F?` <family>: why it applies
-  - candidate entries: `FM-...`, `FM-...`
+- `<family>`: why it applies
+  - candidate patterns: `families/<file>.md#<anchor>`, ...
 
 ## Direct questions / concerns
 - **Origin:** `unprimed | corpus-suggested`
-  **Family / entry:** `F? / FM-...` or `outside-corpus`
+  **Pattern:** `families/<file>.md#<anchor>` or `outside-corpus`
   **Why it matters:** ...
   **Evidence:** ...
   **Next action:** `raise-now | scout`
 
 ## Scout requests
 - **Scout type:** correctness | impact | tests | config | security | performance | maintainability
-  **Target entries:** `FM-...` or `outside-corpus`
+  **Target patterns:** `families/<file>.md#<anchor>`, ... or `outside-corpus`
   **Question to resolve:** ...
 
 ## Outside-corpus concerns
@@ -79,7 +79,7 @@ Output format:
   why it does not fit current corpus: ...
 
 ## Dropped as too speculative
-- `FM-...` or `outside-corpus`: why dropped
+- `families/<file>.md#<anchor>` or `outside-corpus`: why dropped
 ```
 
 ## Notes

@@ -22,6 +22,24 @@ Use these stages proportionally; do not turn them into audit paperwork for small
 - `plausible-but-unverified`: semantic concern only; useful uncertainty may be reported separately, but not as a proven finding.
 - `rejected`: verifier could not support the anchor, causal path, consequence, or current-tree relevance.
 
+## Risk-specific Review Lenses
+Apply selectively when the diff matches the trigger; do not run all lenses on every change.
+
+### Performance cost shape
+For performance-sensitive changes, review the cost shape: scaling variables, nested loops, repeated scans/parses/shell-outs/queries, caps that only trim output, synchronous interactive work, cache growth, cancellation, and timeouts.
+
+### Lifecycle ownership
+When a diff adds goroutines, tickers, watchers, informers, reload loops, background workers, or process-global caches, review lifecycle ownership: what starts it, what stops it, which owner/context/Close path controls it, whether tests or recreated handlers can leak it, and whether request-driven or lazy work would be simpler.
+
+### Guards that collapse state
+For guards based on booleans, counts, nil checks, or cached summaries, ask whether they collapse distinct meaningful states. If skipped states can still affect behavior, prefer a named domain predicate over incidental checks like `Len()` and expect tests for the edge states.
+
+### Formal or executable models
+For complex state machines, concurrency, retries, queues, locks, lifecycle transitions, idempotency, or safety/liveness-sensitive algorithms, consider whether a small formal or executable model (TLA+, PlusCal, Alloy, or a property-test model) would expose missing invariants before signoff. Use selectively; do not make formal modeling a blanket requirement for ordinary code.
+
+### Correctness-critical paths
+For correctness-critical paths (state machines, financial/safety calculations, data integrity constraints, authz logic), escalate depth by one tier unless deterministic test coverage proves the relevant edge states and failure modes. Tests written by the same author as the code have a blind spot: they prove the code does what was thought about, not what was missed. When such paths can't be tested deterministically (timing-dependent, complex integration setup, probabilistic), escalate regardless of partial coverage — the review is the last line of defense.
+
 ## Light
 Use for small localized changes, docs/tests-only changes, mechanical refactors, quick self-review, or user requests that imply a quick check.
 
@@ -95,12 +113,13 @@ Read `tool-lanes.md` when selecting concrete tools. Core policy:
 Use `wip/family-routing-table.md` only after unprimed triage and only when coverage looks weak or risk is high.
 
 Rules:
-- shortlist 2-5 families
-- use entries as hypothesis generators, not verdicts
+- shortlist 2-5 families and load only the matching `wip/families/<family>.md` files
+- reference patterns as `families/<file>.md#<anchor>`
+- use patterns as hypothesis generators, not verdicts
 - keep `outside-corpus` for concerns that do not fit
-- treat `corpus-suggested` candidates more skeptically than unprompted candidates
+- treat `corpus-suggested` candidates more skeptically than unprompted candidates, and apply extra skepticism to families whose front matter is `evidence_strength: practical-heuristic`
 - reject forced fits
-- do not inject the full corpus unless doing audit or prompt-development work
+- do not load the full set of family files unless doing audit or prompt-development work
 
 ## Coverage-gap Pass
 Use after candidate verification, before final ranking, when standard/full review may have missed a high-risk area.

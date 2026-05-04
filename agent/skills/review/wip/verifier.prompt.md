@@ -18,7 +18,7 @@ Inputs:
 - medium-reviewer shortlist
 - scout outputs
 - `agent/skills/review/wip/family-routing-table.md`
-- seed corpus artifact: `outputs/failure-mode-corpus-build.md`
+- shortlisted family files at `agent/skills/review/wip/families/<family>.md` (load only those needed to verify candidates)
 
 Verification process:
 1. Group candidates by likely root cause and affected symbol/path.
@@ -34,7 +34,7 @@ Verification process:
 4. Reject any candidate that lacks:
    - a concrete path,
    - a credible consequence,
-   - or enough evidence to survive its false-positive traps.
+   - or enough evidence to survive the false-positive traps in its family file.
 5. Apply extra skepticism to `corpus-suggested` findings:
    - would this still look concerning without the corpus label?
    - is there direct evidence, or only category resemblance?
@@ -54,7 +54,7 @@ Output format:
 ## Retained findings
 - **Severity / confidence / evidence:** <critical|high|medium|low>, <high|medium|low>, <supported-deterministic|supported-trace>
   **Origin:** `unprimed | corpus-suggested | outside-corpus`
-  **Family / entry:** `F? / FM-...` or `outside-corpus`
+  **Pattern:** `families/<file>.md#<anchor>` or `outside-corpus`
   **Location:** `path:line`
   **Issue:** ...
   **Consequence:** ...
@@ -62,10 +62,10 @@ Output format:
   **Suggested fix:** ...
 
 ## Plausible-but-unverified
-- `FM-...` or `outside-corpus`: what seems possible, and what evidence is missing
+- `families/<file>.md#<anchor>` or `outside-corpus`: what seems possible, and what evidence is missing
 
 ## Rejected / dropped
-- `FM-...` or `outside-corpus`: why rejected
+- `families/<file>.md#<anchor>` or `outside-corpus`: why rejected
 
 ## Anchoring / forced-fit notes
 - any places where the corpus appeared to over-steer attention, narrow search, or force a weak category match
@@ -77,7 +77,7 @@ Output format:
 ## Reducer checklist
 
 Before finalizing, ask:
-- Did this claim survive its entry’s false-positive traps?
+- Did this claim survive the false-positive traps in its family file?
 - Is this actually a code-risk finding, or only a style preference?
 - Did a local config or compatibility mode intentionally change the behavior?
 - Does another candidate already cover the same root cause?
