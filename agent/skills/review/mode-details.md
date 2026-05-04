@@ -117,7 +117,7 @@ Rules:
 - reference patterns as `families/<file>.md#<anchor>`
 - use patterns as hypothesis generators, not verdicts
 - keep `outside-corpus` for concerns that do not fit
-- treat `corpus-suggested` candidates more skeptically than unprompted candidates, and apply extra skepticism to families whose front matter is `evidence_strength: practical-heuristic`
+- treat `corpus-suggested` candidates more skeptically than unprompted candidates, and apply extra skepticism to families marked `evidence_strength: practical-heuristic` in `wip/family-routing-table.md`
 - reject forced fits
 - do not load the full set of family files unless doing audit or prompt-development work
 

@@ -34,29 +34,29 @@ That means:
 ## Files
 
 - `README.md` — this overview, design principles, and how to extend
-- `family-routing-table.md` — index from change cues to family files and pattern anchors
-- `families/<family>.md` — one file per failure-mode family (12 total); each holds 1–3 named patterns
+- `family-routing-table.md` — **all routing inputs**: change cues, signals, scope, recommended stage, evidence strength per family/pattern. The parent reads only this file for the routing decision.
+- `families/<family>.md` — **operational charters** for the dispatched scout/verifier: pattern description, likely consequence, investigation questions, false-positive traps. No routing data.
 - `medium-reviewer.prompt.md` — front-door reviewer prompt with unprimed-first flow
 - `scout-prompts.md` — specialist scout prompt templates
 - `verifier.prompt.md` — reducer / verifier prompt with anti-anchoring checks
 - `sources.md` — citations behind the corpus
 
-## Family files
+## Routing vs operational split
 
-Each family file uses front-matter for routing metadata and a section per named pattern. Patterns are addressable as `families/<family>.md#<anchor>` (for example, `families/security-boundary.md#privilege-broadened`). Use this form in scout assignments, verifier output, and any cross-reference. Use `outside-corpus` when no family fits well.
+Routing and operational content live in separate files so the parent can decide *which* families to apply without loading the *how to investigate them* content. After the parent shortlists 2–5 families, it loads the corresponding `families/<family>.md` files (or hands the file paths to scouts/verifiers) for the operational charter.
 
-Per-pattern fields:
-- **Pattern** — short description of the failure mode
-- **Signals** — diff or review cues that make the pattern plausible
-- **Scope** — `local`, `cross-file`, `repo`, or `runtime`
-- **Likely consequence** — what failure this could produce
-- **Recommended stage** — `medium-reviewer`, `specialist-scout`, or `verifier`
-- **Investigation questions** — checks that raise or lower confidence
-- **False-positive traps** — common ways to overclaim the pattern
+Patterns are addressed as `families/<family>.md#<anchor>` (for example, `families/security-boundary.md#privilege-broadened`). Use this form in scout assignments, verifier output, and any cross-reference. Use `outside-corpus` when no family fits well.
 
-Per-family front matter also carries:
-- **evidence_strength** — `empirical`, `benchmark-supported`, or `practical-heuristic`
-- **default_stages** — typical routing for this family
+**Per-family routing data (in `family-routing-table.md`):**
+- evidence_strength — `empirical`, `benchmark-supported`, or `practical-heuristic`
+- change cues — diff signals that make the family plausible
+- per pattern: signals, scope, recommended stage
+
+**Per-pattern operational data (in `families/<family>.md`):**
+- Pattern description — what may have gone wrong
+- Likely consequence — what failure this could produce
+- Investigation questions — checks that raise or lower confidence
+- False-positive traps — common ways to overclaim the pattern
 
 ## Evidence strength legend
 
@@ -92,11 +92,11 @@ Add new patterns or families only when at least one of the following is true:
 When adding a pattern:
 - prefer a narrow pattern over a broad slogan,
 - include at least one false-positive trap,
-- mark evidence strength conservatively,
-- note whether the pattern is best checked locally, cross-file, or at runtime,
 - pick a semantic anchor (`#kebab-case`) that names the failure mode, not its index.
+- add the operational content (description, consequence, investigation questions, FP traps) to the family file under `families/`,
+- add the routing row (signals, scope, stage) to `family-routing-table.md` under that family's section.
 
-When adding a family, also add a row to `family-routing-table.md` and update the escalation defaults if relevant.
+When adding a family, also add a new family file under `families/`, a new section in `family-routing-table.md` (with `evidence_strength` and per-pattern routing rows), and update the escalation defaults if relevant.
 
 ## Known gaps
 
