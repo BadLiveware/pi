@@ -1,6 +1,8 @@
 # Review Tool Lanes
 
-This is a non-authoritative evidence menu for `standard`, `full`, and `audit` reviews. It is not exhaustive and does not override project guidance.
+Non-authoritative evidence menu for `standard`, `full`, and `audit` reviews. Not exhaustive; does not override project guidance.
+
+The two routing tables — **Trigger Matrix by Change Family** and **Question-to-Evidence Map** — come first. Pick lanes there, then drop into the operational sections (lane types, language menus, worktree/container policies) only when needed.
 
 ## Core Policy
 - Prefer repo-sanctioned commands from README, CI, package scripts, Makefile, justfile, taskfile, tox/nox, cargo aliases, or solution files.
@@ -10,15 +12,24 @@ This is a non-authoritative evidence menu for `standard`, `full`, and `audit` re
 - Scope commands to changed packages, impacted tests, or narrow queries when possible.
 - Record skipped lanes when they would matter but were unavailable, too slow, unsafe, missing credentials, or likely noisy.
 
-## Evidence Labels
-- `supported-deterministic`: compiler, analyzer, linter, test, build, or reproducible script evidence.
-- `supported-trace`: deterministic caller/callee/xref/config/schema trace without runtime failure.
-- `plausible-but-unverified`: LLM reasoning only.
-- `rejected`: verifier could not support the claim.
+---
 
-## Question-to-Evidence Map
+## Routing tables
 
-Use this to choose an evidence style, not to create a checklist. Prefer project-native or already-available tools first; escalate only when the question is important enough.
+### Trigger Matrix by Change Family
+
+| Change family | Default lanes | Notes |
+| --- | --- | --- |
+| API / contract | A, C, D | Inspect callers/implementers and impacted tests. |
+| Auth / security boundary | A, B/E, D | Use configured security checks or narrow trust-boundary queries. |
+| Config / protocol / env | A, B, C, D | Search compatibility flags, defaults, schemas, and consumers. |
+| Persistence / schema / query | A, B, C, D | Inspect migrations, models, serializers, queries, fixtures. |
+| Concurrency / lifecycle / perf-sensitive | A, B, D | Escalate to race/stress/property/formal-model checks only when justified. |
+| UI-only / docs-only / test-only | Maybe A | Skip heavier lanes unless shared contracts/config changed. |
+
+### Question-to-Evidence Map
+
+Use to choose an evidence style, not to create a checklist. Prefer project-native or already-available tools first; escalate only when the question is important enough.
 
 | Review question | Evidence style |
 | --- | --- |
@@ -31,6 +42,14 @@ Use this to choose an evidence style, not to create a checklist. Prefer project-
 | Is this security rule bypassable? | Threat model, authz/authn matrix tests, narrow SAST/policy queries |
 | Is this path too slow or unbounded? | Benchmarks, profilers, flamegraphs, allocation/resource tracing, stress tests |
 | Can schema/config/migration drift break users? | Migration tests, schema validation, config/default compatibility search |
+
+---
+
+## Evidence Labels
+- `supported-deterministic`: compiler, analyzer, linter, test, build, or reproducible script evidence.
+- `supported-trace`: deterministic caller/callee/xref/config/schema trace without runtime failure.
+- `plausible-but-unverified`: LLM reasoning only.
+- `rejected`: verifier could not support the claim.
 
 ## Lane Types
 
@@ -64,7 +83,41 @@ Slow, expensive, or mutating verification.
 
 Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, temporary instrumentation, negative-control edits, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
 
-#### Mutating Verification Worktrees
+## Language Menus
+
+Examples, not required commands. Drop into the menu for the language(s) actually changed.
+
+### TypeScript
+- Lane A: `tsc --noEmit`, project `typecheck`, `eslint`, `typescript-eslint`.
+- Lane B: existing `ast-grep` or `semgrep` rules; narrow async/error/config queries.
+- Lane C: importers/callers of changed exports, route/controller wrappers, config/env consumers.
+- Lane D: nearest or impacted test command, package-level build/test.
+
+### Python
+- Lane A: `ruff`, `mypy`, `pyright`, project `pytest`/tox/nox checks.
+- Lane B: existing `ast-grep` or `semgrep` rules; narrow exception/config/query checks.
+- Lane C: callers of changed public functions/classes, route/view handlers, ORM models, settings consumers.
+- Lane D: targeted `pytest` selection where practical.
+
+### Go
+- Lane A: `go vet`, configured `golangci-lint`, package build/test.
+- Lane B: existing structural/security checks.
+- Lane C: `gopls` references, callers/implementers of exported functions/interfaces, config/protocol consumers.
+- Lane D: targeted `go test`; use `-race` only for justified concurrency risk.
+
+### Rust
+- Lane A: `cargo check`, `cargo clippy`, targeted `cargo test`.
+- Lane B: existing structural/security checks, especially around `unsafe`, locks, parser/serde/config code.
+- Lane C: callers/implementers of public fns/traits/types.
+- Lane D/F: targeted tests; fuzz/property tests only if present and justified.
+
+### C#
+- Lane A: `dotnet build`, configured Roslyn/.NET analyzers, targeted `dotnet test`.
+- Lane B/E: existing analyzers or narrow ASP.NET/auth/config/serialization checks.
+- Lane C: interface/service implementations, DI consumers, controller/action/middleware routes, options binding consumers.
+- Lane D: targeted project/solution tests.
+
+## Mutating Verification Worktrees
 
 When a `full` or `audit` review needs to modify code to verify a concrete hypothesis, prefer an isolated temporary `git worktree` over mutating the main workspace.
 
@@ -118,48 +171,3 @@ Safety rules:
 - Do not use broad/unpinned images for consequential findings without noting the reproducibility gap.
 - Ask before long builds, large downloads, network-heavy scans, or writable repo mounts.
 - Clean up temporary directories and obvious temporary images/containers when practical.
-
-## Trigger Matrix by Change Family
-
-| Change family | Default lanes | Notes |
-| --- | --- | --- |
-| API / contract | A, C, D | Inspect callers/implementers and impacted tests. |
-| Auth / security boundary | A, B/E, D | Use configured security checks or narrow trust-boundary queries. |
-| Config / protocol / env | A, B, C, D | Search compatibility flags, defaults, schemas, and consumers. |
-| Persistence / schema / query | A, B, C, D | Inspect migrations, models, serializers, queries, fixtures. |
-| Concurrency / lifecycle / perf-sensitive | A, B, D | Escalate to race/stress/property/formal-model checks only when justified. |
-| UI-only / docs-only / test-only | Maybe A | Skip heavier lanes unless shared contracts/config changed. |
-
-## Language Menus
-
-These are examples, not required commands.
-
-### TypeScript
-- Lane A: `tsc --noEmit`, project `typecheck`, `eslint`, `typescript-eslint`.
-- Lane B: existing `ast-grep` or `semgrep` rules; narrow async/error/config queries.
-- Lane C: importers/callers of changed exports, route/controller wrappers, config/env consumers.
-- Lane D: nearest or impacted test command, package-level build/test.
-
-### Python
-- Lane A: `ruff`, `mypy`, `pyright`, project `pytest`/tox/nox checks.
-- Lane B: existing `ast-grep` or `semgrep` rules; narrow exception/config/query checks.
-- Lane C: callers of changed public functions/classes, route/view handlers, ORM models, settings consumers.
-- Lane D: targeted `pytest` selection where practical.
-
-### Go
-- Lane A: `go vet`, configured `golangci-lint`, package build/test.
-- Lane B: existing structural/security checks.
-- Lane C: `gopls` references, callers/implementers of exported functions/interfaces, config/protocol consumers.
-- Lane D: targeted `go test`; use `-race` only for justified concurrency risk.
-
-### Rust
-- Lane A: `cargo check`, `cargo clippy`, targeted `cargo test`.
-- Lane B: existing structural/security checks, especially around `unsafe`, locks, parser/serde/config code.
-- Lane C: callers/implementers of public fns/traits/types.
-- Lane D/F: targeted tests; fuzz/property tests only if present and justified.
-
-### C#
-- Lane A: `dotnet build`, configured Roslyn/.NET analyzers, targeted `dotnet test`.
-- Lane B/E: existing analyzers or narrow ASP.NET/auth/config/serialization checks.
-- Lane C: interface/service implementations, DI consumers, controller/action/middleware routes, options binding consumers.
-- Lane D: targeted project/solution tests.
