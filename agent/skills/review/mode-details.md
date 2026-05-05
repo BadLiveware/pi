@@ -26,7 +26,7 @@ Use these stages proportionally; do not turn them into audit paperwork for small
 Apply selectively when the diff matches the trigger; do not run all lenses on every change.
 
 ### Performance cost shape
-For performance-sensitive changes, review the cost shape: scaling variables, nested loops, repeated scans/parses/shell-outs/queries, caps that only trim output, synchronous interactive work, cache growth, cancellation, and timeouts.
+For performance-sensitive changes, review the cost shape: scaling variables, nested loops, repeated scans/parses/shell-outs/queries, caps that only trim output, synchronous interactive work, cache growth, cancellation, and timeouts. When logs/tests do not expose the boundary and the risk justifies privileged tracing, a scoped `bpftrace` probe can provide runtime evidence for syscalls, files, sockets, subprocesses, or resource growth.
 
 ### Lifecycle ownership
 When a diff adds goroutines, tickers, watchers, informers, reload loops, background workers, or process-global caches, review lifecycle ownership: what starts it, what stops it, which owner/context/Close path controls it, whether tests or recreated handlers can leak it, and whether request-driven or lazy work would be simpler.

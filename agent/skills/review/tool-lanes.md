@@ -81,7 +81,9 @@ Examples: configured SAST/security checks, config compatibility search, auth wra
 ### Lane F — Escalation
 Slow, expensive, or mutating verification.
 
-Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, temporary instrumentation, negative-control edits, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
+Examples: mutation testing, fuzzing/property tests, generated verification scripts, race/stress tests, broader integration sweeps, scoped runtime tracing such as `bpftrace` for syscalls/files/sockets/subprocesses/resource growth, temporary instrumentation, negative-control edits, or a small formal/executable model such as TLA+/PlusCal for critical state-machine or concurrency invariants. Use only when high risk, cheap enough for the context, or explicitly requested.
+
+For `bpftrace`, prefer read-only, time-bounded probes scoped to the reviewed process or child tree. Use the trace to support or reject a concrete review candidate; do not add privileged tracing as a default checklist item or treat one observed run as exhaustive proof.
 
 ## Language Menus
 

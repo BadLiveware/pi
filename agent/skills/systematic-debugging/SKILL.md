@@ -28,6 +28,10 @@ Use when tests/builds fail, behavior differs from expectations, the cause is not
 9. Add or update focused validation for the original symptom and any invariant the fix relies on.
 10. If the fix fails, reassess with new evidence instead of piling on changes.
 
+## Runtime Tracing Escalation
+
+Use `bpftrace` or similar runtime tracing only when the failure is reproducible but normal logs/tests do not reveal the system boundary involved: syscalls, files, sockets, subprocesses, scheduler behavior, or resource growth. Keep probes scoped to the suspected process or child tree, read-only, and time-bounded; record the script plus observed evidence. Do not require bpftrace for ordinary debugging, and do not treat one traced run as exhaustive correctness proof.
+
 ## Stop Conditions
 - If you cannot reproduce or observe the failure, gather more evidence before changing production code.
 - Do not hide symptoms by deleting/skipping tests, loosening assertions, suppressing errors, broadening catches, filtering logs, or increasing timeouts before proving expected behavior changed.
