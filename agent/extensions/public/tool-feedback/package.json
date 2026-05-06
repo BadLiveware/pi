@@ -1,6 +1,6 @@
 {
   "name": "@badliveware/pi-tool-feedback",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Generic watched-tool feedback prompts and passive summaries for Pi.",
   "type": "module",
   "keywords": [

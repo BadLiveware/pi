@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Fixed custom footer rendering so layouts with all visible items on line 1 render as a single footer line instead of reserving an empty second line.
+
 ## 0.2.1
 
 - Fixed footer rendering with cell-buffer composition so ANSI styling, OSC8 hyperlinks, grapheme clusters, wide characters, and overlays preserve terminal cell alignment.

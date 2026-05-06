@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Clarified dogfood feedback prompts so agents call `tool_feedback` silently and avoid acknowledging the feedback request to the user.
+
 ## 0.1.0
 
 - Initial public package release for watched-tool feedback prompts and passive turn summaries.

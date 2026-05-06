@@ -5,6 +5,7 @@
 - Added opt-in passive tracking for watchdog detection, nudge, skip, and `watchdog_answer` events.
 - Added the `compaction_continue_state` tool plus config/log-path reporting for inspection and debugging.
 - Added user/project config loading for passive tracking, with tracking disabled by default unless enabled by config.
+- Scoped watchdog completion-marker guidance to active loops so non-loop nudges do not ask agents to emit `<promise>COMPLETE</promise>`.
 
 ## 0.1.4
 

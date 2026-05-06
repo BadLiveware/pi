@@ -90,14 +90,15 @@ describe("Ralph idle watch detection", () => {
 	});
 
 	it("does not flag an aborted assistant turn as a stall", () => {
-		assert.equal(
-			shouldRecoverStalledAssistantTurn({ role: "assistant", stopReason: "aborted", errorMessage: "Operation aborted", content: [] }),
-			false,
-		);
+		const abortedAssistant = { role: "assistant", stopReason: "aborted", errorMessage: "Operation aborted", content: [] } as Parameters<
+			typeof shouldRecoverStalledAssistantTurn
+		>[0];
+
+		assert.equal(shouldRecoverStalledAssistantTurn(abortedAssistant), false);
 		assert.equal(
 			analyzeLatestAssistantStall([
 				messageEntry("user-normal", "user", [{ type: "text", text: "summarize the branch" }]),
-				{ type: "message", id: "aborted-msg", timestamp: "2026-01-01T00:00:00.000Z", message: { role: "assistant", stopReason: "aborted", errorMessage: "Operation aborted", content: [] } },
+				messageEntry("aborted-msg", "assistant", [], { stopReason: "aborted", errorMessage: "Operation aborted" }),
 			]).shouldRecover,
 			false,
 		);
