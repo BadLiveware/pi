@@ -1,0 +1,38 @@
+{
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.4",
+  "defaultThinkingLevel": "medium",
+  "packages": [
+    "npm:pi-smart-fetch",
+    "npm:pi-mcp-adapter",
+    "npm:@apmantza/greedysearch-pi",
+    "npm:pi-subagents",
+    "npm:pi-intercom",
+    "npm:@mjakl/pi-kagi-search",
+    "npm:@companion-ai/alpha-hub",
+    "npm:pi-web-access",
+    "npm:pi-docparser",
+    "npm:@samfp/pi-memory",
+    "npm:pi-schedule-prompt",
+    "npm:@kaiserlich-dev/pi-session-search",
+    "../../code/personal/pi-processes",
+    "../../code/personal/pi-tasks",
+    "../../code/personal/pi-markdown-preview",
+    "../../code/personal/pi-vcc"
+  ],
+  "skills": [
+    "~/.local/share/omarchy/default/"
+  ],
+  "steeringMode": "all",
+  "enableInstallTelemetry": false,
+  "theme": "dark",
+  "transport": "sse",
+  "hideThinkingBlock": false,
+  "enabledModels": [
+    "openai-codex/gpt-5.5",
+    "openai-codex/gpt-5.4",
+    "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.3-codex-spark",
+    "openai-codex/gpt-5.4-mini"
+  ]
+}
