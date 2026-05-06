@@ -24,9 +24,25 @@ export const MAX_ASSISTANT_IDLE_RECOVERIES_PER_STREAK = 3;
 export const MESSAGE_TYPE_WATCHDOG_NUDGE = "compaction-continue:watchdog-nudge";
 export const WATCHDOG_ANSWER_TOOL = "watchdog_answer";
 
-export const WATCHDOG_NUDGE_PROMPT = [
-	"Automated watchdog nudge: Pi became idle after compaction or after a stalled turn.",
-	"This is not a new user request and does not mean more work is required.",
-	`Do not acknowledge this nudge in prose. First call \`${WATCHDOG_ANSWER_TOOL}\` once with \`done: true\` if the previous task is already complete, or \`done: false\` if unfinished in-scope work remains.`,
-	"If you answered `done: true`, stop after the tool call or emit the loop completion marker (`<promise>COMPLETE</promise>`) when the loop is fully complete. If you answered `done: false`, continue from the next concrete step instead of replying about the nudge.",
-].join("\n\n");
+export function buildWatchdogNudgePrompt(hasActiveLoop: boolean): string {
+	const body = [
+		"Automated watchdog nudge: Pi became idle after compaction or after a stalled turn.",
+		"This is not a new user request and does not mean more work is required.",
+		`Do not acknowledge this nudge in prose and do not reason about the user's original prompt. Answer \`${WATCHDOG_ANSWER_TOOL}(done: true)\` unless the user's last explicit request is visibly incomplete (test failures, uncommitted implementation that was asked for, a pending direct question). Background context, verification ideas, or follow-up curiosities are not unfinished work.`,
+	];
+
+	if (hasActiveLoop) {
+		body.push(
+			"If you answered `done: true`, stop after the tool call and emit the loop completion marker (`<promise>COMPLETE</promise>`) to signal the loop is fully complete. If you answered `done: false`, continue from the next concrete step instead of replying about the nudge.",
+		);
+	} else {
+		body.push(
+			"If you answered `done: true`, stop after the tool call — do not emit `<promise>COMPLETE</promise>`, as there is no active loop. If you answered `done: false`, continue from the next concrete step instead of replying about the nudge.",
+		);
+	}
+
+	return body.join("\n\n");
+}
+
+/** @deprecated Use buildWatchdogNudgePrompt(hasActiveLoop) instead. */
+export const WATCHDOG_NUDGE_PROMPT = buildWatchdogNudgePrompt(true);

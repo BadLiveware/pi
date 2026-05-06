@@ -11,11 +11,11 @@ import type { CompactionRecoveryAnalysis } from "./analysis.ts";
 import { branchBeforeCompaction, findMostRecentActiveLoop, isOverflowCompaction, latestLeafCompactionId, messageRole } from "./loop-state.ts";
 import {
 	ASSISTANT_IDLE_DELAY_MS,
+	buildWatchdogNudgePrompt,
 	MAX_ASSISTANT_IDLE_RECOVERIES_PER_STREAK,
 	MESSAGE_TYPE_WATCHDOG_NUDGE,
 	RECOVERY_DELAY_MS,
 	WATCHDOG_ANSWER_TOOL,
-	WATCHDOG_NUDGE_PROMPT,
 } from "./model.ts";
 import type { WatchdogNudgeDetails, WatchdogNudgeRequest } from "./model.ts";
 import { appendTrackingLog, loadTrackingConfig, makeTrackingEvent, trackingLogPath, type TrackingEvent, type TrackingSource } from "./tracking.ts";
@@ -238,7 +238,7 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			lastRecoveredCompactionId = compactionId;
 			const title = recoveryKind === "ralph" ? "Unresolved Ralph loop after compaction" : "Context overflow compaction finished";
 			sendNudge(ctx, {
-				content: WATCHDOG_NUDGE_PROMPT,
+				content: buildWatchdogNudgePrompt(Boolean(loop)),
 				details: {
 					kind: "watchdog_nudge",
 					recoveryKind,
@@ -286,7 +286,7 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			}
 
 			sendNudge(ctx, {
-				content: WATCHDOG_NUDGE_PROMPT,
+				content: buildWatchdogNudgePrompt(Boolean(loop)),
 				details: {
 					kind: "watchdog_nudge",
 					recoveryKind: "assistant-stall",

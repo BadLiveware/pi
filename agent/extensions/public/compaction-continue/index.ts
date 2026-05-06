@@ -12,7 +12,7 @@ import {
 	shouldRecoverStalledAssistantTurn,
 	userRequestsSimpleContinuation,
 } from "./src/analysis.ts";
-import { WATCHDOG_ANSWER_TOOL, WATCHDOG_NUDGE_PROMPT } from "./src/model.ts";
+import { buildWatchdogNudgePrompt, WATCHDOG_ANSWER_TOOL, WATCHDOG_NUDGE_PROMPT } from "./src/model.ts";
 import { registerCompactionContinue } from "./src/runtime.ts";
 
 export {
@@ -22,6 +22,7 @@ export {
 	assistantRequestsContinuation,
 	assistantRequestsRalphContinuation,
 	assistantStoppedForContextLimit,
+	buildWatchdogNudgePrompt,
 	isRalphLoopPromptText,
 	isStardockLoopPromptText,
 	messageText,
