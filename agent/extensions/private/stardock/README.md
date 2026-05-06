@@ -1,6 +1,8 @@
 # Stardock
 
-Private Pi implementation framework for governed agentic work. Stardock currently provides long-running checklist and recursive loops, and is the local home for the broader framework work: criteria, compact context packets, evidence, governor/auditor checkpoints, and bounded workers.
+Stardock is a private Pi workflow extension for agentic work that is too large, iterative, or risk-prone for a single chat turn. It targets recurring failure modes: agents losing scope across turns, treating checklist progress as completion evidence, piling on attempts without a measured decision, and handling review/governor/context handoffs ad hoc.
+
+It solves those problems by turning work into governed loops with compact state. Checklist mode scopes finite work through bounded iteration briefs, criteria, and evidence. Recursive mode runs one evaluated hypothesis per iteration. Stardock also extends the useful lifetime of outside-agent context: implementation delegation, worker reports, handoff records, and compact evidence packets preserve the minimum information another worker, auditor, governor, or future resumed agent needs to understand the work without inheriting the whole chat. Ledgers, attempt reports, final reports, auditor/breakout records, outside requests, and policy checks keep validation, decisions, and oversight inspectable without making raw chat history or `.stardock` files the only durable project knowledge.
 
 This extension is private to this repository. It is not packaged for public install.
 
