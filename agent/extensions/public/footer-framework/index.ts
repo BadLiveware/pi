@@ -2171,7 +2171,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 					const diagnostics: FooterTemplateDiagnostic[] = [];
 					const items = collectItems(theme, footerData, stats, diagnostics);
 					lastTemplateDiagnostics = diagnostics;
-					const maxLine = Math.max(2, ...items.map((item) => item.placement.line));
+					const maxLine = Math.max(1, ...items.map((item) => item.placement.line));
 					const lineResults = Array.from({ length: maxLine }, (_, index) => {
 						const line = index + 1;
 						const result = renderFooterLine(theme, width, items, line, getLineAnchor(settings, line));
