@@ -1,6 +1,7 @@
 ---
 name: impact-reviewer
 description: Review code changes using parent-provided or self-generated candidate impact maps before source inspection.
+model: openai-codex/gpt-5.4
 tools: read, grep, find, ls, bash, code_intel_state, code_intel_impact_map, code_intel_local_map, code_intel_syntax_search
 inheritProjectContext: true
 thinking: high

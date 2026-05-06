@@ -30,6 +30,8 @@ Use this skill to decide whether to delegate, what to delegate, and which suppor
    - broad risky work -> parent strengthens requirements/validation; subagents may scout or review only
 
 ## Model Selection
+Agent files may define default models. Use the agent default when it fits the task; choose an explicit override only when capability, cost/quota/scarcity, latency, or context-window needs materially favor a different enabled model.
+
 Before passing a model override, downshifting, or upshifting, call `list_pi_models` unless the current session already inspected it recently.
 
 Selection rules:
@@ -38,7 +40,9 @@ Selection rules:
 - models excluded or marked `support: no` are unavailable; use `unsupported: "include"` or `unsupported: "only"` only for diagnostics
 - `spark` means premium very-low-latency, not cheap; use Spark only when speed is worth the cost
 - if `list_pi_models` is unavailable, inspect current config such as `~/.pi/agent/settings.json`; if still uncertain, omit the override and state why the default is acceptable
-- do not hard-code model ladders; provider support, cost, quota, speed, and quality change
+- do not hard-code model ladders in prompts; provider support, cost, quota, speed, and quality change
+- avoid scarce or credit-limited providers when an enabled Codex/default model is suitable; use provider-specific models only when their capability is worth the cost or the user asks for them
+- when choosing among Codex models, prefer `openai-codex/gpt-5.4` as the normal default, `openai-codex/gpt-5.4-mini` for simple/cheap tasks, and reserve `openai-codex/gpt-5.5` for very important or high-stakes work
 
 Choose by capability, cost/quota/scarcity, latency, context window, tool needs, and whether independence rather than model difference is the value.
 
