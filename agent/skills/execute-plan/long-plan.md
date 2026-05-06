@@ -7,17 +7,19 @@ Long/split plans are still bounded. Execute the current referenced document and 
 
 ## Setup
 1. Read the master overview for purpose, constraints, order, dependency graph, and final acceptance criteria.
-2. Read only the active numbered file plus immediate prerequisite/handoff context needed for safe execution.
-3. Create a durable progress note if useful, but do not duplicate large plan content.
-4. Create/reconcile a rolling task window of roughly 5-8 active leaf tasks.
-5. Mark the first executable task `in_progress` and begin implementation in the same run.
+2. Identify the ordered execution spine (`prs/`, `slices/`, or numbered files) and the current active execution file.
+3. Read only the active execution file plus the reference docs/design notes it explicitly requires for safe execution.
+4. If a `stardock-checklist.md` exists, treat it as a thin runtime wrapper; do not let it override or duplicate the active execution file's detailed scope.
+5. Create a durable progress note if useful, but do not duplicate large plan content.
+6. Create/reconcile a rolling task window of roughly 5-8 active leaf tasks, or one active Stardock brief for the current execution-spine item.
+7. Mark the first executable task `in_progress` or activate the current Stardock brief, then begin implementation in the same run.
 
 ## Execution
-1. Stay on the active numbered file until its mandatory tasks and exit criteria are complete.
-2. Work the next unblocked checklist item in order unless a safer dependency order is required.
-3. After each meaningful increment: update tasks/progress notes, record validation evidence/gaps, and commit if permission is active and the work is a validated semantic checkpoint.
-4. When a numbered file completes, record validation and handoff notes, then continue to the next file without a standalone status report unless a stop condition applies.
-5. If checklist is exhausted but original scope is not complete, add missing concrete items and continue.
+1. Stay on the active execution file until its mandatory tasks and exit criteria are complete.
+2. Work the next unblocked item in execution-spine order unless a safer dependency order is required.
+3. After each meaningful increment: update tasks/Stardock records/progress notes, record validation evidence/gaps, and commit if permission is active and the work is a validated semantic checkpoint.
+4. When an execution file completes, record validation and handoff notes, then continue to the next file without a standalone status report unless a stop condition applies.
+5. If the active file's checklist is exhausted but original scope is not complete, add missing concrete items and continue.
 6. Record out-of-scope discoveries under notes/deferred work without silently expanding scope.
 
 ## Stop Policy
@@ -35,4 +37,4 @@ Before summarizing, ask: "Is there any unblocked in-scope work left?" If yes, ke
 ## Artifact Hygiene
 Plans are internal scaffolding. Produced code, docs, generated files, comments, migrations, config, examples, and user-facing text must be domain-facing, not plan-facing.
 
-Do not mention source plan, plan path, numbered file, stage, phase, checklist item, Ralph loop, or task bookkeeping unless the artifact is internal progress material.
+Do not mention source plan, plan path, numbered file, stage, phase, checklist item, Stardock loop, or task bookkeeping unless the artifact is internal progress material.

@@ -19,6 +19,8 @@ Review categories:
 - Validation: commands or inspection checks are exact where knowable, with expected signals and explicit gaps.
 - Placeholders: no TODO/TBD/fill-in-later/vague "handle edge cases" work.
 - File specificity: paths or affected areas are exact enough for execution.
+- Plan topology: broad plans have an ordered execution spine separated from reusable docs/runbooks and deferred design notes; mandatory implementation work is not hidden in reference files.
+- Stardock readiness: when Stardock is expected, the plan can map the current execution item into a scoped brief/criteria/evidence flow without duplicating the full plan in `stardock-checklist.md`.
 - Artifact hygiene: produced code/docs/generated outputs must not mention plan/stage/checklist metadata unless the product domain requires it.
 - Safety: destructive, irreversible, credentialed, or externally visible actions are called out for approval.
 

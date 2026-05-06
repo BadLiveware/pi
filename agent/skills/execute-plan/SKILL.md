@@ -23,7 +23,7 @@ If a prompt mixes continuous/open-ended intent with "quick" or "finite for now" 
 - first unblocked leaf task/attempt marked `in_progress`, followed by immediate execution
 - bounded execution continues through all unblocked in-scope tasks until blocked or complete
 - unbounded execution continues through evaluated attempts until user stop, blocker, or agreed stop criteria
-- progress recorded in tasks, notes, plan files, or loop files instead of standalone status chat
+- progress recorded in tasks, notes, plan files, loop files, or Stardock evidence records instead of standalone status chat
 - semantic checkpoint commits when commit permission is active
 
 ## Stop Policy
@@ -50,8 +50,20 @@ Before converting a non-trivial plan or loop charter into tasks/attempts, scan f
 - placeholders like `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
 - missing acceptance criteria, affected files, validation commands, or expected signals
 - artifact hygiene risks
+- for split plans, an ordered execution spine separated from reference docs/design notes
+- for Stardock-backed plans, a thin runtime checklist or active brief shape rather than duplicated execution detail
 
 For high-risk plans, use `../planning/plan-quality-review.md` before executing. Resolve blockers unless the user explicitly accepts gaps.
+
+## Stardock-Backed Execution
+
+When a plan is intended for Stardock or an active Stardock loop exists, use Stardock records as the execution/evidence layer instead of only a chat task list.
+
+- For bounded checklist execution, use one active `stardock_brief` for the current execution-spine item. Include the slice objective, bounded task text, relevant acceptance criteria, required context, constraints, source refs, and validation requirements.
+- Use `stardock_ledger` for explicit criteria and compact verification artifact refs. Promote only the active slice's relevant checks; do not blindly distill a whole split plan or long nested checklist into one ledger.
+- When a brief is complete, update criteria/evidence, complete the brief, then create the next brief or use the completion marker only when all scoped work is done.
+- For unbounded recursive execution, each iteration is one evaluated attempt. Record hypothesis, action summary, validation, result, keep/reset decision, and evidence with `stardock_attempt_report` before `stardock_done` when available.
+- Near substantial completion, use `stardock_policy({ action: "completion" })` when criteria/artifacts/final reports exist or risk is high; record `stardock_final_report`, `stardock_auditor`, or `stardock_breakout` when the policy or evidence warrants it.
 
 ## Task Creation Rules
 - Create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks; keep future backlog in the plan.
@@ -69,14 +81,16 @@ Commit permission is active only when the user asked for commits or another acti
 1. Treat the plan or loop charter as execution source; do not re-plan unless evidence forces it.
 2. Verify the source still matches user request, current scope, and local constraints.
 3. Classify bounded vs unbounded and simple vs split/long. For unbounded work, read `unbounded-work.md` before creating attempts, starting background work, or editing code; do not substitute a one-off task list for the loop runner.
-4. Preserve recommended order unless a safer dependency order is required.
-5. Run readiness review and resolve blockers or accepted gaps.
-6. Create/reconcile the next concrete task/attempt window and mark the first executable leaf `in_progress`.
-7. Execute the task/attempt in the same run.
-8. After each leaf task/attempt: update task state, validate/evaluate, commit if permission is active and the work is a semantic checkpoint, call `TaskList`, and continue with the next unblocked in-scope item.
-9. When the visible window runs low, add the next few concrete tasks from the plan or next 1-3 hypotheses from the loop charter.
-10. If tasks are exhausted but bounded plan scope is not complete, add missing concrete tasks and continue; if an unbounded loop queue is empty, replenish from evidence instead of stopping.
-11. If progress needs recording mid-plan, update tasks, plan checklist, notes, loop file, or local evidence log; do not emit standalone progress chat.
+4. For split plans, identify the current execution-spine file and read only the reference docs/design notes it names as required for the next slice.
+5. Preserve recommended order unless a safer dependency order is required.
+6. Run readiness review and resolve blockers or accepted gaps.
+7. For Stardock-backed bounded plans, create or activate the current slice's `stardock_brief` before coding.
+8. Create/reconcile the next concrete task/attempt window and mark the first executable leaf `in_progress`.
+9. Execute the task/attempt in the same run.
+10. After each leaf task/attempt: update task/Stardock state, validate/evaluate, commit if permission is active and the work is a semantic checkpoint, call `TaskList` when task tools are in use, and continue with the next unblocked in-scope item.
+11. When the visible window runs low, add the next few concrete tasks from the plan or next 1-3 hypotheses from the loop charter.
+12. If tasks are exhausted but bounded plan scope is not complete, add missing concrete tasks and continue; if an unbounded loop queue is empty, replenish from evidence instead of stopping.
+13. If progress needs recording mid-plan, update tasks, Stardock records, plan checklist, notes, loop file, or local evidence log; do not emit standalone progress chat.
 
 ## Scope Control
 - Treat the plan/loop charter and user request together as the source of in-scope work.
