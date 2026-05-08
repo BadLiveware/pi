@@ -1,0 +1,15 @@
+{
+  "name": "pi-multi-harness-compat",
+  "version": "0.1.0",
+  "description": "Profile-aware multi-harness compatibility resources for Pi.",
+  "type": "module",
+  "keywords": ["pi-package", "pi-extension", "claude", "cursor", "multi-harness"],
+  "pi": {
+    "extensions": ["./index.ts"],
+    "skills": ["./skills"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*"
+  }
+}

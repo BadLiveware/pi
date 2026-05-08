@@ -25,3 +25,4 @@ Public extensions should:
 | `@badliveware/pi-model-catalog` | [`model-catalog`](./model-catalog) |
 | `@badliveware/pi-tool-feedback` | [`tool-feedback`](./tool-feedback) |
 | `@badliveware/pi-rich-output` | [`rich-output`](./rich-output) |
+| `pi-multi-harness-compat` | [`multi-harness-compatibility`](./multi-harness-compatibility) |
