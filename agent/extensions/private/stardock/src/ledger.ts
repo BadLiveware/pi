@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import * as path from "node:path";
 import { runLedgerArtifactRecord, runLedgerCriteriaUpsert, runLedgerTaskDistillation } from "./app/ledger-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
-import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact } from "./state/core.ts";
+import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact, type VerificationArtifactKind } from "./state/core.ts";
 import { isArtifactKind, isCriterionStatus, normalizeId, normalizeIds, rebuildRequirementTrace } from "./state/migration.ts";
 import { taskPath, tryRead } from "./state/paths.ts";
 import { loadState, saveState } from "./state/store.ts";
@@ -27,6 +27,15 @@ export function criterionCounts(ledger: CriterionLedger): Record<CriterionStatus
 export function formatCriterionCounts(ledger: CriterionLedger): string {
 	const counts = criterionCounts(ledger);
 	return `Criteria: ${counts.total} total, ${counts.passed} passed, ${counts.failed} failed, ${counts.blocked} blocked, ${counts.skipped} skipped, ${counts.pending} pending`;
+}
+
+function normalizeArtifactKindInput(value: unknown, fallback: VerificationArtifactKind): { ok: true; kind: VerificationArtifactKind } | { ok: false; error: string } {
+	if (value === undefined) return { ok: true, kind: fallback };
+	const raw = typeof value === "string" ? value.trim() : String(value ?? "");
+	if (raw === "doc") return { ok: true, kind: "document" };
+	if (raw === "manual") return { ok: true, kind: "other" };
+	if (isArtifactKind(raw)) return { ok: true, kind: raw };
+	return { ok: false, error: `Unsupported verification artifact kind "${raw}". Supported kinds: test, smoke, curl, browser, screenshot, walkthrough, benchmark, log, url, pr, diff, command, document, other; aliases: doc -> document, manual -> other.` };
 }
 
 export function formatLedgerOverview(state: LoopState): string {
@@ -109,9 +118,11 @@ export function recordVerificationArtifact(
 	const summary = typeof input.summary === "string" && input.summary.trim() ? compactText(input.summary, 500) : existing?.summary;
 	if (!summary) return { ok: false, error: "Verification artifact requires summary." };
 
+	const normalizedKind = normalizeArtifactKindInput(input.kind, existing?.kind ?? "other");
+	if (!normalizedKind.ok) return normalizedKind;
 	const artifact: VerificationArtifact = {
 		id,
-		kind: isArtifactKind(input.kind) ? input.kind : existing?.kind ?? "other",
+		kind: normalizedKind.kind,
 		command: typeof input.command === "string" && input.command.trim() ? input.command.trim() : existing?.command,
 		path: typeof input.path === "string" && input.path.trim() ? input.path.trim() : existing?.path,
 		summary,
@@ -140,9 +151,11 @@ const criterionInputSchema = Type.Object({
 	redEvidence: Type.Optional(Type.String()),
 	greenEvidence: Type.Optional(Type.String()),
 });
+const artifactKindInputSchema = Type.Union([Type.Literal("test"), Type.Literal("smoke"), Type.Literal("curl"), Type.Literal("browser"), Type.Literal("screenshot"), Type.Literal("walkthrough"), Type.Literal("benchmark"), Type.Literal("log"), Type.Literal("url"), Type.Literal("pr"), Type.Literal("diff"), Type.Literal("command"), Type.Literal("document"), Type.Literal("doc"), Type.Literal("manual"), Type.Literal("other")]);
+
 const artifactInputSchema = Type.Object({
 	id: Type.Optional(Type.String()),
-	kind: Type.Optional(Type.Union([Type.Literal("test"), Type.Literal("smoke"), Type.Literal("curl"), Type.Literal("browser"), Type.Literal("screenshot"), Type.Literal("walkthrough"), Type.Literal("benchmark"), Type.Literal("log"), Type.Literal("other")])),
+	kind: Type.Optional(artifactKindInputSchema),
 	command: Type.Optional(Type.String()),
 	path: Type.Optional(Type.String()),
 	summary: Type.Optional(Type.String()),
@@ -170,11 +183,7 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 			evidence: Type.Optional(Type.String({ description: "Compact criterion evidence summary or path." })),
 			redEvidence: Type.Optional(Type.String({ description: "Compact failing/baseline evidence summary or path." })),
 			greenEvidence: Type.Optional(Type.String({ description: "Compact passing evidence summary or path." })),
-			kind: Type.Optional(
-				Type.Union([Type.Literal("test"), Type.Literal("smoke"), Type.Literal("curl"), Type.Literal("browser"), Type.Literal("screenshot"), Type.Literal("walkthrough"), Type.Literal("benchmark"), Type.Literal("log"), Type.Literal("other")], {
-					description: "Verification artifact kind.",
-				}),
-			),
+			kind: Type.Optional(Type.Union([Type.Literal("test"), Type.Literal("smoke"), Type.Literal("curl"), Type.Literal("browser"), Type.Literal("screenshot"), Type.Literal("walkthrough"), Type.Literal("benchmark"), Type.Literal("log"), Type.Literal("url"), Type.Literal("pr"), Type.Literal("diff"), Type.Literal("command"), Type.Literal("document"), Type.Literal("doc"), Type.Literal("manual"), Type.Literal("other")], { description: "Verification artifact kind. Aliases: doc -> document, manual -> other." })),
 			command: Type.Optional(Type.String({ description: "Command associated with an artifact." })),
 			path: Type.Optional(Type.String({ description: "Path or URL for an artifact." })),
 			summary: Type.Optional(Type.String({ description: "Compact artifact summary. Required for recordArtifact." })),
@@ -216,7 +225,7 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 			}
 
 			const inputs = params.action === "recordArtifacts" ? params.artifacts ?? [] : [{ id: params.id, kind: params.kind, command: params.command, path: params.path, summary: params.summary, criterionIds: params.criterionIds }];
-			const response = runLedgerArtifactRecord(loopName, inputs, params.action === "recordArtifacts", { recordArtifact: (input) => recordVerificationArtifact(ctx, loopName, input, deps.updateUI) });
+			const response = runLedgerArtifactRecord(loopName, inputs as Array<Partial<VerificationArtifact>>, params.action === "recordArtifacts", { recordArtifact: (input) => recordVerificationArtifact(ctx, loopName, input, deps.updateUI) });
 			const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
 			return { content: [{ type: "text", text: response.contentText }], details };
 		},

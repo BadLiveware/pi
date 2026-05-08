@@ -94,7 +94,7 @@ export function isCriterionStatus(value: unknown): value is CriterionStatus {
 }
 
 export function isArtifactKind(value: unknown): value is VerificationArtifactKind {
-	return ["test", "smoke", "curl", "browser", "screenshot", "walkthrough", "benchmark", "log", "other"].includes(String(value));
+	return ["test", "smoke", "curl", "browser", "screenshot", "walkthrough", "benchmark", "log", "url", "pr", "diff", "command", "document", "other"].includes(String(value));
 }
 
 export function normalizeStringList(value: unknown): string[] {
@@ -183,7 +183,7 @@ export function isBriefStatus(value: unknown): value is IterationBriefStatus {
 }
 
 export function isFinalVerificationStatus(value: unknown): value is FinalVerificationStatus {
-	return ["draft", "passed", "failed", "partial"].includes(String(value));
+	return ["draft", "passed", "failed", "partial", "blocked", "skipped"].includes(String(value));
 }
 
 export function isValidationResult(value: unknown): value is ValidationResult {

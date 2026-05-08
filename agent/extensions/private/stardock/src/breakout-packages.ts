@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { runBreakoutPackageRecord } from "./app/breakout-package-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
-import { type BreakoutPackage, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
+import { type BreakoutPackage, type BreakoutPackageStatus, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBreakoutPackageStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -33,6 +33,16 @@ function idSet(items: Array<{ id: string }>): Set<string> {
 function attemptIds(state: LoopState): Set<string> {
 	if (state.modeState.kind !== "recursive") return new Set();
 	return idSet(state.modeState.attempts);
+}
+
+export type BreakoutPackageInput = Omit<Partial<BreakoutPackage>, "status"> & { status?: BreakoutPackageStatus | "blocked" };
+
+export function normalizeBreakoutPackageStatusInput(value: unknown, fallback: BreakoutPackageStatus): { ok: true; status: BreakoutPackageStatus; normalized?: { from: string; to: BreakoutPackageStatus } } | { ok: false; error: string } {
+	if (value === undefined) return { ok: true, status: fallback };
+	const raw = typeof value === "string" ? value.trim() : String(value ?? "");
+	if (raw === "blocked") return { ok: true, status: "open", normalized: { from: raw, to: "open" } };
+	if (isBreakoutPackageStatus(raw)) return { ok: true, status: raw };
+	return { ok: false, error: `Unsupported breakout package status "${raw}". Supported statuses: draft, open, resolved, dismissed; alias: blocked -> open.` };
 }
 
 function validateRefs(
@@ -98,7 +108,7 @@ export function formatBreakoutPackageOverview(state: LoopState): string {
 	return lines.join("\n");
 }
 
-export function buildBreakoutPayload(state: LoopState, input: Partial<BreakoutPackage>): { ok: true; payload: string } | { ok: false; error: string } {
+export function buildBreakoutPayload(state: LoopState, input: BreakoutPackageInput): { ok: true; payload: string } | { ok: false; error: string } {
 	const refs = validateRefs(state, input, state.name);
 	if (!refs.ok) return refs;
 	const summary = typeof input.summary === "string" && input.summary.trim() ? input.summary.trim() : "Loop is blocked, stuck, or lacks enough evidence to continue confidently.";
@@ -106,9 +116,11 @@ export function buildBreakoutPayload(state: LoopState, input: Partial<BreakoutPa
 	const selectedCriteria = refs.blockedCriterionIds.length ? state.criterionLedger.criteria.filter((criterion) => refs.blockedCriterionIds.includes(criterion.id)) : state.criterionLedger.criteria.filter((criterion) => ["failed", "blocked", "pending"].includes(criterion.status)).slice(0, 8);
 	const selectedArtifacts = refs.artifactIds.length ? state.verificationArtifacts.filter((artifact) => refs.artifactIds.includes(artifact.id)) : state.verificationArtifacts.slice(-6);
 	const selectedReports = refs.finalReportIds.length ? state.finalVerificationReports.filter((report) => refs.finalReportIds.includes(report.id)) : state.finalVerificationReports.slice(-4);
+	const normalizedStatus = normalizeBreakoutPackageStatusInput(input.status, "open");
+	if (!normalizedStatus.ok) return normalizedStatus;
 	const lines = [
 		`Breakout package payload for loop "${state.name}"`,
-		`Status: ${isBreakoutPackageStatus(input.status) ? input.status : "open"}`,
+		`Status: ${normalizedStatus.status}`,
 		`Mode: ${state.mode}`,
 		`Iteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
 		formatCriterionCounts(state.criterionLedger),
@@ -135,7 +147,7 @@ export function buildBreakoutPayload(state: LoopState, input: Partial<BreakoutPa
 	return { ok: true, payload: lines.join("\n") };
 }
 
-export function recordBreakoutPackage(ctx: ExtensionContext, loopName: string, input: Partial<BreakoutPackage>): { ok: true; state: LoopState; breakout: BreakoutPackage; created: boolean } | { ok: false; error: string } {
+export function recordBreakoutPackage(ctx: ExtensionContext, loopName: string, input: BreakoutPackageInput): { ok: true; state: LoopState; breakout: BreakoutPackage; created: boolean; normalizedStatus?: { from: string; to: BreakoutPackageStatus } } | { ok: false; error: string } {
 	const state = loadState(ctx, loopName);
 	if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
 	const id = normalizeId(input.id, nextSequentialId("bp", state.breakoutPackages));
@@ -146,10 +158,12 @@ export function recordBreakoutPackage(ctx: ExtensionContext, loopName: string, i
 	if (!summary && !requestedDecision) return { ok: false, error: "Breakout package requires summary or requestedDecision." };
 	const refs = validateRefs(state, input, loopName);
 	if (!refs.ok) return refs;
+	const normalizedStatus = normalizeBreakoutPackageStatusInput(input.status, existing?.status ?? "draft");
+	if (!normalizedStatus.ok) return normalizedStatus;
 	const now = new Date().toISOString();
 	const breakout: BreakoutPackage = {
 		id,
-		status: isBreakoutPackageStatus(input.status) ? input.status : existing?.status ?? "draft",
+		status: normalizedStatus.status,
 		summary: summary ? compactText(summary, 500) ?? summary : compactText(requestedDecision, 500) ?? requestedDecision ?? "Breakout package",
 		blockedCriterionIds: input.blockedCriterionIds !== undefined ? refs.blockedCriterionIds : existing?.blockedCriterionIds ?? [],
 		attemptIds: input.attemptIds !== undefined ? refs.attemptIds : existing?.attemptIds ?? [],
@@ -170,10 +184,10 @@ export function recordBreakoutPackage(ctx: ExtensionContext, loopName: string, i
 	else state.breakoutPackages.push(breakout);
 	state.breakoutPackages.sort((a, b) => a.id.localeCompare(b.id));
 	saveState(ctx, state);
-	return { ok: true, state, breakout, created: existingIndex < 0 };
+	return { ok: true, state, breakout, created: existingIndex < 0, normalizedStatus: normalizedStatus.normalized };
 }
 
-const breakoutStatusSchema = Type.Union([Type.Literal("draft"), Type.Literal("open"), Type.Literal("resolved"), Type.Literal("dismissed")]);
+const breakoutStatusSchema = Type.Union([Type.Literal("draft"), Type.Literal("open"), Type.Literal("resolved"), Type.Literal("dismissed"), Type.Literal("blocked")]);
 
 const breakoutPackageInputSchema = Type.Object({
 	id: Type.Optional(Type.String({ description: "Breakout package id. Generated for record when omitted." })),

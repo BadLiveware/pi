@@ -247,6 +247,7 @@ export function appendTaskSourceSection(parts: string[], state: LoopState, _task
 		"## Task Source",
 		`Active brief ${brief.id} scopes this iteration.`,
 		`Task file: ${state.taskFile} (reference only — not loaded into this prompt)`,
+		"Full task content is omitted from this prompt while an active brief scopes the iteration.",
 		"Read the task file from disk if you need broader context beyond this brief.",
 		"---",
 	);

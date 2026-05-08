@@ -132,6 +132,7 @@ Dogfood notes from `dogfood-stardock-recursive-mode`:
 - Agent-operability refinements reduce common serial workflows: `stardock_ledger` supports batch criteria/artifact updates and opt-in state/overview details, while `stardock_brief` can create-and-activate a brief plus return optional state or prompt preview details in one call.
 - Governor-selected brief v1 is explicit metadata, not automation: `stardock_brief` can record `source: "governor"` and an optional governor-review `requestId`, while activation still requires `activate: true` or a separate `activate` action.
 - Brief lifecycle policy v1 is explicit cleanup, not hidden automation: `stardock_done` keeps active briefs by default and accepts opt-in `briefLifecycle: "complete" | "clear"` when an iteration should finish or deactivate the current brief.
+- ClickHouse PromQL upstreaming dogfood (`clickhouse-native-promql-upstreaming`, 16 checklist iterations, 17 criteria, 89 artifacts, 17 briefs, 7 final reports, 1 accepted blocked PR15 criterion) validated briefs/ledger/final reports for long implementation work and drove follow-up hardening: evidence/status enum aliases, accepted-deferred blocker completion policy, one-call brief lifecycle prompts, and task-checklist/ledger drift reporting.
 
 ## Updated design direction: context routing, not prompt replay
 

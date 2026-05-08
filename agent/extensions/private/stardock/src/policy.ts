@@ -4,6 +4,8 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "typebox";
+import { evaluateCompletionPolicy } from "./completion-policy.ts";
+export { evaluateCompletionPolicy } from "./completion-policy.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { compactText, type Criterion, type LoopState } from "./state/core.ts";
 import { loadState } from "./state/store.ts";
@@ -34,7 +36,7 @@ export interface PolicyFinding {
 export interface CompletionPolicyResult {
 	loopName: string;
 	ready: boolean;
-	status: "ready" | "needs_evidence" | "needs_review" | "needs_decision";
+	status: "ready" | "ready_with_accepted_gaps" | "needs_evidence" | "needs_review" | "needs_decision";
 	summary: string;
 	findings: PolicyFinding[];
 }
@@ -59,14 +61,6 @@ function criteriaByStatus(state: LoopState, statuses: Set<Criterion["status"]>):
 	return state.criterionLedger.criteria.filter((criterion) => statuses.has(criterion.status));
 }
 
-function allArtifactIds(state: LoopState): string[] {
-	return state.verificationArtifacts.map((artifact) => artifact.id);
-}
-
-function latestFinalReportIds(state: LoopState): string[] {
-	return state.finalVerificationReports.slice(-3).map((report) => report.id);
-}
-
 function latestAuditorReviewIds(state: LoopState): string[] {
 	return state.auditorReviews.slice(-3).map((review) => review.id);
 }
@@ -87,130 +81,6 @@ function finding(input: Omit<PolicyFinding, "criterionIds" | "artifactIds" | "fi
 		attemptIds: [],
 		outsideRequestIds: [],
 		...input,
-	};
-}
-
-export function evaluateCompletionPolicy(state: LoopState): CompletionPolicyResult {
-	const findings: PolicyFinding[] = [];
-	const unresolved = criteriaByStatus(state, new Set(["pending", "failed", "blocked"]));
-	const skipped = criteriaByStatus(state, new Set(["skipped"]));
-	const passed = criteriaByStatus(state, new Set(["passed"]));
-	const hasCriteria = state.criterionLedger.criteria.length > 0;
-	const hasArtifacts = state.verificationArtifacts.length > 0;
-	const passingFinalReports = state.finalVerificationReports.filter((report) => report.status === "passed");
-	const incompleteFinalReports = state.finalVerificationReports.filter((report) => ["draft", "partial", "failed"].includes(report.status));
-	const reportsWithGaps = state.finalVerificationReports.filter((report) => report.unresolvedGaps.length > 0 || report.validation.some((record) => record.result !== "passed"));
-	const concernedAudits = state.auditorReviews.filter((review) => review.status === "concerns" || review.status === "blocked" || review.requiredFollowups.length > 0);
-	const openBreakouts = state.breakoutPackages.filter((breakout) => breakout.status === "open" || breakout.status === "draft");
-
-	if (!hasCriteria) {
-		findings.push(
-			finding({
-				id: "no-criteria",
-				severity: "recommend",
-				recommendation: "final_report",
-				rationale: "No criterion ledger entries exist, so completion readiness lacks explicit acceptance criteria.",
-				suggestedTool: "stardock_ledger",
-			}),
-		);
-	}
-
-	if ((hasCriteria || hasArtifacts || passed.length > 0) && passingFinalReports.length === 0) {
-		findings.push(
-			finding({
-				id: "missing-final-report",
-				severity: "recommend",
-				recommendation: "final_report",
-				rationale: "Criteria or verification artifacts exist but no passed final verification report summarizes completion evidence.",
-				criterionIds: state.criterionLedger.criteria.map((criterion) => criterion.id),
-				artifactIds: allArtifactIds(state),
-				finalReportIds: latestFinalReportIds(state),
-				suggestedTool: "stardock_final_report",
-			}),
-		);
-	}
-
-	if (incompleteFinalReports.length > 0) {
-		findings.push(
-			finding({
-				id: "incomplete-final-report",
-				severity: "recommend",
-				recommendation: "final_report",
-				rationale: "At least one final verification report is draft, partial, or failed; update or supersede it before claiming completion.",
-				finalReportIds: incompleteFinalReports.map((report) => report.id),
-				suggestedTool: "stardock_final_report",
-			}),
-		);
-	}
-
-	if (unresolved.length > 0) {
-		findings.push(
-			finding({
-				id: "unresolved-criteria",
-				severity: unresolved.some((criterion) => criterion.status === "failed" || criterion.status === "blocked") ? "warning" : "recommend",
-				recommendation: "breakout_package",
-				rationale: "Some criteria are still pending, failed, or blocked; completion should either resolve them or package the decision/gap explicitly.",
-				criterionIds: unresolved.map((criterion) => criterion.id),
-				breakoutPackageIds: latestBreakoutPackageIds(state),
-				suggestedTool: "stardock_breakout",
-			}),
-		);
-	}
-
-	if (skipped.length > 0 || reportsWithGaps.length > 0 || concernedAudits.length > 0) {
-		findings.push(
-			finding({
-				id: "needs-auditor-review",
-				severity: concernedAudits.some((review) => review.status === "blocked") ? "blocker" : "recommend",
-				recommendation: "auditor_review",
-				rationale: "Skipped evidence, unresolved final-report gaps, or auditor concerns should receive explicit oversight before substantial completion.",
-				criterionIds: skipped.map((criterion) => criterion.id),
-				finalReportIds: reportsWithGaps.map((report) => report.id),
-				auditorReviewIds: concernedAudits.map((review) => review.id),
-				suggestedTool: "stardock_auditor",
-			}),
-		);
-	}
-
-	if (openBreakouts.length > 0) {
-		findings.push(
-			finding({
-				id: "open-breakout-package",
-				severity: "warning",
-				recommendation: "breakout_package",
-				rationale: "Open breakout packages indicate unresolved decisions or resume criteria that should be resolved or explicitly accepted before completion.",
-				breakoutPackageIds: openBreakouts.map((breakout) => breakout.id),
-				suggestedTool: "stardock_breakout",
-			}),
-		);
-	}
-
-	if (findings.length === 0) {
-		findings.push(
-			finding({
-				id: "completion-ready",
-				severity: "info",
-				recommendation: "ready",
-				rationale: "No obvious missing criteria, final-report, auditor-review, or breakout-package recommendation was detected. This is advisory and does not replace judgment.",
-				criterionIds: state.criterionLedger.criteria.map((criterion) => criterion.id),
-				artifactIds: allArtifactIds(state),
-				finalReportIds: latestFinalReportIds(state),
-				auditorReviewIds: latestAuditorReviewIds(state),
-			}),
-		);
-	}
-
-	const ready = findings.every((item) => item.recommendation === "ready");
-	let status: CompletionPolicyResult["status"] = "ready";
-	if (findings.some((item) => item.recommendation === "breakout_package")) status = "needs_decision";
-	else if (findings.some((item) => item.recommendation === "auditor_review")) status = "needs_review";
-	else if (!ready) status = "needs_evidence";
-	return {
-		loopName: state.name,
-		ready,
-		status,
-		summary: ready ? "Completion policy found no obvious readiness gaps." : "Completion policy recommends additional evidence, review, or decision packaging before claiming substantial completion.",
-		findings,
 	};
 }
 

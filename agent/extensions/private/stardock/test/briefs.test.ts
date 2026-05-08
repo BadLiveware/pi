@@ -385,7 +385,8 @@ test("stardock_brief routes bounded prompt context from selected criteria", asyn
 		await done.execute("tool-brief-done-no-current", {}, undefined, undefined, ctx);
 		assert.equal(messages.length, 3);
 		assert.equal(messages[2].content.includes("## Active Iteration Brief"), false);
-		assert.match(messages[2].content, /Preserve no-brief defaults/);
+		assert.match(messages[2].content, /Task file: \.stardock\/runs\/Brief_Loop\/task\.md \(not loaded into this prompt\)/);
+		assert.equal(messages[2].content.includes("Preserve no-brief defaults"), false);
 
 		const completeBrief = await brief.execute(
 			"tool-brief-complete",

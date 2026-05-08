@@ -6,7 +6,7 @@ import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agen
 import { Type } from "typebox";
 import { runFinalReportRecord } from "./app/final-report-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
-import { compactText, type FinalValidationRecord, type FinalVerificationReport, type LoopState, nextSequentialId } from "./state/core.ts";
+import { compactText, type FinalValidationRecord, type FinalVerificationReport, type FinalVerificationStatus, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isFinalVerificationStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -32,6 +32,13 @@ export function migrateFinalValidationRecords(value: unknown): FinalValidationRe
 			};
 		})
 		.filter((record): record is FinalValidationRecord => record !== null);
+}
+
+function normalizeFinalVerificationStatusInput(value: unknown, fallback: FinalVerificationStatus): { ok: true; status: FinalVerificationStatus } | { ok: false; error: string } {
+	if (value === undefined) return { ok: true, status: fallback };
+	const raw = typeof value === "string" ? value.trim() : String(value ?? "");
+	if (isFinalVerificationStatus(raw)) return { ok: true, status: raw };
+	return { ok: false, error: `Unsupported final verification status "${raw}". Supported statuses: draft, passed, failed, partial, blocked, skipped.` };
 }
 
 export function migrateFinalVerificationReports(value: unknown): FinalVerificationReport[] {
@@ -94,10 +101,12 @@ export function recordFinalVerificationReport(ctx: ExtensionContext, loopName: s
 	const allArtifactIds = [...artifactIds, ...validation.flatMap((record) => record.artifactIds ?? [])];
 	const missingArtifact = allArtifactIds.find((artifactId) => !artifactSet.has(artifactId));
 	if (missingArtifact) return { ok: false, error: `Artifact "${missingArtifact}" not found in loop "${loopName}".` };
+	const normalizedStatus = normalizeFinalVerificationStatusInput(input.status, existing?.status ?? "draft");
+	if (!normalizedStatus.ok) return normalizedStatus;
 	const now = new Date().toISOString();
 	const report: FinalVerificationReport = {
 		id,
-		status: isFinalVerificationStatus(input.status) ? input.status : existing?.status ?? "draft",
+		status: normalizedStatus.status,
 		summary: compactText(summary, 500) ?? summary,
 		criterionIds,
 		artifactIds,
@@ -125,7 +134,7 @@ const finalValidationRecordInputSchema = Type.Object({
 
 const finalReportInputSchema = Type.Object({
 	id: Type.Optional(Type.String({ description: "Report id. Generated for record when omitted." })),
-	status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("partial")], { description: "Final verification status." })),
+	status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("partial"), Type.Literal("blocked"), Type.Literal("skipped")], { description: "Final verification status." })),
 	summary: Type.Optional(Type.String({ description: "Compact final verification summary. Required for new reports." })),
 	criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids covered by this report." })),
 	artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Verification artifact ids referenced by this report." })),
@@ -145,7 +154,7 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 			action: Type.Union([Type.Literal("list"), Type.Literal("record")], { description: "list returns final reports; record creates or updates one compact report." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			id: Type.Optional(Type.String({ description: "Report id. Generated for record when omitted." })),
-			status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("partial")], { description: "Final verification status." })),
+			status: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("passed"), Type.Literal("failed"), Type.Literal("partial"), Type.Literal("blocked"), Type.Literal("skipped")], { description: "Final verification status." })),
 			summary: Type.Optional(Type.String({ description: "Compact final verification summary. Required for new reports." })),
 			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids covered by this report." })),
 			artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Verification artifact ids referenced by this report." })),

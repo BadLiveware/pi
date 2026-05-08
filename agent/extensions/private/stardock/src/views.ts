@@ -5,6 +5,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 import { currentBrief } from "./briefs.ts";
+import { formatChecklistLedgerDrift, loadChecklistLedgerDrift } from "./checklist-drift.ts";
 import { criterionCounts,formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision,pendingOutsideRequests } from "./outside-requests.ts";
 import { type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
@@ -24,6 +25,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 	const activeBrief = currentBrief(state);
 	const criteria = criterionCounts(state.criterionLedger);
 	const latestFinalReport = state.finalVerificationReports.at(-1);
+	const checklistDrift = loadChecklistLedgerDrift(ctx, state);
 	const artifactsByKind = state.verificationArtifacts.reduce<Record<string, number>>((counts, artifact) => {
 		counts[artifact.kind] = (counts[artifact.kind] ?? 0) + 1;
 		return counts;
@@ -88,6 +90,10 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 		advisoryHandoffs: state.advisoryHandoffs,
 		breakoutPackages: state.breakoutPackages,
 		workerReports: state.workerReports,
+		checklistLedgerDrift: {
+			total: checklistDrift.length,
+			items: includeDetails ? checklistDrift : checklistDrift.slice(0, 5),
+		},
 		briefs: {
 			total: state.briefs.length,
 			currentBriefId: state.currentBriefId,
@@ -210,6 +216,8 @@ export function formatRunOverview(ctx: ExtensionContext, state: LoopState, archi
 
 	lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
 	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Auditor reviews: ${state.auditorReviews.length}`, `  Advisory handoffs: ${state.advisoryHandoffs.length}`, `  Breakout packages: ${state.breakoutPackages.length}`, `  Worker reports: ${state.workerReports.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
+	const checklistDrift = loadChecklistLedgerDrift(ctx, state);
+	if (checklistDrift.length) lines.push("", ...formatChecklistLedgerDrift(checklistDrift));
 	if (activeBrief) {
 		lines.push("", "Active brief", `  ${activeBrief.id}: ${compactViewText(activeBrief.objective, 180)}`, `  Task: ${compactViewText(activeBrief.task, 180)}`);
 		if (activeBrief.criterionIds.length) lines.push(`  Criteria: ${activeBrief.criterionIds.join(", ")}`);

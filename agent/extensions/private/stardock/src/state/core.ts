@@ -113,7 +113,7 @@ export interface OutsideRequest {
 }
 
 export type CriterionStatus = "pending" | "passed" | "failed" | "skipped" | "blocked";
-export type VerificationArtifactKind = "test" | "smoke" | "curl" | "browser" | "screenshot" | "walkthrough" | "benchmark" | "log" | "other";
+export type VerificationArtifactKind = "test" | "smoke" | "curl" | "browser" | "screenshot" | "walkthrough" | "benchmark" | "log" | "url" | "pr" | "diff" | "command" | "document" | "other";
 
 export interface Criterion {
 	id: string;
@@ -148,7 +148,7 @@ export interface VerificationArtifact {
 export type IterationBriefStatus = "draft" | "active" | "completed" | "dismissed";
 export type IterationBriefSource = "manual" | "governor";
 export type BriefLifecycleAction = "keep" | "complete" | "clear";
-export type FinalVerificationStatus = "draft" | "passed" | "failed" | "partial";
+export type FinalVerificationStatus = "draft" | "passed" | "failed" | "partial" | "blocked" | "skipped";
 export type ValidationResult = "passed" | "failed" | "skipped";
 export type AuditorReviewStatus = "draft" | "passed" | "concerns" | "blocked";
 export type AdvisoryHandoffRole = "explorer" | "test_runner" | "researcher" | "reviewer" | "governor" | "auditor" | "implementer";

@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { Type } from "typebox";
 import { currentBrief } from "../briefs.ts";
+import { loadChecklistLedgerDrift } from "../checklist-drift.ts";
 import { formatCriterionCounts } from "../ledger.ts";
 import { latestGovernorDecision, pendingOutsideRequests } from "../outside-requests.ts";
 import { type BriefLifecycleAction, DEFAULT_REFLECT_INSTRUCTIONS, type LoopState, type StateView } from "../state/core.ts";
@@ -155,6 +156,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
 				const latestDecision = latestGovernorDecision(state);
 				const activeBrief = currentBrief(state);
+				const checklistDrift = loadChecklistLedgerDrift(ctx, state);
 				const lines = [
 					`Loop: ${state.name}`,
 					`Status: ${state.status}`,
@@ -170,6 +172,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 					`Final reports: ${state.finalVerificationReports.length}`,
 					`Auditor reviews: ${state.auditorReviews.length}`,
 					`Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`,
+					checklistDrift.length ? `Checklist/ledger drift: ${checklistDrift.length}` : undefined,
 					activeBrief ? `Current brief task: ${activeBrief.task}` : undefined,
 					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
 				].filter((line): line is string => Boolean(line));

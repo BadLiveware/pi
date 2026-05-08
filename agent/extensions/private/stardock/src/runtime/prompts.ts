@@ -15,6 +15,7 @@ function compactBriefTask(brief: IterationBrief): string {
 // but the task file is never injected into checklist iteration prompts.
 export function buildChecklistPrompt(state: LoopState, _taskContent: string, reason: PromptReason): string {
 	const isReflection = reason === "reflection";
+	const activeBrief = currentBrief(state);
 	const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 	const header = `───────────────────────────────────────────────────────────────────────
 🔄 STARDOCK LOOP: ${state.name} | Iteration ${state.iteration}${maxStr}${isReflection ? " | 🪞 REFLECTION" : ""}
@@ -32,9 +33,15 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
 	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
 	parts.push(`3. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
-	parts.push(`4. When the brief's criteria are satisfied, mark it complete with stardock_brief (action: "complete").`);
-	parts.push(`5. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
-	parts.push(`6. Otherwise, call the stardock_done tool to proceed to next iteration.`);
+	if (activeBrief) {
+		parts.push(`4. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
+		parts.push(`5. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
+		parts.push(`6. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
+		parts.push(`7. Otherwise, call stardock_done to proceed to the next iteration.`);
+	} else {
+		parts.push(`4. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL work is done.`);
+		parts.push(`5. Otherwise, call stardock_done to proceed to the next iteration.`);
+	}
 	if (state.itemsPerIteration > 0) parts.push(`\nAim to make measurable progress on the brief this iteration.`);
 
 	return parts.join("\n");
@@ -98,7 +105,7 @@ const checklistModeHandler: LoopModeHandler = {
 		} else {
 			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
 			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
-			instructions += `- Mark brief complete with stardock_brief when criteria are satisfied\n`;
+			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
 		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
 		instructions += `- When FULLY COMPLETE: ${COMPLETE_MARKER}\n`;
