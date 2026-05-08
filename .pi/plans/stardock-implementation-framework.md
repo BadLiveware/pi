@@ -437,8 +437,8 @@ Remaining work is design-gated and should be driven by dogfood evidence. Stardoc
    - Still needed: direct provider execution adapter design; keep this advisory-only before any editing flow.
 5. **Completion, breakout, and learning gates**
    - Initial manual/data-only `FinalVerificationReport` and `BreakoutPackage` support exists, and `stardock_policy({ action: "completion" | "breakout" })` recommends final reports, auditor reviews, or breakout packages without enforcing hidden gates.
-   - Initial derived workflow status surfaces final-verification readiness, breakout decisions, parent review, auditor review, blocked, and completed states in `stardock_state`, overview/list text, and the active widget without storing another mutable source of truth.
-   - Still needed: transition notifications, prompt gate integration, policy for when completion should require or recommend a final report/auditor review/breakout package, optional compound-learning proposals, and cognitive-debt walkthrough requirements for large or complex changes.
+   - Initial derived workflow status surfaces final-verification readiness, breakout decisions, parent review, auditor review, blocked, and completed states in `stardock_state`, overview/list text, prompts, transition notifications, and the active widget without storing another mutable source of truth.
+   - Still needed: dogfood transition-noise and prompt-gate behavior, policy for when completion should require or recommend a final report/auditor review/breakout package, optional compound-learning proposals, and cognitive-debt walkthrough requirements for large or complex changes.
 6. **Subagent-driven recursive mode**
    - Use `.pi/plans/stardock-subagent-recursive-mode.md` as the design gate.
    - Start with exploration and test-runner providers before implementer providers.
@@ -859,7 +859,7 @@ The initial mode-aware/recursive path and the safe manual/data-only governance/e
 1. Dogfood Stardock on real implementation work using criterion distillation, explicit artifacts, final reports, and read-only policy checks.
 2. Add first-class baseline validation records and criteria review/update policy only after dogfooding confirms the right granularity and update ownership.
 3. Strengthen context packet routing and governor memory only where briefs/outside requests are insufficient.
-4. Add transition notifications for meaningful workflow-state changes, then prompt gate integration if the read-only status proves useful.
+4. Dogfood workflow transition notifications and prompt gate integration on real checklist runs; tune severity/order before changing loop queueing behavior.
 5. Add automatic auditor trigger creation only if read-only gate recommendations prove insufficient.
 6. Add exploration/test-runner provider adapters before implementer/editing adapters.
 7. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates and auditor checkpoints.

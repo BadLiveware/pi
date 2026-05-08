@@ -6,9 +6,27 @@ import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendRecor
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
 import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/modes.ts";
+import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
 
 function compactBriefTask(brief: IterationBrief): string {
 	return compactText(brief.task, 120) ?? "(no task text)";
+}
+
+function workflowGateInstruction(status: WorkflowStatus): string | undefined {
+	if (status.state === "needs_parent_review") return "Do not continue implementation until parent review is addressed or explicitly rejected with rationale.";
+	if (status.state === "needs_auditor_review") return "Do not continue gated work until auditor review/follow-up is addressed or escalated to the user.";
+	if (status.state === "needs_breakout_decision") return "Do not continue as if unblocked until the breakout decision/gap is packaged, resolved, or explicitly accepted.";
+	if (status.state === "blocked") return "Do not continue implementation until the blocked/paused state is resolved.";
+	if (status.state === "ready_for_final_verification") return "Prioritize final verification/reporting before starting new implementation work.";
+	return undefined;
+}
+
+function appendWorkflowStatusPromptSection(parts: string[], state: LoopState): void {
+	const status = evaluateWorkflowStatus(state);
+	parts.push("## Workflow Status", formatWorkflowStatus(status));
+	const gate = workflowGateInstruction(status);
+	if (gate) parts.push("", `Gate: ${gate}`);
+	parts.push("");
 }
 
 // taskContent is accepted for interface compatibility with recursive mode's buildPrompt,
@@ -24,6 +42,7 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	const parts = [header, ""];
 	if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
 
+	appendWorkflowStatusPromptSection(parts, state);
 	appendActiveBriefPromptSection(parts, state);
 	appendLedgerSummarySection(parts, state);
 	appendRecordedWorkerContextSection(parts, state);
@@ -135,6 +154,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		const recentAttempts = formatRecentAttemptReports(modeState);
 		if (recentAttempts.length > 0) parts.push("## Recent Attempt Reports", ...recentAttempts, "");
 		appendOutsideRequestPromptSections(parts, state);
+		appendWorkflowStatusPromptSection(parts, state);
 		appendActiveBriefPromptSection(parts, state);
 		appendRecordedWorkerContextSection(parts, state);
 		appendTaskSourceSection(parts, state, taskContent);
