@@ -18,6 +18,7 @@ function workflowGateInstruction(status: WorkflowStatus): string | undefined {
 	if (status.state === "needs_breakout_decision") return "Do not continue as if unblocked until the breakout decision/gap is packaged, resolved, or explicitly accepted.";
 	if (status.state === "blocked") return "Do not continue implementation until the blocked/paused state is resolved.";
 	if (status.state === "ready_for_final_verification") return "Prioritize final verification/reporting before starting new implementation work.";
+	if (status.state === "ready_to_complete") return "Do not start new implementation work; finish by responding with the completion marker unless you find a concrete readiness gap.";
 	return undefined;
 }
 

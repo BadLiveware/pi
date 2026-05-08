@@ -17,7 +17,7 @@ function statusKey(status: WorkflowStatus): string {
 }
 
 function shouldNotify(status: WorkflowStatus, previousKey: string | undefined): boolean {
-	const actionable = status.severity !== "info" || status.state === "ready_for_final_verification";
+	const actionable = status.severity !== "info" || status.state === "ready_for_final_verification" || status.state === "ready_to_complete";
 	return actionable && previousKey !== undefined && previousKey !== statusKey(status);
 }
 

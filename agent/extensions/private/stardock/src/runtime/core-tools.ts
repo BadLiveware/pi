@@ -13,11 +13,15 @@ import { defaultCriterionLedger } from "../state/migration.ts";
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
-import { evaluateWorkflowStatus, formatWorkflowStatus } from "../workflow-status.ts";
+import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
 import { applyActiveBriefLifecycle } from "../briefs.ts";
 import { FollowupToolParameter, withFollowupTool } from "./followups.ts";
 import { buildPrompt, createModeState, getModeHandler, isImplementedMode, unsupportedModeMessage } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
+
+function checklistDoneShouldQueueNext(status: WorkflowStatus): boolean {
+	return status.state === "ready_for_work" || status.state === "active_work";
+}
 
 export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
 	pi.registerTool({
@@ -127,6 +131,11 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			if (needsReflection) state.lastReflectionAt = state.iteration;
 			saveState(ctx, state);
 			runtime.updateUI(ctx);
+			const workflowStatus = evaluateWorkflowStatus(state);
+			if (state.mode === "checklist" && !checklistDoneShouldQueueNext(workflowStatus)) {
+				const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
+				return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. No next checklist prompt queued because workflow is ${workflowStatus.state}.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, workflowStatus, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
+			}
 			const content = tryRead(path.resolve(ctx.cwd, state.taskFile));
 			if (!content) {
 				runtime.pauseLoop(ctx, state);

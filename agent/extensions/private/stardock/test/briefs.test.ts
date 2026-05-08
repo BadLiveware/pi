@@ -3,6 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
+import { buildPrompt } from "../src/runtime/prompts.ts";
+import { loadState } from "../src/state/store.ts";
 import { makeHarness } from "./test-harness.ts";
 
 test("stardock tools support reduced-round-trip batch and activation workflows", async () => {
@@ -196,8 +198,9 @@ test("stardock_brief builds advisory worker payloads and prompts include recorde
 		await handoff.execute("tool-worker-payload-handoff", { action: "record", loopName: "Brief_Worker_Payload", id: "ah-explore", role: "explorer", status: "answered", objective: "Explore files.", summary: "Explorer handoff.", criterionIds: ["c-worker"], resultSummary: "Inspect briefs.ts and worker-reports.ts.", concerns: ["Prompt inclusion may be missing."], recommendations: ["Add a worker context section."] }, undefined, undefined, ctx);
 		await handoff.execute("tool-worker-payload-stale-handoff", { action: "record", loopName: "Brief_Worker_Payload", id: "ah-stale", role: "explorer", status: "answered", objective: "Old work.", summary: "Stale handoff.", resultSummary: "Do not include stale handoff." }, undefined, undefined, ctx);
 		await worker.execute("tool-worker-payload-report", { action: "record", loopName: "Brief_Worker_Payload", id: "wr-explore", role: "explorer", status: "needs_review", objective: "Explore files.", summary: "Worker mapped likely files.", evaluatedCriterionIds: ["c-worker"], risks: ["Parent should inspect prompt output."], openQuestions: ["Should result summaries be capped?"], suggestedNextMove: "Add prompt inclusion test.", reviewHints: ["Read runtime/prompts.ts."] }, undefined, undefined, ctx);
-		await done.execute("tool-worker-payload-done", {}, undefined, undefined, ctx);
-		const prompt = messages.at(-1)?.content ?? "";
+		const state = loadState(ctx, "Brief_Worker_Payload");
+		assert.ok(state);
+		const prompt = buildPrompt(state, "# Worker payload task\n", "iteration");
 		assert.match(prompt, /## Recent Worker \/ Advisory Results/);
 		assert.match(prompt, /Handoff ah-explore \[explorer\]/);
 		assert.match(prompt, /WorkerReport wr-explore \[needs_review\/explorer\]/);

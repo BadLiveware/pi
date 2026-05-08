@@ -11,7 +11,7 @@ import { evaluateBreakoutPolicy } from "./policy.ts";
 import { evaluateAuditorGatePolicy, evaluateParentReviewPolicy } from "./subagent-readiness-policy.ts";
 import { compactText, type LoopState } from "./state/core.ts";
 
-export type WorkflowState = "ready_for_work" | "active_work" | "needs_parent_review" | "needs_auditor_review" | "needs_breakout_decision" | "ready_for_final_verification" | "blocked" | "completed";
+export type WorkflowState = "ready_for_work" | "active_work" | "needs_parent_review" | "needs_auditor_review" | "needs_breakout_decision" | "ready_for_final_verification" | "ready_to_complete" | "blocked" | "completed";
 export type WorkflowSeverity = "info" | "action" | "warning" | "blocked";
 
 export interface WorkflowAction {
@@ -72,12 +72,13 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 
 	const breakout = evaluateBreakoutPolicy(state);
 	const openBreakouts = openBreakoutReasons(state);
-	if (breakout.recommended || openBreakouts.length) {
+	const severeBreakoutFindings = breakout.findings.filter((finding) => finding.recommendation === "breakout_package" && (finding.severity === "warning" || finding.severity === "blocker"));
+	if (severeBreakoutFindings.length || openBreakouts.length) {
 		return {
 			state: "needs_breakout_decision",
 			severity: breakout.status === "breakout_strongly_recommended" || openBreakouts.length ? "warning" : "action",
 			summary: breakout.recommended ? breakout.summary : "Open breakout packages need a decision before the loop continues as if unblocked.",
-			reasons: compactReasons([...openBreakouts, ...breakout.findings.filter((finding) => finding.recommendation === "breakout_package").map((finding) => finding.rationale)]),
+			reasons: compactReasons([...openBreakouts, ...severeBreakoutFindings.map((finding) => finding.rationale)]),
 			recommendedActions: [action("Inspect breakout policy", "stardock_policy", { action: "breakout", loopName: state.name }), action("Build breakout package", "stardock_breakout", { action: "payload", loopName: state.name })],
 		};
 	}
@@ -113,6 +114,16 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 			summary: "Criteria are resolved and final verification evidence should be summarized before completion.",
 			reasons: compactReasons([missingFinalReport.rationale]),
 			recommendedActions: [action("Record final verification report", "stardock_final_report", { action: "record", loopName: state.name }), action("Inspect completion policy", "stardock_policy", { action: "completion", loopName: state.name })],
+		};
+	}
+
+	if (completion.ready) {
+		return {
+			state: "ready_to_complete",
+			severity: "action",
+			summary: "Completion policy found no obvious readiness gaps.",
+			reasons: compactReasons(completion.findings.filter((finding) => finding.recommendation === "ready").map((finding) => finding.rationale)),
+			recommendedActions: [{ label: "Complete the loop", command: "<promise>COMPLETE</promise>" }, action("Inspect completion policy", "stardock_policy", { action: "completion", loopName: state.name })],
 		};
 	}
 

@@ -76,6 +76,16 @@ test("workflow status surfaces final verification readiness", () => {
 	assert.equal(status.recommendedActions[0].tool, "stardock_final_report");
 });
 
+test("workflow status reports ready to complete after passing final report", () => {
+	const state = baseState({
+		criterionLedger: { criteria: [criterion("passed")], requirementTrace: [] },
+		finalVerificationReports: [{ id: "fr1", status: "passed", summary: "done", criterionIds: ["c-passed"], artifactIds: [], validation: [{ result: "passed", summary: "ok" }], unresolvedGaps: [], compatibilityNotes: [], securityNotes: [], performanceNotes: [], createdAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
+	});
+	const status = evaluateWorkflowStatus(state);
+	assert.equal(status.state, "ready_to_complete");
+	assert.equal(status.recommendedActions[0].command, "<promise>COMPLETE</promise>");
+});
+
 test("workflow status reports completed loops", () => {
 	const status = evaluateWorkflowStatus(baseState({ status: "completed", active: false, completedAt: "2026-05-08T00:01:00.000Z" }));
 	assert.equal(status.state, "completed");

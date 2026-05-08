@@ -134,10 +134,10 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 		assert.equal(summaryResult.details.loop.criterionLedger.criteria[0].id, "c-build");
 		assert.equal(summaryResult.details.loop.baselineValidations.total, 1);
 
-		await done.execute("tool-ledger-done", {}, undefined, undefined, ctx);
-		assert.equal(messages.length, 2);
-		assert.equal(messages[1].content.includes("c-build"), false);
-		assert.equal(messages[1].content.includes(longSummary), false);
+		const beforeDoneMessages = messages.length;
+		const doneResult = await done.execute("tool-ledger-done", {}, undefined, undefined, ctx);
+		assert.equal(messages.length, beforeDoneMessages);
+		assert.match(doneResult.content[0].text, /No next checklist prompt queued because workflow is ready_for_final_verification/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
