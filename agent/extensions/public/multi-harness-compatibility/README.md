@@ -12,6 +12,7 @@ Create `~/.pi/agent/multi-harness-compatibility.json` for global profiles, or `.
 
 ```json
 {
+  "$schema": "./extensions/public/multi-harness-compatibility/config.schema.json",
   "defaultProfile": "private",
   "profiles": {
     "private": {
@@ -34,6 +35,16 @@ Create `~/.pi/agent/multi-harness-compatibility.json` for global profiles, or `.
 }
 ```
 
+The package includes `config.schema.json` for editor validation. For global config under `~/.pi/agent/`, use:
+
+```json
+{
+  "$schema": "./extensions/public/multi-harness-compatibility/config.schema.json"
+}
+```
+
+For project config, point `$schema` at the installed package or a repo-relative copy if your editor cannot resolve the global path.
+
 ## Behavior
 
 - Active profile is selected by `match`, otherwise `defaultProfile`.
@@ -45,7 +56,11 @@ Create `~/.pi/agent/multi-harness-compatibility.json` for global profiles, or `.
 
 ## Commands and tools
 
-- `/harness-compat status` shows active profile, loaded skill paths, suppressed duplicates, and diagnostics.
+- `/harness-compat status` shows active profile, manual roots, loaded skill paths, suppressed duplicates, and diagnostics.
 - `/harness-compat profile <name>` switches the runtime default profile for the current session.
 - `/harness-compat off` switches the runtime profile to `private`.
+- `/harness-compat load-project <repo path>` temporarily loads another project root for the current extension runtime, for example `/harness-compat load-project ~/code/external/ClickHouse`.
+- `/harness-compat unload-project <repo path|all>` removes temporarily loaded project roots.
 - `multi_harness_compat_state` is a read-only tool for agents to inspect the same state structurally.
+
+Manual project loads are intentionally session-scoped and not written to config. They are stored in the current Pi session, so they survive closing Pi and resuming with `pi --continue`, but they do not affect other sessions. Loading or unloading a project triggers a resource reload so discovered skills become native `/skill:<name>` commands for that session. The loaded project's context is injected as normalized context, and discovered skills are also listed as additional references for the model to read when relevant.

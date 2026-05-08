@@ -1,4 +1,5 @@
 {
+  "$schema": "./extensions/public/multi-harness-compatibility/config.schema.json",
   "defaultProfile": "personal",
   "profiles": {
     "work": {

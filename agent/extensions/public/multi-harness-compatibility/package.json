@@ -4,6 +4,14 @@
   "description": "Profile-aware multi-harness compatibility resources for Pi.",
   "type": "module",
   "keywords": ["pi-package", "pi-extension", "claude", "cursor", "multi-harness"],
+  "files": [
+    "README.md",
+    "config.schema.json",
+    "index.ts",
+    "src",
+    "skills",
+    "package.json"
+  ],
   "pi": {
     "extensions": ["./index.ts"],
     "skills": ["./skills"]

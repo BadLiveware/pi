@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BadLiveware/pi/agent/extensions/public/multi-harness-compatibility/config.schema.json",
+  "title": "Pi Multi-Harness Compatibility Configuration",
+  "description": "Profile-aware discovery settings for loading and deduplicating Pi, Claude, Cursor, and neutral agent resources.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for editor support."
+    },
+    "defaultProfile": {
+      "type": "string",
+      "description": "Profile name used when no profile match condition applies."
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Named context profiles. The first profile with a matching condition wins; otherwise defaultProfile is used.",
+      "additionalProperties": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "match": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Glob-like cwd patterns such as ~/code/org/**."
+        },
+        "gitRemotes": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Glob-like patterns matched against `git remote -v` output lines."
+        },
+        "markerFiles": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Files whose existence activates this profile. Relative paths are resolved from the current working directory."
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "match": {
+          "$ref": "#/$defs/match",
+          "description": "Optional activation conditions for this profile."
+        },
+        "roots": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Additional shared roots to scan alongside the current repo. Relative paths resolve from the repo root when available."
+        },
+        "pi": {
+          "type": "boolean",
+          "description": "Enable AGENTS.md and explicit Pi context files. Defaults to true."
+        },
+        "claude": {
+          "type": "boolean",
+          "description": "Enable CLAUDE.md and .claude/skills discovery. Defaults to true."
+        },
+        "cursor": {
+          "type": "boolean",
+          "description": "Enable .cursor/skills and .cursor/rules discovery. Defaults to true."
+        },
+        "agents": {
+          "type": "boolean",
+          "description": "Enable neutral .agents/skills discovery. Defaults to true."
+        },
+        "includeGlobalPiContext": {
+          "type": "boolean",
+          "description": "Also load ~/.pi/agent/AGENTS.md into normalized context. Defaults to false."
+        },
+        "contextFiles": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Additional context files to load. Relative paths resolve from each discovery root."
+        },
+        "skillDirs": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Additional skill directories to discover. Relative paths resolve from the repo root when available."
+        },
+        "cursorRuleDirs": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Additional Cursor rule directories to discover. Relative paths resolve from the repo root when available."
+        }
+      }
+    }
+  }
+}
