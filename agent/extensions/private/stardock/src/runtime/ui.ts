@@ -4,6 +4,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { latestGovernorDecision, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, STATUS_ICONS } from "../state/core.ts";
 import { loadState } from "../state/store.ts";
+import { evaluateWorkflowStatus } from "../workflow-status.ts";
 
 export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | null): void {
 	if (!ctx.hasUI) return;
@@ -22,14 +23,17 @@ export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | nu
 	const latestAttempt = attempts.at(-1);
 	const pendingRequests = pendingOutsideRequests(state).length;
 	const latestDecision = latestGovernorDecision(state);
+	const workflow = evaluateWorkflowStatus(state);
 
-	ctx.ui.setStatus("stardock", theme.fg("accent", `🔄 ${state.name} · ${state.iteration}${maxStr}`));
+	ctx.ui.setStatus("stardock", theme.fg("accent", `🔄 ${state.name} · ${state.iteration}${maxStr} · ${workflow.state}`));
 
 	const lines = [
 		theme.fg("accent", theme.bold("Stardock")),
 		theme.fg("muted", `Loop: ${state.name}`),
 		theme.fg("dim", `${STATUS_ICONS[state.status]} ${state.status} · ${state.mode} · iteration ${state.iteration}${maxStr}`),
+		theme.fg(workflow.severity === "blocked" || workflow.severity === "warning" ? "warning" : "dim", `Workflow: ${workflow.state}`),
 	];
+	if (workflow.severity !== "info") lines.push(theme.fg("warning", `Next: ${compactText(workflow.recommendedActions[0]?.label ?? workflow.summary, 88)}`));
 
 	if (state.modeState.kind === "recursive") {
 		lines.push(theme.fg("dim", `Objective: ${compactText(state.modeState.objective, 72)}`));

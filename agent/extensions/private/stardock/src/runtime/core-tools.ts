@@ -13,6 +13,7 @@ import { defaultCriterionLedger } from "../state/migration.ts";
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
+import { evaluateWorkflowStatus, formatWorkflowStatus } from "../workflow-status.ts";
 import { applyActiveBriefLifecycle } from "../briefs.ts";
 import { FollowupToolParameter, withFollowupTool } from "./followups.ts";
 import { buildPrompt, createModeState, getModeHandler, isImplementedMode, unsupportedModeMessage } from "./prompts.ts";
@@ -158,11 +159,13 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				const latestDecision = latestGovernorDecision(state);
 				const activeBrief = currentBrief(state);
 				const checklistDrift = loadChecklistLedgerDrift(ctx, state);
+				const workflowStatus = evaluateWorkflowStatus(state);
 				const lines = [
 					`Loop: ${state.name}`,
 					`Status: ${state.status}`,
 					`Mode: ${state.mode}`,
 					`Iteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
+					formatWorkflowStatus(workflowStatus),
 					`Task file: ${state.taskFile}`,
 					`State file: ${path.relative(ctx.cwd, existingStatePath(ctx, state.name, archived))}`,
 					state.modeState.kind === "recursive" ? `Objective: ${state.modeState.objective}` : undefined,

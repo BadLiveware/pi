@@ -417,7 +417,7 @@ Current implementation is data-only: `stardock_auditor` creates ready-to-copy au
 
 The practical implementation path is complete through the safe manual/data-only framework boundary. Stardock now has durable state, checklist and recursive modes, governor/outside request workflows, criteria, artifacts, iteration briefs, final reports, auditor reviews, advisory handoffs, breakout packages, worker reports, read-only policy recommendations, batch evidence writes, reserved evolve state, and Pi-free app orchestration for the main write tools.
 
-Remaining work is design-gated and should be driven by dogfood evidence. Immediate subagent-readiness work should happen before direct provider execution:
+Remaining work is design-gated and should be driven by dogfood evidence. Stardock is beginning to move from loop-first checklist prompting toward a state-machine-first workflow: a derived read-only workflow status now summarizes whether a run is ready for work, needs parent review, needs auditor review, needs a breakout decision, is ready for final verification, is blocked, or is completed. Immediate subagent-readiness work should happen before direct provider execution:
 
 1. **Criteria and evidence policy hardening**
    - Initial `CriterionLedger`, verification artifact refs, task-file criterion distillation, red/green evidence fields, requirement traces, and compact artifact summaries exist.
@@ -437,7 +437,8 @@ Remaining work is design-gated and should be driven by dogfood evidence. Immedia
    - Still needed: direct provider execution adapter design; keep this advisory-only before any editing flow.
 5. **Completion, breakout, and learning gates**
    - Initial manual/data-only `FinalVerificationReport` and `BreakoutPackage` support exists, and `stardock_policy({ action: "completion" | "breakout" })` recommends final reports, auditor reviews, or breakout packages without enforcing hidden gates.
-   - Still needed: policy for when completion should require or recommend a final report/auditor review/breakout package, optional compound-learning proposals, and cognitive-debt walkthrough requirements for large or complex changes.
+   - Initial derived workflow status surfaces final-verification readiness, breakout decisions, parent review, auditor review, blocked, and completed states in `stardock_state`, overview/list text, and the active widget without storing another mutable source of truth.
+   - Still needed: transition notifications, prompt gate integration, policy for when completion should require or recommend a final report/auditor review/breakout package, optional compound-learning proposals, and cognitive-debt walkthrough requirements for large or complex changes.
 6. **Subagent-driven recursive mode**
    - Use `.pi/plans/stardock-subagent-recursive-mode.md` as the design gate.
    - Start with exploration and test-runner providers before implementer providers.
@@ -858,6 +859,7 @@ The initial mode-aware/recursive path and the safe manual/data-only governance/e
 1. Dogfood Stardock on real implementation work using criterion distillation, explicit artifacts, final reports, and read-only policy checks.
 2. Add first-class baseline validation records and criteria review/update policy only after dogfooding confirms the right granularity and update ownership.
 3. Strengthen context packet routing and governor memory only where briefs/outside requests are insufficient.
-4. Add automatic auditor trigger creation only if read-only gate recommendations prove insufficient.
-5. Add exploration/test-runner provider adapters before implementer/editing adapters.
-6. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates and auditor checkpoints.
+4. Add transition notifications for meaningful workflow-state changes, then prompt gate integration if the read-only status proves useful.
+5. Add automatic auditor trigger creation only if read-only gate recommendations prove insufficient.
+6. Add exploration/test-runner provider adapters before implementer/editing adapters.
+7. Treat editing subagents and `evolve` mode as follow-up projects with separate safety gates and auditor checkpoints.

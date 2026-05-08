@@ -10,6 +10,7 @@ import { criterionCounts,formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision,pendingOutsideRequests } from "./outside-requests.ts";
 import { type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
 import { existingStatePath } from "./state/paths.ts";
+import { evaluateWorkflowStatus, formatWorkflowStatus } from "./workflow-status.ts";
 
 export function formatLoop(l: LoopState): string {
 	const status = `${STATUS_ICONS[l.status]} ${l.status}`;
@@ -26,6 +27,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 	const criteria = criterionCounts(state.criterionLedger);
 	const latestFinalReport = state.finalVerificationReports.at(-1);
 	const checklistDrift = loadChecklistLedgerDrift(ctx, state);
+	const workflowStatus = evaluateWorkflowStatus(state);
 	const artifactsByKind = state.verificationArtifacts.reduce<Record<string, number>>((counts, artifact) => {
 		counts[artifact.kind] = (counts[artifact.kind] ?? 0) + 1;
 		return counts;
@@ -34,6 +36,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 		name: state.name,
 		mode: state.mode,
 		status: state.status,
+		workflowStatus,
 		active: state.active,
 		iteration: state.iteration,
 		maxIterations: state.maxIterations,
@@ -134,7 +137,8 @@ export function formatStateSummary(state: LoopState): string {
 	const breakoutText = state.breakoutPackages.length > 0 ? `, breakouts ${state.breakoutPackages.length}` : "";
 	const workerText = state.workerReports.length > 0 ? `, worker reports ${state.workerReports.length}` : "";
 	const briefText = state.currentBriefId ? `, brief ${state.currentBriefId}` : "";
-	return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}${baselineText}${reportsText}${handoffText}${breakoutText}${workerText}${briefText}`;
+	const workflow = evaluateWorkflowStatus(state);
+	return `${formatLoop(state)} [${workflow.state}]${attemptText}${requestText}${criteriaText}${artifactsText}${baselineText}${reportsText}${handoffText}${breakoutText}${workerText}${briefText}`;
 }
 
 function compactViewText(value: string | undefined, maxLength = 160): string | undefined {
@@ -211,6 +215,7 @@ export function formatRunOverview(ctx: ExtensionContext, state: LoopState, archi
 	const lines = [
 		`Stardock run: ${state.name}`,
 		`Status: ${STATUS_ICONS[state.status]} ${state.status} · ${state.mode} · iteration ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
+		formatWorkflowStatus(evaluateWorkflowStatus(state)),
 		`Task: ${state.taskFile}`,
 		`State: ${path.relative(ctx.cwd, existingStatePath(ctx, state.name, archived))}`,
 	];
