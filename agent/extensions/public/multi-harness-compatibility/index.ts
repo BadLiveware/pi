@@ -1,3 +1,6 @@
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
@@ -53,7 +56,11 @@ function manualSkillReferenceText(state: ResolvedCompatState, manualRoots: strin
 	if (manualRoots.length === 0) return "";
 	const skillLines = state.loaded
 		.filter((resource) => resource.type === "skill" && resource.realPath && manualRoots.some((root) => resource.realPath?.startsWith(`${root}${path.sep}`) || resource.realPath === root))
-		.map((resource) => `- ${resource.name ?? path.basename(resource.realPath ?? resource.path)}: ${resource.realPath}`);
+		.map((resource) => {
+			const manualRoot = manualRoots.find((root) => resource.realPath?.startsWith(`${root}${path.sep}`) || resource.realPath === root);
+			const wrapperName = manualRoot ? `${slug(path.basename(manualRoot))}-${slug(resource.name ?? path.basename(resource.realPath ?? resource.path))}` : undefined;
+			return `- ${wrapperName ? `/skill:${wrapperName}` : resource.name}: ${skillFileFor(resource) ?? resource.realPath}`;
+		});
 	if (skillLines.length === 0) return "";
 	return `\n\n## Additional Skill References\n\nThese skills come from manually loaded project roots. When relevant, use the read tool to load the referenced SKILL.md before following it.\n\n${skillLines.join("\n")}\n`;
 }
@@ -63,6 +70,56 @@ function readManualRootsFromSession(ctx: ExtensionContext): string[] {
 	const latest = [...entries].reverse().find((entry) => entry.type === "custom" && entry.customType === manualRootsEntryType);
 	const data = latest?.data as { roots?: unknown } | undefined;
 	return Array.isArray(data?.roots) ? data.roots.filter((root): root is string => typeof root === "string") : [];
+}
+
+function slug(value: string): string {
+	const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/--+/g, "-");
+	return normalized || "project";
+}
+
+function shortHash(value: string): string {
+	return crypto.createHash("sha256").update(value).digest("hex").slice(0, 10);
+}
+
+function skillFileFor(resource: ResolvedCompatState["loaded"][number]): string | undefined {
+	if (!resource.realPath) return undefined;
+	try {
+		const stat = fs.statSync(resource.realPath);
+		return stat.isDirectory() ? path.join(resource.realPath, "SKILL.md") : resource.realPath;
+	} catch {
+		return undefined;
+	}
+}
+
+function wrapperRoot(): string {
+	return path.join(os.tmpdir(), "pi-multi-harness-compat", "skill-wrappers");
+}
+
+function writeSkillWrapper(wrapperDir: string, wrapperName: string, originalName: string, originalSkillFile: string | undefined, reason: string): string {
+	fs.mkdirSync(wrapperDir, { recursive: true });
+	fs.writeFileSync(path.join(wrapperDir, "SKILL.md"), `---\nname: ${wrapperName}\ndescription: Loads the ${originalName} skill from ${reason}. Use when work needs that guidance.\n---\n\n# ${originalName}\n\nThis is a generated wrapper for a skill discovered by multi-harness compatibility.\n\nBefore proceeding, use the read tool to load the original skill file, then follow its instructions.\n\nOriginal skill: ${originalSkillFile ?? "unknown"}\n`);
+	return wrapperDir;
+}
+
+function effectiveSkillPaths(state: ResolvedCompatState, manualRoots: string[]): string[] {
+	const paths: string[] = [];
+	for (const skillPath of state.skillPaths) {
+		const realPath = existingRealPath(skillPath) ?? skillPath;
+		const resource = state.loaded.find((item) => item.type === "skill" && item.realPath === realPath);
+		const originalName = resource?.name ?? slug(path.basename(realPath));
+		const manualRoot = manualRoots.find((root) => realPath === root || realPath.startsWith(`${root}${path.sep}`));
+		if (manualRoot) {
+			const wrapperName = `${slug(path.basename(manualRoot))}-${slug(originalName)}`;
+			paths.push(writeSkillWrapper(path.join(wrapperRoot(), shortHash(manualRoot), wrapperName), wrapperName, originalName, skillFileFor(resource ?? { realPath, path: realPath, type: "skill", kind: "pi", status: "loaded" }), `manual project ${manualRoot}`));
+			continue;
+		}
+		if (path.basename(realPath) === "SKILL.md" && slug(path.basename(path.dirname(realPath))) !== slug(originalName)) {
+			paths.push(writeSkillWrapper(path.join(wrapperRoot(), "standalone", shortHash(realPath), slug(originalName)), slug(originalName), originalName, skillFileFor(resource ?? { realPath, path: realPath, type: "skill", kind: "pi", status: "loaded" }), realPath));
+			continue;
+		}
+		paths.push(skillPath);
+	}
+	return paths;
 }
 
 function renderStatus(state: ResolvedCompatState, manualRoots: string[]): string {
@@ -101,7 +158,7 @@ export default function compatWorkflows(pi: ExtensionAPI): void {
 		if (runtimeProfile) loaded.config.defaultProfile = runtimeProfile;
 		addManualRootsToConfig(loaded);
 		lastState = resolveCompatState(event.cwd, loaded);
-		return { skillPaths: lastState.skillPaths };
+		return { skillPaths: effectiveSkillPaths(lastState, manualRoots) };
 	});
 
 	pi.on("session_start", async (_event, ctx) => {

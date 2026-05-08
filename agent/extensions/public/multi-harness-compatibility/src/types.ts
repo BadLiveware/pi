@@ -7,6 +7,7 @@ export interface CompatMatchConfig {
 }
 
 export interface CompatProfileConfig {
+	inherit?: string[];
 	match?: CompatMatchConfig;
 	roots?: string[];
 	pi?: boolean;

@@ -2,7 +2,11 @@
   "$schema": "./extensions/public/multi-harness-compatibility/config.schema.json",
   "defaultProfile": "personal",
   "profiles": {
+    "global": {
+      "skillDirs": ["~/.local/share/omarchy/default/omarchy-skill/SKILL.md"]
+    },
     "work": {
+      "inherit": ["global"],
       "match": {
         "paths": ["~/code/tradera/**"]
       },
@@ -13,6 +17,7 @@
       "agents": true
     },
     "personal": {
+      "inherit": ["global"],
       "match": {
         "paths": ["~/code/**"]
       },

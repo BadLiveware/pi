@@ -102,6 +102,35 @@ describe("multi-harness compatibility resolver", () => {
 		assert.equal(state.loaded.some((item) => item.kind === "claude" && item.name === "claude-only"), true);
 	});
 
+	it("merges inherited template profiles", () => {
+		const cwd = tempRepo();
+		const skillFile = path.join(cwd, "standalone", "odd-parent", "SKILL.md");
+		write(skillFile, "---\nname: inherited-skill\ndescription: Inherited skill.\n---\n# Inherited\n");
+
+		const state = resolveCompatState(cwd, loaded({
+			defaultProfile: "personal",
+			profiles: {
+				global: { skillDirs: [skillFile], cursor: false },
+				personal: { inherit: ["global"], cursor: true },
+			},
+		}, cwd));
+
+		assert.equal(state.activeProfile.name, "personal");
+		assert.equal(state.loaded.some((item) => item.type === "skill" && item.name === "inherited-skill"), true);
+		assert.equal(state.activeProfile.profile.cursor, true);
+	});
+
+	it("loads exact standalone skill files configured in skillDirs", () => {
+		const cwd = tempRepo();
+		const skillFile = path.join(cwd, "standalone", "odd-parent", "SKILL.md");
+		write(skillFile, "---\nname: standalone-skill\ndescription: Standalone skill.\n---\n# Standalone\n");
+
+		const state = resolveCompatState(cwd, loaded({ defaultProfile: "personal", profiles: { personal: { skillDirs: [skillFile] } } }, cwd));
+
+		assert.equal(state.skillPaths.length, 1);
+		assert.equal(state.loaded.some((item) => item.type === "skill" && item.name === "standalone-skill" && item.realPath === skillFile), true);
+	});
+
 	it("loads repo config while starting from a nested directory", () => {
 		const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
 		const agentDir = tempRepo();

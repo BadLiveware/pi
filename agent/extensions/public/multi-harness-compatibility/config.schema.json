@@ -48,6 +48,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "inherit": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Profiles to inherit before applying this profile. Use for template profiles such as global shared resources."
+        },
         "match": {
           "$ref": "#/$defs/match",
           "description": "Optional activation conditions for this profile."
@@ -82,7 +86,7 @@
         },
         "skillDirs": {
           "$ref": "#/$defs/stringArray",
-          "description": "Additional skill directories to discover. Relative paths resolve from the repo root when available."
+          "description": "Additional skill directories or exact .md skill files to discover. Relative paths resolve from the repo root when available."
         },
         "cursorRuleDirs": {
           "$ref": "#/$defs/stringArray",

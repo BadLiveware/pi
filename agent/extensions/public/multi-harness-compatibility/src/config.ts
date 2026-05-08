@@ -32,6 +32,7 @@ function normalizeProfile(value: unknown): CompatProfileConfig {
 		markerFiles: strings(value.match.markerFiles),
 	} : undefined;
 	return {
+		inherit: strings(value.inherit),
 		match,
 		roots: strings(value.roots),
 		pi: bool(value.pi),

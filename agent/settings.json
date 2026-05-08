@@ -20,9 +20,7 @@
     "../../code/personal/pi-markdown-preview",
     "../../code/personal/pi-vcc"
   ],
-  "skills": [
-    "~/.local/share/omarchy/default/"
-  ],
+  "skills": [],
   "steeringMode": "all",
   "enableInstallTelemetry": false,
   "theme": "dark",

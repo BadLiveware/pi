@@ -44,15 +44,61 @@ function profileMatches(name: string, profile: CompatProfileConfig, cwd: string,
 	return name === "" ? "" : undefined;
 }
 
-export function activeProfile(config: CompatConfig, cwd: string): ActiveProfile {
+function mergeStringArrays(...arrays: Array<string[] | undefined>): string[] | undefined {
+	const merged = arrays.flatMap((array) => array ?? []);
+	return merged.length ? [...new Set(merged)] : undefined;
+}
+
+function mergeMatch(parent: CompatProfileConfig["match"], child: CompatProfileConfig["match"]): CompatProfileConfig["match"] {
+	if (!parent && !child) return undefined;
+	return {
+		paths: mergeStringArrays(parent?.paths, child?.paths),
+		gitRemotes: mergeStringArrays(parent?.gitRemotes, child?.gitRemotes),
+		markerFiles: mergeStringArrays(parent?.markerFiles, child?.markerFiles),
+	};
+}
+
+function mergeProfiles(parent: CompatProfileConfig, child: CompatProfileConfig): CompatProfileConfig {
+	return {
+		inherit: child.inherit,
+		match: mergeMatch(parent.match, child.match),
+		roots: mergeStringArrays(parent.roots, child.roots),
+		pi: child.pi ?? parent.pi,
+		claude: child.claude ?? parent.claude,
+		cursor: child.cursor ?? parent.cursor,
+		agents: child.agents ?? parent.agents,
+		includeGlobalPiContext: child.includeGlobalPiContext ?? parent.includeGlobalPiContext,
+		contextFiles: mergeStringArrays(parent.contextFiles, child.contextFiles),
+		skillDirs: mergeStringArrays(parent.skillDirs, child.skillDirs),
+		cursorRuleDirs: mergeStringArrays(parent.cursorRuleDirs, child.cursorRuleDirs),
+	};
+}
+
+function resolveProfileConfig(name: string, profiles: Record<string, CompatProfileConfig>, diagnostics: string[], stack: string[] = []): CompatProfileConfig {
+	const profile = profiles[name];
+	if (!profile) {
+		diagnostics.push(`Profile '${name}' inherits missing profile '${name}'.`);
+		return {};
+	}
+	if (stack.includes(name)) {
+		diagnostics.push(`Profile inheritance cycle: ${[...stack, name].join(" -> ")}`);
+		return profile;
+	}
+	let resolved: CompatProfileConfig = {};
+	for (const parentName of profile.inherit ?? []) resolved = mergeProfiles(resolved, resolveProfileConfig(parentName, profiles, diagnostics, [...stack, name]));
+	return mergeProfiles(resolved, profile);
+}
+
+export function activeProfile(config: CompatConfig, cwd: string, diagnostics: string[] = []): ActiveProfile {
 	const profiles = config.profiles ?? {};
 	const remotes = gitRemotes(cwd);
 	for (const [name, profile] of Object.entries(profiles)) {
-		const reason = profileMatches(name, profile, cwd, remotes);
-		if (reason) return { name, profile, reason };
+		const resolved = resolveProfileConfig(name, profiles, diagnostics);
+		const reason = profileMatches(name, resolved, cwd, remotes);
+		if (reason) return { name, profile: resolved, reason };
 	}
 	const defaultName = config.defaultProfile ?? "private";
-	return { name: defaultName, profile: profiles[defaultName] ?? { pi: true, claude: true, cursor: true, agents: true }, reason: "defaultProfile" };
+	return { name: defaultName, profile: profiles[defaultName] ? resolveProfileConfig(defaultName, profiles, diagnostics) : { pi: true, claude: true, cursor: true, agents: true }, reason: "defaultProfile" };
 }
 
 function enabled(profile: CompatProfileConfig, kind: SourceKind): boolean {
@@ -136,7 +182,10 @@ function skillName(skillPath: string): string | undefined {
 }
 
 function findSkills(dir: string): string[] {
-	if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return [];
+	if (!fs.existsSync(dir)) return [];
+	const stat = fs.statSync(dir);
+	if (stat.isFile()) return dir.endsWith(".md") ? [dir] : [];
+	if (!stat.isDirectory()) return [];
 	const entries = fs.readdirSync(dir, { withFileTypes: true });
 	const result: string[] = [];
 	for (const entry of entries) {
@@ -222,7 +271,7 @@ function addCursorRules(state: ResolvedCompatState, profile: CompatProfileConfig
 }
 
 export function resolveCompatState(cwd: string, loadedConfig: LoadedCompatConfig): ResolvedCompatState {
-	const selected = activeProfile(loadedConfig.config, cwd);
+	const selected = activeProfile(loadedConfig.config, cwd, loadedConfig.diagnostics);
 	const state: ResolvedCompatState = {
 		cwd,
 		repoRoot: loadedConfig.repoRoot,
