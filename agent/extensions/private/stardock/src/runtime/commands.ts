@@ -98,6 +98,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 				outsideRequests: [],
 				criterionLedger: defaultCriterionLedger(),
 				verificationArtifacts: [],
+				baselineValidations: [],
 				briefs: [],
 				finalVerificationReports: [],
 				auditorReviews: [],

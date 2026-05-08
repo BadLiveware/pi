@@ -9,7 +9,7 @@ import { formatBreakoutPackageOverview } from "../breakout-packages.ts";
 import { formatBriefOverview } from "../briefs.ts";
 import { formatFinalReportOverview } from "../final-reports.ts";
 import { formatCriterionCounts, formatLedgerOverview } from "../ledger.ts";
-import { evaluateAuditorPolicy, evaluateBreakoutPolicy, evaluateCompletionPolicy, formatAuditorPolicy, formatBreakoutPolicy, formatCompletionPolicy } from "../policy.ts";
+import { evaluateAuditorGatePolicy, evaluateAuditorPolicy, evaluateBreakoutPolicy, evaluateCompletionPolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatAuditorPolicy, formatBreakoutPolicy, formatCompletionPolicy, formatParentReviewPolicy } from "../policy.ts";
 import { formatWorkerReportOverview } from "../worker-reports.ts";
 import { existingStatePath } from "../state/paths.ts";
 import { listLoops, loadState } from "../state/store.ts";
@@ -54,7 +54,7 @@ function runListFollowup(ctx: ExtensionContext, currentLoop: string | null, args
 	if (!resolved.state) return resolved.output!;
 	const { state, loopName } = resolved;
 	if (toolName === "stardock_brief") return { name: toolName, args, content: formatBriefOverview(state), details: { loopName, briefs: state.briefs, currentBriefId: state.currentBriefId } };
-	if (toolName === "stardock_ledger") return { name: toolName, args, content: formatLedgerOverview(state), details: { loopName, criterionLedger: state.criterionLedger, verificationArtifacts: state.verificationArtifacts } };
+	if (toolName === "stardock_ledger") return { name: toolName, args, content: formatLedgerOverview(state), details: { loopName, criterionLedger: state.criterionLedger, verificationArtifacts: state.verificationArtifacts, baselineValidations: state.baselineValidations } };
 	if (toolName === "stardock_final_report") return { name: toolName, args, content: formatFinalReportOverview(state, formatCriterionCounts), details: { loopName, finalVerificationReports: state.finalVerificationReports } };
 	if (toolName === "stardock_auditor") return { name: toolName, args, content: formatAuditorReviewOverview(state), details: { loopName, auditorReviews: state.auditorReviews } };
 	if (toolName === "stardock_breakout") return { name: toolName, args, content: formatBreakoutPackageOverview(state), details: { loopName, breakoutPackages: state.breakoutPackages } };
@@ -71,6 +71,8 @@ function runPolicyFollowup(ctx: ExtensionContext, currentLoop: string | null, ar
 	const action = stringArg(args, "action") ?? "completion";
 	if (action === "auditor") return { name: "stardock_policy", args, content: formatAuditorPolicy(state), details: { loopName, policy: evaluateAuditorPolicy(state) } };
 	if (action === "breakout") return { name: "stardock_policy", args, content: formatBreakoutPolicy(state), details: { loopName, policy: evaluateBreakoutPolicy(state) } };
+	if (action === "parentReview") return { name: "stardock_policy", args, content: formatParentReviewPolicy(state), details: { loopName, policy: evaluateParentReviewPolicy(state) } };
+	if (action === "auditorGate") return { name: "stardock_policy", args, content: formatAuditorGatePolicy(state), details: { loopName, policy: evaluateAuditorGatePolicy(state) } };
 	return { name: "stardock_policy", args, content: formatCompletionPolicy(state), details: { loopName, policy: evaluateCompletionPolicy(state) } };
 }
 

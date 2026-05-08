@@ -73,6 +73,12 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 			total: state.verificationArtifacts.length,
 			byKind: artifactsByKind,
 		},
+		baselineValidations: {
+			total: state.baselineValidations.length,
+			passed: state.baselineValidations.filter((baseline) => baseline.result === "passed").length,
+			failed: state.baselineValidations.filter((baseline) => baseline.result === "failed").length,
+			skipped: state.baselineValidations.filter((baseline) => baseline.result === "skipped").length,
+		},
 		finalVerificationReports: {
 			total: state.finalVerificationReports.length,
 			latest: latestFinalReport
@@ -110,7 +116,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 				: undefined,
 		},
 		...(includeDetails
-			? { modeState: state.modeState, requests: state.outsideRequests, criterionLedger: state.criterionLedger, artifacts: state.verificationArtifacts, briefList: state.briefs, finalVerificationReportList: state.finalVerificationReports }
+			? { modeState: state.modeState, requests: state.outsideRequests, criterionLedger: state.criterionLedger, artifacts: state.verificationArtifacts, baselineValidationList: state.baselineValidations, briefList: state.briefs, finalVerificationReportList: state.finalVerificationReports }
 			: {}),
 	};
 }
@@ -122,12 +128,13 @@ export function formatStateSummary(state: LoopState): string {
 	const attemptText = attempts.length > 0 ? `, attempts ${reported}/${attempts.length} reported` : "";
 	const criteriaText = state.criterionLedger.criteria.length > 0 ? `, criteria ${criterionCounts(state.criterionLedger).passed}/${state.criterionLedger.criteria.length} passed` : "";
 	const artifactsText = state.verificationArtifacts.length > 0 ? `, artifacts ${state.verificationArtifacts.length}` : "";
+	const baselineText = state.baselineValidations.length > 0 ? `, baselines ${state.baselineValidations.length}` : "";
 	const reportsText = state.finalVerificationReports.length > 0 ? `, final reports ${state.finalVerificationReports.length}` : "";
 	const handoffText = state.advisoryHandoffs.length > 0 ? `, handoffs ${state.advisoryHandoffs.length}` : "";
 	const breakoutText = state.breakoutPackages.length > 0 ? `, breakouts ${state.breakoutPackages.length}` : "";
 	const workerText = state.workerReports.length > 0 ? `, worker reports ${state.workerReports.length}` : "";
 	const briefText = state.currentBriefId ? `, brief ${state.currentBriefId}` : "";
-	return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}${reportsText}${handoffText}${breakoutText}${workerText}${briefText}`;
+	return `${formatLoop(state)}${attemptText}${requestText}${criteriaText}${artifactsText}${baselineText}${reportsText}${handoffText}${breakoutText}${workerText}${briefText}`;
 }
 
 function compactViewText(value: string | undefined, maxLength = 160): string | undefined {

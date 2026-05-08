@@ -7,8 +7,8 @@ import { Type } from "typebox";
 import * as path from "node:path";
 import { runLedgerArtifactRecord, runLedgerCriteriaUpsert, runLedgerTaskDistillation } from "./app/ledger-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
-import { compactText, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact, type VerificationArtifactKind } from "./state/core.ts";
-import { isArtifactKind, isCriterionStatus, normalizeId, normalizeIds, rebuildRequirementTrace } from "./state/migration.ts";
+import { compactText, type BaselineValidation, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact, type VerificationArtifactKind } from "./state/core.ts";
+import { isArtifactKind, isCriterionStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList, rebuildRequirementTrace } from "./state/migration.ts";
 import { taskPath, tryRead } from "./state/paths.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -39,7 +39,7 @@ function normalizeArtifactKindInput(value: unknown, fallback: VerificationArtifa
 }
 
 export function formatLedgerOverview(state: LoopState): string {
-	const lines = [`Ledger for ${state.name}`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`];
+	const lines = [`Ledger for ${state.name}`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Baseline validations: ${state.baselineValidations.length} total`];
 	if (state.criterionLedger.criteria.length > 0) {
 		lines.push("", "Criteria");
 		for (const criterion of state.criterionLedger.criteria.slice(0, 12)) {
@@ -58,6 +58,16 @@ export function formatLedgerOverview(state: LoopState): string {
 			if (artifact.command) lines.push(`  Command: ${compactText(artifact.command, 120)}`);
 		}
 		if (state.verificationArtifacts.length > 12) lines.push(`... ${state.verificationArtifacts.length - 12} more artifacts`);
+	}
+	if (state.baselineValidations.length > 0) {
+		lines.push("", "Baseline validations");
+		for (const baseline of state.baselineValidations.slice(0, 12)) {
+			const criteria = baseline.criterionIds.length ? ` · criteria ${baseline.criterionIds.join(",")}` : "";
+			lines.push(`- ${baseline.id} [${baseline.result}] ${compactText(baseline.summary, 120)}${criteria}`);
+			if (baseline.command) lines.push(`  Command: ${compactText(baseline.command, 120)}`);
+			if (baseline.artifactIds.length) lines.push(`  Artifacts: ${baseline.artifactIds.join(",")}`);
+		}
+		if (state.baselineValidations.length > 12) lines.push(`... ${state.baselineValidations.length - 12} more baseline validations`);
 	}
 	return lines.join("\n");
 }
@@ -138,6 +148,45 @@ export function recordVerificationArtifact(
 	return { ok: true, state, artifact, created: existingIndex < 0 };
 }
 
+export function recordBaselineValidation(
+	ctx: ExtensionContext,
+	loopName: string,
+	input: Partial<BaselineValidation> & { summary?: string },
+	updateUI: (ctx: ExtensionContext) => void,
+): { ok: true; state: LoopState; baseline: BaselineValidation; created: boolean } | { ok: false; error: string } {
+	const state = loadState(ctx, loopName);
+	if (!state) return { ok: false, error: `Loop "${loopName}" not found.` };
+	const criterionIds = normalizeStringList(input.criterionIds);
+	const artifactIds = normalizeStringList(input.artifactIds);
+	const criterionSet = new Set(state.criterionLedger.criteria.map((criterion) => criterion.id));
+	const artifactSet = new Set(state.verificationArtifacts.map((artifact) => artifact.id));
+	const missingCriterion = criterionIds.find((id) => !criterionSet.has(id));
+	if (missingCriterion) return { ok: false, error: `Criterion "${missingCriterion}" not found in loop "${loopName}".` };
+	const missingArtifact = artifactIds.find((id) => !artifactSet.has(id));
+	if (missingArtifact) return { ok: false, error: `Artifact "${missingArtifact}" not found in loop "${loopName}".` };
+
+	const id = normalizeId(input.id, nextSequentialId("bv", state.baselineValidations));
+	const existingIndex = state.baselineValidations.findIndex((baseline) => baseline.id === id);
+	const existing = existingIndex >= 0 ? state.baselineValidations[existingIndex] : undefined;
+	const summary = typeof input.summary === "string" && input.summary.trim() ? input.summary.trim() : existing?.summary;
+	if (!summary) return { ok: false, error: "Baseline validation requires summary." };
+	const baseline: BaselineValidation = {
+		id,
+		command: typeof input.command === "string" && input.command.trim() ? compactText(input.command.trim(), 240) : existing?.command,
+		result: isValidationResult(input.result) ? input.result : existing?.result ?? "skipped",
+		summary: compactText(summary, 500) ?? summary,
+		criterionIds: input.criterionIds !== undefined ? criterionIds : existing?.criterionIds ?? [],
+		artifactIds: input.artifactIds !== undefined ? artifactIds : existing?.artifactIds ?? [],
+		recordedAt: existing?.recordedAt ?? new Date().toISOString(),
+	};
+	if (existingIndex >= 0) state.baselineValidations[existingIndex] = baseline;
+	else state.baselineValidations.push(baseline);
+	state.baselineValidations.sort((a, b) => a.id.localeCompare(b.id));
+	saveState(ctx, state);
+	updateUI(ctx);
+	return { ok: true, state, baseline, created: existingIndex < 0 };
+}
+
 const criterionInputSchema = Type.Object({
 	id: Type.Optional(Type.String()),
 	taskId: Type.Optional(Type.String()),
@@ -162,14 +211,23 @@ const artifactInputSchema = Type.Object({
 	criterionIds: Type.Optional(Type.Array(Type.String())),
 });
 
+const baselineInputSchema = Type.Object({
+	id: Type.Optional(Type.String()),
+	command: Type.Optional(Type.String()),
+	result: Type.Optional(Type.Union([Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped")])),
+	summary: Type.Optional(Type.String()),
+	criterionIds: Type.Optional(Type.Array(Type.String())),
+	artifactIds: Type.Optional(Type.Array(Type.String())),
+});
+
 export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void {
 	pi.registerTool({
 		name: "stardock_ledger",
 		label: "Manage Stardock Ledger",
 		description: "Inspect or update a Stardock criterion ledger and compact verification artifact refs.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("list"), Type.Literal("distillTaskCriteria"), Type.Literal("upsertCriterion"), Type.Literal("upsertCriteria"), Type.Literal("recordArtifact"), Type.Literal("recordArtifacts")], {
-				description: "list returns the ledger; distillTaskCriteria derives criteria from the loop task file; upsertCriterion/upsertCriteria create or update criteria; recordArtifact/recordArtifacts record compact verification artifact refs.",
+			action: Type.Union([Type.Literal("list"), Type.Literal("distillTaskCriteria"), Type.Literal("upsertCriterion"), Type.Literal("upsertCriteria"), Type.Literal("recordArtifact"), Type.Literal("recordArtifacts"), Type.Literal("recordBaseline"), Type.Literal("recordBaselines")], {
+				description: "list returns the ledger; distillTaskCriteria derives criteria from the loop task file; upsertCriterion/upsertCriteria create or update criteria; recordArtifact/recordArtifacts record compact verification artifact refs; recordBaseline/recordBaselines record pre-change validation evidence.",
 			}),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			id: Type.Optional(Type.String({ description: "Criterion or artifact id. Generated when omitted." })),
@@ -190,6 +248,9 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 			criterionIds: Type.Optional(Type.Array(Type.String(), { description: "Criterion ids linked to an artifact." })),
 			criteria: Type.Optional(Type.Array(criterionInputSchema, { description: "Batch criteria for upsertCriteria." })),
 			artifacts: Type.Optional(Type.Array(artifactInputSchema, { description: "Batch artifacts for recordArtifacts." })),
+			result: Type.Optional(Type.Union([Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped")], { description: "Baseline validation result." })),
+			artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids linked to a baseline validation." })),
+			baselines: Type.Optional(Type.Array(baselineInputSchema, { description: "Batch baseline validation records for recordBaselines." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -222,6 +283,21 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 				const response = runLedgerCriteriaUpsert(loopName, inputs, params.action === "upsertCriteria", { upsertCriterion: (input) => upsertCriterion(ctx, loopName, input, deps.updateUI) });
 				const details = response.state ? { ...response.details, ...deps.optionalLoopDetails(ctx, response.state, params) } : response.details;
 				return { content: [{ type: "text", text: response.contentText }], details };
+			}
+
+			if (params.action === "recordBaseline" || params.action === "recordBaselines") {
+				const inputs = params.action === "recordBaselines" ? params.baselines ?? [] : [{ id: params.id, command: params.command, result: params.result, summary: params.summary, criterionIds: params.criterionIds, artifactIds: params.artifactIds }];
+				let latestState: LoopState | undefined;
+				const records: BaselineValidation[] = [];
+				for (const input of inputs) {
+					const result = recordBaselineValidation(ctx, loopName, input, deps.updateUI);
+					if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { loopName, error: result.error, records } };
+					latestState = result.state;
+					records.push(result.baseline);
+				}
+				const stateDetails = latestState ? deps.optionalLoopDetails(ctx, latestState, params) : {};
+				const text = records.length === 1 ? `Recorded baseline validation ${records[0].id}` : `Recorded ${records.length} baseline validations`;
+				return { content: [{ type: "text", text }], details: { loopName, baselineValidations: records, ...stateDetails } };
 			}
 
 			const inputs = params.action === "recordArtifacts" ? params.artifacts ?? [] : [{ id: params.id, kind: params.kind, command: params.command, path: params.path, summary: params.summary, criterionIds: params.criterionIds }];

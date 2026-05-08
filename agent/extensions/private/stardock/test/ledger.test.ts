@@ -97,18 +97,42 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 		assert.equal(artifactResult.details.artifact.summary.endsWith("…"), true);
 		assert.deepEqual(artifactResult.details.artifact.criterionIds, ["c-build"]);
 
+		const baselineResult = await ledger.execute(
+			"tool-ledger-baseline",
+			{
+				action: "recordBaseline",
+				loopName: "Ledger_Loop",
+				id: "bv-pre",
+				command: "npm test --prefix agent/extensions -- private/stardock/index.test.ts",
+				result: "failed",
+				summary: "Baseline failed before implementation, proving red evidence.",
+				criterionIds: ["c-build"],
+				artifactIds: ["a-test"],
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		assert.match(baselineResult.content[0].text, /Recorded baseline validation bv-pre/);
+		assert.equal(baselineResult.details.baselineValidations[0].result, "failed");
+
 		const listResult = await ledger.execute("tool-ledger-list", { action: "list", loopName: "Ledger_Loop" }, undefined, undefined, ctx);
 		assert.match(listResult.content[0].text, /Criteria: 1 total, 1 passed/);
 		assert.match(listResult.content[0].text, /Artifacts: 1 total/);
+		assert.match(listResult.content[0].text, /Baseline validations: 1 total/);
 		assert.match(listResult.content[0].text, /a-test \[test\]/);
+		assert.match(listResult.content[0].text, /bv-pre \[failed\]/);
 		assert.equal(listResult.content[0].text.includes(longSummary), false);
 
 		const summaryResult = await stateTool.execute("tool-ledger-state", { loopName: "Ledger_Loop", includeDetails: true }, undefined, undefined, ctx);
 		assert.match(summaryResult.content[0].text, /Criteria: 1 total, 1 passed/);
 		assert.match(summaryResult.content[0].text, /Verification artifacts: 1/);
+		assert.match(summaryResult.content[0].text, /Baseline validations: 1/);
 		assert.equal(summaryResult.details.loop.criteria.passed, 1);
 		assert.equal(summaryResult.details.loop.verificationArtifacts.total, 1);
+		assert.equal(summaryResult.details.loop.baselineValidations.failed, 1);
 		assert.equal(summaryResult.details.loop.criterionLedger.criteria[0].id, "c-build");
+		assert.equal(summaryResult.details.loop.baselineValidations.total, 1);
 
 		await done.execute("tool-ledger-done", {}, undefined, undefined, ctx);
 		assert.equal(messages.length, 2);

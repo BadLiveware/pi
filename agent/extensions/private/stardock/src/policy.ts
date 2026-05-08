@@ -9,6 +9,8 @@ export { evaluateCompletionPolicy } from "./completion-policy.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { compactText, type Criterion, type LoopState } from "./state/core.ts";
 import { loadState } from "./state/store.ts";
+import { evaluateAuditorGatePolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatParentReviewPolicy } from "./subagent-readiness-policy.ts";
+export { evaluateAuditorGatePolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatParentReviewPolicy } from "./subagent-readiness-policy.ts";
 
 export interface PolicyToolDeps {
 	getCurrentLoop(): string | null;
@@ -19,7 +21,7 @@ export type PolicySeverity = "info" | "recommend" | "warning" | "blocker";
 export interface PolicyFinding {
 	id: string;
 	severity: PolicySeverity;
-	recommendation: "final_report" | "auditor_review" | "breakout_package" | "worker_report" | "ready";
+	recommendation: "final_report" | "auditor_review" | "breakout_package" | "worker_report" | "parent_review" | "gate_decision" | "ready";
 	rationale: string;
 	criterionIds: string[];
 	artifactIds: string[];
@@ -320,7 +322,7 @@ function formatFinding(finding: PolicyFinding): string[] {
 }
 
 function formatPolicyHeader(state: LoopState): string[] {
-	return [formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length}`, `Final reports: ${state.finalVerificationReports.length}`, `Auditor reviews: ${state.auditorReviews.length}`, `Breakout packages: ${state.breakoutPackages.length}`, `Worker reports: ${state.workerReports.length}`];
+	return [formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length}`, `Baseline validations: ${state.baselineValidations.length}`, `Final reports: ${state.finalVerificationReports.length}`, `Auditor reviews: ${state.auditorReviews.length}`, `Breakout packages: ${state.breakoutPackages.length}`, `Worker reports: ${state.workerReports.length}`];
 }
 
 export function formatCompletionPolicy(state: LoopState): string {
@@ -381,9 +383,9 @@ export function registerPolicyTool(pi: ExtensionAPI, deps: PolicyToolDeps): void
 	pi.registerTool({
 		name: "stardock_policy",
 		label: "Inspect Stardock Governance Policy",
-		description: "Read-only governance policy recommendations for Stardock loops. Supports completion readiness, auditor trigger, and breakout trigger checks without enforcing gates.",
+		description: "Read-only governance policy recommendations for Stardock loops. Supports completion readiness, auditor trigger, breakout trigger, parent review, and gate checks without enforcing gates.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("completion"), Type.Literal("auditor"), Type.Literal("breakout")], { description: "completion returns readiness findings; auditor returns auditor-trigger recommendations; breakout returns breakout-package trigger recommendations." }),
+			action: Type.Union([Type.Literal("completion"), Type.Literal("auditor"), Type.Literal("breakout"), Type.Literal("parentReview"), Type.Literal("auditorGate")], { description: "completion returns readiness findings; auditor returns auditor-trigger recommendations; breakout returns breakout-package trigger recommendations; parentReview returns selective parent-review guidance; auditorGate returns high-risk gate guidance." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -398,6 +400,14 @@ export function registerPolicyTool(pi: ExtensionAPI, deps: PolicyToolDeps): void
 			if (params.action === "breakout") {
 				const result = evaluateBreakoutPolicy(state);
 				return { content: [{ type: "text", text: formatBreakoutPolicy(state) }], details: { loopName, policy: result } };
+			}
+			if (params.action === "parentReview") {
+				const result = evaluateParentReviewPolicy(state);
+				return { content: [{ type: "text", text: formatParentReviewPolicy(state) }], details: { loopName, policy: result } };
+			}
+			if (params.action === "auditorGate") {
+				const result = evaluateAuditorGatePolicy(state);
+				return { content: [{ type: "text", text: formatAuditorGatePolicy(state) }], details: { loopName, policy: result } };
 			}
 			const result = evaluateCompletionPolicy(state);
 			return { content: [{ type: "text", text: formatCompletionPolicy(state) }], details: { loopName, policy: result } };

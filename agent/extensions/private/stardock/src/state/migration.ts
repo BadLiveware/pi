@@ -10,6 +10,7 @@ type AdvisoryHandoffRole,
 type AdvisoryHandoffStatus,
 type AuditorReview,
 type AuditorReviewStatus,
+type BaselineValidation,
 type BreakoutPackage,
 type BreakoutPackageStatus,
 type ChangedFileReport,
@@ -138,6 +139,27 @@ export function migrateVerificationArtifacts(value: unknown): VerificationArtifa
 			};
 		})
 		.filter((artifact): artifact is VerificationArtifact => artifact !== null);
+}
+
+export function migrateBaselineValidations(value: unknown): BaselineValidation[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.map((item, index): BaselineValidation | null => {
+			if (!item || typeof item !== "object") return null;
+			const baseline = item as Partial<BaselineValidation> & Record<string, unknown>;
+			const summary = typeof baseline.summary === "string" ? baseline.summary.trim() : "";
+			if (!summary) return null;
+			return {
+				id: normalizeId(baseline.id, `bv${index + 1}`),
+				command: typeof baseline.command === "string" && baseline.command.trim() ? compactText(baseline.command.trim(), 240) : undefined,
+				result: isValidationResult(baseline.result) ? baseline.result : "skipped",
+				summary: compactText(summary, 500) ?? summary,
+				criterionIds: normalizeStringList(baseline.criterionIds),
+				artifactIds: normalizeStringList(baseline.artifactIds),
+				recordedAt: typeof baseline.recordedAt === "string" ? baseline.recordedAt : new Date().toISOString(),
+			};
+		})
+		.filter((baseline): baseline is BaselineValidation => baseline !== null);
 }
 
 export function isBriefStatus(value: unknown): value is IterationBriefStatus {
@@ -452,6 +474,7 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		outsideRequests: migrateOutsideRequests(raw.outsideRequests),
 		criterionLedger: migrateCriterionLedger(raw.criterionLedger),
 		verificationArtifacts: migrateVerificationArtifacts(raw.verificationArtifacts),
+		baselineValidations: migrateBaselineValidations(raw.baselineValidations),
 		briefs,
 		currentBriefId: migrateCurrentBriefId(raw.currentBriefId, briefs),
 		finalVerificationReports: migrateFinalVerificationReports(raw.finalVerificationReports),

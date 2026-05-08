@@ -214,6 +214,16 @@ export interface VerificationArtifact {
 	createdAt: string;
 }
 
+export interface BaselineValidation {
+	id: string;
+	command?: string;
+	result: ValidationResult;
+	summary: string;
+	criterionIds: string[];
+	artifactIds: string[];
+	recordedAt: string;
+}
+
 export type IterationBriefStatus = "draft" | "active" | "completed" | "dismissed";
 export type IterationBriefSource = "manual" | "governor";
 export type BriefLifecycleAction = "keep" | "complete" | "clear";
@@ -382,6 +392,7 @@ export interface LoopState {
 	outsideRequests: OutsideRequest[];
 	criterionLedger: CriterionLedger;
 	verificationArtifacts: VerificationArtifact[];
+	baselineValidations: BaselineValidation[];
 	briefs: IterationBrief[];
 	currentBriefId?: string;
 	finalVerificationReports: FinalVerificationReport[];

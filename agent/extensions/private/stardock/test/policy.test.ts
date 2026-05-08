@@ -134,6 +134,77 @@ test("stardock_policy recommends auditor review for risky worker reports", async
 	}
 });
 
+test("stardock_policy recommends selective parent review for worker and handoff outputs", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Parent Review");
+	try {
+		const worker = tools.get("stardock_worker_report");
+		const handoff = tools.get("stardock_handoff");
+		const policy = tools.get("stardock_policy");
+		assert.ok(worker);
+		assert.ok(handoff);
+		assert.ok(policy);
+		await worker.execute("worker", { action: "record", loopName: "Policy_Parent_Review", id: "wr-files", status: "needs_review", role: "reviewer", summary: "Worker returned file hints and risks.", changedFiles: [{ path: "src/example.ts", summary: "Touched public API", reviewReason: "Public contract changed." }], validation: [{ result: "failed", summary: "Focused validation failed." }], risks: ["Contract drift"] }, undefined, undefined, ctx);
+		await handoff.execute("handoff", { action: "record", loopName: "Policy_Parent_Review", id: "ah-impl", role: "implementer", status: "answered", objective: "Apply risky edit.", summary: "Provider returned a patch." }, undefined, undefined, ctx);
+
+		const result = await policy.execute("policy", { action: "parentReview", loopName: "Policy_Parent_Review" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, true);
+		assert.equal(result.details.policy.status, "parent_review_required");
+		assert.match(result.content[0].text, /risky-worker-parent-review/);
+		assert.match(result.content[0].text, /changed-file-parent-review/);
+		assert.match(result.content[0].text, /implementer-handoff-parent-review/);
+		assert.match(result.content[0].text, /does not inspect files/);
+		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "risky-worker-parent-review").workerReportIds, ["wr-files"]);
+		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "implementer-handoff-parent-review").advisoryHandoffIds, ["ah-impl"]);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_policy reports no parent review trigger for clean evidence", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Parent Clean");
+	try {
+		const policy = tools.get("stardock_policy");
+		assert.ok(policy);
+		const result = await policy.execute("policy", { action: "parentReview", loopName: "Policy_Parent_Clean" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, false);
+		assert.equal(result.details.policy.status, "no_parent_review_needed");
+		assert.match(result.content[0].text, /no-parent-review-trigger/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_policy requires auditor gate decisions for blockers and automation", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Auditor Gate");
+	try {
+		const ledger = tools.get("stardock_ledger");
+		const auditor = tools.get("stardock_auditor");
+		const handoff = tools.get("stardock_handoff");
+		const breakout = tools.get("stardock_breakout");
+		const policy = tools.get("stardock_policy");
+		assert.ok(ledger);
+		assert.ok(auditor);
+		assert.ok(handoff);
+		assert.ok(breakout);
+		assert.ok(policy);
+		await ledger.execute("criteria", { action: "upsertCriterion", loopName: "Policy_Auditor_Gate", id: "c-blocked", description: "Blocked criterion", passCondition: "Decision made.", status: "blocked" }, undefined, undefined, ctx);
+		await auditor.execute("audit", { action: "record", loopName: "Policy_Auditor_Gate", id: "ar-block", status: "blocked", summary: "Do not continue until evidence is added.", requiredFollowups: ["Add validation evidence."] }, undefined, undefined, ctx);
+		await handoff.execute("handoff", { action: "record", loopName: "Policy_Auditor_Gate", id: "ah-impl", role: "implementer", status: "requested", objective: "Run edit provider.", summary: "Editing provider requested." }, undefined, undefined, ctx);
+		await breakout.execute("breakout", { action: "record", loopName: "Policy_Auditor_Gate", id: "bp-open", status: "open", summary: "Need user decision.", requestedDecision: "Continue or stop?" }, undefined, undefined, ctx);
+
+		const result = await policy.execute("policy", { action: "auditorGate", loopName: "Policy_Auditor_Gate" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, true);
+		assert.equal(result.details.policy.status, "gate_review_required");
+		assert.match(result.content[0].text, /auditor-blocker-followup/);
+		assert.match(result.content[0].text, /editing-subagent-gate/);
+		assert.match(result.content[0].text, /unresolved-completion-gate/);
+		assert.match(result.content[0].text, /does not enforce gates/);
+		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "auditor-blocker-followup").auditorReviewIds, ["ar-block"]);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_policy recommends auditor review for automation and breakout gates", async () => {
 	const { cwd, tools, ctx } = await startLoop("Policy Gate Auditor");
 	try {
