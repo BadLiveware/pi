@@ -29,7 +29,7 @@ test("stardock_advisory_adapter builds parent-owned explorer and test-runner inv
 		assert.match(explorer.content[0].text, /Adapter role: explorer/);
 		assert.match(explorer.content[0].text, /Do not edit files, run broad validation, spawn agents, or change Stardock state/);
 		assert.equal(explorer.details.invocation.cwd, cwd);
-		assert.equal(explorer.details.invocation.output, false);
+		assert.equal(Object.hasOwn(explorer.details.invocation, "output"), false);
 
 		const testRunner = await adapter.execute("tool-adapter-test-runner", { action: "payload", loopName: "Adapter_Payload", role: "test_runner", agentName: "delegate", context: "fork" }, undefined, undefined, ctx);
 		assert.match(testRunner.content[0].text, /Parent-owned test_runner adapter payload/);

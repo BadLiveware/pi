@@ -84,7 +84,6 @@ export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input
 		task,
 		cwd,
 		context: adapterContext(input.context),
-		output: false,
 	};
 	const payload = [
 		`Parent-owned ${role} adapter payload for loop "${state.name}"`,
