@@ -25,19 +25,29 @@ function statePayload(state: ResolvedCompatState, includeResources = false): Rec
 		summary: summarizeState(state),
 		skillPaths: state.skillPaths,
 		diagnostics: state.diagnostics,
-		loadedCounts: state.loaded.reduce<Record<string, number>>((counts, resource) => {
-			counts[resource.type] = (counts[resource.type] ?? 0) + 1;
-			return counts;
-		}, {}),
+		loadedCounts: loadedCounts(state),
 		suppressed: state.suppressed.map(compactResource),
 		loaded: includeResources ? state.loaded.map(compactResource) : undefined,
 	};
 }
 
+function loadedCounts(state: ResolvedCompatState): Record<string, number> {
+	return state.loaded.reduce<Record<string, number>>((counts, resource) => {
+		counts[resource.type] = (counts[resource.type] ?? 0) + 1;
+		return counts;
+	}, {});
+}
+
+function conciseSummary(state: ResolvedCompatState): string {
+	const counts = loadedCounts(state);
+	const diagnostics = state.diagnostics.length ? `, ${state.diagnostics.length} diagnostic${state.diagnostics.length === 1 ? "" : "s"}` : "";
+	return `multi-harness ${state.activeProfile.name}: ${counts.context ?? 0} context, ${counts.skill ?? 0} skills, ${counts["cursor-rule"] ?? 0} cursor rules, ${state.suppressed.length} suppressed${diagnostics}`;
+}
+
 function renderStatus(state: ResolvedCompatState): string {
 	const suppressed = state.suppressed.length ? `\nSuppressed:\n${state.suppressed.map((item) => `  - ${item.realPath ?? item.path}: ${item.reason ?? "suppressed"}${item.aliasTarget ? ` -> ${item.aliasTarget}` : ""}`).join("\n")}` : "";
 	const diagnostics = state.diagnostics.length ? `\nDiagnostics:\n${state.diagnostics.map((item) => `  - ${item}`).join("\n")}` : "";
-	return `${summarizeState(state)}\n\nLoaded skill paths:\n${state.skillPaths.map((item) => `  - ${item}`).join("\n") || "  (none)"}${suppressed}${diagnostics}`;
+	return `${conciseSummary(state)}\n\nLoaded skill paths:\n${state.skillPaths.map((item) => `  - ${item}`).join("\n") || "  (none)"}${suppressed}${diagnostics}`;
 }
 
 export default function compatWorkflows(pi: ExtensionAPI): void {
@@ -61,6 +71,7 @@ export default function compatWorkflows(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		const state = resolve(ctx);
 		ctx.ui.setStatus("compat", state.activeProfile.name === "private" && state.skillPaths.length === 0 && !state.contextText ? undefined : `compat:${state.activeProfile.name}`);
+		ctx.ui.notify(conciseSummary(state), state.diagnostics.length ? "warning" : "info");
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
