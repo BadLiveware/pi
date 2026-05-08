@@ -6,7 +6,7 @@ import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agen
 import { Type } from "typebox";
 import { runBriefActivate, runBriefClear, runBriefComplete, runBriefUpsert } from "./app/brief-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
-import { type BriefLifecycleAction, compactText, type Criterion, type CriterionStatus, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
+import { type AdvisoryHandoffRole, type BriefLifecycleAction, compactText, type Criterion, type CriterionStatus, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -172,10 +172,14 @@ function linkedArtifactIds(state: LoopState, brief: IterationBrief): string[] {
 		.slice(0, 8);
 }
 
+function compactList(items: string[], maxItems = 8, maxLength = 180): string[] {
+	return items.slice(0, maxItems).map((item) => compactText(item, maxLength) ?? item);
+}
+
 function appendBriefList(parts: string[], title: string, items: string[], maxItems = 8, maxLength = 180): void {
 	if (items.length === 0) return;
 	parts.push(title);
-	for (const item of items.slice(0, maxItems)) parts.push(`- ${compactText(item, maxLength)}`);
+	for (const item of compactList(items, maxItems, maxLength)) parts.push(`- ${item}`);
 	if (items.length > maxItems) parts.push(`- ... ${items.length - maxItems} more`);
 }
 
@@ -214,6 +218,79 @@ export function appendActiveBriefPromptSection(parts: string[], state: LoopState
 	const artifacts = linkedArtifactIds(state, brief);
 	if (artifacts.length > 0) parts.push("### Linked Artifact Refs", `- ${artifacts.join(", ")}`);
 	parts.push("### Output Contract", compactText(brief.outputContract, 240) ?? "Record changed files, validation evidence, risks, and the suggested next move.", "");
+}
+
+export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: string; role?: AdvisoryHandoffRole; requestedOutput?: string }): { ok: true; payload: string; brief: IterationBrief } | { ok: false; error: string } {
+	const brief = input.briefId ? state.briefs.find((item) => item.id === input.briefId) : currentBrief(state);
+	if (!brief) return { ok: false, error: input.briefId ? `Brief "${input.briefId}" not found in loop "${state.name}".` : "No active brief. Pass briefId or activate a brief first." };
+	const role = input.role ?? "explorer";
+	const lines = [
+		`Stardock advisory worker payload for loop "${state.name}"`,
+		`Role: ${role}`,
+		`Brief: ${brief.id} [${brief.status}]`,
+		`Objective: ${compactText(brief.objective, 500)}`,
+		`Task: ${compactText(brief.task, 500)}`,
+		`Mode: ${state.mode}`,
+		`Iteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
+		"",
+		"Provider-neutral contract:",
+		"Run this as a parent/orchestrator-invoked advisory task. Do not let Stardock or the worker spawn hidden agents, mutate Stardock state, apply patches, or edit files unless the parent separately approves an edit policy.",
+	];
+	const criteria = selectedCriteria(state, brief);
+	if (brief.criterionIds.length) {
+		lines.push("", "Selected criteria");
+		for (const criterionId of brief.criterionIds.slice(0, 10)) {
+			const criterion = criteria.find((item) => item.id === criterionId);
+			if (!criterion) {
+				lines.push(`- ${criterionId}: not found in criterion ledger`);
+				continue;
+			}
+			lines.push(`- ${criterion.id} [${criterion.status}] ${compactText(criterion.description, 180)} | Pass: ${compactText(criterion.passCondition, 180)}${criterion.testMethod ? ` | Verify: ${compactText(criterion.testMethod, 140)}` : ""}`);
+		}
+	}
+	const artifacts = linkedArtifactIds(state, brief);
+	if (artifacts.length) lines.push("", "Linked artifact refs", `- ${artifacts.join(", ")}`);
+	const sections: Array<[string, string[]]> = [
+		["Acceptance criteria", brief.acceptanceCriteria],
+		["Verification required", brief.verificationRequired],
+		["Required context", brief.requiredContext],
+		["Constraints", brief.constraints],
+		["Avoid", brief.avoid],
+		["Source refs", brief.sourceRefs],
+	];
+	for (const [title, items] of sections) if (items.length) lines.push("", title, ...compactList(items).map((item) => `- ${item}`));
+	lines.push("", "Requested output", compactText(input.requestedOutput?.trim() || brief.outputContract || "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.", 500) ?? "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.");
+	lines.push("", "Parent recording options:", "- Parent may use stardock_worker_report record for worker-style results", "- Parent may use stardock_handoff record for advisory handoff results", "The worker should not mutate Stardock state unless the parent separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when parent inspection is warranted.");
+	return { ok: true, payload: lines.join("\n"), brief };
+}
+
+export function appendRecordedWorkerContextSection(parts: string[], state: LoopState): void {
+	const brief = currentBrief(state);
+	const scopedCriterionIds = new Set(brief?.criterionIds ?? []);
+	const hasBriefCriteria = scopedCriterionIds.size > 0;
+	const handoffs = state.advisoryHandoffs
+		.filter((handoff) => handoff.status === "answered" && (handoff.resultSummary || handoff.concerns.length || handoff.recommendations.length))
+		.filter((handoff) => !hasBriefCriteria || handoff.criterionIds.some((id) => scopedCriterionIds.has(id)))
+		.slice(-3);
+	const reports = state.workerReports
+		.filter((report) => report.status !== "dismissed")
+		.filter((report) => !hasBriefCriteria || report.evaluatedCriterionIds.some((id) => scopedCriterionIds.has(id)))
+		.slice(-3);
+	if (!handoffs.length && !reports.length) return;
+	parts.push("## Recent Worker / Advisory Results");
+	for (const handoff of handoffs) {
+		parts.push(`- Handoff ${handoff.id} [${handoff.role}]: ${compactText(handoff.resultSummary ?? handoff.summary, 180)}`);
+		if (handoff.concerns.length) parts.push(`  Concerns: ${compactList(handoff.concerns, 3, 100).join("; ")}`);
+		if (handoff.recommendations.length) parts.push(`  Recommendations: ${compactList(handoff.recommendations, 3, 100).join("; ")}`);
+	}
+	for (const report of reports) {
+		parts.push(`- WorkerReport ${report.id} [${report.status}/${report.role}]: ${compactText(report.summary, 180)}`);
+		if (report.risks.length) parts.push(`  Risks: ${compactList(report.risks, 3, 100).join("; ")}`);
+		if (report.openQuestions.length) parts.push(`  Questions: ${compactList(report.openQuestions, 3, 100).join("; ")}`);
+		if (report.reviewHints.length) parts.push(`  Review hints: ${compactList(report.reviewHints, 3, 100).join("; ")}`);
+		if (report.suggestedNextMove) parts.push(`  Suggested next move: ${compactText(report.suggestedNextMove, 140)}`);
+	}
+	parts.push("Use stardock_policy({ action: \"parentReview\" }) before relying on risky worker output.", "");
 }
 
 export function appendTaskSourceSection(parts: string[], state: LoopState, _taskContent: string): void {
@@ -312,11 +389,13 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 		label: "Manage Stardock Iteration Brief",
 		description: "Inspect or update the current Stardock IterationBrief context packet.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("list"), Type.Literal("upsert"), Type.Literal("activate"), Type.Literal("clear"), Type.Literal("complete")], {
-				description: "list returns briefs; upsert creates/updates a brief; activate selects one; clear removes the active brief; complete marks one complete.",
+			action: Type.Union([Type.Literal("list"), Type.Literal("payload"), Type.Literal("upsert"), Type.Literal("activate"), Type.Literal("clear"), Type.Literal("complete")], {
+				description: "list returns briefs; payload builds a provider-neutral advisory worker task; upsert creates/updates a brief; activate selects one; clear removes the active brief; complete marks one complete.",
 			}),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
-			id: Type.Optional(Type.String({ description: "Brief id. Generated for upsert when omitted; required for activate." })),
+			id: Type.Optional(Type.String({ description: "Brief id. Generated for upsert when omitted; required for activate. For payload, selects a brief when omitted current active brief is used." })),
+			role: Type.Optional(Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("researcher"), Type.Literal("reviewer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("implementer")], { description: "Advisory worker role for payload. Default: explorer." })),
+			requestedOutput: Type.Optional(Type.String({ description: "Optional provider-neutral output contract override for payload." })),
 			objective: Type.Optional(Type.String({ description: "Brief objective. Required for new briefs." })),
 			task: Type.Optional(Type.String({ description: "Bounded task text. Required for new briefs." })),
 			source: Type.Optional(Type.Union([Type.Literal("manual"), Type.Literal("governor")], { description: "Brief source. Defaults to manual; governor records a governor-selected brief." })),
@@ -349,6 +428,11 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 					content: [{ type: "text", text: formatBriefOverview(state) }],
 					details: { loopName, currentBriefId: state.currentBriefId, currentBrief: currentBrief(state), briefs: state.briefs },
 				};
+			}
+			if (params.action === "payload") {
+				const payload = buildBriefWorkerPayload(state, { briefId: params.id, role: params.role, requestedOutput: params.requestedOutput });
+				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
+				return { content: [{ type: "text", text: payload.payload }], details: { loopName, brief: payload.brief, payload: payload.payload } };
 			}
 
 			const operations = {

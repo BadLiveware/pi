@@ -2,7 +2,7 @@
  * Stardock prompt and mode helpers.
  */
 
-import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendTaskSourceSection, currentBrief } from "../briefs.ts";
+import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendRecordedWorkerContextSection, appendTaskSourceSection, currentBrief } from "../briefs.ts";
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
 import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/modes.ts";
@@ -26,6 +26,7 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 
 	appendActiveBriefPromptSection(parts, state);
 	appendLedgerSummarySection(parts, state);
+	appendRecordedWorkerContextSection(parts, state);
 	appendTaskSourceSection(parts, state, _taskContent);
 	parts.push(`\n## Instructions\n`);
 	parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /stardock-stop when idle to stop the loop.\n");
@@ -135,6 +136,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		if (recentAttempts.length > 0) parts.push("## Recent Attempt Reports", ...recentAttempts, "");
 		appendOutsideRequestPromptSections(parts, state);
 		appendActiveBriefPromptSection(parts, state);
+		appendRecordedWorkerContextSection(parts, state);
 		appendTaskSourceSection(parts, state, taskContent);
 		parts.push("\n## Attempt Instructions\n");
 		parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");

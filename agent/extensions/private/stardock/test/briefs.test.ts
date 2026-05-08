@@ -164,6 +164,50 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+test("stardock_brief builds advisory worker payloads and prompts include recorded worker context", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		const handoff = tools.get("stardock_handoff");
+		const worker = tools.get("stardock_worker_report");
+		const done = tools.get("stardock_done");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(brief);
+		assert.ok(handoff);
+		assert.ok(worker);
+		assert.ok(done);
+		await start.execute("tool-worker-payload-start", { name: "Brief Worker Payload", mode: "checklist", taskContent: "# Worker payload task\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await ledger.execute("tool-worker-payload-criterion", { action: "upsertCriterion", loopName: "Brief_Worker_Payload", id: "c-worker", description: "Worker payload includes selected criteria.", passCondition: "Payload includes criterion and brief contract.", testMethod: "Inspect payload." }, undefined, undefined, ctx);
+		await brief.execute("tool-worker-payload-brief", { action: "upsert", loopName: "Brief_Worker_Payload", id: "b-worker", objective: "Explore risky files.", task: "Map likely files and validation commands.", criterionIds: ["c-worker"], acceptanceCriteria: ["Explorer returns file map."], verificationRequired: ["No edits."], requiredContext: ["agent/extensions/private/stardock/src"], constraints: ["Advisory only."], avoid: ["Do not edit files."], sourceRefs: [".pi/plans/stardock-subagent-recursive-mode.md"], activate: true }, undefined, undefined, ctx);
+
+		const payload = await brief.execute("tool-worker-payload", { action: "payload", loopName: "Brief_Worker_Payload", role: "explorer" }, undefined, undefined, ctx);
+		assert.match(payload.content[0].text, /Stardock advisory worker payload/);
+		assert.match(payload.content[0].text, /Role: explorer/);
+		assert.match(payload.content[0].text, /Task: Map likely files and validation commands/);
+		assert.match(payload.content[0].text, /c-worker \[pending\]/);
+		assert.match(payload.content[0].text, /Do not let Stardock or the worker spawn hidden agents/);
+		assert.match(payload.content[0].text, /Parent may use stardock_worker_report record/);
+		assert.match(payload.content[0].text, /worker should not mutate Stardock state/);
+
+		await handoff.execute("tool-worker-payload-handoff", { action: "record", loopName: "Brief_Worker_Payload", id: "ah-explore", role: "explorer", status: "answered", objective: "Explore files.", summary: "Explorer handoff.", criterionIds: ["c-worker"], resultSummary: "Inspect briefs.ts and worker-reports.ts.", concerns: ["Prompt inclusion may be missing."], recommendations: ["Add a worker context section."] }, undefined, undefined, ctx);
+		await handoff.execute("tool-worker-payload-stale-handoff", { action: "record", loopName: "Brief_Worker_Payload", id: "ah-stale", role: "explorer", status: "answered", objective: "Old work.", summary: "Stale handoff.", resultSummary: "Do not include stale handoff." }, undefined, undefined, ctx);
+		await worker.execute("tool-worker-payload-report", { action: "record", loopName: "Brief_Worker_Payload", id: "wr-explore", role: "explorer", status: "needs_review", objective: "Explore files.", summary: "Worker mapped likely files.", evaluatedCriterionIds: ["c-worker"], risks: ["Parent should inspect prompt output."], openQuestions: ["Should result summaries be capped?"], suggestedNextMove: "Add prompt inclusion test.", reviewHints: ["Read runtime/prompts.ts."] }, undefined, undefined, ctx);
+		await done.execute("tool-worker-payload-done", {}, undefined, undefined, ctx);
+		const prompt = messages.at(-1)?.content ?? "";
+		assert.match(prompt, /## Recent Worker \/ Advisory Results/);
+		assert.match(prompt, /Handoff ah-explore \[explorer\]/);
+		assert.match(prompt, /WorkerReport wr-explore \[needs_review\/explorer\]/);
+		assert.equal(prompt.includes("Do not include stale handoff"), false);
+		assert.match(prompt, /Use stardock_policy\(\{ action: "parentReview" \}\)/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_brief records explicit governor-selected brief source", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
