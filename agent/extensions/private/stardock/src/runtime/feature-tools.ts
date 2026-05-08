@@ -1,6 +1,7 @@
 /** Register vertical-slice Stardock tools. */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { registerAdvisoryAdapterTool } from "../advisory-adapters.ts";
 import { registerAdvisoryHandoffTool } from "../advisory-handoffs.ts";
 import { registerAttemptReportTool } from "../attempt-reports.ts";
 import { registerAuditorTool } from "../auditor-reviews.ts";
@@ -15,6 +16,7 @@ import type { StardockRuntime } from "./types.ts";
 
 export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
 	registerBriefTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
+	registerAdvisoryAdapterTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop });
 	registerAdvisoryHandoffTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerAuditorTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerBreakoutTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });

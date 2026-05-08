@@ -433,7 +433,8 @@ Remaining work is design-gated and should be driven by dogfood evidence. Immedia
 4. **Worker/subagent handoff quality**
    - Initial provider-neutral `stardock_handoff` and `stardock_worker_report` support exists for advisory payloads/results, evaluated criteria, artifact refs, changed files, validation, risks, questions, suggested next moves, and review hints.
    - Initial read-only `stardock_policy({ action: "parentReview" })` now recommends selective parent/governor review for risky WorkerReports, changed-file hints, non-passing validation, and implementer handoffs.
-   - Still needed: direct provider adapter design; keep this advisory-only before any editing flow.
+   - Brief-scoped `stardock_brief({ action: "payload" })` and parent-owned `stardock_advisory_adapter` payloads now cover safe explorer/test-runner invocation handoffs without Stardock executing providers.
+   - Still needed: direct provider execution adapter design; keep this advisory-only before any editing flow.
 5. **Completion, breakout, and learning gates**
    - Initial manual/data-only `FinalVerificationReport` and `BreakoutPackage` support exists, and `stardock_policy({ action: "completion" | "breakout" })` recommends final reports, auditor reviews, or breakout packages without enforcing hidden gates.
    - Still needed: policy for when completion should require or recommend a final report/auditor review/breakout package, optional compound-learning proposals, and cognitive-debt walkthrough requirements for large or complex changes.
@@ -784,8 +785,9 @@ Do not restart the completed implementation path. Future implementation should b
    - Add optional compound-learning proposals and cognitive-debt handoff explanations.
 7. **Advisory handoff / subagent firewall workflow**
    - Initial provider-neutral `stardock_handoff` support exists for ready-to-copy advisory payloads and compact result records.
-   - Keep Stardock-owned handoff semantics separate from provider execution details; `pi-subagents` is only one possible future adapter.
-   - Start future execution with exploration and test-runner providers only after a safe adapter boundary exists.
+   - Parent-owned `stardock_advisory_adapter` payloads now format brief-scoped explorer/test-runner `pi-subagents` invocations while keeping Stardock state provider-neutral and non-executing.
+   - Keep Stardock-owned handoff semantics separate from provider execution details; `pi-subagents` is only one possible future execution adapter.
+   - Start future direct execution with exploration and test-runner providers only after a safe lifecycle/cancellation/result-capture boundary exists.
    - Do not apply edits automatically.
    - Persist provider-neutral payloads, result summaries, concerns, recommendations, artifact refs, and optional opaque provider metadata.
 8. **Evolve mode**

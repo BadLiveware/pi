@@ -2,7 +2,14 @@
 
 ## Status
 
-Design gate for execution, not implementation-ready for direct spawning. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, ready-to-copy governor/researcher payloads, and provider-neutral advisory handoffs. Subagent execution should remain parent/orchestrator-driven until Pi exposes or Stardock chooses an execution adapter that can safely run and supervise providers with inspectable ownership boundaries.
+Design gate for execution, not implementation-ready for direct spawning. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, ready-to-copy governor/researcher payloads, provider-neutral advisory handoffs, WorkerReports, brief-derived advisory worker payloads, and parent-owned explorer/test-runner adapter payloads. Subagent execution should remain parent/orchestrator-driven until Pi exposes or Stardock chooses an execution adapter that can safely run and supervise providers with inspectable ownership boundaries.
+
+Implemented safe adapter slice:
+
+- `stardock_brief({ action: "payload" })` builds provider-neutral advisory worker payloads from active or selected briefs.
+- `stardock_advisory_adapter({ action: "payload", role: "explorer" | "test_runner" })` formats ready-to-run parent-owned `pi-subagents` invocation arguments for brief-scoped advisory workers.
+- Adapter payloads are convenience output only: they do not execute providers, persist provider-specific state, apply edits, or create hidden worker runs.
+- Recorded `AdvisoryHandoff` and `WorkerReport` summaries are included in later prompts when scoped to the active brief criteria.
 
 ## Decision
 
@@ -195,7 +202,7 @@ Do not add provider-specific execution state until an execution path exists that
 | Option | Benefits | Costs / risks | Decision |
 | --- | --- | --- | --- |
 | Parent-orchestrated advisory workflow | Safe now; uses existing tools; inspectable; no hidden edits | More manual steps | Current choice |
-| Extension returns exact subagent payloads only | Small improvement over manual; still safe | Parent still runs tools | Already implemented via payload helpers |
+| Extension returns exact subagent payloads only | Small improvement over manual; still safe | Parent still runs tools | Implemented for brief-scoped explorer/test-runner adapter payloads via `stardock_advisory_adapter` |
 | Extension directly spawns advisory subagents | Less manual; still no direct edits | Needs safe extension API and lifecycle handling | Future only |
 | Extension spawns editing subagents in current workspace | Fastest automation | Unsafe ownership, interruption, rollback risks | Reject |
 | Extension spawns worktree-isolated implementers | Safer edits | Requires clean git/worktree orchestration and patch review | Future research |
@@ -264,10 +271,10 @@ Before editing workers:
 
 Next implementable slice, when justified:
 
-1. Add `stardock_worker_payload`/`sd_worker_payload` only if outside payload helpers are insufficient.
-2. Add `WorkerRun` state behind a feature flag or explicit mode option.
-3. Implement advisory-only explorer payload/execution first, if a safe extension API exists.
-4. Add test-runner worker handling with log artifacts and compact summaries.
+1. Dogfood `stardock_advisory_adapter` explorer/test-runner payloads on real loops and record friction before adding direct execution.
+2. Add `WorkerRun` state behind a feature flag or explicit mode option only after execution lifecycle requirements are clear.
+3. Implement advisory-only explorer execution first, if a safe extension API exists.
+4. Add test-runner worker execution with log artifacts and compact summaries.
 5. Add auditor worker handling for oversight payloads and findings before any editing workers.
 6. Record worker answers through the same `stardock_outside_answer`/`sd_outside_answer`/report/audit path.
 7. Keep checklist and ordinary recursive mode unaffected.
