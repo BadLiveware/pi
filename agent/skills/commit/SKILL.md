@@ -27,6 +27,8 @@ Before staging, group by intent and ask: "Would this still make sense if reviewe
 
 Batch together small related fixes with one motivation. Keep source, tests, docs, migrations, and generated artifacts together when they are required for the same behavior to be complete. Split behavior changes, public contracts, migrations, data-safety changes, useful preparatory refactors, standalone test/docs work, unrelated areas, or anything clearer to review/rollback separately.
 
+Treat CI failures, review comments, lint findings, and compiler errors as evidence that may reveal multiple separate problems, not as a commit boundary. If two findings require semantically different fixes, make two commits even if both were discovered by the same CI run or reviewer. Do not bundle independent fixes under a shared "address findings" motivation.
+
 If in doubt, prefer the smallest semantic commit that is complete on its own, not the smallest textual diff. Example: if a parser fix plus tests are intended and an unrelated docs typo is also present, commit only the parser fix/tests and leave the docs typo unstaged unless the user explicitly asked to include it.
 
 ## Commit Context and Message
@@ -36,7 +38,9 @@ Before writing the message, inspect the intended diff and identify:
 - relevant constraints, trade-offs, compatibility notes, or operational concerns
 - validation evidence or explicit validation gaps when useful
 
-Do not summarize by request source unless the source itself matters. Prefer `fix: keep sweep artifacts stable` over `fix: address PR feedback`.
+Do not summarize by request source unless the source itself matters. Commit headers and bodies should describe the domain behavior or technical invariant that changed, not that CI, clang-tidy, a reviewer, a bot, or a user comment requested it. Prefer `fix: keep sweep artifacts stable` over `fix: address PR feedback`; prefer `fix: sequence AST predicate ownership` over `fix: resolve clang-tidy finding`.
+
+Never use umbrella headers such as `fix: resolve CI findings`, `fix: address review comments`, or `chore: fix lint` when the staged changes are actually independent behavior, correctness, performance, or cleanup fixes. Split the staged diff first, then title each commit by what that commit actually changes.
 
 Default structure:
 
@@ -48,7 +52,9 @@ Default structure:
 
 Header rules:
 - under 72 characters
-- summarize the actual change
+- summarize the actual change, not the event that exposed it
+- name the affected behavior, invariant, component, or user-visible outcome when possible
+- avoid source-only words like `CI`, `review`, `feedback`, `comments`, `findings`, `lint`, or `clang-tidy` unless the commit truly changes that system itself
 - follow project style; conventional prefixes are preferred when they fit: `fix:`, `feat:`, `test:`, `docs:`, `refactor:`, `chore:`
 
 Body rules:

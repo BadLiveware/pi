@@ -34,6 +34,35 @@ Add coverage for dense processing rows so latency-band classification and mode
 columns stay stable while the sweep report schema evolves.
 ```
 
+Avoid:
+
+```text
+fix: resolve PromQL integration CI findings
+
+Make PromQL over-time lowering build AST predicates with explicit ownership
+order so clang-tidy does not see unsequenced use-after-move paths.
+
+Also reserve combined capacity when merging quantile buckets to avoid rehashing
+already-present samples during aggregate-state merges.
+```
+
+Prefer two commits because these are semantically different fixes:
+
+```text
+fix: sequence PromQL predicate ownership
+
+Build over-time AST predicates with explicit ownership order so predicate
+construction cannot read moved nodes. This keeps the lowering path compatible
+with compiler and analyzer sequencing rules.
+```
+
+```text
+perf: reserve quantile bucket merge capacity
+
+Reserve the combined sample capacity before merging quantile buckets so aggregate
+state merges do not repeatedly rehash already-present samples.
+```
+
 ## Behavior cases
 - Manual standalone invocation -> create appropriate commit(s) if changes are ready.
 - Ordinary coding task without commit permission -> do not commit.
