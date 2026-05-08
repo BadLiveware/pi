@@ -93,12 +93,13 @@ async function typescriptStatus(repoRoot: string, config: CodeIntelConfig): Prom
 }
 
 export async function languageServerStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<LanguageServerName, LanguageServerStatus>> {
-	const [gopls, rustAnalyzer, typescript] = await Promise.all([
+	const [gopls, rustAnalyzer, typescript, clangd] = await Promise.all([
 		commandStatus("gopls", "gopls", ["version"], repoRoot, config),
 		commandStatus("rust-analyzer", "rust-analyzer", ["--version"], repoRoot, config),
 		typescriptStatus(repoRoot, config),
+		commandStatus("clangd", "clangd", ["--version"], repoRoot, config),
 	]);
-	return { gopls, "rust-analyzer": rustAnalyzer, typescript };
+	return { gopls, "rust-analyzer": rustAnalyzer, typescript, clangd };
 }
 
 export async function backendStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<BackendName, BackendStatus>> {
@@ -117,7 +118,7 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		limitations: [
 			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
 			"rg literal fallback is for text discovery only; use source reads and project-native validation before making claims.",
-			"Impact maps currently route Go, TypeScript/TSX, JavaScript, and Python; other Tree-sitter grammars are available for syntax search or future routing adapters.",
+			"Impact maps currently route Go, TypeScript/TSX, JavaScript, Python, and C/C++; Tree-sitter rows remain candidate read-next evidence rather than semantic references.",
 			"Language-server status is availability-only; default code-intel routing does not use LSPs unless explicit reference confirmation is requested.",
 		],
 	};

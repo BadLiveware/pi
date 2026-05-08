@@ -1,6 +1,6 @@
 import type { CodeIntelConfig } from "../types.ts";
 
-export type ReferenceConfirmationProviderName = "gopls" | "typescript";
+export type ReferenceConfirmationProviderName = "gopls" | "typescript" | "clangd";
 
 export interface ReferenceRoot {
 	name: string;

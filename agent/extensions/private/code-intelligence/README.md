@@ -20,7 +20,7 @@ Use code-intel when you need a bounded candidate file list before a non-trivial 
 - You have a scoped subsystem with central anchors plus related field/type/API names.
 - You need to find an explicit AST shape or API call pattern in current source.
 
-Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. `code_intel_state` reports optional language-server availability for planning/debugging, and `code_intel_impact_map` can run bounded opt-in confirmation for Go or TypeScript/JavaScript roots when exactness materially matters.
+Do **not** use this extension as a general exact-reference engine. Tree-sitter rows are current-source syntax evidence, not authoritative semantic references. `code_intel_state` reports optional language-server availability for planning/debugging, and `code_intel_impact_map` can run bounded opt-in confirmation for Go, TypeScript/JavaScript, or clangd-backed C/C++ roots when exactness materially matters.
 
 Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or unsupported-language gaps.
 
@@ -30,10 +30,10 @@ Use returned locations to choose files to read next; do not treat the result as 
 
 | Engine | Used for | Artifact behavior |
 | --- | --- | --- |
-| Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, and Python; syntax search supports a wider grammar set. | no index |
+| Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Python, and C/C++; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | no index |
 | rg | bounded literal fallback in local maps and human follow-up searches | no index |
 
-Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, and TypeScript availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback.
+Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, TypeScript, and clangd availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback. C/C++ clangd confirmation also requires a usable `compile_commands.json` in the repository root or common build directories.
 
 Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path anymore.
 
@@ -131,7 +131,7 @@ Build the primary candidate read-next impact map from:
 
 The output groups roots and related caller/consumer candidates, with truncation and limitation metadata. Defaults are bounded but closer to normal agent search habits: up to 20 root symbols after changed-file expansion and 125 location rows unless overridden. `detail: "locations"` is the default so impact maps route agents to files without duplicating source context; snippet output stays tighter at 25 rows by default. Use `detail: "snippets"` only when inline context helps triage without immediate reads.
 
-Impact-map routing currently supports Go, TypeScript/TSX, JavaScript, and Python source files. When changed files are non-source or outside the impact-routing set, the result includes `coverage.supportedImpactLanguages`, `coverage.unsupportedImpactFiles`, and `coverage.nonSourceFiles` so agents can fall back deliberately to source reads, `code_intel_syntax_search`, `code_intel_local_map`, or bounded `rg` instead of treating an empty map as a successful review.
+Impact-map routing currently supports Go, TypeScript/TSX, JavaScript, Python, and C/C++ source files. C/C++ changed-file routing defaults to parsing the changed C/C++ files rather than the whole repository, which keeps ClickHouse-scale repositories bounded; pass explicit `paths` if you intentionally want to broaden the Tree-sitter scan. When changed files are non-source or outside the impact-routing set, the result includes `coverage.supportedImpactLanguages`, `coverage.unsupportedImpactFiles`, and `coverage.nonSourceFiles` so agents can fall back deliberately to source reads, `code_intel_syntax_search`, `code_intel_local_map`, or bounded `rg` instead of treating an empty map as a successful review.
 
 Rows such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field` have current file/line/column locations and enclosing function names where available, but they are syntax candidates, not type-resolved references.
 
@@ -139,6 +139,7 @@ For high-value exactness checks, pass `confirmReferences` to run bounded opt-in 
 
 - `"gopls"` runs short-lived `gopls references` confirmation for Go roots.
 - `"typescript"` uses the local TypeScript language service for TypeScript/TSX/JavaScript roots.
+- `"clangd"` starts a short-lived clangd LSP session for C/C++ roots when a usable `compile_commands.json` is found.
 
 Use `maxReferenceRoots`, `maxReferenceResults`, and `includeReferenceDeclarations` to control scope. The confirmation appears under `referenceConfirmation` with provider evidence labels such as `gopls:references` or `typescript:references`; it is not part of default routing and missing/broken confirmation tooling should not affect the Tree-sitter map.
 

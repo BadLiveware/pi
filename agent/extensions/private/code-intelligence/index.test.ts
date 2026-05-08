@@ -312,7 +312,7 @@ test("impact map explains non-source changed files when no impact language files
 	assert.equal(impact.ok, false);
 	assert.match(impact.reason, /Supported impact languages/);
 	assert.deepEqual(impact.coverage.nonSourceFiles, ["README.md", "config.json"]);
-	assert.deepEqual(impact.coverage.supportedImpactLanguages, ["go", "typescript", "tsx", "javascript", "python"]);
+	assert.deepEqual(impact.coverage.supportedImpactLanguages, ["go", "typescript", "tsx", "javascript", "python", "cpp"]);
 });
 
 test("impact map optionally confirms Go references with gopls", async () => {

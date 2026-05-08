@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import type { CodeIntelConfig, CodeIntelSyntaxSearchParams, ResultDetail } from "./types.ts";
 import { IMPACT_LANGUAGES, changedFileSupportSummary } from "./impact-support.ts";
+import { LANGUAGE_SPECS, languageSpec, type LanguageSpec } from "./languages.ts";
 import { ensureInsideRoot } from "./repo.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
@@ -22,12 +23,6 @@ export interface TreeSitterNode {
 	namedChildCount: number;
 	namedChild(index: number): TreeSitterNode | null;
 	childForFieldName?(name: string): TreeSitterNode | null;
-}
-
-interface LanguageSpec {
-	id: string;
-	wasm: string;
-	extensions: string[];
 }
 
 interface ParserBundle {
@@ -86,53 +81,6 @@ export interface TreeSitterSelectorBatchParams {
 	maxPerName: number;
 	timeoutMs: number;
 	detail: ResultDetail;
-}
-
-const LANGUAGE_SPECS: LanguageSpec[] = [
-	{ id: "go", wasm: "tree-sitter-go.wasm", extensions: [".go"] },
-	{ id: "typescript", wasm: "tree-sitter-typescript.wasm", extensions: [".ts", ".mts", ".cts"] },
-	{ id: "tsx", wasm: "tree-sitter-tsx.wasm", extensions: [".tsx"] },
-	{ id: "javascript", wasm: "tree-sitter-javascript.wasm", extensions: [".js", ".mjs", ".cjs", ".jsx"] },
-	{ id: "rust", wasm: "tree-sitter-rust.wasm", extensions: [".rs"] },
-	{ id: "python", wasm: "tree-sitter-python.wasm", extensions: [".py"] },
-	{ id: "java", wasm: "tree-sitter-java.wasm", extensions: [".java"] },
-	{ id: "cpp", wasm: "tree-sitter-cpp.wasm", extensions: [".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"] },
-	{ id: "csharp", wasm: "tree-sitter-c-sharp.wasm", extensions: [".cs"] },
-	{ id: "ruby", wasm: "tree-sitter-ruby.wasm", extensions: [".rb"] },
-	{ id: "php", wasm: "tree-sitter-php.wasm", extensions: [".php"] },
-	{ id: "bash", wasm: "tree-sitter-bash.wasm", extensions: [".sh", ".bash", ".zsh"] },
-	{ id: "css", wasm: "tree-sitter-css.wasm", extensions: [".css"] },
-];
-
-const LANGUAGE_ALIASES = new Map<string, string>([
-	["golang", "go"],
-	["ts", "typescript"],
-	["typescript", "typescript"],
-	["tsx", "tsx"],
-	["js", "javascript"],
-	["jsx", "javascript"],
-	["javascript", "javascript"],
-	["rust", "rust"],
-	["rs", "rust"],
-	["python", "python"],
-	["py", "python"],
-	["java", "java"],
-	["c", "cpp"],
-	["cpp", "cpp"],
-	["c++", "cpp"],
-	["csharp", "csharp"],
-	["c#", "csharp"],
-	["ruby", "ruby"],
-	["rb", "ruby"],
-	["php", "php"],
-	["bash", "bash"],
-	["sh", "bash"],
-	["css", "css"],
-]);
-
-function languageSpec(language: string): LanguageSpec | undefined {
-	const normalized = LANGUAGE_ALIASES.get(language.trim().toLowerCase()) ?? language.trim().toLowerCase();
-	return LANGUAGE_SPECS.find((spec) => spec.id === normalized);
 }
 
 let initPromise: Promise<any> | undefined;
@@ -370,9 +318,38 @@ async function parseFiles(repoRoot: string, languages: string[], paths: string[]
 	return { parsedFiles, diagnostics, filesByLanguage, parsedByLanguage };
 }
 
+function rightmostNamedNode(node: TreeSitterNode, types: Set<string>): TreeSitterNode | undefined {
+	if (types.has(node.type)) return node;
+	const children = namedChildren(node);
+	for (let index = children.length - 1; index >= 0; index--) {
+		const match = rightmostNamedNode(children[index], types);
+		if (match) return match;
+	}
+	return undefined;
+}
+
+function functionLikeNameFromHeader(node: TreeSitterNode, source: string): string | undefined {
+	const raw = nodeText(source, node);
+	const header = (raw.includes("{") ? raw.slice(0, raw.indexOf("{")) : raw).split("(")[0]?.trim();
+	if (!header) return undefined;
+	const match = /(?:~?[A-Za-z_]\w*|operator\s*[^\s(]+)(?=\s*$)/.exec(header);
+	if (!match) return undefined;
+	const text = match[0].replace(/^~/, "").trim();
+	return text.includes("::") ? text.split("::").filter(Boolean).at(-1) : text;
+}
+
 function definitionName(node: TreeSitterNode, source: string): string | undefined {
 	const nameNode = childForField(node, "name");
-	return nameNode ? nodeText(source, nameNode) : undefined;
+	if (nameNode) return nodeText(source, nameNode);
+	if (["function_definition", "function_declaration", "method_declaration", "method_definition"].includes(node.type)) {
+		const headerName = functionLikeNameFromHeader(node, source);
+		if (headerName) return headerName;
+	}
+	const declarator = childForField(node, "declarator");
+	const fallback = declarator ? rightmostNamedNode(declarator, new Set(["identifier", "field_identifier", "qualified_identifier", "operator_name", "destructor_name"])) : undefined;
+	if (!fallback) return undefined;
+	const text = nodeText(source, fallback);
+	return text.includes("::") ? text.split("::").filter(Boolean).at(-1) : text;
 }
 
 function typeSummary(node: TreeSitterNode, source: string): string | undefined {
@@ -637,7 +614,10 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 			elapsedMs: Date.now() - started,
 		};
 	}
-	const parsed = await parseFiles(repoRoot, IMPACT_LANGUAGES, scopedPaths, [], [], params.timeoutMs, signal);
+	const supportedImpactFiles = supportSummary.supportedImpactFiles as Array<{ file: string; languages: string[] }>;
+	const onlyCppChangedFiles = changedFiles.length > 0 && supportedImpactFiles.length > 0 && supportedImpactFiles.every((file) => file.languages.includes("cpp"));
+	const parsePaths = scopedPaths.length > 0 ? scopedPaths : onlyCppChangedFiles ? changedFiles : [];
+	const parsed = await parseFiles(repoRoot, IMPACT_LANGUAGES, parsePaths, [], [], params.timeoutMs, signal);
 	const diagnostics = [...parsed.diagnostics];
 	if (parsed.parsedFiles.length === 0) {
 		return {
@@ -663,9 +643,13 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 	const definitions: SymbolRecord[] = [];
 	const candidates: SymbolRecord[] = [];
 	for (const file of parsed.parsedFiles) {
-		const records = extractFileRecords(file, params.detail);
-		definitions.push(...records.definitions);
-		candidates.push(...records.candidates);
+		try {
+			const records = extractFileRecords(file, params.detail);
+			definitions.push(...records.definitions);
+			candidates.push(...records.candidates);
+		} catch (error) {
+			diagnostics.push(`${file.file}: Tree-sitter record extraction failed: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	const rootSymbols: string[] = [];

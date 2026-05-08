@@ -1,5 +1,6 @@
 import type { CodeIntelConfig } from "../types.ts";
 import { isRecord, normalizePositiveInteger, summarizeFileDistribution } from "../util.ts";
+import { clangdReferenceProvider } from "./providers/clangd-lsp.ts";
 import { goplsReferenceProvider } from "./providers/gopls-command.ts";
 import { typescriptReferenceProvider } from "./providers/typescript-language-service.ts";
 import type { ReferenceConfirmationOptions, ReferenceConfirmationProvider, ReferenceConfirmationProviderName, ReferenceRoot } from "./types.ts";
@@ -7,6 +8,7 @@ import type { ReferenceConfirmationOptions, ReferenceConfirmationProvider, Refer
 const providers: Record<ReferenceConfirmationProviderName, ReferenceConfirmationProvider> = {
 	gopls: goplsReferenceProvider,
 	typescript: typescriptReferenceProvider,
+	clangd: clangdReferenceProvider,
 };
 
 function asRoot(value: unknown): ReferenceRoot | undefined {

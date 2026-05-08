@@ -182,15 +182,15 @@ function renderStateResult(details: Record<string, unknown>, expanded: boolean, 
 	const syn = `${renderColor(theme, "muted", "syn:")}${renderColor(theme, backendAvailable(treeSitter) ? "success" : "error", backendAvailable(treeSitter) ? "ok" : String(treeSitter.available ?? "?"))}`;
 	const literal = `${renderColor(theme, "muted", "rg:")}${renderColor(theme, backendAvailable(rg) ? "success" : "warning", backendAvailable(rg) ? "ok" : String(rg.available ?? "?"))}`;
 	const languageServers = asRecord(details.languageServers);
-	const availableLsps = (["gopls", "rust-analyzer", "typescript"] as const).filter((server) => backendAvailable(asRecord(languageServers[server]))).length;
-	const lsp = `${renderColor(theme, "muted", "lsp:")}${renderColor(theme, availableLsps > 0 ? "success" : "warning", `${availableLsps}/3`)}`;
+	const availableLsps = (["gopls", "rust-analyzer", "typescript", "clangd"] as const).filter((server) => backendAvailable(asRecord(languageServers[server]))).length;
+	const lsp = `${renderColor(theme, "muted", "lsp:")}${renderColor(theme, availableLsps > 0 ? "success" : "warning", `${availableLsps}/4`)}`;
 	const lines = [`${renderStatus(theme, backendAvailable(treeSitter))} ${renderBold(theme, "code-intel state")} ${syn} · ${literal} · ${lsp}`];
 	if (expanded) {
 		const treeDetails = asRecord(treeSitter.details);
 		lines.push(`${renderColor(theme, "muted", "repo")} ${compactPath(details.repoRoot)}`);
 		lines.push(`${renderColor(theme, "muted", "tree-sitter")} ${String(treeDetails.runtime ?? "wasm")} ${treeSitter.version ? `v${String(treeSitter.version)}` : ""} · languages ${Array.isArray(treeDetails.languages) ? treeDetails.languages.length : "?"}`.trim());
 		lines.push(`${renderColor(theme, "muted", "rg")} ${rg.version ? String(rg.version).split(/\s+/).slice(0, 2).join(" ") : String(rg.available ?? "?")}`);
-		const lspSummary = (["gopls", "rust-analyzer", "typescript"] as const).map((server) => `${server}:${String(asRecord(languageServers[server]).available ?? "?")}`).join(" · ");
+		const lspSummary = (["gopls", "rust-analyzer", "typescript", "clangd"] as const).map((server) => `${server}:${String(asRecord(languageServers[server]).available ?? "?")}`).join(" · ");
 		lines.push(`${renderColor(theme, "muted", "language servers")} ${lspSummary}`);
 		const diagnostics = asArray(details.diagnostics);
 		if (diagnostics.length > 0) lines.push(`${renderColor(theme, "warning", "diagnostics")} ${diagnostics.length}`);
@@ -384,7 +384,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_impact_map",
 		label: "Code Intelligence Impact Map",
-		description: "Build the primary Tree-sitter read-next impact map from edited files, queried symbols, or a git base ref. Impact routing currently supports Go, TypeScript/TSX, JavaScript, and Python source files.",
+		description: "Build the primary Tree-sitter read-next impact map from edited files, queried symbols, or a git base ref. Impact routing currently supports Go, TypeScript/TSX, JavaScript, Python, and C/C++ source files.",
 		promptSnippet: "Primary code-intel entry point: list candidate caller/consumer/test files to read before edits or reviews.",
 		promptGuidelines: [
 			"Use code_intel_impact_map as the default code-intel tool after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
@@ -414,7 +414,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 			maxRootSymbols: Type.Optional(Type.Number({ description: "Maximum root symbols to query after expanding changed files. Default 20." })),
 			timeoutMs: timeoutParam,
 			detail: detailParam,
-			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript")], { description: "Opt-in exact-reference confirmation for returned roots using gopls or the TypeScript language service." })),
+			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd")], { description: "Opt-in exact-reference confirmation for returned roots using gopls, the TypeScript language service, or clangd for C/C++ with compile_commands.json." })),
 			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum roots to confirm when confirmReferences is set. Default 5." })),
 			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum reference rows returned when confirmReferences is set. Default min(config maxResults, 25)." })),
 			includeReferenceDeclarations: Type.Optional(Type.Boolean({ description: "Include declarations in reference-confirmation output. Default false." })),

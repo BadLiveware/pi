@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-export const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript", "python"];
+export const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript", "python", "cpp"];
 const IMPACT_LANGUAGE_SET = new Set(IMPACT_LANGUAGES);
 
 const LANGUAGE_EXTENSIONS: Array<{ id: string; extensions: string[] }> = [

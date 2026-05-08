@@ -23,7 +23,7 @@ export async function runImpactMap(params: CodeIntelImpactMapParams, repoRoot: s
 		...payload,
 		diagnostics: [...diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])],
 	};
-	if (params.confirmReferences === "gopls" || params.confirmReferences === "typescript") {
+	if (params.confirmReferences === "gopls" || params.confirmReferences === "typescript" || params.confirmReferences === "clangd") {
 		output.referenceConfirmation = await runReferenceConfirmation(
 			params.confirmReferences,
 			Array.isArray(output.roots) ? output.roots : [],

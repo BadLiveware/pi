@@ -24,11 +24,11 @@ test("impact map skips whole-repo parsing for unsupported changed-file languages
 	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-unsupported-impact-"));
 	execFileSync("git", ["init", "-q"], { cwd: repo });
 	fs.mkdirSync(path.join(repo, "src"), { recursive: true });
-	fs.writeFileSync(path.join(repo, "src", "query.cpp"), "void applyFunctionOverRange() {}\n");
-	fs.writeFileSync(path.join(repo, "src", "quantile.h"), "class AggregateFunctionTimeseriesQuantile {};\n");
+	fs.writeFileSync(path.join(repo, "src", "query.rs"), "fn apply_function_over_range() {}\n");
+	fs.writeFileSync(path.join(repo, "src", "quantile.rs"), "struct AggregateFunctionTimeseriesQuantile {}\n");
 	fs.writeFileSync(path.join(repo, "supported.ts"), "export function shouldNotNeedParsing() { return true }\n");
 
-	const impact = parseToolResult(await loadTools().get("code_intel_impact_map")!.execute("test", { changedFiles: ["src/query.cpp", "src/quantile.h"], maxResults: 10 }, undefined, undefined, mockContext(repo)));
+	const impact = parseToolResult(await loadTools().get("code_intel_impact_map")!.execute("test", { changedFiles: ["src/query.rs", "src/quantile.rs"], maxResults: 10 }, undefined, undefined, mockContext(repo)));
 
 	assert.equal(impact.ok, false);
 	assert.match(impact.reason, /do not include languages supported/);
