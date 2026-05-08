@@ -2,12 +2,11 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import type { CodeIntelConfig, CodeIntelSyntaxSearchParams, ResultDetail } from "./types.ts";
+import { IMPACT_LANGUAGES, changedFileSupportSummary } from "./impact-support.ts";
 import { ensureInsideRoot } from "./repo.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
 const EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "target", ".cache"]);
-const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript", "python"];
-const IMPACT_LANGUAGE_SET = new Set(IMPACT_LANGUAGES);
 
 interface TreeSitterPoint {
 	row: number;
@@ -515,29 +514,6 @@ function safeChangedFiles(repoRoot: string, changedFiles: string[]): string[] {
 	return files;
 }
 
-function languageIdsForFile(file: string): string[] {
-	const extension = path.extname(file);
-	return LANGUAGE_SPECS.filter((spec) => spec.extensions.includes(extension)).map((spec) => spec.id);
-}
-
-function changedFileSupportSummary(changedFiles: string[]): Record<string, unknown> {
-	const unsupportedImpactFiles: Array<Record<string, unknown>> = [];
-	const nonSourceFiles: string[] = [];
-	for (const file of changedFiles) {
-		const languages = languageIdsForFile(file);
-		if (languages.length === 0) {
-			nonSourceFiles.push(file);
-			continue;
-		}
-		if (!languages.some((language) => IMPACT_LANGUAGE_SET.has(language))) unsupportedImpactFiles.push({ file, languages });
-	}
-	return {
-		supportedImpactLanguages: IMPACT_LANGUAGES,
-		unsupportedImpactFiles,
-		nonSourceFiles,
-	};
-}
-
 function definitionRank(record: SymbolRecord): number {
 	if (["function_declaration", "method_declaration", "method_definition", "function_variable"].includes(record.kind)) return 0;
 	if (["class_declaration", "interface_declaration", "type_alias_declaration", "type"].includes(record.kind)) return 1;
@@ -639,7 +615,29 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 	const started = Date.now();
 	const changedFiles = safeChangedFiles(repoRoot, normalizeStringArray(params.changedFiles));
 	const supportSummary = changedFileSupportSummary(changedFiles);
-	const parsed = await parseFiles(repoRoot, IMPACT_LANGUAGES, normalizeStringArray(params.paths), [], [], params.timeoutMs, signal);
+	const requestedSymbols = normalizeStringArray(params.symbols);
+	const scopedPaths = normalizeStringArray(params.paths);
+	if (changedFiles.length > 0 && requestedSymbols.length === 0 && scopedPaths.length === 0 && (supportSummary.supportedImpactFiles as unknown[]).length === 0) {
+		return {
+			ok: false,
+			backend: "tree-sitter",
+			repoRoot,
+			roots: [],
+			related: [],
+			diagnostics: [],
+			reason: `Changed files do not include languages supported for Tree-sitter impact mapping. Supported impact languages: ${IMPACT_LANGUAGES.join(", ")}.`,
+			coverage: {
+				backendsUsed: ["tree-sitter"],
+				filesParsed: 0,
+				filesByLanguage: {},
+				parsedByLanguage: {},
+				changedFiles,
+				...supportSummary,
+			},
+			elapsedMs: Date.now() - started,
+		};
+	}
+	const parsed = await parseFiles(repoRoot, IMPACT_LANGUAGES, scopedPaths, [], [], params.timeoutMs, signal);
 	const diagnostics = [...parsed.diagnostics];
 	if (parsed.parsedFiles.length === 0) {
 		return {
@@ -683,7 +681,7 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 		roots.push(root);
 	};
 
-	for (const symbol of normalizeStringArray(params.symbols)) {
+	for (const symbol of requestedSymbols) {
 		const definition = definitions.find((record) => record.name === symbol);
 		addRoot(symbol, definition ? { ...definition, reason: "explicit symbol matched current-source Tree-sitter definition" } : { kind: "queried_symbol", name: symbol, symbol, file: "", evidence: "user", reason: "explicit symbol", line: 0, column: 0, endLine: 0, endColumn: 0 });
 	}
