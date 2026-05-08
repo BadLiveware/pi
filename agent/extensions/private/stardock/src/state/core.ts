@@ -80,8 +80,77 @@ export interface RecursiveModeState {
 	attempts: RecursiveAttempt[];
 }
 
+export type EvolveMetricGoal = "minimize" | "maximize";
+export type EvolveMutationPolicy = "small_diff" | "rewrite_candidate";
+export type EvolveIsolation = "advisory_patch" | "worktree";
+export type EvolveCandidateStatus = "accepted" | "rejected" | "invalid" | "best";
+export type EvolveCandidateArtifactKind = "benchmark" | "test" | "smoke";
+
+export interface EvolveSetup {
+	seedFiles: string[];
+	evaluatorCommand: string;
+	primaryMetric: string;
+	metricGoal: EvolveMetricGoal;
+	archiveSize: number;
+	candidateBudget: number;
+	patience?: number;
+	mutationPolicy: EvolveMutationPolicy;
+	timeoutMs: number;
+	maxEvaluatorOutputBytes: number;
+	maxPromptCandidates: number;
+	isolation: EvolveIsolation;
+}
+
+export interface EvolveCandidateArtifact {
+	kind: EvolveCandidateArtifactKind;
+	path?: string;
+	summary: string;
+}
+
+export interface EvolveCandidate {
+	id: string;
+	parentId?: string;
+	iteration: number;
+	summary: string;
+	patchFile?: string;
+	changedFiles: string[];
+	metrics: Record<string, number | string>;
+	primaryScore?: number;
+	criterionIds: string[];
+	evidenceSummary?: string;
+	verificationArtifacts: EvolveCandidateArtifact[];
+	status: EvolveCandidateStatus;
+	evaluatorOutputFile?: string;
+	createdAt: string;
+}
+
+export type EvolveImplementationGate =
+	| "recursive_dogfood_evidence"
+	| "evaluator_contract"
+	| "safety_bounds"
+	| "candidate_isolation"
+	| "criteria_evidence"
+	| "artifact_handling"
+	| "auditor_or_user_approval";
+
+export const EVOLVE_IMPLEMENTATION_GATES: EvolveImplementationGate[] = [
+	"recursive_dogfood_evidence",
+	"evaluator_contract",
+	"safety_bounds",
+	"candidate_isolation",
+	"criteria_evidence",
+	"artifact_handling",
+	"auditor_or_user_approval",
+];
+
 export interface EvolveModeState {
 	kind: "evolve";
+	setup?: EvolveSetup;
+	candidates: EvolveCandidate[];
+	bestCandidateId?: string;
+	archive: string[];
+	consecutiveNonImproving: number;
+	implementationGates: EvolveImplementationGate[];
 }
 
 export type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;

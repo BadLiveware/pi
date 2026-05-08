@@ -4,6 +4,22 @@
 
 Design-first follow-up. Do not implement `evolve` mode until recursive mode has been dogfooded on real optimization/debugging tasks and the evidence below is available.
 
+Implemented so far:
+
+- Future candidate/archive/evaluator state types are defined in `agent/extensions/private/stardock/src/state/core.ts`.
+- Reserved evolve-state defaults and migration normalization live in `agent/extensions/private/stardock/src/state/evolve.ts`.
+- Mode default/migration helpers were split into `agent/extensions/private/stardock/src/state/modes.ts` to avoid growing the generic migration file.
+- Startup remains disabled: `stardock_start` and `/stardock start --mode evolve` still refuse to create an evolve run and list the required gates.
+- README documentation now states that evolve remains reserved and that large patches/logs should be artifact refs, not loop-state payload.
+- Regression tests in `agent/extensions/private/stardock/test/evolve-reserved.test.ts` cover bounded state normalization and reserved startup behavior.
+
+Validation evidence for this safe slice:
+
+- `cd agent/extensions && npm run typecheck` passed.
+- `cd agent/extensions && node --experimental-strip-types --test private/stardock/test/*.test.ts` passed: 51 tests.
+- `cd agent/extensions && npm run check:structure` passed.
+- `git diff --check -- agent/extensions/private/stardock` passed.
+
 ## Decision
 
 Keep `mode: "evolve"` reserved. The safe next step is to define the candidate/archive/evaluator state shape and implementation gates, not to run candidate search yet.

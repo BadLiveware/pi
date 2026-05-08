@@ -142,6 +142,10 @@ Recursive loops create data-only `governor_review` requests at `governEvery`; wh
 
 The extension does not spawn subagents. A parent/orchestrator agent can inspect requests, fetch a ready-to-copy task with `stardock_outside_payload` or `/stardock outside payload`, run whatever research or review is appropriate, then record the result with `stardock_outside_answer` or `/stardock outside answer`.
 
+### `evolve`
+
+Metric-driven candidate search remains reserved. Stardock defines the future candidate/archive/evaluator state shape so migrated local state can be inspected safely, but `stardock_start` and `/stardock start --mode evolve` still refuse to create an evolve run. Entering evolve execution requires evidence from recursive dogfooding plus explicit decisions for evaluator contracts, time/output bounds, archive and prompt caps, candidate isolation, criteria/evidence handling, artifact storage, and auditor or user approval gates. Future candidate outputs should store large patches and evaluator logs as artifacts referenced by path rather than in loop state.
+
 ## Development notes
 
 This private extension was moved from the local Ralph loop implementation. Backward compatibility with `ralph_*`, `/ralph`, or `.ralph/` is not a requirement.

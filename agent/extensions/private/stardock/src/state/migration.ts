@@ -23,10 +23,8 @@ type IterationBrief,
 type IterationBriefSource,
 type IterationBriefStatus,
 type LoopMode,
-type LoopModeState,
 type LoopState,
 type OutsideRequest,
-type RecursiveModeState,
 type ValidationResult,
 type VerificationArtifact,
 type VerificationArtifactKind,
@@ -34,47 +32,11 @@ type WorkerReport,
 type WorkerReportStatus,
 type WorkerValidationRecord,
 } from "./core.ts";
+import { migrateModeState, numberOrDefault } from "./modes.ts";
 import { defaultTaskFile } from "./paths.ts";
 
 export function normalizeMode(value: unknown): LoopMode {
 	return value === "recursive" || value === "evolve" || value === "checklist" ? value : "checklist";
-}
-
-export function defaultRecursiveModeState(objective = "Continue improving the task outcome"): RecursiveModeState {
-	return {
-		kind: "recursive",
-		objective,
-		resetPolicy: "manual",
-		stopWhen: ["target_reached", "idea_exhaustion", "max_iterations"],
-		outsideHelpOnStagnation: false,
-		attempts: [],
-	};
-}
-
-export function defaultModeState(mode: LoopMode): LoopModeState {
-	if (mode === "recursive") return defaultRecursiveModeState();
-	if (mode === "evolve") return { kind: "evolve" };
-	return { kind: "checklist" };
-}
-
-export function migrateModeState(mode: LoopMode, rawModeState: unknown): LoopModeState {
-	if (rawModeState && typeof rawModeState === "object" && (rawModeState as { kind?: unknown }).kind === mode) {
-		if (mode === "recursive") {
-			const raw = rawModeState as Partial<RecursiveModeState>;
-			return {
-				...defaultRecursiveModeState(raw.objective),
-				...raw,
-				attempts: Array.isArray(raw.attempts) ? raw.attempts : [],
-				outsideHelpOnStagnation: raw.outsideHelpOnStagnation === true,
-			};
-		}
-		return rawModeState as LoopModeState;
-	}
-	return defaultModeState(mode);
-}
-
-export function numberOrDefault(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 export function stringOrDefault(value: unknown, fallback: string): string {

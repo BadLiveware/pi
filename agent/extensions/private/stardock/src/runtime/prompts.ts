@@ -4,8 +4,8 @@
 
 import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendTaskSourceSection, currentBrief } from "../briefs.ts";
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
-import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS } from "../state/core.ts";
-import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/migration.ts";
+import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
+import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/modes.ts";
 
 function compactBriefTask(brief: IterationBrief): string {
 	return compactText(brief.task, 120) ?? "(no task text)";
@@ -216,7 +216,7 @@ export function isImplementedMode(mode: string): mode is "checklist" | "recursiv
 }
 
 export function unsupportedModeMessage(mode: string): string {
-	if (mode === "evolve") return `Stardock mode "${mode}" is planned but not implemented yet.`;
+	if (mode === "evolve") return `Stardock mode "${mode}" is planned but not implemented yet. Required gates: ${EVOLVE_IMPLEMENTATION_GATES.join(", ")}.`;
 	return `Unsupported Stardock mode "${mode}". Supported modes: checklist, recursive.`;
 }
 
