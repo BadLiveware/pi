@@ -32,7 +32,7 @@ interface ParserBundle {
 	Query?: any;
 }
 
-interface ParsedFile {
+export interface ParsedFile {
 	file: string;
 	absoluteFile: string;
 	source: string;
@@ -42,7 +42,7 @@ interface ParsedFile {
 	bundle: ParserBundle;
 }
 
-interface SymbolRecord {
+export interface SymbolRecord {
 	kind: string;
 	name: string;
 	file: string;
@@ -281,7 +281,7 @@ function collectFilesForSpecs(repoRoot: string, specs: LanguageSpec[], paths: st
 	return new Map([...filesBySpec.entries()].map(([language, files]) => [language, [...files].sort()]));
 }
 
-async function parseFiles(repoRoot: string, languages: string[], paths: string[] = [], includeGlobs: string[] = [], excludeGlobs: string[] = [], timeoutMs = 30_000, signal?: AbortSignal): Promise<{ parsedFiles: ParsedFile[]; diagnostics: string[]; filesByLanguage: Record<string, number>; parsedByLanguage: Record<string, number> }> {
+export async function parseFiles(repoRoot: string, languages: string[], paths: string[] = [], includeGlobs: string[] = [], excludeGlobs: string[] = [], timeoutMs = 30_000, signal?: AbortSignal): Promise<{ parsedFiles: ParsedFile[]; diagnostics: string[]; filesByLanguage: Record<string, number>; parsedByLanguage: Record<string, number> }> {
 	const started = Date.now();
 	const diagnostics: string[] = [];
 	const parsedFiles: ParsedFile[] = [];
@@ -401,7 +401,7 @@ function keyedName(node: TreeSitterNode, source: string): string | undefined {
 	return keyNode ? nodeText(source, keyNode).replace(/^['"]|['"]$/g, "") : undefined;
 }
 
-function extractFileRecords(parsed: ParsedFile, detail: ResultDetail): { definitions: SymbolRecord[]; candidates: SymbolRecord[] } {
+export function extractFileRecords(parsed: ParsedFile, detail: ResultDetail): { definitions: SymbolRecord[]; candidates: SymbolRecord[] } {
 	const definitions: SymbolRecord[] = [];
 	const candidates: SymbolRecord[] = [];
 	const includeSnippets = detail === "snippets";
@@ -425,7 +425,7 @@ function extractFileRecords(parsed: ParsedFile, detail: ResultDetail): { definit
 				const objectLiteralMethod = node.type === "method_definition" && !currentType;
 				if (!objectLiteralMethod) addDefinition(node, name, node.type, currentType);
 			}
-		} else if (["class_declaration", "class_definition", "interface_declaration", "type_alias_declaration", "type_spec"].includes(node.type)) {
+		} else if (["class_declaration", "class_definition", "class_specifier", "struct_specifier", "enum_specifier", "interface_declaration", "type_alias_declaration", "type_spec"].includes(node.type)) {
 			const name = definitionName(node, parsed.source);
 			if (name) {
 				nextType = name;

@@ -175,9 +175,9 @@ function renderText(component: { render: (width: number) => string[] }): string 
 	return component.render(120).join("\n");
 }
 
-test("registered tool surface is Tree-sitter routing only", async () => {
+test("registered tool surface is Tree-sitter routing and orientation only", async () => {
 	const tools = loadTools();
-	assert.deepEqual([...tools.keys()].sort(), ["code_intel_impact_map", "code_intel_local_map", "code_intel_state", "code_intel_syntax_search"]);
+	assert.deepEqual([...tools.keys()].sort(), ["code_intel_file_outline", "code_intel_impact_map", "code_intel_local_map", "code_intel_repo_overview", "code_intel_state", "code_intel_syntax_search", "code_intel_test_map"]);
 });
 
 test("state reports Tree-sitter and rg without legacy artifact policy", async () => {

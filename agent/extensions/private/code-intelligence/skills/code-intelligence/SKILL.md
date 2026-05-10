@@ -1,6 +1,6 @@
 ---
 name: code-intelligence
-description: "Use when preparing a bounded read-next map for non-trivial code review or edits: changed files, exported/shared symbols, handlers, config/schema/protocol code, or scoped subsystem mapping before delegation or broad cross-file navigation."
+description: "Use when orienting in a large repo or preparing a bounded read-next map for non-trivial code review/edits: repo shape, file outlines, tests, changed files, shared symbols, handlers, config/schema/protocol code, or scoped subsystem mapping."
 ---
 
 # Code Intelligence
@@ -9,11 +9,13 @@ Use `code_intel_*` tools to prepare candidate files and symbols to inspect next.
 
 ## Core Workflow
 
-1. Start from the task boundary: diff, changed files, base ref, or a small set of root symbols.
-2. Run `code_intel_impact_map` for review/edit impact context, or `code_intel_local_map` for a scoped subsystem with anchors plus related names.
-3. Use `code_intel_syntax_search` only for explicit current-source shapes the map cannot express.
-4. Read the returned files before making findings, edits, or compatibility claims.
-5. Run project-native validation when behavior, public contracts, tests, or generated outputs matter.
+1. In a large unfamiliar repo, start with `code_intel_repo_overview` tier `shape`, then scope to tier `files`, then use `code_intel_file_outline` for individual large files.
+2. For a concrete edit/review, start from the task boundary: diff, changed files, base ref, or a small set of root symbols.
+3. Run `code_intel_impact_map` for review/edit impact context, or `code_intel_local_map` for a scoped subsystem with anchors plus related names.
+4. Use `code_intel_test_map` when you need likely tests to inspect or run for a file/symbol/name.
+5. Use `code_intel_syntax_search` only for explicit current-source shapes the map cannot express.
+6. Read the returned files before making findings, edits, or compatibility claims.
+7. Run project-native validation when behavior, public contracts, tests, or generated outputs matter.
 
 ## Delegating Review
 
@@ -30,13 +32,18 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 
 ## Tool Selection
 
-- `code_intel_impact_map`: primary tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Impact routing currently covers Go, TypeScript/TSX, JavaScript, Python, and C/C++. C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences` only for bounded, opt-in Go, TypeScript/JavaScript, or clangd-backed C/C++ exact-reference confirmation when exactness materially reduces risk and C/C++ has a usable `compile_commands.json`.
+- `code_intel_repo_overview`: orientation tool. Use tier `shape` for broad directory counts/languages without parsing declarations; use tier `files` only for explicit subtrees to list files plus capped declaration names.
+- `code_intel_file_outline`: single-file orientation. Returns imports/includes and language-native declarations with line ranges before reading a large file.
+- `code_intel_test_map`: related-test candidates. Uses bounded test-root discovery, path/name evidence, and literal matches; pass file paths plus symbols/domain names for better non-code test results.
+- `code_intel_impact_map`: primary edit/review impact tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Impact routing currently covers Go, TypeScript/TSX, JavaScript, Python, and C/C++. C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences` only for bounded, opt-in Go, TypeScript/JavaScript, or clangd-backed C/C++ exact-reference confirmation when exactness materially reduces risk and C/C++ has a usable `compile_commands.json`.
 - `code_intel_local_map`: scoped subsystem map. Uses Tree-sitter current-source rows plus bounded `rg` literal fallback when you have anchors plus related fields/types/API names and want suggested local files to read.
 - `code_intel_syntax_search`: explicit in-process Tree-sitter candidate search. Use supported patterns such as `foo($A)`, `$OBJ.Field`, `Field: $VALUE`, wrapper patterns containing those shapes, or raw Tree-sitter queries with captures.
 - `code_intel_state`: inspect Tree-sitter, `rg`, and optional LSP availability, config, footer status, and diagnostics when that matters.
 
 ## Guardrails
 
+- Treat repo overview and file outlines as deterministic structure and syntax facts for navigation, not generated architecture explanations.
+- Do not expect model summaries or semantic role hints; infer meaning from paths, filenames, imports/includes, and declarations, then read source.
 - Treat Tree-sitter output as a read-next queue, not semantic truth.
 - Treat `rg` fallback as literal text discovery, not symbol/reference proof.
 - Do not turn tool output directly into a review finding; inspect current source first.

@@ -8,6 +8,7 @@ import { Text } from "@mariozechner/pi-tui";
 import { loadConfig } from "./src/config.ts";
 import { runImpactMap } from "./src/impact.ts";
 import { runLocalMap } from "./src/local-map.ts";
+import { registerOrientationTools } from "./src/orientation-tools.ts";
 import { resolveRepoRoots } from "./src/repo.ts";
 import { backendStatuses, languageServerStatuses, statePayload } from "./src/state.ts";
 import { runSyntaxSearch } from "./src/syntax.ts";
@@ -264,7 +265,7 @@ function renderLocalMapResult(details: Record<string, unknown>, expanded: boolea
 	return renderLines(lines);
 }
 
-function renderGenericCodeIntelResult(kind: "state" | "impact" | "syntax" | "local") {
+function renderGenericCodeIntelResult(kind: "state" | "impact" | "syntax" | "local" | "overview" | "outline" | "tests") {
 	return (result: unknown, options: { expanded?: boolean; isPartial?: boolean } | undefined, theme: any) => {
 		if (options?.isPartial) return renderLines([renderColor(theme, "accent", "code-intel working…")]);
 		const details = asRecord(asRecord(result).details);
@@ -473,6 +474,7 @@ export default function codeIntelligence(pi: ExtensionAPI): void {
 		void refreshFooterStatus(ctx);
 	});
 	registerStateTool(pi);
+	registerOrientationTools(pi);
 	registerLocalMapTool(pi);
 	registerImpactMapTool(pi);
 	registerSyntaxSearchTool(pi);

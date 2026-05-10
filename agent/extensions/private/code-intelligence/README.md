@@ -4,6 +4,9 @@ Private local Pi extension for evaluating advisory Tree-sitter read-next maps in
 
 Use it to prepare compact candidate file lists for reviews and edits. The product surface is intentionally small:
 
+- `code_intel_repo_overview`
+- `code_intel_file_outline`
+- `code_intel_test_map`
 - `code_intel_impact_map`
 - `code_intel_local_map`
 - `code_intel_syntax_search`
@@ -13,8 +16,9 @@ It does not replace source inspection, language servers, compiler/type checks, t
 
 ## When to Use It
 
-Use code-intel when you need a bounded candidate file list before a non-trivial review/edit:
+Use code-intel when you need deterministic repository orientation or a bounded candidate file list before a non-trivial review/edit:
 
+- You are entering a large unfamiliar repo and need structure before broad searches.
 - A diff touches exported functions, shared helpers, handlers, config/schema/protocol paths, or multiple files.
 - You need to delegate review and want to pass a compact list of likely caller/consumer/test files.
 - You have a scoped subsystem with central anchors plus related field/type/API names.
@@ -24,13 +28,13 @@ Do **not** use this extension as a general exact-reference engine. Tree-sitter r
 
 Commands shaped like `rg -n "func Foo|Foo.*Bar|Bar" src/**/*.go | sed -n ...` are often ad hoc context mapping. Prefer `code_intel_impact_map` for diffs/changed symbols and `code_intel_local_map` for scoped subsystems, then use `rg` for literal fallback, generated text, comments/docs, or unsupported-language gaps.
 
-Use returned locations to choose files to read next; do not treat the result as exhaustive proof.
+Use returned locations to choose files to read next; do not treat the result as exhaustive proof. Orientation tools present objective paths, counts, languages, imports/includes, declarations, and evidence only; they intentionally do not generate model summaries or semantic role hints.
 
 ## Engines
 
 | Engine | Used for | Artifact behavior |
 | --- | --- | --- |
-| Tree-sitter WASM | current-source definitions, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Python, and C/C++; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | no index |
+| Tree-sitter WASM | current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Python, and C/C++; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | no index |
 | rg | bounded literal fallback in local maps and human follow-up searches | no index |
 
 Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, TypeScript, and clangd availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback. C/C++ clangd confirmation also requires a usable `compile_commands.json` in the repository root or common build directories.
@@ -114,6 +118,46 @@ tail -n 40 ~/.cache/pi-code-intelligence/usage/*.jsonl
 ```
 
 ## Tools
+
+### `code_intel_repo_overview`
+
+Build a large-repo-safe orientation map.
+
+Use `tier: "shape"` first for broad scopes such as a repository root. It summarizes directories, file counts, source/test/doc/config buckets, dominant languages, exclusions, caps, and truncation without parsing declarations. Use `tier: "files"` only after scoping to one or a few directories; it lists files and capped top-level declarations per file.
+
+Examples:
+
+```json
+{"tier":"shape","maxDepth":2}
+```
+
+```json
+{"tier":"files","paths":["src/Storages/System"],"maxFilesPerDir":80,"maxSymbolsPerFile":8}
+```
+
+The output is filesystem and Tree-sitter syntax evidence for navigation. It does not infer semantic roles such as entrypoints or architectures.
+
+### `code_intel_file_outline`
+
+Parse one file and return imports/includes plus language-native declarations with line ranges. Use this before reading very large source files, or after repo overview identifies a candidate file.
+
+Example:
+
+```json
+{"path":"src/Storages/System/StorageSystemTables.cpp","maxSymbols":250}
+```
+
+### `code_intel_test_map`
+
+Return evidence-ranked test candidates for a scoped file, symbol, or domain name. It uses bounded test-root discovery, path/name similarity, and literal matches, so it can find non-code tests such as SQL fixtures as well as source-code tests.
+
+Example:
+
+```json
+{"path":"src/Storages/System/StorageSystemTables.cpp","symbols":["StorageSystemTables"],"names":["system.tables"],"maxResults":50}
+```
+
+Treat results as likely tests to inspect or run, not proof of coverage.
 
 ### `code_intel_state`
 
