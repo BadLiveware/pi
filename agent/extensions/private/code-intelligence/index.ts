@@ -7,13 +7,14 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { Text } from "@mariozechner/pi-tui";
 import { compactCodeIntelOutput } from "./src/compact-output.ts";
 import { loadConfig } from "./src/config.ts";
+import { setCodeIntelStatusSummary } from "./src/footer-status.ts";
 import { runImpactMap } from "./src/impact.ts";
 import { runLocalMap } from "./src/local-map.ts";
 import { registerOrientationTools } from "./src/orientation-tools.ts";
 import { resolveRepoRoots } from "./src/repo.ts";
 import { backendStatuses, languageServerStatuses, statePayload } from "./src/state.ts";
 import { runSyntaxSearch } from "./src/syntax.ts";
-import type { BackendName, BackendStatus, CodeIntelImpactMapParams, CodeIntelLocalMapParams, CodeIntelStateParams, CodeIntelSyntaxSearchParams } from "./src/types.ts";
+import type { CodeIntelImpactMapParams, CodeIntelLocalMapParams, CodeIntelStateParams, CodeIntelSyntaxSearchParams } from "./src/types.ts";
 import { recordUsageToolCall, recordUsageToolResult } from "./src/usage.ts";
 
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
@@ -277,34 +278,14 @@ function renderGenericCodeIntelResult(kind: "state" | "impact" | "syntax" | "loc
 	};
 }
 
-function statusText(backend: BackendName, status: BackendStatus): { text: string; style: StatusStyle } {
-	if (status.available === "available") return { text: "ok", style: "success" };
-	if (status.available === "missing") return { text: backend === "rg" ? "missing" : "err", style: backend === "rg" ? "warning" : "error" };
-	return { text: "err", style: "error" };
-}
-
-function statusSummary(ctx: ExtensionContext, statuses: Record<BackendName, BackendStatus>): string {
-	const separator = statusColor(ctx, "dim", " · ");
-	const colon = statusColor(ctx, "dim", ":");
-	return `${statusColor(ctx, "muted", "ci")} ${(["tree-sitter", "rg"] as BackendName[]).map((backend) => {
-		const state = statusText(backend, statuses[backend]);
-		const label = backend === "tree-sitter" ? "syn" : "rg";
-		return `${statusColor(ctx, "muted", label)}${colon}${statusColor(ctx, state.style, state.text)}`;
-	}).join(separator)}`;
-}
-
-function setStatusSummary(ctx: ExtensionContext, statuses: Record<BackendName, BackendStatus>): void {
-	setCodeIntelStatus(ctx, statusSummary(ctx, statuses));
-}
-
 async function refreshFooterStatus(ctx: ExtensionContext): Promise<void> {
 	setCodeIntelStatus(ctx, "ci:checking", "dim");
 	try {
 		const loadedConfig = loadConfig(ctx);
 		const roots = await resolveRepoRoots(ctx);
-		const statuses = await backendStatuses(roots.repoRoot, loadedConfig.config);
-		setStatusSummary(ctx, statuses);
-		recordRuntimeOperation({ operation: "session_start", repoRoot: roots.repoRoot, ok: statuses["tree-sitter"].available === "available", results: statuses });
+		const [statuses, languageServers] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), languageServerStatuses(roots.repoRoot, loadedConfig.config)]);
+		setCodeIntelStatusSummary(ctx, statuses, languageServers, roots.repoRoot);
+		recordRuntimeOperation({ operation: "session_start", repoRoot: roots.repoRoot, ok: statuses["tree-sitter"].available === "available", results: { backends: statuses, languageServers } });
 	} catch (error) {
 		recordRuntimeOperation({ operation: "session_start", ok: false, error: errorMessage(error) });
 		setCodeIntelStatus(ctx, "ci:error", "error");
@@ -332,9 +313,8 @@ function registerStateTool(pi: ExtensionAPI): void {
 		async execute(_toolCallId: string, params: CodeIntelStateParams, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const statuses = await backendStatuses(roots.repoRoot, loadedConfig.config);
-			const languageServers = await languageServerStatuses(roots.repoRoot, loadedConfig.config);
-			setStatusSummary(ctx, statuses);
+			const [statuses, languageServers] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), languageServerStatuses(roots.repoRoot, loadedConfig.config)]);
+			setCodeIntelStatusSummary(ctx, statuses, languageServers, roots.repoRoot);
 			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true, languageServers) as Record<string, unknown>;
 			if (params.includeDiagnostics === true) payload.runtimeDiagnostics = runtimeDiagnostics(roots.repoRoot);
 			return { content: [{ type: "text", text: compactCodeIntelOutput("state", payload) }], details: payload };
