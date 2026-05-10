@@ -7,6 +7,7 @@ Use it to prepare compact candidate file lists for reviews and edits. The produc
 - `code_intel_repo_overview`
 - `code_intel_file_outline`
 - `code_intel_test_map`
+- `code_intel_repo_route`
 - `code_intel_impact_map`
 - `code_intel_local_map`
 - `code_intel_syntax_search`
@@ -19,6 +20,7 @@ It does not replace source inspection, language servers, compiler/type checks, t
 Use code-intel when you need deterministic repository orientation or a bounded candidate file list before a non-trivial review/edit:
 
 - You are entering a large unfamiliar repo and need structure before broad searches.
+- You need to route concept/API terms to likely implementation files without dumping raw global `rg` output.
 - A diff touches exported functions, shared helpers, handlers, config/schema/protocol paths, or multiple files.
 - You need to delegate review and want to pass a compact list of likely caller/consumer/test files.
 - You have a scoped subsystem with central anchors plus related field/type/API names.
@@ -149,7 +151,7 @@ Example:
 
 ### `code_intel_test_map`
 
-Return evidence-ranked test candidates for a scoped file, symbol, or domain name. It uses bounded test-root discovery, path/name similarity, and literal matches, so it can find non-code tests such as SQL fixtures as well as source-code tests.
+Return evidence-ranked test candidates for a scoped file, symbol, or domain name. It uses bounded test-root discovery, path/name similarity, and literal matches, so it can find non-code tests such as SQL fixtures as well as source-code tests. Generated/cache/log artifacts are ignored by default, and generic path-only terms are downranked to keep results focused.
 
 Example:
 
@@ -158,6 +160,18 @@ Example:
 ```
 
 Treat results as likely tests to inspect or run, not proof of coverage.
+
+### `code_intel_repo_route`
+
+Rank likely files for concept, API, feature, or function terms using bounded path and literal evidence. Use this after a broad overview when you know terms such as `promql` and `over_time` but do not yet know the implementation file. Scope `paths` in large repositories.
+
+Example:
+
+```json
+{"terms":["promql","over_time"],"paths":["src"],"maxResults":20}
+```
+
+Route results are file candidates, not semantic proof. Read or outline returned files before making implementation claims.
 
 ### `code_intel_state`
 

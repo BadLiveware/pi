@@ -40,6 +40,9 @@ void createVirtuals() {}
 }
 `);
 	fs.writeFileSync(path.join(repo, "tests", "queries", "001_system_tables.sql"), "SELECT * FROM system.tables WHERE name = 'numbers';\n");
+	fs.mkdirSync(path.join(repo, "tests", "__pycache__"), { recursive: true });
+	fs.writeFileSync(path.join(repo, "tests", "__pycache__", "noise.pyc"), "system.tables\n");
+	fs.writeFileSync(path.join(repo, "tests", "query_function_range.log"), "system.tables\n");
 	fs.writeFileSync(path.join(repo, "build_debug", "ignored.cpp"), "void ignored() {}\n");
 	return repo;
 }
@@ -96,6 +99,21 @@ test("file outline reports imports and declarations for one file", async () => {
 	}
 });
 
+test("repo route ranks files by path and literal evidence", async () => {
+	const repo = fixtureRepo();
+	try {
+		const tools = loadTools();
+		const result = await tools.get("code_intel_repo_route")!.execute("test", { terms: ["StorageSystemTables", "system.tables"], paths: ["src", "tests"], maxResults: 5 }, undefined, undefined, mockContext(repo));
+		assert.match(result.content[0].text, /^OK repo_route/m);
+		const route = parseToolResult(result);
+		assert.equal(route.ok, true);
+		assert.equal(route.candidates.some((candidate: any) => candidate.file === "src/storage/system_tables.cpp"), true);
+		assert.equal(route.candidates.some((candidate: any) => candidate.file === "tests/queries/001_system_tables.sql"), true);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
 test("test map ranks non-code tests by path and literal evidence", async () => {
 	const repo = fixtureRepo();
 	try {
@@ -107,6 +125,7 @@ test("test map ranks non-code tests by path and literal evidence", async () => {
 		assert.equal(testMap.ok, true);
 		assert.equal(testMap.candidates.length >= 1, true);
 		assert.equal(testMap.candidates[0].file, "tests/queries/001_system_tables.sql");
+		assert.equal(testMap.candidates.some((candidate: any) => candidate.file.includes("__pycache__") || candidate.file.endsWith(".log")), false);
 		assert.equal(testMap.candidates[0].evidence.some((row: any) => row.kind === "literal_match" && row.term === "system.tables"), true);
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });

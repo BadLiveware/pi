@@ -159,6 +159,16 @@ export interface CodeIntelTestMapParams {
 	detail?: ResultDetail;
 }
 
+export interface CodeIntelRepoRouteParams {
+	repoRoot?: string;
+	terms?: string[];
+	paths?: string[];
+	maxResults?: number;
+	maxFiles?: number;
+	maxMatchesPerFile?: number;
+	timeoutMs?: number;
+}
+
 export const DEFAULT_CONFIG: CodeIntelConfig = {
 	maxResults: 125,
 	queryTimeoutMs: DEFAULT_TIMEOUT_MS,

@@ -102,6 +102,25 @@ function compactOutline(payload: Record<string, unknown>): string {
 	return lines.join("\n");
 }
 
+function compactRoute(payload: Record<string, unknown>): string {
+	const summary = isRecord(payload.summary) ? payload.summary : {};
+	const coverage = isRecord(payload.coverage) ? payload.coverage : {};
+	const lines = [
+		`${header("repo_route", payload)} terms=${Array.isArray(payload.terms) ? payload.terms.join(",") : "?"}`,
+		`summary: candidates=${summary.candidateCount ?? "?"} returned=${summary.returnedCount ?? "?"} scanned=${summary.filesScanned ?? "?"} truncated=${coverage.truncated === true}`,
+	];
+	let index = 1;
+	for (const candidate of rows(payload.candidates).slice(0, 30)) {
+		lines.push(`${index++}. ${String(candidate.file ?? "?")} score=${candidate.score ?? "?"}`);
+		const evidence = rows(candidate.evidence);
+		const pathTerms = evidence.filter((row) => row.kind === "path" || row.kind === "basename").map((row) => `${row.kind}:${row.term}`).join(",");
+		const literals = evidence.filter((row) => row.kind === "literal").map((row) => `${row.term}@${row.line}`).join(", ");
+		if (pathTerms) lines.push(`   path: ${pathTerms}`);
+		if (literals) lines.push(`   literal: ${literals}`);
+	}
+	return lines.join("\n");
+}
+
 function compactTestMap(payload: Record<string, unknown>): string {
 	const summary = isRecord(payload.summary) ? payload.summary : {};
 	const coverage = isRecord(payload.coverage) ? payload.coverage : {};
@@ -152,11 +171,12 @@ function compactSyntax(payload: Record<string, unknown>): string {
 	return lines.join("\n");
 }
 
-export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | "tests" | "impact" | "local" | "syntax", payload: Record<string, unknown>): string {
+export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | "tests" | "route" | "impact" | "local" | "syntax", payload: Record<string, unknown>): string {
 	if (kind === "state") return compactState(payload);
 	if (kind === "overview") return compactOverview(payload);
 	if (kind === "outline") return compactOutline(payload);
 	if (kind === "tests") return compactTestMap(payload);
+	if (kind === "route") return compactRoute(payload);
 	if (kind === "impact") return compactImpact(payload);
 	if (kind === "local") return compactLocal(payload);
 	return compactSyntax(payload);

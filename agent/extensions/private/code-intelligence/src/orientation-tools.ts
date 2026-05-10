@@ -3,8 +3,9 @@ import { compactCodeIntelOutput } from "./compact-output.ts";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { loadConfig } from "./config.ts";
 import { runFileOutline, runRepoOverview, runTestMap } from "./orientation.ts";
+import { runRepoRoute } from "./repo-route.ts";
 import { resolveRepoRoots } from "./repo.ts";
-import type { CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelTestMapParams } from "./types.ts";
+import type { CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelRepoRouteParams, CodeIntelTestMapParams } from "./types.ts";
 
 const repoRootParam = Type.Optional(Type.String({ description: "Repository or directory to inspect. Defaults to the current working directory." }));
 const timeoutParam = Type.Optional(Type.Number({ description: "Command timeout in milliseconds. Defaults to config queryTimeoutMs." }));
@@ -68,6 +69,33 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runFileOutline(params, roots.repoRoot, loadedConfig.config, signal);
 			return { content: [{ type: "text", text: compactCodeIntelOutput("outline", payload) }], details: payload };
+		},
+	});
+
+	pi.registerTool({
+		name: "code_intel_repo_route",
+		label: "Code Intelligence Repo Route",
+		description: "Rank likely files for concept or API terms using bounded path and literal evidence without dumping raw search output.",
+		promptSnippet: "Use when you need to find where a concept is implemented before choosing files to read.",
+		promptGuidelines: [
+			"Use code_intel_repo_route after broad overview when you have concept terms such as API names, feature names, or function names but no exact anchor file yet.",
+			"Scope paths for large repositories; route output ranks files by path and literal evidence, not semantic proof.",
+			"Use returned files with code_intel_file_outline, source reads, impact maps, or test maps before making claims.",
+		],
+		parameters: Type.Object({
+			repoRoot: repoRootParam,
+			terms: Type.Array(Type.String(), { description: "Concept, API, symbol, or domain terms to route, e.g. ['promql', 'over_time']." }),
+			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files or directories to search. Scope this in large repos." })),
+			maxResults: maxResultsParam,
+			maxFiles: Type.Optional(Type.Number({ description: "Maximum files to scan before truncating. Default 20000." })),
+			maxMatchesPerFile: Type.Optional(Type.Number({ description: "Maximum literal evidence rows per file. Default 5." })),
+			timeoutMs: timeoutParam,
+		}),
+		async execute(_toolCallId: string, params: CodeIntelRepoRouteParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+			const loadedConfig = loadConfig(ctx);
+			const roots = await resolveRepoRoots(ctx, params.repoRoot);
+			const payload = await runRepoRoute(params, roots.repoRoot, loadedConfig.config, signal);
+			return { content: [{ type: "text", text: compactCodeIntelOutput("route", payload) }], details: payload };
 		},
 	});
 
