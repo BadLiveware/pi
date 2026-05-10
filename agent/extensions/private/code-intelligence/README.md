@@ -81,7 +81,7 @@ Footer-framework can show it by adapting extension status `code-intel`, for exam
 /footerfx item code-intel zone right
 ```
 
-Tool results use compact TUI cards: the default view shows a short status/count summary, while expanded rows show bounded file/caller/match details. The full JSON content is still returned to the agent.
+Tool results use compact TUI cards: the default view shows a short status/count summary, while expanded rows show bounded file/caller/match details. Agent-visible tool `content` is also compact text by default to avoid spending context on repeated JSON keys; the full structured payload remains available in tool `details` for programmatic use and tests.
 
 ## Inspecting Errors
 

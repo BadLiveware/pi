@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Type } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
+import { compactCodeIntelOutput } from "./src/compact-output.ts";
 import { loadConfig } from "./src/config.ts";
 import { runImpactMap } from "./src/impact.ts";
 import { runLocalMap } from "./src/local-map.ts";
@@ -336,7 +337,7 @@ function registerStateTool(pi: ExtensionAPI): void {
 			setStatusSummary(ctx, statuses);
 			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true, languageServers) as Record<string, unknown>;
 			if (params.includeDiagnostics === true) payload.runtimeDiagnostics = runtimeDiagnostics(roots.repoRoot);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("state", payload) }], details: payload };
 		},
 	});
 }
@@ -376,7 +377,7 @@ function registerLocalMapTool(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runLocalMap(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("local", payload) }], details: payload };
 		},
 	});
 }
@@ -424,7 +425,7 @@ function registerImpactMapTool(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runImpactMap(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("impact", payload) }], details: payload };
 		},
 	});
 }
@@ -461,7 +462,7 @@ function registerSyntaxSearchTool(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runSyntaxSearch(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("syntax", payload) }], details: payload };
 		},
 	});
 }

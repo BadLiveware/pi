@@ -1,4 +1,5 @@
 import { Type } from "@mariozechner/pi-ai";
+import { compactCodeIntelOutput } from "./compact-output.ts";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { loadConfig } from "./config.ts";
 import { runFileOutline, runRepoOverview, runTestMap } from "./orientation.ts";
@@ -39,7 +40,7 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runRepoOverview(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("overview", payload) }], details: payload };
 		},
 	});
 
@@ -66,7 +67,7 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runFileOutline(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("outline", payload) }], details: payload };
 		},
 	});
 
@@ -98,7 +99,7 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runTestMap(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], details: payload };
+			return { content: [{ type: "text", text: compactCodeIntelOutput("tests", payload) }], details: payload };
 		},
 	});
 }

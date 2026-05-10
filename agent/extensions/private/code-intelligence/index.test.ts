@@ -127,7 +127,7 @@ def run_poll_cycle(config):
 }
 
 function parseToolResult(result: any): any {
-	return JSON.parse(result.content[0].text);
+	return result.details;
 }
 
 async function withFakeGopls(repo: string, run: () => Promise<void>): Promise<void> {

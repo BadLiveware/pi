@@ -13,7 +13,7 @@ function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }>
 }
 
 function parseToolResult(result: any): any {
-	return JSON.parse(result.content[0].text);
+	return result.details;
 }
 
 function mockContext(cwd: string) {

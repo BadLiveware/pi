@@ -13,7 +13,7 @@ function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }>
 }
 
 function parseToolResult(result: any): any {
-	return JSON.parse(result.content[0].text);
+	return result.details;
 }
 
 function mockContext(cwd: string) {
@@ -48,7 +48,10 @@ test("repo overview shape summarizes directories without parsing declarations", 
 	const repo = fixtureRepo();
 	try {
 		const tools = loadTools();
-		const overview = parseToolResult(await tools.get("code_intel_repo_overview")!.execute("test", { tier: "shape", maxDepth: 2 }, undefined, undefined, mockContext(repo)));
+		const result = await tools.get("code_intel_repo_overview")!.execute("test", { tier: "shape", maxDepth: 2 }, undefined, undefined, mockContext(repo));
+		assert.match(result.content[0].text, /^OK repo_overview/m);
+		assert.doesNotMatch(result.content[0].text, /"directories"/);
+		const overview = parseToolResult(result);
 		assert.equal(overview.ok, true);
 		assert.equal(overview.tier, "shape");
 		assert.equal(overview.summary.sourceFileCount >= 2, true);
@@ -79,7 +82,10 @@ test("file outline reports imports and declarations for one file", async () => {
 	const repo = fixtureRepo();
 	try {
 		const tools = loadTools();
-		const outline = parseToolResult(await tools.get("code_intel_file_outline")!.execute("test", { path: "src/storage/system_tables.cpp", maxSymbols: 20 }, undefined, undefined, mockContext(repo)));
+		const result = await tools.get("code_intel_file_outline")!.execute("test", { path: "src/storage/system_tables.cpp", maxSymbols: 20 }, undefined, undefined, mockContext(repo));
+		assert.match(result.content[0].text, /^OK file_outline/m);
+		assert.match(result.content[0].text, /class StorageSystemTables/);
+		const outline = parseToolResult(result);
 		assert.equal(outline.ok, true);
 		assert.equal(outline.language, "cpp");
 		assert.deepEqual(outline.imports, ["Tables.h"]);
@@ -94,7 +100,10 @@ test("test map ranks non-code tests by path and literal evidence", async () => {
 	const repo = fixtureRepo();
 	try {
 		const tools = loadTools();
-		const testMap = parseToolResult(await tools.get("code_intel_test_map")!.execute("test", { path: "src/storage/system_tables.cpp", names: ["system.tables"], testPaths: ["tests"], maxResults: 5 }, undefined, undefined, mockContext(repo)));
+		const result = await tools.get("code_intel_test_map")!.execute("test", { path: "src/storage/system_tables.cpp", names: ["system.tables"], testPaths: ["tests"], maxResults: 5 }, undefined, undefined, mockContext(repo));
+		assert.match(result.content[0].text, /^OK test_map/m);
+		assert.match(result.content[0].text, /literal: system\.tables@1/);
+		const testMap = parseToolResult(result);
 		assert.equal(testMap.ok, true);
 		assert.equal(testMap.candidates.length >= 1, true);
 		assert.equal(testMap.candidates[0].file, "tests/queries/001_system_tables.sql");
