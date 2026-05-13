@@ -46,11 +46,43 @@ test("footer status ranks TypeScript LSP first in TypeScript-heavy repos", () =>
 	}
 });
 
+test("footer status shows only LSPs with matching repo files", () => {
+	const repo = fixtureRepo({ "src/a.ts": "", "src/b.tsx": "", "README.md": "" });
+	try {
+		const summary = codeIntelStatusSummary(mockContext(repo), statuses(), languageServers(), repo);
+		assert.match(summary, /^ci\s+syn:ok\s+·\s+rg:ok\s+·\s+lsp:ts$/);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("footer status hides available LSPs without matching repo files", () => {
+	const repo = fixtureRepo({ "README.md": "", "docs/guide.txt": "" });
+	try {
+		const summary = codeIntelStatusSummary(mockContext(repo), statuses(), languageServers(), repo);
+		assert.match(summary, /^ci\s+syn:ok\s+·\s+rg:ok\s+·\s+lsp:no-files$/);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("footer status shows matching LSP errors instead of no-files", () => {
+	const repo = fixtureRepo({ "src/lib.rs": "" });
+	try {
+		const servers = languageServers();
+		servers["rust-analyzer"] = { server: "rust-analyzer", available: "error", diagnostics: ["rust-analyzer failed"] };
+		const summary = codeIntelStatusSummary(mockContext(repo), statuses(), servers, repo);
+		assert.match(summary, /^ci\s+syn:ok\s+·\s+rg:ok\s+·\s+lsp:ra:err$/);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
 test("footer status ranks clangd first in C++-heavy repos", () => {
 	const repo = fixtureRepo({ "src/a.cpp": "", "src/b.h": "", "src/c.cc": "", "tool.ts": "" });
 	try {
 		const summary = codeIntelStatusSummary(mockContext(repo), statuses(), languageServers(), repo);
-		assert.match(summary, /^ci\s+syn:ok\s+·\s+rg:ok\s+·\s+lsp:clangd,ts\+1$/);
+		assert.match(summary, /^ci\s+syn:ok\s+·\s+rg:ok\s+·\s+lsp:clangd,ts$/);
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });
 	}

@@ -12,6 +12,8 @@ type ProviderRank = {
 	fallbackRank: number;
 };
 
+type RankedProvider = ProviderRank & { score: number; availability: LanguageServerStatus["available"] };
+
 const PROVIDERS: ProviderRank[] = [
 	{ server: "typescript", label: "ts", extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"], fallbackRank: 0 },
 	{ server: "clangd", label: "clangd", extensions: [".cpp", ".cc", ".cxx", ".c", ".h", ".hpp", ".hh", ".hxx"], fallbackRank: 1 },
@@ -59,12 +61,23 @@ function languageEvidence(repoRoot: string, maxFiles = 2_000): Map<string, numbe
 	return counts;
 }
 
-function rankAvailableLanguageServers(languageServers: Record<LanguageServerName, LanguageServerStatus>, repoRoot?: string): ProviderRank[] {
+function availabilityRank(availability: LanguageServerStatus["available"]): number {
+	if (availability === "available") return 0;
+	if (availability === "error") return 1;
+	return 2;
+}
+
+function providerLabel(provider: RankedProvider): string {
+	if (provider.availability === "available") return provider.label;
+	return `${provider.label}:${provider.availability === "error" ? "err" : "missing"}`;
+}
+
+function rankMatchingLanguageServers(languageServers: Record<LanguageServerName, LanguageServerStatus>, repoRoot?: string): RankedProvider[] {
 	const counts = repoRoot ? languageEvidence(repoRoot) : new Map<string, number>();
 	return PROVIDERS
-		.filter((provider) => languageServers[provider.server]?.available === "available")
-		.map((provider) => ({ ...provider, score: provider.extensions.reduce((sum, ext) => sum + (counts.get(ext) ?? 0), 0) }))
-		.sort((left, right) => right.score - left.score || left.fallbackRank - right.fallbackRank);
+		.map((provider) => ({ ...provider, availability: languageServers[provider.server]?.available ?? "missing", score: provider.extensions.reduce((sum, ext) => sum + (counts.get(ext) ?? 0), 0) }))
+		.filter((provider) => !repoRoot || provider.score > 0)
+		.sort((left, right) => availabilityRank(left.availability) - availabilityRank(right.availability) || right.score - left.score || left.fallbackRank - right.fallbackRank);
 }
 
 export function codeIntelStatusSummary(ctx: ExtensionContext, statuses: Record<BackendName, BackendStatus>, languageServers?: Record<LanguageServerName, LanguageServerStatus>, repoRoot?: string): string {
@@ -78,9 +91,10 @@ export function codeIntelStatusSummary(ctx: ExtensionContext, statuses: Record<B
 	let lspText = statusColor(ctx, "dim", "?");
 	let lspStyle: StatusStyle = "dim";
 	if (languageServers) {
-		const ranked = rankAvailableLanguageServers(languageServers, repoRoot);
-		lspText = ranked.length > 0 ? `${ranked.slice(0, 2).map((provider) => provider.label).join(",")}${ranked.length > 2 ? `+${ranked.length - 2}` : ""}` : "none";
-		lspStyle = ranked.length > 0 ? "accent" : "warning";
+		const availableCount = PROVIDERS.filter((provider) => languageServers[provider.server]?.available === "available").length;
+		const ranked = rankMatchingLanguageServers(languageServers, repoRoot);
+		lspText = ranked.length > 0 ? `${ranked.slice(0, 2).map(providerLabel).join(",")}${ranked.length > 2 ? `+${ranked.length - 2}` : ""}` : availableCount > 0 && repoRoot ? "no-files" : "none";
+		lspStyle = ranked.length > 0 && ranked.some((provider) => provider.availability !== "available") ? "warning" : ranked.length > 0 ? "accent" : "warning";
 	}
 	return `${statusColor(ctx, "muted", "ci")} ${[...backendText, `${statusColor(ctx, "muted", "lsp")}${colon}${statusColor(ctx, lspStyle, lspText)}`].join(separator)}`;
 }
