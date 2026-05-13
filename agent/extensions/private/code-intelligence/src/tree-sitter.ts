@@ -5,6 +5,7 @@ import type { CodeIntelConfig, CodeIntelSyntaxSearchParams, ResultDetail } from 
 import { IMPACT_LANGUAGES, changedFileSupportSummary } from "./impact-support.ts";
 import { LANGUAGE_SPECS, languageSpec, type LanguageSpec } from "./languages.ts";
 import { ensureInsideRoot } from "./repo.ts";
+import { extractRustFileRecords } from "./rust-records.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
 const EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", "target", ".cache"]);
@@ -168,7 +169,7 @@ function withoutSnippet(row: SymbolRecord, detail: ResultDetail): SymbolRecord {
 function simpleName(value: string | undefined): string | undefined {
 	if (!value) return undefined;
 	const trimmed = value.trim();
-	const parts = trimmed.split(".");
+	const parts = trimmed.split(/\.|::/);
 	return parts.at(-1) || trimmed;
 }
 
@@ -397,11 +398,12 @@ function selectorObject(node: TreeSitterNode): TreeSitterNode | undefined {
 }
 
 function keyedName(node: TreeSitterNode, source: string): string | undefined {
-	const keyNode = childForField(node, "key") ?? childForField(node, "name") ?? node.namedChild(0);
+	const keyNode = childForField(node, "key") ?? childForField(node, "name") ?? childForField(node, "field") ?? node.namedChild(0);
 	return keyNode ? nodeText(source, keyNode).replace(/^['"]|['"]$/g, "") : undefined;
 }
 
 export function extractFileRecords(parsed: ParsedFile, detail: ResultDetail): { definitions: SymbolRecord[]; candidates: SymbolRecord[] } {
+	if (parsed.language === "rust") return extractRustFileRecords(parsed, detail);
 	const definitions: SymbolRecord[] = [];
 	const candidates: SymbolRecord[] = [];
 	const includeSnippets = detail === "snippets";
@@ -492,14 +494,14 @@ function safeChangedFiles(repoRoot: string, changedFiles: string[]): string[] {
 }
 
 function definitionRank(record: SymbolRecord): number {
-	if (["function_declaration", "method_declaration", "method_definition", "function_variable"].includes(record.kind)) return 0;
-	if (["class_declaration", "interface_declaration", "type_alias_declaration", "type"].includes(record.kind)) return 1;
+	if (["function_declaration", "function_definition", "method_declaration", "method_definition", "function_variable", "function_item", "function_signature_item"].includes(record.kind)) return 0;
+	if (["class_declaration", "interface_declaration", "type_alias_declaration", "type", "struct_item", "enum_item", "trait_item", "type_item", "mod_item"].includes(record.kind)) return 1;
 	if (record.kind === "field_declaration") return 3;
 	return 2;
 }
 
 function isTestFile(file: string): boolean {
-	return /(^|\/)(__tests__|test|tests)(\/|$)/.test(file) || /(^|\/).*\.(test|spec)\.[cm]?[tj]sx?$/.test(file) || /(^|\/).*_test\.go$/.test(file);
+	return /(^|\/)(__tests__|test|tests)(\/|$)/.test(file) || /(^|\/).*\.(test|spec)\.[cm]?[tj]sx?$/.test(file) || /(^|\/).*_test\.(go|rs)$/.test(file);
 }
 
 function fileRank(record: SymbolRecord): number {
@@ -760,7 +762,7 @@ export async function runTreeSitterImpact(params: TreeSitterImpactParams, repoRo
 }
 
 function parseCallPattern(pattern: string): { callee: string; variables: string[] } | undefined {
-	const match = /^\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*\((.*)\)\s*$/.exec(pattern);
+	const match = /^\s*([A-Za-z_$][\w$]*(?:(?:\.|::)[A-Za-z_$][\w$]*)*)\s*\((.*)\)\s*$/.exec(pattern);
 	if (!match) return undefined;
 	const args = match[2].trim();
 	const variables = args ? args.split(",").map((arg) => arg.trim()).map((arg) => /^\$([A-Za-z_][\w]*)$/.exec(arg)?.[1] ?? "").filter(Boolean) : [];
@@ -830,7 +832,7 @@ function collectSyntaxMatchesForCall(parsed: ParsedFile, pattern: { callee: stri
 		const functionNode = callFunctionNode(node);
 		if (!functionNode) return;
 		const callee = nodeText(parsed.source, functionNode);
-		const matchesCallee = pattern.callee.includes(".") ? callee === pattern.callee : simpleName(callee) === pattern.callee;
+		const matchesCallee = pattern.callee.includes(".") || pattern.callee.includes("::") ? callee === pattern.callee : simpleName(callee) === pattern.callee;
 		if (!matchesCallee) return;
 		addSyntaxMatch(accumulator, parsed, node, pattern.variables.length > 0 ? () => {
 			const args = argumentNodes(node);
@@ -842,7 +844,7 @@ function collectSyntaxMatchesForCall(parsed: ParsedFile, pattern: { callee: stri
 }
 
 function collectSyntaxMatchesForSelector(parsed: ParsedFile, pattern: { variable: string; field: string }, selector: string | undefined, accumulator: SyntaxMatchAccumulator): void {
-	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute"]);
+	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute", "field_expression", "scoped_identifier"]);
 	visitNodes(parsed.root, (candidate) => selectorTypes.has(candidate.type), (node) => {
 		const field = selectorName(node, parsed.source);
 		if (field !== pattern.field) return;
@@ -855,7 +857,7 @@ function collectSyntaxMatchesForSelector(parsed: ParsedFile, pattern: { variable
 }
 
 function collectSyntaxMatchesForKeyed(parsed: ParsedFile, pattern: { key: string; valueVariable?: string }, selector: string | undefined, accumulator: SyntaxMatchAccumulator): void {
-	const keyedTypes = new Set(["keyed_element", "pair"]);
+	const keyedTypes = new Set(["keyed_element", "pair", "field_initializer", "shorthand_field_initializer"]);
 	visitNodes(parsed.root, (candidate) => keyedTypes.has(candidate.type), (node) => {
 		const key = keyedName(node, parsed.source);
 		if (key !== pattern.key) return;
@@ -915,7 +917,7 @@ export async function runTreeSitterSelectorBatchSearch(params: TreeSitterSelecto
 	const languages = languagesForSyntaxSearch(params.language, paths);
 	const parsed = await parseFiles(repoRoot, languages, paths, [], [], timeoutMs, signal);
 	const diagnostics = [...parsed.diagnostics];
-	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute"]);
+	const selectorTypes = new Set(["selector_expression", "member_expression", "attribute", "field_expression", "scoped_identifier"]);
 	const wanted = new Set(names);
 	const buckets = new Map<string, { matchCount: number; matches: Record<string, unknown>[]; fileCounts: Map<string, number> }>();
 	for (const name of names) buckets.set(name, { matchCount: 0, matches: [], fileCounts: new Map<string, number>() });

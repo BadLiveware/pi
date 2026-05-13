@@ -118,7 +118,7 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		limitations: [
 			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
 			"rg literal fallback is for text discovery only; use source reads and project-native validation before making claims.",
-			"Impact maps currently route Go, TypeScript/TSX, JavaScript, Python, and C/C++; Tree-sitter rows remain candidate read-next evidence rather than semantic references.",
+			"Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++; Tree-sitter rows remain candidate read-next evidence rather than semantic references.",
 			"Language-server status is availability-only; default code-intel routing does not use LSPs unless explicit reference confirmation is requested.",
 		],
 	};
