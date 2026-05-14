@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 export const ralphPrompt = `───────────────────────────────────────────────────────────────────────
 🔄 RALPH LOOP: native-sql-optimization-sweep | Iteration 6/100 | 🪞 REFLECTION

@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { WATCHDOG_ANSWER_TOOL } from "./model.ts";
 
 // Pattern catalog: PATTERNS.md — update when adding/removing/changing detection patterns.

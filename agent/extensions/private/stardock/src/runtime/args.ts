@@ -1,6 +1,6 @@
 /** Slash-command argument parsing and loop selection helpers. */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_REFLECT_INSTRUCTIONS, type LoopState } from "../state/core.ts";
 import { existingStatePath, safeMtimeMs } from "../state/paths.ts";
 import { listLoops, loadState } from "../state/store.ts";

@@ -1,6 +1,6 @@
 /** Stardock loop lifecycle transitions. */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { applyActiveBriefLifecycle } from "../briefs.ts";
 import type { BriefLifecycleAction, LoopState } from "../state/core.ts";
 import { saveState } from "../state/store.ts";

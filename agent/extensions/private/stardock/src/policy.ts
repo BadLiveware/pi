@@ -2,7 +2,7 @@
  * Read-only Stardock governance policy recommendations.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { evaluateCompletionPolicy } from "./completion-policy.ts";
 export { evaluateCompletionPolicy } from "./completion-policy.ts";

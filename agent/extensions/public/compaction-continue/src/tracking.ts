@@ -2,7 +2,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 export type TrackingEventKind = "watchdog_candidate" | "watchdog_nudge" | "watchdog_skip" | "watchdog_answer";
 export type TrackingSource = "compaction" | "assistant-stall";

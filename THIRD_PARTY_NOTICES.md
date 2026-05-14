@@ -36,7 +36,7 @@ The adapted integration lives under:
 
 ## Pi
 
-The extensions in this repository are built for [Pi](https://pi.dev) and use Pi's extension APIs from packages such as `@mariozechner/pi-coding-agent`, `@mariozechner/pi-ai`, and `@mariozechner/pi-tui`.
+The extensions in this repository are built for [Pi](https://pi.dev) and use Pi's extension APIs from packages such as `@earendil-works/pi-coding-agent`, `@earendil-works/pi-ai`, and `@earendil-works/pi-tui`.
 
 - Source: https://github.com/badlogic/pi-mono
 

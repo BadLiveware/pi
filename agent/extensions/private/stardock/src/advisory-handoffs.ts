@@ -2,7 +2,7 @@
  * Provider-neutral advisory handoff slice for Stardock.
  */
 
-import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runAdvisoryHandoffRecord } from "./app/advisory-handoff-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";

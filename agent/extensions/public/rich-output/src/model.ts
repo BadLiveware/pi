@@ -1,4 +1,4 @@
-import type { MarkdownTheme } from "@mariozechner/pi-tui";
+import type { MarkdownTheme } from "@earendil-works/pi-tui";
 
 export const MESSAGE_TYPE = "rich-output:card";
 

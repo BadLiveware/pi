@@ -1,4 +1,4 @@
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 
 export const richOutputParameters = Type.Object({
 	kind: Type.Union([

@@ -1,6 +1,6 @@
 /** Register vertical-slice Stardock tools. */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerAdvisoryAdapterTool } from "../advisory-adapters.ts";
 import { registerAdvisoryHandoffTool } from "../advisory-handoffs.ts";
 import { registerAttemptReportTool } from "../attempt-reports.ts";

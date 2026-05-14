@@ -2,7 +2,7 @@
  * Manual WorkerReport slice for Stardock.
  */
 
-import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runWorkerReportRecord } from "./app/worker-report-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";

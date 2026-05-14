@@ -1,6 +1,6 @@
 /** Stardock active status/widget rendering. */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { latestGovernorDecision, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, STATUS_ICONS } from "../state/core.ts";
 import { loadState } from "../state/store.ts";

@@ -1,4 +1,4 @@
-import { Box, getCapabilities, hyperlink, Image, type Component, Markdown, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { Box, getCapabilities, hyperlink, Image, type Component, Markdown, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import {
 	clampCellCount,
 	escapeCell,

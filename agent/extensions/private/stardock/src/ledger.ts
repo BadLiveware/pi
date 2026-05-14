@@ -2,7 +2,7 @@
  * Criterion ledger and verification artifact slice for Stardock.
  */
 
-import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as path from "node:path";
 import { runLedgerArtifactRecord, runLedgerCriteriaUpsert, runLedgerTaskDistillation } from "./app/ledger-tool.ts";

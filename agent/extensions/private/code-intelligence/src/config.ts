@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CONFIG_FILE_NAME, DEFAULT_CONFIG, type CodeIntelConfig, type LoadedConfig } from "./types.ts";
 import { isRecord, normalizePositiveInteger } from "./util.ts";
 

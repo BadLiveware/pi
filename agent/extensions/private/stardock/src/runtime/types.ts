@@ -1,6 +1,6 @@
 /** Shared runtime glue for Stardock registration modules. */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { BriefLifecycleAction, LoopState, PromptReason } from "../state/core.ts";
 import type { FollowupToolRequest } from "./followups.ts";
 import type { LoopRuntimeRef } from "./lifecycle.ts";

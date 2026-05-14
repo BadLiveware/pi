@@ -1,5 +1,5 @@
-import { Text } from "@mariozechner/pi-tui";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { MESSAGE_TYPE, coerceCard, demoCard, isRecord, normalizeBlocks, stringValue, type RichOutputCard, type RichOutputKind } from "./src/model.ts";
 import { prepareBlocks } from "./src/artifacts.ts";
 import { renderCard } from "./src/renderer.ts";

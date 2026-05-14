@@ -2,7 +2,7 @@
  * Final verification report slice for Stardock.
  */
 
-import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runFinalReportRecord } from "./app/final-report-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";

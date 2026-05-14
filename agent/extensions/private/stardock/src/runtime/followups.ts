@@ -1,6 +1,6 @@
 /** Stardock-local read-only followup tool runner. */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { attachFollowup, booleanArg, cyclicFollowup, followupEffect, type FollowupOutput, type FollowupToolRequest, stringArg, type StardockTextResult, unsupportedFollowup } from "../app/tool-kernel.ts";
 import { formatAdvisoryHandoffOverview } from "../advisory-handoffs.ts";

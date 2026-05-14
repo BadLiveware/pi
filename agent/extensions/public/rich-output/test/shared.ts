@@ -1,4 +1,4 @@
-import { resetCapabilitiesCache, setCapabilities } from "@mariozechner/pi-tui";
+import { resetCapabilitiesCache, setCapabilities } from "@earendil-works/pi-tui";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

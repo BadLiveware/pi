@@ -2,7 +2,7 @@
  * Stardock - private governed implementation loops for Pi.
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { registerCommands } from "./src/runtime/commands.ts";
 import { registerCoreTools } from "./src/runtime/core-tools.ts";

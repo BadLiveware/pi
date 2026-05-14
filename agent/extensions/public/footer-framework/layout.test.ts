@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { visibleWidth } from "@mariozechner/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import {
 	composeFooterLine,
 	createFooterCells,

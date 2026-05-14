@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { compactText, type Criterion, type LoopState } from "./state/core.ts";
 import { tryRead } from "./state/paths.ts";

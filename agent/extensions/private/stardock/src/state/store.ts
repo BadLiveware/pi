@@ -2,7 +2,7 @@
  * Stardock state persistence.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./core.ts";

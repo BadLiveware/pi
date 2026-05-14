@@ -1,6 +1,6 @@
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import { compactCodeIntelOutput } from "./compact-output.ts";
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { loadConfig } from "./config.ts";
 import { runFileOutline, runRepoOverview, runTestMap } from "./orientation.ts";
 import { runRepoRoute } from "./repo-route.ts";

@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { recordWorkerReport } from "./worker-reports.ts";
 import { compactText, type LoopState, type WorkerRun, type WorkerRunStatus } from "./state/core.ts";
 import { loadState, saveState } from "./state/store.ts";

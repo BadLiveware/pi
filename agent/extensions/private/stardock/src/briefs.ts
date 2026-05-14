@@ -2,7 +2,7 @@
  * Iteration brief slice for Stardock.
  */
 
-import type { ExtensionAPI,ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runBriefActivate, runBriefClear, runBriefComplete, runBriefUpsert } from "./app/brief-tool.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";

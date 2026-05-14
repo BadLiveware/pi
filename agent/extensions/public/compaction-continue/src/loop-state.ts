@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionContext, SessionEntry } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { assistantStoppedForContextLimit } from "./analysis.ts";
 
 type LoopStatus = "active" | "paused" | "completed";
