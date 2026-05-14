@@ -63,6 +63,15 @@ Ordered decision tree in `shouldRecoverStalledAssistantTurn`. First match wins.
 | Semantic scenario | The assistant produced an empty turn after a user prompt, without having done any tool work yet. This is a model hiccup or premature stop. If tool results had already arrived for this user prompt, a blank follow-up is normal (the agent already worked and is done). |
 | Action | Return `true` — nudge. Only when `hadToolResultSincePreviousUser !== true`. |
 
+### R7. Loop compaction ends with context-only acknowledgement after tool progress → recover
+
+| Field | Value |
+|-------|-------|
+| Location | `analysis.ts:analyzeCompactionRecovery` via `isContextOnlyAssistantAck` |
+| Detection | Latest assistant message after an unresolved Ralph/Stardock prompt only acknowledges visible-context/MRC guidance after tool results, with no loop-advance tool result. |
+| Semantic scenario | The agent did real loop work, then responded only to internal continuity guidance such as "Understood, I'll prefer visible context...". That acknowledgement is not a completion signal and should not suppress loop recovery after compaction. |
+| Action | Return loop recovery (`<loop>-context-ack-after-tool-progress`) unless `ralph_done`/`stardock_done` already advanced the prompt. |
+
 ## Continuation Language Patterns
 
 Regex patterns in `assistantRequestsContinuation` that detect an assistant declaring
@@ -193,6 +202,6 @@ idle timer is cleared — the user's explicit "keep going" counts as forward pro
 | Field | Value |
 |-------|-------|
 | Location | `analysis.ts:analyzeCompactionRecovery` |
-| Trigger | After a context-overflow or Ralph-prompt compaction |
-| Decision | Recovery fires for: (a) overflow compactions — always nudge, the compaction interrupted real work; (b) Ralph compactions where the most recent Ralph prompt lacks a `ralph_done` response and the last assistant turn looks stalled |
-| Suppressed | Recovery suppressed when: no active Ralph loop, Ralph already advanced, or latest assistant didn't request continuation |
+| Trigger | After a context-overflow or loop-prompt compaction |
+| Decision | Recovery fires for: (a) overflow compactions — always nudge, even when compaction is wrapped by internal custom/MRC entries before the assistant length-stop message; (b) Ralph or Stardock compactions where the most recent loop prompt lacks `ralph_done`/`stardock_done` and the last assistant turn looks stalled or is only a context/MRC acknowledgement after tool progress |
+| Suppressed | Recovery suppressed when: no active loop, the loop already advanced, or latest assistant didn't request continuation |

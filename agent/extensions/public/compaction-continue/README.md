@@ -18,10 +18,10 @@ The extension watches two low-risk recovery cases and sends an automated watchdo
 
 Recovery cases:
 
-- **Idle compaction:** after a compaction, Pi is idle, no messages are queued, and either the compaction followed a context overflow or the current session branch contains an unresolved/resumable Ralph prompt. A stale active `.ralph/*.state.json` file alone is not enough.
+- **Idle compaction:** after a compaction, Pi is idle, no messages are queued, and either the compaction followed a context overflow or the current session branch contains an unresolved/resumable Ralph or Stardock prompt. A stale active loop state file alone (`.ralph/*.state.json` or `.stardock/runs/*/state.json`) is not enough.
 - **Stalled continuation turn:** the assistant ends while saying it will continue or proceed, or it answers the watchdog self-check with `done: false` but still does not continue actual work.
 
-It snapshots/analyzes the branch before compaction and suppresses nudges when Ralph already advanced with `ralph_done`. It does nothing while tools are running or messages are already queued, because that means there is no idle gap to recover. Generic stall recovery is capped to three consecutive automatic nudges until a real tool call, a non-continuation assistant reply, or a substantive new user request resets the streak. The footer status shows `watchdog:on` or `watchdog:off`.
+It snapshots/analyzes the branch before compaction and suppresses nudges when a loop already advanced with `ralph_done` or `stardock_done`. It does nothing while tools are running or messages are already queued, because that means there is no idle gap to recover. Generic stall recovery is capped to three consecutive automatic nudges until a real tool call, a non-continuation assistant reply, or a substantive new user request resets the streak. The footer status shows `watchdog:on` or `watchdog:off`.
 
 The watchdog prompt tells the agent not to acknowledge the nudge in prose. Instead it must call `watchdog_answer` first, then stop if the task is already done or continue from the next concrete step. The prompt still reminds looped agents that `<promise>COMPLETE</promise>` belongs only to genuinely finished loops.
 

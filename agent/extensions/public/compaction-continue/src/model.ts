@@ -1,4 +1,4 @@
-export type WatchdogNudgeKind = "overflow" | "ralph" | "assistant-stall";
+export type WatchdogNudgeKind = "overflow" | "ralph" | "stardock" | "assistant-stall";
 
 export interface WatchdogNudgeDetails {
 	kind: "watchdog_nudge";

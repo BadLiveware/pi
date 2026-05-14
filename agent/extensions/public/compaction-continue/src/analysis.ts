@@ -3,6 +3,8 @@ import { WATCHDOG_ANSWER_TOOL } from "./model.ts";
 
 // Pattern catalog: PATTERNS.md — update when adding/removing/changing detection patterns.
 
+export type LoopPromptKind = "ralph" | "stardock";
+
 export interface RalphPromptInfo {
 	key: string;
 	loop?: string;
@@ -13,6 +15,7 @@ export interface RalphPromptInfo {
 }
 
 export interface RalphBranchAnalysis {
+	kind?: LoopPromptKind;
 	prompt?: RalphPromptInfo;
 	ralphDoneAfterPrompt: boolean;
 	latestAssistantText?: string;
@@ -33,7 +36,7 @@ export interface AssistantStallAnalysis {
 
 export interface CompactionRecoveryAnalysis {
 	shouldRecover: boolean;
-	kind?: "overflow" | "ralph";
+	kind?: "overflow" | LoopPromptKind;
 	reason: string;
 	ralph?: RalphBranchAnalysis;
 }
@@ -114,8 +117,9 @@ function watchdogAnswerDoneValue(message: unknown): boolean | undefined {
 	return undefined;
 }
 
-function isRalphDoneToolResultMessage(message: unknown): boolean {
-	return messageRole(message) === "toolResult" && messageToolName(message) === "ralph_done" && !messageIsError(message);
+function isLoopDoneToolResultMessage(message: unknown, kind: LoopPromptKind): boolean {
+	const toolName = kind === "stardock" ? "stardock_done" : "ralph_done";
+	return messageRole(message) === "toolResult" && messageToolName(message) === toolName && !messageIsError(message);
 }
 
 export function isRalphLoopPromptText(text: string): boolean {
@@ -132,23 +136,43 @@ function parsePositiveInt(value: string | undefined): number | undefined {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function makeRalphPromptKey(text: string, prompt: Omit<RalphPromptInfo, "key">): string {
+function makeLoopPromptKey(text: string, prompt: Omit<RalphPromptInfo, "key">): string {
 	if (prompt.sourceEntryId) return prompt.sourceEntryId;
 	const fingerprint = text.replace(/\s+/g, " ").slice(0, 80);
 	return `${prompt.loop ?? "unknown"}:${prompt.iteration ?? 0}:${fingerprint}`;
 }
 
-export function parseRalphPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): RalphPromptInfo | undefined {
-	if (!isRalphLoopPromptText(text)) return undefined;
-
-	const header = text.match(/RALPH LOOP:\s*([^|\n]+)(?:\s*\|\s*Iteration\s+(\d+)\/(\d+))?/i);
-	const instructionIteration = text.match(/You are in a Ralph loop\s*\(iteration\s+(\d+)\s+of\s+(\d+)\)/i);
-	const taskFile = text.match(/\.ralph\/([^\s)]+)\b/i);
+function loopPrompt(kind: LoopPromptKind, text: string, timestamp: number, sourceEntryId?: string): RalphPromptInfo | undefined {
+	const headerLabel = kind === "stardock" ? "STARDOCK LOOP" : "RALPH LOOP";
+	const doneTool = kind === "stardock" ? "stardock_done" : "ralph_done";
+	const loopName = kind === "stardock" ? "Stardock" : "Ralph";
+	const taskPathPattern = kind === "stardock" ? /\.stardock\/runs\/([^/\s)]+)\/task\.md\b/i : /\.ralph\/([^\s)]+)\b/i;
+	const header = text.match(new RegExp(`${headerLabel}:\\s*([^|\\n]+)(?:\\s*\\|\\s*Iteration\\s+(\\d+)\\/(\\d+))?`, "i"));
+	const instructionIteration = text.match(new RegExp(`You are in a ${loopName} loop\\s*\\(iteration\\s+(\\d+)\\s+of\\s+(\\d+)\\)`, "i"));
+	const taskFile = text.match(taskPathPattern);
 	const loop = (header?.[1] ?? taskFile?.[1]?.replace(/\.md$/i, ""))?.trim();
 	const iteration = parsePositiveInt(header?.[2]) ?? parsePositiveInt(instructionIteration?.[1]);
 	const maxIterations = parsePositiveInt(header?.[3]) ?? parsePositiveInt(instructionIteration?.[2]);
+	const hasPrompt = kind === "stardock" ? isStardockLoopPromptText(text) : isRalphLoopPromptText(text);
+	if (!hasPrompt || (!header && !instructionIteration && !taskFile && !text.includes(doneTool))) return undefined;
 	const prompt = { loop, iteration, maxIterations, sourceEntryId, timestamp };
-	return { ...prompt, key: makeRalphPromptKey(text, prompt) };
+	return { ...prompt, key: makeLoopPromptKey(text, prompt) };
+}
+
+export function parseRalphPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): RalphPromptInfo | undefined {
+	return loopPrompt("ralph", text, timestamp, sourceEntryId);
+}
+
+function parseStardockPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): RalphPromptInfo | undefined {
+	return loopPrompt("stardock", text, timestamp, sourceEntryId);
+}
+
+function parseLoopPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): { kind: LoopPromptKind; prompt: RalphPromptInfo } | undefined {
+	const ralph = parseRalphPrompt(text, timestamp, sourceEntryId);
+	if (ralph) return { kind: "ralph", prompt: ralph };
+	const stardock = parseStardockPrompt(text, timestamp, sourceEntryId);
+	if (stardock) return { kind: "stardock", prompt: stardock };
+	return undefined;
 }
 
 export function assistantRequestsContinuation(text: string): boolean {
@@ -192,6 +216,12 @@ export function userRequestsSimpleContinuation(text: string): boolean {
 
 function isBlankAssistantStop(message: unknown): boolean {
 	return messageRole(message) === "assistant" && messageText(message).length === 0 && !messageHasToolCall(message);
+}
+
+function isContextOnlyAssistantAck(text: string): boolean {
+	const normalized = text.replace(/[’]/g, "'").trim().toLowerCase();
+	if (!normalized) return false;
+	return /^understood[.!]?\s+i('ll| will)\s+(prefer|keep using|use)\s+visible context\b/.test(normalized) || (/^understood[.!]?/.test(normalized) && /\bmrc_lookup\b/.test(normalized));
 }
 
 export function shouldRecoverStalledAssistantTurn(message: unknown, options?: { hadToolResultSincePreviousUser?: boolean }): boolean {
@@ -242,22 +272,24 @@ function entryMessage(entry: SessionEntry): unknown | undefined {
 	return entry.type === "message" ? entry.message : undefined;
 }
 
-export function analyzeRalphBranchForStall(entries: SessionEntry[], timestamp = Date.now()): RalphBranchAnalysis {
+function analyzeLoopBranchForStall(entries: SessionEntry[], timestamp = Date.now(), kinds: LoopPromptKind[] = ["ralph", "stardock"]): RalphBranchAnalysis {
 	let promptIndex = -1;
 	let prompt: RalphPromptInfo | undefined;
+	let kind: LoopPromptKind | undefined;
 
 	for (let i = entries.length - 1; i >= 0; i -= 1) {
 		const entry = entries[i];
 		const message = entryMessage(entry);
 		if (!message || messageRole(message) !== "user") continue;
-		const candidate = parseRalphPrompt(messageText(message), timestamp, entry.id);
-		if (!candidate) continue;
+		const candidate = parseLoopPrompt(messageText(message), timestamp, entry.id);
+		if (!candidate || !kinds.includes(candidate.kind)) continue;
 		promptIndex = i;
-		prompt = candidate;
+		prompt = candidate.prompt;
+		kind = candidate.kind;
 		break;
 	}
 
-	if (!prompt) {
+	if (!prompt || !kind) {
 		return { ralphDoneAfterPrompt: false, latestAssistantHasToolCall: false, shouldRecover: false };
 	}
 
@@ -266,7 +298,7 @@ export function analyzeRalphBranchForStall(entries: SessionEntry[], timestamp = 
 	for (let i = promptIndex + 1; i < entries.length; i += 1) {
 		const message = entryMessage(entries[i]);
 		if (!message) continue;
-		if (isRalphDoneToolResultMessage(message)) ralphDoneAfterPrompt = true;
+		if (isLoopDoneToolResultMessage(message, kind)) ralphDoneAfterPrompt = true;
 		if (messageRole(message) === "assistant") latestAssistant = message;
 	}
 
@@ -277,27 +309,36 @@ export function analyzeRalphBranchForStall(entries: SessionEntry[], timestamp = 
 		const candidate = entryMessage(entries[i]);
 		if (candidate && messageRole(candidate) === "toolResult") hadToolResultSincePrompt = true;
 	}
-	const shouldRecover = Boolean(latestAssistant && !ralphDoneAfterPrompt && shouldRecoverStalledAssistantTurn(latestAssistant, { hadToolResultSincePreviousUser: hadToolResultSincePrompt }));
+	const stalledAssistantTurn = Boolean(latestAssistant && shouldRecoverStalledAssistantTurn(latestAssistant, { hadToolResultSincePreviousUser: hadToolResultSincePrompt }));
+	const contextAckAfterProgress = Boolean(latestAssistantText && hadToolResultSincePrompt && isContextOnlyAssistantAck(latestAssistantText));
+	const shouldRecover = Boolean(latestAssistant && !ralphDoneAfterPrompt && (stalledAssistantTurn || contextAckAfterProgress));
+	const reason = shouldRecover ? (contextAckAfterProgress ? `${kind}-context-ack-after-tool-progress` : `assistant-promised-${kind}-continuation`) : undefined;
 	return {
+		kind,
 		prompt,
 		ralphDoneAfterPrompt,
 		latestAssistantText,
 		latestAssistantHasToolCall,
 		shouldRecover,
-		reason: shouldRecover ? "assistant-promised-ralph-continuation" : undefined,
+		reason,
 	};
+}
+
+export function analyzeRalphBranchForStall(entries: SessionEntry[], timestamp = Date.now()): RalphBranchAnalysis {
+	return analyzeLoopBranchForStall(entries, timestamp, ["ralph"]);
 }
 
 export function analyzeCompactionRecovery(
 	entriesBeforeCompaction: SessionEntry[],
 	options: { hasActiveLoop: boolean; isOverflow: boolean; timestamp?: number },
 ): CompactionRecoveryAnalysis {
-	const ralph = analyzeRalphBranchForStall(entriesBeforeCompaction, options.timestamp ?? Date.now());
+	const ralph = analyzeLoopBranchForStall(entriesBeforeCompaction, options.timestamp ?? Date.now());
+	const loopKind = ralph.kind ?? "ralph";
 
 	if (options.isOverflow) {
 		return {
 			shouldRecover: true,
-			kind: options.hasActiveLoop && ralph.prompt && !ralph.ralphDoneAfterPrompt ? "ralph" : "overflow",
+			kind: options.hasActiveLoop && ralph.prompt && !ralph.ralphDoneAfterPrompt ? loopKind : "overflow",
 			reason: "context-overflow-compaction",
 			ralph,
 		};
@@ -312,16 +353,16 @@ export function analyzeCompactionRecovery(
 	}
 
 	if (ralph.ralphDoneAfterPrompt) {
-		return { shouldRecover: false, reason: "ralph-done-after-latest-prompt", ralph };
+		return { shouldRecover: false, reason: `${loopKind}-done-after-latest-prompt`, ralph };
 	}
 
 	if (ralph.shouldRecover) {
-		return { shouldRecover: true, kind: "ralph", reason: ralph.reason ?? "ralph-branch-appears-resumable", ralph };
+		return { shouldRecover: true, kind: loopKind, reason: ralph.reason ?? `${loopKind}-branch-appears-resumable`, ralph };
 	}
 
 	if (!ralph.latestAssistantText) {
-		return { shouldRecover: true, kind: "ralph", reason: "ralph-prompt-has-no-assistant-response", ralph };
+		return { shouldRecover: true, kind: loopKind, reason: `${loopKind}-prompt-has-no-assistant-response`, ralph };
 	}
 
-	return { shouldRecover: false, reason: "latest-ralph-assistant-did-not-request-continuation", ralph };
+	return { shouldRecover: false, reason: `latest-${loopKind}-assistant-did-not-request-continuation`, ralph };
 }

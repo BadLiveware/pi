@@ -5,24 +5,27 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 import compactionContinue from "../index.ts";
 import { trackingLogPath } from "../src/tracking.ts";
+import { messageEntry, stardockPrompt } from "./shared.ts";
 
-function loadExtension() {
+function loadExtension(options: { branchEntry?: any; compactionEntry?: any; leafBranch?: any[]; branchByParent?: Record<string, any[]> } = {}) {
 	const handlers = new Map<string, Array<(event: any, ctx: any) => any>>();
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();
 	const sentMessages: Array<{ message: unknown; options: unknown }> = [];
 	const entries: Array<{ customType: string; data: unknown }> = [];
 	const statuses: Array<{ key: string; value: string | undefined }> = [];
-	const branchEntry = {
+	const branchEntry = options.branchEntry ?? {
 		id: "assistant-overflow",
 		type: "message",
 		message: { role: "assistant", stopReason: "length", content: [{ type: "text", text: "cut off" }] },
 	};
-	const compactionEntry = { id: "compact-1", type: "compaction", parentId: "assistant-overflow" };
-	const entryMap = new Map<string, any>([
-		[branchEntry.id, branchEntry],
-		[compactionEntry.id, compactionEntry],
-	]);
+	const compactionEntry = options.compactionEntry ?? { id: "compact-1", type: "compaction", parentId: "assistant-overflow" };
+	const branchByParent = options.branchByParent ?? { [branchEntry.id]: [branchEntry] };
+	const leafBranch = options.leafBranch ?? [];
+	const entryMap = new Map<string, any>();
+	for (const entry of [branchEntry, compactionEntry, ...leafBranch, ...Object.values(branchByParent).flat()]) {
+		if (entry?.id) entryMap.set(entry.id, entry);
+	}
 	const pi = {
 		on(event: string, handler: (event: any, ctx: any) => any) {
 			const existing = handlers.get(event) ?? [];
@@ -51,8 +54,8 @@ function loadExtension() {
 		sessionManager: {
 			getSessionId: () => `compaction-continue-test-${process.pid}`,
 			getBranch(parentId?: string) {
-				if (parentId === "assistant-overflow") return [branchEntry];
-				return [];
+				if (parentId !== undefined) return branchByParent[parentId] ?? [];
+				return leafBranch;
 			},
 			getEntry(id: string) {
 				return entryMap.get(id);
@@ -118,6 +121,12 @@ async function withImmediateTimers(run: () => Promise<void>): Promise<void> {
 	}
 }
 
+function writeActiveStardockState(cwd: string, name: string): void {
+	const runDir = path.join(cwd, ".stardock", "runs", name);
+	fs.mkdirSync(runDir, { recursive: true });
+	fs.writeFileSync(path.join(runDir, "state.json"), JSON.stringify({ name, taskFile: path.join(".stardock", "runs", name, "task.md"), iteration: 1, maxIterations: 120, active: true, status: "active" }));
+}
+
 describe("compaction-continue tracking", () => {
 	it("defaults tracking off even when watchdog_answer is used", async () => {
 		await withTrackingConfig(undefined, async () => {
@@ -160,6 +169,55 @@ describe("compaction-continue tracking", () => {
 				assert.match(log, /watchdog_answer/);
 				assert.match(log, /noteHash/);
 				assert.doesNotMatch(log, /still working/);
+			});
+		});
+	});
+
+	it("nudges after an MRC-wrapped Stardock compaction follows only a context acknowledgement", async () => {
+		await withTrackingConfig(undefined, async () => {
+			await withImmediateTimers(async () => {
+				const loopName = "excession-phase-6-solver-and-model-checking-prototypes";
+				const userPrompt = messageEntry("user-stardock", "user", [{ type: "text", text: stardockPrompt }]);
+				const assistantTool = messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "edit", arguments: { path: ".stardock/runs/excession-phase-6-solver-and-model-checking-prototypes/progress-log.md" } }]);
+				const toolResult = messageEntry("tool-result", "toolResult", [{ type: "text", text: "Successfully replaced 1 block(s)." }], { toolName: "edit", isError: false });
+				const assistantAck = messageEntry("assistant-context-ack", "assistant", [{ type: "text", text: "Understood. I’ll prefer visible context and reread files directly; I’ll only use `mrc_lookup` if needed." }]);
+				const mrcAnchor = { id: "mrc-anchor", type: "custom_message", parentId: "assistant-context-ack", customType: "pi-mrc-anchor" };
+				const compactionEntry = { id: "compact-stardock", type: "compaction", parentId: "mrc-anchor" };
+				const { handlers, sentMessages, ctx } = loadExtension({ branchByParent: { "mrc-anchor": [userPrompt, assistantTool, toolResult, assistantAck, mrcAnchor] }, compactionEntry });
+				writeActiveStardockState(ctx.cwd, loopName);
+
+				await emit(handlers, "session_start", {}, ctx);
+				await emit(handlers, "session_compact", { compactionEntry }, ctx);
+
+				assert.equal(sentMessages.length, 1);
+				assert.equal((sentMessages[0].message as any).details.recoveryKind, "stardock");
+				assert.equal((sentMessages[0].message as any).details.loop, loopName);
+				assert.equal((sentMessages[0].message as any).details.reason, "stardock-context-ack-after-tool-progress");
+			});
+		});
+	});
+
+	it("nudges after an MRC-wrapped Stardock overflow compaction is left unresolved", async () => {
+		await withTrackingConfig(undefined, async () => {
+			await withImmediateTimers(async () => {
+				const loopName = "excession-phase-6-solver-and-model-checking-prototypes";
+				const userPrompt = messageEntry("user-stardock", "user", [{ type: "text", text: stardockPrompt }]);
+				const assistantTool = messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "read", arguments: { path: ".stardock/runs/excession-phase-6-solver-and-model-checking-prototypes/task.md" } }]);
+				const toolResult = messageEntry("tool-result", "toolResult", [{ type: "text", text: "Implement all slice items." }], { toolName: "read", isError: false });
+				const assistantLength = messageEntry("assistant-length", "assistant", [{ type: "thinking", thinking: "Need to continue." }], { stopReason: "length" });
+				const mrcAnchor = { id: "mrc-anchor", type: "custom_message", parentId: "assistant-length", customType: "pi-mrc-anchor" };
+				const compactionEntry = { id: "compact-stardock", type: "compaction", parentId: "mrc-anchor" };
+				const { handlers, sentMessages, ctx } = loadExtension({ branchByParent: { "mrc-anchor": [userPrompt, assistantTool, toolResult, assistantLength, mrcAnchor] }, compactionEntry });
+				writeActiveStardockState(ctx.cwd, loopName);
+
+				await emit(handlers, "session_start", {}, ctx);
+				await emit(handlers, "session_compact", { compactionEntry }, ctx);
+
+				assert.equal(sentMessages.length, 1);
+				assert.deepEqual(sentMessages[0].options, { triggerTurn: true });
+				assert.equal((sentMessages[0].message as any).details.recoveryKind, "stardock");
+				assert.equal((sentMessages[0].message as any).details.loop, loopName);
+				assert.equal((sentMessages[0].message as any).details.reason, "context-overflow-compaction");
 			});
 		});
 	});

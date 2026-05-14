@@ -236,7 +236,8 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			}
 
 			lastRecoveredCompactionId = compactionId;
-			const title = recoveryKind === "ralph" ? "Unresolved Ralph loop after compaction" : "Context overflow compaction finished";
+			const loopLabel = recoveryKind === "stardock" ? "Stardock" : "Ralph";
+			const title = recoveryKind === "ralph" || recoveryKind === "stardock" ? `Unresolved ${loopLabel} loop after compaction` : "Context overflow compaction finished";
 			sendNudge(ctx, {
 				content: buildWatchdogNudgePrompt(Boolean(loop)),
 				details: {
@@ -257,8 +258,8 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 					timestamp: new Date().toISOString(),
 				},
 				notification:
-					recoveryKind === "ralph"
-						? "Compaction left an unresolved Ralph loop idle; sending watchdog nudge."
+					recoveryKind === "ralph" || recoveryKind === "stardock"
+						? `Compaction left an unresolved ${loopLabel} loop idle; sending watchdog nudge.`
 						: "Context overflow compaction finished; sending watchdog nudge.",
 			});
 		}, RECOVERY_DELAY_MS);

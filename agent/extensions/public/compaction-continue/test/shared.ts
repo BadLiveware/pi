@@ -17,6 +17,21 @@ You are in a Ralph loop (iteration 6 of 100).
 3. When FULLY COMPLETE, respond with: <promise>COMPLETE</promise>
 4. Otherwise, call the ralph_done tool to proceed to next iteration`;
 
+export const stardockPrompt = `───────────────────────────────────────────────────────────────────────
+🔄 STARDOCK LOOP: excession-phase-6-solver-and-model-checking-prototypes | Iteration 1/120
+───────────────────────────────────────────────────────────────────────
+
+## Workflow Status
+Workflow: ready_for_work [info]
+No workflow gate is currently active.
+
+You are in a Stardock loop (iteration 1 of 120).
+
+1. Continue working on the task
+2. Update evidence in .stardock/runs/excession-phase-6-solver-and-model-checking-prototypes/task.md
+3. When ALL work is done, respond with: <promise>COMPLETE</promise>
+4. Otherwise, call the stardock_done tool to proceed to next iteration`;
+
 export function messageEntry(id: string, role: string, content: unknown, extra: Record<string, unknown> = {}): SessionEntry {
 	return {
 		type: "message",

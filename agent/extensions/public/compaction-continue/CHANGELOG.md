@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+- Added Stardock loop awareness to compaction recovery so unresolved `stardock_done` prompts are handled like Ralph prompts.
+- Fixed context-overflow detection when compaction is parented by internal custom entries before the length-stopped assistant message.
+- Added recovery for unresolved loop compactions that end with only a visible-context/MRC acknowledgement after tool progress.
+- Added regression coverage for the observed MRC-wrapped Stardock overflow and context-ack stalls.
+
 ## 0.1.5
 
 - Added opt-in passive tracking for watchdog detection, nudge, skip, and `watchdog_answer` events.
