@@ -75,7 +75,7 @@ Implemented and committed as private Stardock:
 Implemented behavior:
 
 - Subagent-readiness boundary:
-  - provider-neutral advisory handoffs and WorkerReports exist, and Stardock now has explicit tool-gated brief worker execution for advisory explorer/test-runner roles only;
+  - provider-neutral advisory handoffs, WorkerReports, and WorkerRuns exist, and Stardock now has explicit tool-gated brief worker execution for explorer/test-runner plus one serial mutable implementer role;
   - future evolve setup/candidate/archive state is typed and migrates safely, but evolve startup remains disabled;
   - bounded checklist mode has been dogfooded as working for real implementation loops.
 - Modes:
@@ -433,8 +433,8 @@ Remaining work is design-gated and should be driven by dogfood evidence. Stardoc
 4. **Worker/subagent handoff quality**
    - Initial provider-neutral `stardock_handoff` and `stardock_worker_report` support exists for advisory payloads/results, evaluated criteria, artifact refs, changed files, validation, risks, questions, suggested next moves, and review hints.
    - Initial read-only `stardock_policy({ action: "parentReview" })` now recommends selective parent/governor review for risky WorkerReports, changed-file hints, non-passing validation, and implementer handoffs.
-   - Brief-scoped `stardock_brief({ action: "payload" })`, parent-owned `stardock_advisory_adapter` payloads, and explicit `stardock_brief_worker({ action: "run" })` now cover safe explorer/test-runner invocation handoffs and tool-gated advisory execution.
-   - Still needed: broader provider execution adapter design; keep this advisory-only before any editing flow.
+   - Brief-scoped `stardock_brief({ action: "payload" })`, parent-owned `stardock_advisory_adapter` payloads, and explicit `stardock_brief_worker({ action: "run" })` now cover safe explorer/test-runner invocation handoffs plus serial implementer execution with WorkerRun review gates.
+   - Still needed: broader provider execution adapter design; keep fanout/isolation/automatic patch application out of scope before additional editing flows.
 5. **Completion, breakout, and learning gates**
    - Initial manual/data-only `FinalVerificationReport` and `BreakoutPackage` support exists, and `stardock_policy({ action: "completion" | "breakout" })` recommends final reports, auditor reviews, or breakout packages without enforcing hidden gates.
    - Initial derived workflow status surfaces final-verification readiness, breakout decisions, parent review, auditor review, blocked, and completed states in `stardock_state`, overview/list text, prompts, transition notifications, and the active widget without storing another mutable source of truth.
@@ -787,9 +787,9 @@ Do not restart the completed implementation path. Future implementation should b
 7. **Advisory handoff / subagent firewall workflow**
    - Initial provider-neutral `stardock_handoff` support exists for ready-to-copy advisory payloads and compact result records.
    - Parent-owned `stardock_advisory_adapter` payloads now format brief-scoped explorer/test-runner `pi-subagents` invocations while keeping Stardock state provider-neutral and non-executing.
-   - Explicit `stardock_brief_worker` runs now start one advisory explorer/test-runner via the `pi-subagents` bridge and record a compact WorkerReport, without automatic brief-triggered fanout or edit application.
-   - Keep Stardock-owned handoff semantics separate from provider execution details; `pi-subagents` is only one execution bridge, not a state contract.
-   - Start future broader direct execution with additional advisory roles only after a safe lifecycle/cancellation/result-capture boundary exists for that role.
+   - Explicit `stardock_brief_worker` runs now start explorer/test-runner or one serial implementer via the `pi-subagents` bridge, recording WorkerRuns plus compact WorkerReports without automatic brief-triggered fanout or patch acceptance.
+   - Keep Stardock-owned handoff/run semantics separate from provider execution details; `pi-subagents` is only one execution bridge, not a state contract.
+   - Start future broader direct execution with additional roles only after a safe lifecycle/cancellation/result-capture boundary exists for that role.
    - Do not apply edits automatically.
    - Persist provider-neutral payloads, result summaries, concerns, recommendations, artifact refs, and optional opaque provider metadata.
 8. **Evolve mode**
@@ -798,7 +798,7 @@ Do not restart the completed implementation path. Future implementation should b
 
 ### Completion boundary
 
-The original mode-aware/recursive implementation path is complete up to the safe boundary and has been moved under private Stardock naming. Explicit brief-scoped advisory execution exists for explorer/test-runner roles; editing subagent execution and evolve candidate execution remain intentionally unimplemented because they require design approval and safety proof points.
+The original mode-aware/recursive implementation path is complete up to the safe boundary and has been moved under private Stardock naming. Explicit brief-scoped worker execution exists for explorer/test-runner and one serial mutable implementer role; concurrent editing subagents, workspace isolation, automatic patch application, and evolve candidate execution remain intentionally unimplemented because they require design approval and safety proof points.
 
 ## Validation strategy
 

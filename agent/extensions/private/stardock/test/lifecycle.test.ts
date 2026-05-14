@@ -393,6 +393,31 @@ test("completion marker completes loop without queuing a user message", async ()
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+test("completion marker is blocked by unreviewed implementer WorkerRun", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		assert.ok(start);
+
+		await start.execute("tool-complete-blocked", { name: "Complete Blocked", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
+		const rawState = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Blocked"), "utf-8"));
+		rawState.workerRuns = [{ id: "run1", role: "implementer", status: "needs_review", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }];
+		fs.writeFileSync(statePath(cwd, "Complete_Blocked"), JSON.stringify(rawState, null, 2));
+
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "<promise>COMPLETE</promise>" }] }] }, ctx);
+
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Blocked"), "utf-8"));
+		assert.equal(state.status, "active");
+		assert.match(messages.at(-1)?.content ?? "", /completion blocked/);
+		assert.match(messages.at(-1)?.content ?? "", /stardock_brief_worker/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("archive moves managed run folders under archive", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {

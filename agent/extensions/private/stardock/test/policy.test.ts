@@ -145,10 +145,14 @@ test("stardock_policy recommends selective parent review for worker and handoff 
 		assert.ok(policy);
 		await worker.execute("worker", { action: "record", loopName: "Policy_Parent_Review", id: "wr-files", status: "needs_review", role: "reviewer", summary: "Worker returned file hints and risks.", changedFiles: [{ path: "src/example.ts", summary: "Touched public API", reviewReason: "Public contract changed." }], validation: [{ result: "failed", summary: "Focused validation failed." }], risks: ["Contract drift"] }, undefined, undefined, ctx);
 		await handoff.execute("handoff", { action: "record", loopName: "Policy_Parent_Review", id: "ah-impl", role: "implementer", status: "answered", objective: "Apply risky edit.", summary: "Provider returned a patch." }, undefined, undefined, ctx);
+		const rawState = JSON.parse(fs.readFileSync(statePath(cwd, "Policy_Parent_Review"), "utf-8"));
+		rawState.workerRuns = [{ id: "run1", role: "implementer", status: "needs_review", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }];
+		fs.writeFileSync(statePath(cwd, "Policy_Parent_Review"), JSON.stringify(rawState, null, 2));
 
 		const result = await policy.execute("policy", { action: "parentReview", loopName: "Policy_Parent_Review" }, undefined, undefined, ctx);
 		assert.equal(result.details.policy.recommended, true);
 		assert.equal(result.details.policy.status, "parent_review_required");
+		assert.match(result.content[0].text, /implementer-worker-run-review/);
 		assert.match(result.content[0].text, /risky-worker-parent-review/);
 		assert.match(result.content[0].text, /changed-file-parent-review/);
 		assert.match(result.content[0].text, /implementer-handoff-parent-review/);

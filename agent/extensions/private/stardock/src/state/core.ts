@@ -234,6 +234,7 @@ export type AdvisoryHandoffRole = "explorer" | "test_runner" | "researcher" | "r
 export type BreakoutPackageStatus = "draft" | "open" | "resolved" | "dismissed";
 export type AdvisoryHandoffStatus = "draft" | "requested" | "answered" | "failed" | "dismissed";
 export type WorkerReportStatus = "draft" | "submitted" | "accepted" | "needs_review" | "dismissed";
+export type WorkerRunStatus = "running" | "succeeded" | "failed" | "cancelled" | "needs_review" | "accepted" | "dismissed";
 
 export interface FinalValidationRecord {
 	command?: string;
@@ -345,6 +346,27 @@ export interface WorkerReport {
 	updatedAt: string;
 }
 
+export interface WorkerRun {
+	id: string;
+	role: AdvisoryHandoffRole;
+	status: WorkerRunStatus;
+	briefId: string;
+	requestId: string;
+	agentName: string;
+	context: "fresh" | "fork";
+	outputMode: "inline" | "file-only";
+	outputPath?: string;
+	reportId?: string;
+	summary?: string;
+	outputRefs: string[];
+	changedFiles: ChangedFileReport[];
+	reviewRationale?: string;
+	allowDirtyWorkspace: boolean;
+	startedAt: string;
+	completedAt?: string;
+	updatedAt: string;
+}
+
 export interface IterationBrief {
 	id: string;
 	status: IterationBriefStatus;
@@ -400,6 +422,7 @@ export interface LoopState {
 	advisoryHandoffs: AdvisoryHandoff[];
 	breakoutPackages: BreakoutPackage[];
 	workerReports: WorkerReport[];
+	workerRuns: WorkerRun[];
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };

@@ -31,6 +31,7 @@ function baseState(overrides: Partial<LoopState> = {}): LoopState {
 		advisoryHandoffs: [],
 		breakoutPackages: [],
 		workerReports: [],
+		workerRuns: [],
 		...overrides,
 	};
 }
@@ -52,6 +53,15 @@ test("workflow status surfaces parent review for risky worker reports", () => {
 	assert.equal(status.state, "needs_parent_review");
 	assert.equal(status.recommendedActions[0].tool, "stardock_policy");
 	assert.equal(status.recommendedActions[0].args?.action, "parentReview");
+});
+
+test("workflow status blocks on unreviewed implementer worker runs", () => {
+	const status = evaluateWorkflowStatus(baseState({
+		workerRuns: [{ id: "run1", role: "implementer", status: "needs_review", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
+	}));
+	assert.equal(status.state, "needs_parent_review");
+	assert.equal(status.severity, "blocked");
+	assert.match(status.reasons[0], /WorkerRun\(s\) run1:needs_review/);
 });
 
 test("workflow status surfaces auditor blockers before other work", () => {

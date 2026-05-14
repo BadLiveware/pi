@@ -105,6 +105,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 				advisoryHandoffs: [],
 				breakoutPackages: [],
 				workerReports: [],
+				workerRuns: [],
 			};
 			saveState(ctx, state);
 			runtime.ref.currentLoop = loopName;

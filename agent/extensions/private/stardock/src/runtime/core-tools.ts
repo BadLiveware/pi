@@ -89,6 +89,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				advisoryHandoffs: [],
 				breakoutPackages: [],
 				workerReports: [],
+				workerRuns: [],
 			};
 
 			saveState(ctx, state);
@@ -185,6 +186,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 					`Baseline validations: ${state.baselineValidations.length}`,
 					`Final reports: ${state.finalVerificationReports.length}`,
 					`Auditor reviews: ${state.auditorReviews.length}`,
+					`Worker runs: ${state.workerRuns.length}`,
 					`Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`,
 					checklistDrift.length ? `Checklist/ledger drift: ${checklistDrift.length}` : undefined,
 					activeBrief ? `Current brief task: ${activeBrief.task}` : undefined,

@@ -99,6 +99,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 		advisoryHandoffs: state.advisoryHandoffs,
 		breakoutPackages: state.breakoutPackages,
 		workerReports: state.workerReports,
+		workerRuns: state.workerRuns,
 		checklistLedgerDrift: {
 			total: checklistDrift.length,
 			items: includeDetails ? checklistDrift : checklistDrift.slice(0, 5),
@@ -188,6 +189,17 @@ export function formatRunTimeline(state: LoopState): string {
 		});
 	}
 
+	for (const run of state.workerRuns) {
+		items.push({
+			time: Date.parse(run.completedAt ?? run.startedAt) || 0,
+			order: state.iteration * 10 + 3,
+			lines: [
+				`WorkerRun ${run.id} · ${run.status}/${run.role}`,
+				run.summary ? `  ${compactViewText(run.summary, 180)}` : `  Brief: ${run.briefId}`,
+			],
+		});
+	}
+
 	if (state.completedAt) {
 		items.push({
 			time: Date.parse(state.completedAt) || Number.MAX_SAFE_INTEGER,
@@ -227,7 +239,7 @@ export function formatRunOverview(ctx: ExtensionContext, state: LoopState, archi
 	}
 
 	lines.push("", "Progress", `  Attempts: ${reported}/${attempts.length} reported`, `  Outside requests: ${pending}/${state.outsideRequests.length} pending`);
-	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Auditor reviews: ${state.auditorReviews.length}`, `  Advisory handoffs: ${state.advisoryHandoffs.length}`, `  Breakout packages: ${state.breakoutPackages.length}`, `  Worker reports: ${state.workerReports.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
+	lines.push(`  ${formatCriterionCounts(state.criterionLedger)}`, `  Verification artifacts: ${state.verificationArtifacts.length}`, `  Final reports: ${state.finalVerificationReports.length}`, `  Auditor reviews: ${state.auditorReviews.length}`, `  Advisory handoffs: ${state.advisoryHandoffs.length}`, `  Breakout packages: ${state.breakoutPackages.length}`, `  Worker reports: ${state.workerReports.length}`, `  Worker runs: ${state.workerRuns.length}`, `  Briefs: ${state.briefs.length}${activeBrief ? ` (current ${activeBrief.id})` : ""}`);
 	const checklistDrift = loadChecklistLedgerDrift(ctx, state);
 	if (checklistDrift.length) lines.push("", ...formatChecklistLedgerDrift(checklistDrift));
 	if (activeBrief) {

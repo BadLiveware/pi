@@ -224,8 +224,9 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 	const brief = input.briefId ? state.briefs.find((item) => item.id === input.briefId) : currentBrief(state);
 	if (!brief) return { ok: false, error: input.briefId ? `Brief "${input.briefId}" not found in loop "${state.name}".` : "No active brief. Pass briefId or activate a brief first." };
 	const role = input.role ?? "explorer";
+	const isImplementer = role === "implementer";
 	const lines = [
-		`Stardock advisory worker payload for loop "${state.name}"`,
+		`Stardock ${isImplementer ? "implementer" : "advisory"} worker payload for loop "${state.name}"`,
 		`Role: ${role}`,
 		`Brief: ${brief.id} [${brief.status}]`,
 		`Objective: ${compactText(brief.objective, 500)}`,
@@ -234,7 +235,9 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 		`Iteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`,
 		"",
 		"Provider-neutral contract:",
-		"Run this as a parent/orchestrator-invoked advisory task. Do not let Stardock or the worker spawn hidden agents, mutate Stardock state, apply patches, or edit files unless the parent separately approves an edit policy.",
+		isImplementer
+			? "Run this as a parent/governor-approved mutable implementer task. Edit only within the brief scope, do not mutate Stardock state, do not spawn hidden agents, and do not declare loop completion."
+			: "Run this as a parent/orchestrator-invoked advisory task. Do not let Stardock or the worker spawn hidden agents, mutate Stardock state, apply patches, or edit files unless the parent separately approves an edit policy.",
 	];
 	const criteria = selectedCriteria(state, brief);
 	if (brief.criterionIds.length) {
@@ -260,7 +263,7 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 	];
 	for (const [title, items] of sections) if (items.length) lines.push("", title, ...compactList(items).map((item) => `- ${item}`));
 	lines.push("", "Requested output", compactText(input.requestedOutput?.trim() || brief.outputContract || "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.", 500) ?? "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.");
-	lines.push("", "Parent recording options:", "- Parent may use stardock_worker_report record for worker-style results", "- Parent may use stardock_handoff record for advisory handoff results", "The worker should not mutate Stardock state unless the parent separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when parent inspection is warranted.");
+	lines.push("", "Parent recording options:", "- Parent may use stardock_worker_report record for worker-style results", "- Parent may use stardock_handoff record for advisory handoff results", isImplementer ? "The parent/governor must review and accept or dismiss the implementer WorkerRun before another mutable worker or completion." : "The worker should not mutate Stardock state unless the parent separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when parent inspection is warranted.");
 	return { ok: true, payload: lines.join("\n"), brief };
 }
 

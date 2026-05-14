@@ -35,6 +35,7 @@ type WorkerValidationRecord,
 } from "./core.ts";
 import { migrateModeState, numberOrDefault } from "./modes.ts";
 import { defaultTaskFile } from "./paths.ts";
+import { migrateWorkerRuns } from "./worker-runs-migration.ts";
 
 export function normalizeMode(value: unknown): LoopMode {
 	return value === "recursive" || value === "evolve" || value === "checklist" ? value : "checklist";
@@ -193,6 +194,7 @@ export function isBreakoutPackageStatus(value: unknown): value is BreakoutPackag
 export function isWorkerReportStatus(value: unknown): value is WorkerReportStatus {
 	return ["draft", "submitted", "accepted", "needs_review", "dismissed"].includes(String(value));
 }
+
 
 function normalizeProviderMetadata(value: unknown): Record<string, unknown> | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -448,6 +450,7 @@ export function migrateWorkerReports(value: unknown): WorkerReport[] {
 		.filter((report): report is WorkerReport => report !== null);
 }
 
+
 export function migrateState(raw: Partial<LoopState> & { name: string } & Record<string, unknown>): LoopState {
 	const reflectEvery = numberOrDefault(raw.reflectEvery ?? raw.reflectEveryItems, 0);
 	const lastReflectionAt = numberOrDefault(raw.lastReflectionAt ?? raw.lastReflectionAtItems, 0);
@@ -482,5 +485,6 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		advisoryHandoffs: migrateAdvisoryHandoffs(raw.advisoryHandoffs),
 		breakoutPackages: migrateBreakoutPackages(raw.breakoutPackages),
 		workerReports: migrateWorkerReports(raw.workerReports),
+		workerRuns: migrateWorkerRuns(raw.workerRuns),
 	};
 }

@@ -3,6 +3,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { COMPLETE_MARKER } from "../state/core.ts";
 import { existingStatePath, safeMtimeMs } from "../state/paths.ts";
+import { openMutableWorkerRun } from "../worker-runs.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { getModeHandler } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
@@ -25,6 +26,11 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 		const text = lastAssistant && Array.isArray(lastAssistant.content) ? lastAssistant.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text).join("\n") : "";
 
 		if (text.includes(COMPLETE_MARKER)) {
+			const openRun = openMutableWorkerRun(state);
+			if (openRun) {
+				pi.sendUserMessage(`Stardock completion blocked: implementer WorkerRun ${openRun.id} is ${openRun.status}. Review it with stardock_brief_worker({ action: "review", runId: "${openRun.id}" }) or dismiss it before completing.`, { deliverAs: "followUp" });
+				return;
+			}
 			runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────
 ✅ STARDOCK LOOP COMPLETE: ${state.name} | ${state.iteration} iterations
 ───────────────────────────────────────────────────────────────────────`);

@@ -1,9 +1,22 @@
 import * as assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
 import { makeHarness } from "./test-harness.ts";
+
+function git(cwd: string, args: string[]): void {
+	execFileSync("git", args, { cwd, stdio: "ignore" });
+}
+
+function commitCleanGit(cwd: string): void {
+	git(cwd, ["init"]);
+	git(cwd, ["config", "user.email", "stardock-test@example.invalid"]);
+	git(cwd, ["config", "user.name", "Stardock Test"]);
+	git(cwd, ["add", "."]);
+	git(cwd, ["commit", "--allow-empty", "-m", "baseline"]);
+}
 
 test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerReport", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-brief-worker-test-"));
@@ -87,6 +100,79 @@ test("stardock_brief_worker reports missing pi-subagents bridge", async () => {
 		const result = await workerRun.execute("tool-brief-worker-run", { action: "run", loopName: "No_Bridge", role: "explorer" }, undefined, undefined, ctx);
 		assert.match(result.content[0].text, /No subagent bridge responded/);
 		assert.equal(result.isError, true);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_brief_worker runs serial implementer workers and requires review", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-brief-worker-test-"));
+	try {
+		const { tools, events, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		const workerRun = tools.get("stardock_brief_worker");
+		const workerReport = tools.get("stardock_worker_report");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(brief);
+		assert.ok(workerRun);
+		assert.ok(workerReport);
+
+		await start.execute("tool-brief-worker-start", { name: "Implementer Worker", mode: "checklist", taskContent: "# Implementer worker task\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await ledger.execute("tool-brief-worker-criterion", { action: "upsertCriterion", loopName: "Implementer_Worker", id: "c-impl", description: "Implementer edits one file.", passCondition: "Parent reviews the changed file.", status: "pending" }, undefined, undefined, ctx);
+		await brief.execute("tool-brief-worker-brief", { action: "upsert", loopName: "Implementer_Worker", id: "b-impl", objective: "Implement a tiny change.", task: "Create src/implemented.ts with a marker export.", criterionIds: ["c-impl"], constraints: ["One file only."], activate: true }, undefined, undefined, ctx);
+		commitCleanGit(cwd);
+
+		const outputPath = path.join(cwd, ".stardock", "implementer-output.md");
+		let capturedRequest: any;
+		events.on("subagent:slash:request", (data) => {
+			capturedRequest = data;
+			fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+			fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+			fs.writeFileSync(path.join(cwd, "src", "implemented.ts"), "export const implemented = true;\n", "utf-8");
+			fs.writeFileSync(outputPath, "Implemented src/implemented.ts. Validation not run in harness.", "utf-8");
+			const request = data as { requestId: string };
+			events.emit("subagent:slash:started", { requestId: request.requestId });
+			events.emit("subagent:slash:response", {
+				requestId: request.requestId,
+				isError: false,
+				result: {
+					content: [{ type: "text", text: `Output saved to: ${outputPath}` }],
+					details: { results: [{ agent: "implementer", exitCode: 0, finalOutput: `Output saved to: ${outputPath}`, savedOutputPath: outputPath }] },
+				},
+			});
+		});
+
+		const result = await workerRun.execute("tool-brief-worker-run", { action: "run", loopName: "Implementer_Worker", role: "implementer" }, undefined, undefined, ctx);
+		assert.match(result.content[0].text, /WorkerRun run1 is needs_review/);
+		assert.match(result.content[0].text, /src\/implemented\.ts/);
+		assert.equal(result.details.workerRun.status, "needs_review");
+		assert.equal(result.details.workerRun.role, "implementer");
+		assert.deepEqual(result.details.workerRun.changedFiles.map((file: any) => file.path), ["src/implemented.ts"]);
+		assert.equal(result.details.report.status, "needs_review");
+		assert.equal(result.details.report.role, "implementer");
+		assert.deepEqual(result.details.report.changedFiles.map((file: any) => file.path), ["src/implemented.ts"]);
+		assert.equal(capturedRequest.params.agent, "implementer");
+		assert.match(capturedRequest.params.task, /Adapter role: implementer/);
+		assert.match(capturedRequest.params.task, /no isolation/);
+
+		const blocked = await workerRun.execute("tool-brief-worker-blocked", { action: "run", loopName: "Implementer_Worker", role: "implementer", allowDirtyWorkspace: true }, undefined, undefined, ctx);
+		assert.equal(blocked.isError, true);
+		assert.match(blocked.content[0].text, /Cannot start implementer worker: WorkerRun run1 is needs_review/);
+
+		const reviewed = await workerRun.execute("tool-brief-worker-review", { action: "review", loopName: "Implementer_Worker", runId: "run1", reviewStatus: "accepted", reviewRationale: "Parent inspected src/implemented.ts." }, undefined, undefined, ctx);
+		assert.match(reviewed.content[0].text, /WorkerRun run1 marked accepted/);
+		assert.equal(reviewed.details.run.status, "accepted");
+
+		const reports = await workerReport.execute("tool-brief-worker-reports", { action: "list", loopName: "Implementer_Worker" }, undefined, undefined, ctx);
+		assert.match(reports.content[0].text, /wr1 \[accepted\/implementer\]/);
+
+		const dirtyGuard = await workerRun.execute("tool-brief-worker-dirty", { action: "run", loopName: "Implementer_Worker", role: "implementer" }, undefined, undefined, ctx);
+		assert.equal(dirtyGuard.isError, true);
+		assert.match(dirtyGuard.content[0].text, /Workspace has uncommitted changes/);
+		assert.doesNotMatch(dirtyGuard.content[0].text, /Cannot start implementer worker/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

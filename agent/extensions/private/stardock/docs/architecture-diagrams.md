@@ -1,6 +1,6 @@
 # Stardock architecture diagrams
 
-These diagrams describe Stardock's target architecture and current private implementation direction. The private extension provides checklist and recursive loops, structured attempt reports, governor/outside request payloads, criterion ledgers, verification artifacts, iteration briefs, final reports, auditor reviews, advisory handoffs, breakout packages, worker reports, read-only policy recommendations, explicit brief-scoped advisory worker runs, and local `.stardock/` state. Broad subagent execution, editing workers, and evolve mode remain planned design gates.
+These diagrams describe Stardock's target architecture and current private implementation direction. The private extension provides checklist and recursive loops, structured attempt reports, governor/outside request payloads, criterion ledgers, verification artifacts, iteration briefs, final reports, auditor reviews, advisory handoffs, breakout packages, worker reports, read-only policy recommendations, explicit brief-scoped advisory worker runs, serial implementer WorkerRuns, and local `.stardock/` state. Broad subagent fanout, workspace-isolated editing workers, automatic patch application, and evolve mode remain planned design gates.
 
 ## High-level architecture
 

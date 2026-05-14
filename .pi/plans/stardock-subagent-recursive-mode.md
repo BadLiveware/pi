@@ -2,15 +2,15 @@
 
 ## Status
 
-Explicit tool-gated advisory execution is now implemented for brief-scoped explorer/test-runner work. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, ready-to-copy governor/researcher payloads, provider-neutral advisory handoffs, WorkerReports, brief-derived advisory worker payloads, parent-owned explorer/test-runner adapter payloads, and one explicit `pi-subagents` bridge runner for active briefs. Broader subagent execution should remain parent/orchestrator-driven until Stardock has lifecycle, cancellation, result capture, edit ownership, and review policy for each role.
+Explicit tool-gated worker execution is now implemented for brief-scoped explorer/test-runner work and one serial mutable implementer role. The current private Stardock implementation owns durable loop state, attempt reports, outside requests, ready-to-copy governor/researcher payloads, provider-neutral advisory handoffs, WorkerReports, WorkerRuns, brief-derived worker payloads, parent-owned explorer/test-runner adapter payloads, and one explicit `pi-subagents` bridge runner for active briefs. Broader subagent fanout and workspace-isolated editing should remain parent/orchestrator-driven until Stardock has lifecycle, cancellation, result capture, edit ownership, and review policy for each added role.
 
 Implemented safe adapter/execution slice:
 
 - `stardock_brief({ action: "payload" })` builds provider-neutral advisory worker payloads from active or selected briefs.
 - `stardock_advisory_adapter({ action: "payload", role: "explorer" | "test_runner" })` formats ready-to-run parent-owned `pi-subagents` invocation arguments for brief-scoped advisory workers.
-- `stardock_brief_worker({ action: "run", role: "explorer" | "test_runner" })` explicitly starts one brief-scoped advisory worker through the `pi-subagents` bridge, saves file-only output under `.stardock/runs/<loop>/workers/` by default, and records a compact WorkerReport.
+- `stardock_brief_worker({ action: "run", role: "explorer" | "test_runner" | "implementer" })` explicitly starts one brief-scoped worker through the `pi-subagents` bridge, saves file-only output under `.stardock/runs/<loop>/workers/` by default, records a compact WorkerReport, and records a durable WorkerRun.
 - Adapter payloads are convenience output only: they do not execute providers, persist provider-specific state, apply edits, or create hidden worker runs.
-- Brief-worker runs are never automatic on brief creation and are limited to advisory explorer/test-runner roles; they do not implement, apply patches, create hidden fanout, or make provider-specific state the source of truth.
+- Brief-worker runs are never automatic on brief creation. Explorer/test-runner are advisory; implementer is serial and mutable, requires a clean workspace by default, blocks competing implementers while running or awaiting review, and must be accepted/dismissed before another implementer or completion.
 - Recorded `AdvisoryHandoff` and `WorkerReport` summaries are included in later prompts when scoped to the active brief criteria.
 
 ## Decision
@@ -19,11 +19,11 @@ Allow only explicit, advisory, brief-scoped Stardock execution for low-risk work
 
 1. Stardock creates durable outside requests, briefs, auditor reviews, or `AdvisoryHandoff` payloads using Stardock-owned concepts.
 2. The parent/orchestrator may run any provider (`pi-subagents`, another extension, a CLI, a human review, or a future adapter) using those payloads.
-3. For active briefs that need only file mapping or bounded validation, the parent/governor may call `stardock_brief_worker({ action: "run" })` to execute one `pi-subagents` explorer/test-runner without a payload-copying round trip.
-4. The parent records or verifies compact answers with `stardock_outside_answer`, `stardock_attempt_report`, `stardock_auditor`, `stardock_handoff`, or the WorkerReport produced by `stardock_brief_worker`.
+3. For active briefs that need file mapping, bounded validation, or one scoped edit, the parent/governor may call `stardock_brief_worker({ action: "run" })` to execute one `pi-subagents` worker without a payload-copying round trip.
+4. The parent records or verifies compact answers with `stardock_outside_answer`, `stardock_attempt_report`, `stardock_auditor`, `stardock_handoff`, or the WorkerReport/WorkerRun produced by `stardock_brief_worker`.
 5. Stardock includes recorded decisions/results in later prompts as constraints or evidence.
 
-The current `pi-subagents` bridge is an execution convenience for advisory brief workers, not a state contract. Implementer/editing workers and broader direct provider execution still require separate design gates.
+The current `pi-subagents` bridge is an execution convenience for brief workers, not a state contract. Concurrent editing workers, workspace isolation, automatic patch application, and broader direct provider execution still require separate design gates.
 
 ## Context routing principle
 
@@ -207,8 +207,9 @@ Do not add provider-specific execution state until an execution path exists that
 | Parent-orchestrated advisory workflow | Safe now; uses existing tools; inspectable; no hidden edits | More manual steps | Still valid default |
 | Extension returns exact subagent payloads only | Small improvement over manual; still safe | Parent still runs tools | Implemented for brief-scoped explorer/test-runner adapter payloads via `stardock_advisory_adapter` |
 | Explicit tool-gated advisory subagents | Removes payload-copying round trip; still one visible parent/governor decision; no direct edits | Depends on `pi-subagents` bridge availability; role scope must stay narrow | Implemented for brief-scoped explorer/test-runner via `stardock_brief_worker` |
+| Serial current-workspace implementer | Enables useful direct edits without isolation; simple no-competing-worker invariant | Requires clean workspace guard and parent review; no concurrent editing | Implemented as `stardock_brief_worker` implementer WorkerRuns |
 | Extension directly spawns broad/ad hoc subagents | Less manual | Needs safe lifecycle handling per role and risks hidden fanout | Future only |
-| Extension spawns editing subagents in current workspace | Fastest automation | Unsafe ownership, interruption, rollback risks | Reject |
+| Extension spawns concurrent editing subagents in current workspace | Fastest automation | Unsafe ownership, interruption, rollback risks | Reject |
 | Extension spawns worktree-isolated implementers | Safer edits | Requires clean git/worktree orchestration and patch review | Future research |
 
 ## Chosen future shape

@@ -53,7 +53,7 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	parts.push(`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`);
 	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
 	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
-	parts.push(`3. If the active brief needs advisory codebase mapping or bounded validation, explicitly call stardock_brief_worker({ action: "run", role: "explorer" | "test_runner" }) and use the recorded WorkerReport before continuing.`);
+	parts.push(`3. If the active brief needs delegated help, explicitly call stardock_brief_worker({ action: "run", role: "explorer" | "test_runner" | "implementer" }). Implementer workers are serial mutable workers: start one only for scoped edits, then review/accept or dismiss the WorkerRun before another implementer or completion.`);
 	parts.push(`4. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
 	if (activeBrief) {
 		parts.push(`5. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
@@ -127,7 +127,7 @@ const checklistModeHandler: LoopModeHandler = {
 		} else {
 			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
 			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
-			instructions += `- If advisory mapping or bounded validation would help, explicitly run stardock_brief_worker for the active brief and use the recorded WorkerReport\n`;
+			instructions += `- If delegated mapping, validation, or scoped implementation would help, explicitly run stardock_brief_worker for the active brief; implementer runs must be reviewed and accepted/dismissed before another mutable worker or completion\n`;
 			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
 		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
@@ -165,7 +165,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
 		parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
 		parts.push("2. Make one bounded attempt that tests that hypothesis.");
-		parts.push("If the active brief needs advisory codebase mapping or bounded validation before the attempt, explicitly call stardock_brief_worker with role explorer or test_runner and use the recorded WorkerReport.");
+		parts.push("If the active brief needs delegated mapping, validation, or scoped implementation before the attempt, explicitly call stardock_brief_worker with role explorer, test_runner, or implementer. Implementer runs are serial mutable workers and must be reviewed before another implementer or completion.");
 		if (modeState.validationCommand) {
 			parts.push(`3. Run or explain the validation check: ${modeState.validationCommand}`);
 		} else {
