@@ -75,7 +75,7 @@ Implemented and committed as private Stardock:
 Implemented behavior:
 
 - Subagent-readiness boundary:
-  - provider-neutral advisory handoffs and WorkerReports exist, but Stardock still does not execute providers directly;
+  - provider-neutral advisory handoffs and WorkerReports exist, and Stardock now has explicit tool-gated brief worker execution for advisory explorer/test-runner roles only;
   - future evolve setup/candidate/archive state is typed and migrates safely, but evolve startup remains disabled;
   - bounded checklist mode has been dogfooded as working for real implementation loops.
 - Modes:
@@ -433,8 +433,8 @@ Remaining work is design-gated and should be driven by dogfood evidence. Stardoc
 4. **Worker/subagent handoff quality**
    - Initial provider-neutral `stardock_handoff` and `stardock_worker_report` support exists for advisory payloads/results, evaluated criteria, artifact refs, changed files, validation, risks, questions, suggested next moves, and review hints.
    - Initial read-only `stardock_policy({ action: "parentReview" })` now recommends selective parent/governor review for risky WorkerReports, changed-file hints, non-passing validation, and implementer handoffs.
-   - Brief-scoped `stardock_brief({ action: "payload" })` and parent-owned `stardock_advisory_adapter` payloads now cover safe explorer/test-runner invocation handoffs without Stardock executing providers.
-   - Still needed: direct provider execution adapter design; keep this advisory-only before any editing flow.
+   - Brief-scoped `stardock_brief({ action: "payload" })`, parent-owned `stardock_advisory_adapter` payloads, and explicit `stardock_brief_worker({ action: "run" })` now cover safe explorer/test-runner invocation handoffs and tool-gated advisory execution.
+   - Still needed: broader provider execution adapter design; keep this advisory-only before any editing flow.
 5. **Completion, breakout, and learning gates**
    - Initial manual/data-only `FinalVerificationReport` and `BreakoutPackage` support exists, and `stardock_policy({ action: "completion" | "breakout" })` recommends final reports, auditor reviews, or breakout packages without enforcing hidden gates.
    - Initial derived workflow status surfaces final-verification readiness, breakout decisions, parent review, auditor review, blocked, and completed states in `stardock_state`, overview/list text, prompts, transition notifications, and the active widget without storing another mutable source of truth.
@@ -442,7 +442,7 @@ Remaining work is design-gated and should be driven by dogfood evidence. Stardoc
 6. **Subagent-driven recursive mode**
    - Use `.pi/plans/stardock-subagent-recursive-mode.md` as the design gate.
    - Start with exploration and test-runner providers before implementer providers.
-   - Do not spawn subagents directly from the extension until lifecycle, cancellation, result capture, edit ownership, and parent review policy are safe.
+   - Do not add broader subagent spawning from the extension until lifecycle, cancellation, result capture, edit ownership, and parent review policy are safe for the added role.
 7. **Evolve mode**
    - Use `.pi/plans/stardock-evolve-mode.md` as the design gate.
    - Implement only after evaluator contracts, isolation, archive bounds, prompt bounds, criterion/evidence handling, artifact handling, auditor gate handling, and dogfood evidence are available.
@@ -531,7 +531,7 @@ Governor chooses next move
 → Auditor occasionally reviews governor direction and gates high-risk moves
 ```
 
-For the first implementation passes, keep this as state and prompt structure. Do not require the extension to spawn subagents directly.
+For the first implementation passes, keep this as state and prompt structure. Use explicit brief-scoped advisory execution only where it removes a payload-copying round trip without adding hidden fanout.
 
 ```ts
 interface OutsideRequest {
@@ -787,8 +787,9 @@ Do not restart the completed implementation path. Future implementation should b
 7. **Advisory handoff / subagent firewall workflow**
    - Initial provider-neutral `stardock_handoff` support exists for ready-to-copy advisory payloads and compact result records.
    - Parent-owned `stardock_advisory_adapter` payloads now format brief-scoped explorer/test-runner `pi-subagents` invocations while keeping Stardock state provider-neutral and non-executing.
-   - Keep Stardock-owned handoff semantics separate from provider execution details; `pi-subagents` is only one possible future execution adapter.
-   - Start future direct execution with exploration and test-runner providers only after a safe lifecycle/cancellation/result-capture boundary exists.
+   - Explicit `stardock_brief_worker` runs now start one advisory explorer/test-runner via the `pi-subagents` bridge and record a compact WorkerReport, without automatic brief-triggered fanout or edit application.
+   - Keep Stardock-owned handoff semantics separate from provider execution details; `pi-subagents` is only one execution bridge, not a state contract.
+   - Start future broader direct execution with additional advisory roles only after a safe lifecycle/cancellation/result-capture boundary exists for that role.
    - Do not apply edits automatically.
    - Persist provider-neutral payloads, result summaries, concerns, recommendations, artifact refs, and optional opaque provider metadata.
 8. **Evolve mode**
@@ -797,7 +798,7 @@ Do not restart the completed implementation path. Future implementation should b
 
 ### Completion boundary
 
-The original mode-aware/recursive implementation path is complete up to the safe boundary and has been moved under private Stardock naming. Direct subagent execution and evolve candidate execution are intentionally not implemented because they require design approval and safety proof points.
+The original mode-aware/recursive implementation path is complete up to the safe boundary and has been moved under private Stardock naming. Explicit brief-scoped advisory execution exists for explorer/test-runner roles; editing subagent execution and evolve candidate execution remain intentionally unimplemented because they require design approval and safety proof points.
 
 ## Validation strategy
 

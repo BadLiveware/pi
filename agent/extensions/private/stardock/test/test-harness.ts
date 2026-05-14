@@ -10,6 +10,19 @@ export function makeHarness(cwd: string) {
 	const notifications: string[] = [];
 	const statuses = new Map<string, string | undefined>();
 	const widgets = new Map<string, string[] | undefined>();
+	const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
+	const events = {
+		on(event: string, handler: (data: unknown) => void) {
+			eventHandlers.set(event, [...(eventHandlers.get(event) ?? []), handler]);
+			return () => {
+				const handlers = eventHandlers.get(event) ?? [];
+				eventHandlers.set(event, handlers.filter((item) => item !== handler));
+			};
+		},
+		emit(event: string, data: unknown) {
+			for (const handler of [...(eventHandlers.get(event) ?? [])]) handler(data);
+		},
+	};
 
 	const pi = {
 		registerTool(tool: any) {
@@ -27,6 +40,7 @@ export function makeHarness(cwd: string) {
 		appendEntry(customType: string, data?: unknown) {
 			entries.push({ customType, data });
 		},
+		events,
 	} as any;
 
 	const ctx = {
@@ -56,7 +70,7 @@ export function makeHarness(cwd: string) {
 	} as any;
 
 	stardockLoop(pi);
-	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, ctx };
+	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, eventHandlers, events, ctx };
 }
 
 export function runDir(cwd: string, name: string, archived = false): string {

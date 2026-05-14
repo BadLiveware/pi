@@ -53,15 +53,16 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	parts.push(`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`);
 	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
 	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
-	parts.push(`3. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
+	parts.push(`3. If the active brief needs advisory codebase mapping or bounded validation, explicitly call stardock_brief_worker({ action: "run", role: "explorer" | "test_runner" }) and use the recorded WorkerReport before continuing.`);
+	parts.push(`4. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
 	if (activeBrief) {
-		parts.push(`4. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
-		parts.push(`5. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
-		parts.push(`6. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
-		parts.push(`7. Otherwise, call stardock_done to proceed to the next iteration.`);
+		parts.push(`5. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
+		parts.push(`6. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
+		parts.push(`7. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
+		parts.push(`8. Otherwise, call stardock_done to proceed to the next iteration.`);
 	} else {
-		parts.push(`4. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL work is done.`);
-		parts.push(`5. Otherwise, call stardock_done to proceed to the next iteration.`);
+		parts.push(`5. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL work is done.`);
+		parts.push(`6. Otherwise, call stardock_done to proceed to the next iteration.`);
 	}
 	if (state.itemsPerIteration > 0) parts.push(`\nAim to make measurable progress on the brief this iteration.`);
 
@@ -126,6 +127,7 @@ const checklistModeHandler: LoopModeHandler = {
 		} else {
 			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
 			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
+			instructions += `- If advisory mapping or bounded validation would help, explicitly run stardock_brief_worker for the active brief and use the recorded WorkerReport\n`;
 			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
 		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
@@ -163,6 +165,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
 		parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
 		parts.push("2. Make one bounded attempt that tests that hypothesis.");
+		parts.push("If the active brief needs advisory codebase mapping or bounded validation before the attempt, explicitly call stardock_brief_worker with role explorer or test_runner and use the recorded WorkerReport.");
 		if (modeState.validationCommand) {
 			parts.push(`3. Run or explain the validation check: ${modeState.validationCommand}`);
 		} else {

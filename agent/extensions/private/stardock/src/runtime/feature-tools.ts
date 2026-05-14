@@ -7,6 +7,7 @@ import { registerAttemptReportTool } from "../attempt-reports.ts";
 import { registerAuditorTool } from "../auditor-reviews.ts";
 import { registerBreakoutTool } from "../breakout-packages.ts";
 import { registerBriefTool } from "../briefs.ts";
+import { registerBriefWorkerRunTool } from "../brief-worker-runs.ts";
 import { registerFinalReportTool } from "../final-reports.ts";
 import { formatCriterionCounts, registerLedgerTool } from "../ledger.ts";
 import { registerOutsideRequestTools } from "../outside-requests.ts";
@@ -16,6 +17,7 @@ import type { StardockRuntime } from "./types.ts";
 
 export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
 	registerBriefTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
+	registerBriefWorkerRunTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
 	registerAdvisoryAdapterTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop });
 	registerAdvisoryHandoffTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerAuditorTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
