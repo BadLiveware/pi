@@ -58,7 +58,7 @@ test("workflow status surfaces parent review for risky worker reports", () => {
 
 test("workflow status blocks on unreviewed implementer worker runs", () => {
 	const status = evaluateWorkflowStatus(baseState({
-		workerRuns: [{ id: "run1", role: "implementer", status: "needs_review", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
+		workerRuns: [{ id: "run1", role: "implementer", status: "needs_review", scope: "brief", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
 	}));
 	assert.equal(status.state, "needs_parent_review");
 	assert.equal(status.severity, "blocked");

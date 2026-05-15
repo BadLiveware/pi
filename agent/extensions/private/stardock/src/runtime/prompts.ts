@@ -55,7 +55,7 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	parts.push(`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`);
 	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
 	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
-	parts.push(`3. If the active brief needs delegated help, explicitly call stardock_brief_worker({ action: "run", role: "explorer" | "test_runner" | "implementer" }). Implementer workers are serial mutable workers: start one only for scoped edits, then review/accept or dismiss the WorkerRun before another implementer or completion.`);
+	parts.push(`3. Prefer Stardock worker roles for non-trivial implementation or governance-request help so the governor preserves context and can match worker model capability to scope complexity: call stardock_worker({ action: "run", role: "explorer" | "test_runner" | "implementer" | "governor" | "auditor" | "researcher" | "reviewer", briefId, requestId, model: "provider/model" }) when overriding the model, or omit model for the default. Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision. Use list_pi_models before setting a non-default model. Implementer workers are serial mutable workers: start one only for scoped edits, then review/accept or dismiss the WorkerRun before another implementer or completion.`);
 	parts.push(`4. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
 	if (activeBrief) {
 		parts.push(`5. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
@@ -131,7 +131,8 @@ const checklistModeHandler: LoopModeHandler = {
 		} else {
 			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
 			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
-			instructions += `- If delegated mapping, validation, or scoped implementation would help, explicitly run stardock_brief_worker for the active brief; implementer runs must be reviewed and accepted/dismissed before another mutable worker or completion\n`;
+			instructions += `- Prefer stardock_worker for non-trivial mapping, validation, scoped implementation, or governance request help so the governor preserves context; use list_pi_models before a non-default model override and choose cheaper/faster or stronger enabled models according to scope complexity\n`;
+			instructions += `- Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision; implementer runs must be reviewed and accepted/dismissed before another mutable worker or completion\n`;
 			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
 		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
@@ -170,7 +171,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
 		parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
 		parts.push("2. Make one bounded attempt that tests that hypothesis.");
-		parts.push("If the active brief needs delegated mapping, validation, or scoped implementation before the attempt, explicitly call stardock_brief_worker with role explorer, test_runner, or implementer. Implementer runs are serial mutable workers and must be reviewed before another implementer or completion.");
+		parts.push("Prefer stardock_worker for non-trivial mapping, validation, scoped implementation, or governance request help before the attempt so the governor preserves context and can choose a cheaper/faster or stronger enabled model for the scope. Use list_pi_models before setting a non-default model. Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision. Implementer runs are serial mutable workers and must be reviewed before another implementer or completion.");
 		if (modeState.validationCommand) {
 			parts.push(`3. Run or explain the validation check: ${modeState.validationCommand}`);
 		} else {
@@ -198,6 +199,7 @@ const recursiveModeHandler: LoopModeHandler = {
 			modeState.validationCommand ? `- Validate with or explain: ${modeState.validationCommand}` : "- Run or describe relevant validation for the attempt.",
 			pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,
 			decision?.requiredNextMove ? `- Governor required next move: ${decision.requiredNextMove}` : undefined,
+			"- Prefer stardock_worker for non-trivial scoped implementation or governance request help to preserve governor context; use list_pi_models before a non-default model override and keep implementer runs serial/reviewed.",
 			"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.",
 			`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
 			"- Otherwise, call stardock_done tool to proceed to next iteration.",

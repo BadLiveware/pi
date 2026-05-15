@@ -13,12 +13,14 @@ import { registerGovernorStateTool } from "../governor-state.ts";
 import { formatCriterionCounts, registerLedgerTool } from "../ledger.ts";
 import { registerOutsideRequestTools } from "../outside-requests.ts";
 import { registerPolicyTool } from "../policy.ts";
+import { registerStardockWorkerTool } from "../stardock-worker-tool.ts";
 import { registerWorkerReportTool } from "../worker-reports.ts";
 import type { StardockRuntime } from "./types.ts";
 
 export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
 	registerBriefTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerBriefWorkerRunTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
+	registerStardockWorkerTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
 	registerAdvisoryAdapterTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop });
 	registerAdvisoryHandoffTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerAuditorTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });

@@ -56,6 +56,8 @@ Keep this packet short and decision-relevant. Prefer snippets and paths anchored
 
 ## Medium Triage Prompt
 
+Use the `review-triage` subagent for delegated medium triage. Do not use the generic builtin `reviewer` for this role except as an explicitly recorded degraded fallback.
+
 ```md
 Review this change as medium triage, not final reviewer and not deep scout.
 
@@ -75,6 +77,8 @@ Return JSON with direct_candidates and escalation_requests.
 ```
 
 ## Medium Triage Output
+
+`review-triage` returns this JSON shape:
 
 ```json
 {
@@ -108,6 +112,8 @@ Return JSON with direct_candidates and escalation_requests.
 
 ## Scout Prompt
 
+Use the `review-scout` subagent for delegated targeted scout work. Pass one `scout_type` (`impact-caller`, `correctness-path`, `test-gap`, `config-protocol`, `security-boundary`, or `perf-resource`) plus one escalation. Do not use the generic builtin `scout` for code-review scout roles except as an explicitly recorded degraded fallback.
+
 ```md
 Trace this diff for <semantic path / concern>. Use the context and escalation below. Return candidate issues only.
 
@@ -128,8 +134,11 @@ Rules:
 
 ## Scout Output
 
+`review-scout` returns this JSON shape:
+
 ```json
 {
+  "scout_type": "impact-caller|correctness-path|test-gap|config-protocol|security-boundary|perf-resource",
   "candidates": [
     {
       "id": "S1",
@@ -168,21 +177,26 @@ Rules:
 
 ## Verifier Output
 
+Use the `review-verifier` subagent for delegated candidate verification. It verifies parent-provided candidates only; do not use it for broad new issue hunting.
+
+`review-verifier` returns this JSON shape:
+
 ```json
 {
-  "id": "V1",
-  "source_ids": ["T1", "S1"],
-  "decision": "supported-deterministic|supported-trace|plausible-but-unverified|rejected",
-  "severity": "critical|high|medium|low|null",
-  "confidence": "high|medium|low",
-  "origin": "unprimed|corpus-suggested|outside-corpus",
-  "title": "...",
-  "evidence": [{"file": "...", "lines": "...", "reason": "..."}],
-  "deterministic_evidence": [
-    {"lane": "D", "command_or_trace": "pytest tests/test_import.py::test_malformed_row", "result": "failed"}
+  "verified": [
+    {
+      "id": "candidate-id",
+      "decision": "supported-deterministic|supported-trace|plausible-but-unverified|rejected",
+      "severity": "critical|high|medium|low|null",
+      "confidence": "high|medium|low",
+      "title": "concise verified/rejected title",
+      "evidence": [{"file": "...", "lines": "...", "reason": "why it supports or rejects the candidate"}],
+      "rationale": "verification reasoning",
+      "missing_evidence": ["what would be needed to upgrade confidence"]
+    }
   ],
-  "reasoning_summary": "...",
-  "remaining_uncertainty": ["..."]
+  "validation": ["commands/checks run and concise outcomes"],
+  "gaps": ["important checks not performed"]
 }
 ```
 

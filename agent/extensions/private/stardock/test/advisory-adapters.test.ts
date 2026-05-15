@@ -31,10 +31,12 @@ test("stardock_advisory_adapter builds parent-owned explorer and test-runner inv
 		assert.equal(explorer.details.invocation.cwd, cwd);
 		assert.equal(Object.hasOwn(explorer.details.invocation, "output"), false);
 
-		const testRunner = await adapter.execute("tool-adapter-test-runner", { action: "payload", loopName: "Adapter_Payload", role: "test_runner", agentName: "delegate", context: "fork" }, undefined, undefined, ctx);
+		const testRunner = await adapter.execute("tool-adapter-test-runner", { action: "payload", loopName: "Adapter_Payload", role: "test_runner", agentName: "delegate", model: "test/worker-model", context: "fork" }, undefined, undefined, ctx);
 		assert.match(testRunner.content[0].text, /Parent-owned test_runner adapter payload/);
 		assert.match(testRunner.content[0].text, /"agent": "delegate"/);
+		assert.match(testRunner.content[0].text, /"model": "test\/worker-model"/);
 		assert.match(testRunner.content[0].text, /"context": "fork"/);
+		assert.equal(testRunner.details.invocation.model, "test/worker-model");
 		assert.match(testRunner.content[0].text, /Adapter role: test_runner/);
 		assert.match(testRunner.content[0].text, /Run only bounded validation commands/);
 		assert.match(testRunner.content[0].text, /stardock_ledger recordArtifact\(s\)/);

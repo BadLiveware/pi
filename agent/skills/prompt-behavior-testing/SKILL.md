@@ -72,6 +72,14 @@ A strong choice scenario includes:
 
 Prefer micro-action tests after significant behavior changes, pruning, splitting, or extension prompt changes that affect tool use.
 
+## Delegated Prompt Tests
+
+When delegating a choice-pressure or micro-action prompt test, prefer the `prompt-behavior-tester` subagent. It is a no-edit testing role; a correct answer to a forced-choice or verdict-only scenario is success even when no files changed.
+
+Put the literal constraint `Do not edit files.` near the start of delegated prompt-behavior test tasks, especially when the scenario contains implementation-looking words such as “implement”, “fix”, “update”, or “run worker”. This keeps the execution harness aligned with the no-edit contract instead of mistaking the test for an implementation handoff.
+
+Do not use generic `delegate` for prompt-behavior tests with implementation-looking wording unless the task contract explicitly says `Do not edit files.` and output-only/no-tools, and you are prepared to treat no-edit output as advisory evidence. If the exact agent is unavailable, continue directly or use a clearly labeled degraded fallback and record the gap.
+
 ## Model Coverage
 
 For behavior-affecting guidance changes, verify with both:

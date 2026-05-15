@@ -10,7 +10,7 @@ Use these stages proportionally; do not turn them into audit paperwork for small
 3. **Context packet**: summarize intent, change families, impact map, relevant project guidance, prior validation, and deterministic evidence already known. Keep snippets anchored and compact.
 4. **Artifact routing**: when delegating, prefer `output: false` unless saved artifacts are useful. If artifacts are needed, route them under `.pi/review/<review-name>/` in the reviewed repo with specific filenames; use `{chain_dir}` or another temp/dedicated artifact directory only when repo-local `.pi/review/` artifacts are not desired. Never write review artifacts to the reviewed repo root.
 5. **Deterministic evidence lane**: prefer project-native commands and existing configs. Record what was run, what failed/passed, and what was skipped because missing, expensive, risky, or noisy.
-6. **Candidate generation**: medium triage and scouts produce candidate issues only. They do not write final comments.
+6. **Candidate generation**: `review-triage` and targeted `review-scout` runs produce candidate issues only. They do not write final comments.
 7. **Clustering/dedupe**: merge duplicates by root cause, collapse symptoms into the underlying issue, and remove candidates already explained by stronger evidence.
 8. **Verification**: classify retained candidates as `supported-deterministic`, `supported-trace`, `plausible-but-unverified`, or `rejected`.
 9. **Coverage-gap check**: when coverage looks weak or risk is high, ask what high-risk change family or changed contract was not inspected. Add at most 2 new candidates, then verify them.
@@ -57,8 +57,8 @@ Flow:
 1. Tag change families and build a compact impact map.
 2. Build compact context packet from the impact map.
 3. Run cheap project-native evidence: usually Lane A when configured, Lane C/D when triggered by contract or test-impact risk, and Lane B/E only with existing rules or a narrow risk-specific query.
-4. Run 1 medium triage reviewer, or do triage locally if parent has enough context.
-5. Run at most 2 targeted cheap scouts for high-priority escalation requests.
+4. Run 1 `review-triage` subagent, or do triage locally if parent has enough context.
+5. Run at most 2 targeted `review-scout` tasks for high-priority escalation requests.
 6. Parent clusters/dedupes candidates by root cause.
 7. Verifier checks only retained candidates and assigns evidence labels.
 8. Run a bounded coverage-gap check only if the impact map shows a high-risk family with weak inspection.
@@ -70,8 +70,8 @@ Medium triage caps control routing and noise, not confirmed-bug handling:
 - avoid style nits and generic advice
 - stop once scout target is clear
 
-Scout caps control hypothesis generation, not final bug visibility:
-- one narrow question per scout
+`review-scout` caps control hypothesis generation, not final bug visibility:
+- one narrow question per `review-scout` task
 - max 3 candidates unless explicitly asked for exhaustive review
 - omit candidates with no concrete path, file anchor, or consequence
 
@@ -83,10 +83,10 @@ Flow is standard hybrid, with these expanded expectations:
 - Lane A/C/D evidence expected where practical; explain skipped lanes
 - Lane B/E used when the change family matches and existing/narrow checks are available
 - Lane F only for high-risk unclear issues where the extra cost is justified or explicitly requested; for complex state machines/concurrency, this may include a small TLA+/PlusCal or property-test model of the critical invariant
-- up to 2 medium triage reviewers
-- at most 3 targeted cheap scouts
+- up to 2 `review-triage` subagents
+- at most 3 targeted `review-scout` tasks
 - a bounded coverage-gap check before final ranking
-- strong verifier recommended for retained candidates
+- strong `review-verifier` pass recommended for retained candidates
 
 Run full when change touches auth/security, data loss, migrations/schema/config, concurrency/resource lifecycles, public APIs/contracts, performance-sensitive paths, broad cross-file changes, artifact/protocol contracts, or unclear intent.
 
@@ -136,7 +136,7 @@ Constraints:
 - new candidates must still pass normal verification
 
 ## Escalation Hints
-Common targeted scouts:
+Common `review-scout` scout types:
 - `impact/caller`: changed contracts, artifacts, config, migrations, unchanged consumers
 - `correctness-path`: changed control/data paths, state transitions, error handling; challenge guards that collapse richer state into one boolean/count/nil check
 - `test-gap`: behavior changed but tests/fixtures/assertions do not prove it; for registries, queues, caches, indexes, and stateful helpers, check no-entry, valid-entry, error/conflict/pending-only, and mixed-state cases when those states affect behavior

@@ -49,7 +49,23 @@ Choose by capability, cost/quota/scarcity, latency, context window, tool needs, 
 ## Agent Discovery
 When using the `subagent` tool, inspect available agents with `subagent {"action":"list"}` if names or capabilities are uncertain. Example agent names are placeholders; replace them with configured agents from the current environment.
 
-For research-heavy or source-sensitive work, prefer configured researcher/verifier/reviewer/writer-style agents when available; otherwise use a configured general-purpose agent with a bounded prompt.
+Prefer concrete repo-defined agents over generic builtins when guidance names a role:
+
+| Need | Preferred path |
+| --- | --- |
+| Prompt/tool/skill behavior validation | `prompt-behavior-tester` |
+| Bounded implementation outside Stardock | `implementer` |
+| Bounded validation outside Stardock | `validator` |
+| Plan quality review | `plan-reviewer` |
+| Code-review triage | `review-triage` |
+| Code-review targeted scout | `review-scout` |
+| Code-review candidate verification | `review-verifier` |
+| Impact-aware review | `impact-reviewer` |
+| Generic code/plan/diff audit | `auditor` |
+| Feynman research workflows | `feynman-researcher`, `feynman-verifier`, `feynman-reviewer`, `feynman-writer` |
+| Stardock active brief or governance work | `stardock_worker` (or `stardock_brief_worker` compatibility wrapper for brief-scoped runs), not raw `subagent` |
+
+Use a generic builtin only as an explicit degraded fallback when the intended custom agent/tool is unavailable; record the degraded path. For research-heavy or source-sensitive work, prefer configured researcher/verifier/reviewer/writer-style agents when available; otherwise use a configured general-purpose agent with a bounded prompt.
 
 ## Workflow
 1. Define the subtask, deliverable, acceptance criteria, allowed files/sources, and parent validation.

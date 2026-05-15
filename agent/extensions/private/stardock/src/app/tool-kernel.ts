@@ -35,6 +35,7 @@ const LIST_ONLY_TOOLS = new Set([
 	"stardock_breakout",
 	"stardock_handoff",
 	"stardock_worker_report",
+	"stardock_worker",
 ]);
 
 export function stringArg(args: Record<string, unknown>, key: string): string | undefined {

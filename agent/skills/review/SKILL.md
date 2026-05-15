@@ -55,8 +55,8 @@ State the chosen depth briefly for `standard`, `full`, or `audit`. `light` does 
 
 ### Depth definitions
 - `light`: local parent pass; no subagents by default.
-- `standard`: compact impact map, project-native evidence where cheap, 1 medium triage reviewer or local triage, at most 2 targeted cheap scouts, clustering/dedupe, and verifier only for retained candidates.
-- `full`: high-risk hybrid with a stronger impact/evidence lane, up to 2 medium triage reviewers, at most 3 targeted cheap scouts, bounded coverage-gap pass, and strong verification.
+- `standard`: compact impact map, project-native evidence where cheap, 1 `review-triage` subagent or local triage, at most 2 targeted `review-scout` runs, clustering/dedupe, and `review-verifier` only for retained candidates.
+- `full`: high-risk hybrid with a stronger impact/evidence lane, up to 2 `review-triage` subagents, at most 3 targeted `review-scout` runs, bounded coverage-gap pass, and strong `review-verifier` use for retained candidates.
 - `audit`: exhaustive or many-agent review.
 
 If uncertain between two depths *after* the trigger check, choose the higher depth — the trigger check has already filtered out cases where the lower depth is unambiguously fine.
@@ -103,6 +103,6 @@ Corpus path: after an unprimed pass, when coverage looks weak or risk is high, r
 - "A tool reported it, so it is a review finding." Only report diff-connected issues with consequence; suppress unrelated or pre-existing analyzer noise.
 - "The cap says 5 findings, so I can ignore the rest." Caps limit candidate generation and inline report size, not verified issue handling.
 - "A subagent found it, so it is true." Scouts only produce hypotheses; parent verification, clustering, and deduplication are mandatory.
-- "Medium triage should investigate everything." Medium triage routes work; targeted scouts investigate selected paths.
+- "Medium triage should investigate everything." `review-triage` routes work; targeted `review-scout` runs investigate selected paths.
 - "The coverage-gap pass should find more issues." It only checks whether high-risk paths were not inspected; it is not a second broad review.
 - "The failure-mode corpus names this pattern, so it must be relevant." Use the corpus only as a late challenge pass; reject forced fits and prefer `outside-corpus` when the mapping is weak.

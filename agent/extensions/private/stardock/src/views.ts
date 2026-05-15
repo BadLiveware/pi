@@ -197,7 +197,7 @@ export function formatRunTimeline(state: LoopState): string {
 			order: state.iteration * 10 + 3,
 			lines: [
 				`WorkerRun ${run.id} · ${run.status}/${run.role}`,
-				run.summary ? `  ${compactViewText(run.summary, 180)}` : `  Brief: ${run.briefId}`,
+				run.summary ? `  ${compactViewText(run.summary, 180)}` : `  ${run.briefId ? `Brief: ${run.briefId}` : run.outsideRequestId ? `Request: ${run.outsideRequestId}` : `Scope: ${run.scope ?? "loop"}`}`,
 			],
 		});
 	}

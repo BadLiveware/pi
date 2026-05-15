@@ -1,4 +1,4 @@
-import { compactText, type AdvisoryHandoffRole, type ChangedFileReport, type WorkerRun, type WorkerRunStatus } from "./core.ts";
+import { compactText, type AdvisoryHandoffRole, type ChangedFileReport, type WorkerRun, type WorkerRunScope, type WorkerRunStatus } from "./core.ts";
 
 function normalizeId(value: unknown, fallback: string): string {
 	const raw = typeof value === "string" ? value.trim() : "";
@@ -16,6 +16,10 @@ function isAdvisoryHandoffRole(value: unknown): value is AdvisoryHandoffRole {
 
 function isWorkerRunStatus(value: unknown): value is WorkerRunStatus {
 	return ["running", "succeeded", "failed", "cancelled", "needs_review", "accepted", "dismissed"].includes(String(value));
+}
+
+function isWorkerRunScope(value: unknown): value is WorkerRunScope {
+	return ["brief", "outside_request", "loop"].includes(String(value));
 }
 
 function migrateChangedFileReports(value: unknown): ChangedFileReport[] {
@@ -43,16 +47,21 @@ export function migrateWorkerRuns(value: unknown): WorkerRun[] {
 			if (!item || typeof item !== "object") return null;
 			const run = item as Partial<WorkerRun> & Record<string, unknown>;
 			const briefId = typeof run.briefId === "string" && run.briefId.trim() ? run.briefId.trim() : "";
+			const outsideRequestId = typeof run.outsideRequestId === "string" && run.outsideRequestId.trim() ? run.outsideRequestId.trim() : "";
+			const scope: WorkerRunScope = isWorkerRunScope(run.scope) ? run.scope : outsideRequestId ? "outside_request" : briefId ? "brief" : "loop";
 			const requestId = typeof run.requestId === "string" && run.requestId.trim() ? run.requestId.trim() : "";
-			if (!briefId || !requestId) return null;
+			if (!requestId) return null;
 			const now = new Date().toISOString();
 			return {
 				id: normalizeId(run.id, `run${index + 1}`),
 				role: isAdvisoryHandoffRole(run.role) ? run.role : "explorer",
 				status: isWorkerRunStatus(run.status) ? run.status : "succeeded",
-				briefId,
+				scope,
+				briefId: briefId || undefined,
+				outsideRequestId: outsideRequestId || undefined,
 				requestId,
 				agentName: typeof run.agentName === "string" && run.agentName.trim() ? compactText(run.agentName.trim(), 120) ?? run.agentName.trim() : "worker",
+				model: typeof run.model === "string" && run.model.trim() ? compactText(run.model.trim(), 120) ?? run.model.trim() : undefined,
 				context: run.context === "fork" ? "fork" : "fresh",
 				outputMode: run.outputMode === "inline" ? "inline" : "file-only",
 				outputPath: typeof run.outputPath === "string" && run.outputPath.trim() ? compactText(run.outputPath.trim(), 240) ?? run.outputPath.trim() : undefined,
@@ -61,6 +70,7 @@ export function migrateWorkerRuns(value: unknown): WorkerRun[] {
 				outputRefs: normalizeStringList(run.outputRefs).map((ref) => compactText(ref, 240) ?? ref),
 				changedFiles: migrateChangedFileReports(run.changedFiles),
 				reviewRationale: typeof run.reviewRationale === "string" && run.reviewRationale.trim() ? compactText(run.reviewRationale.trim(), 500) ?? run.reviewRationale.trim() : undefined,
+				expectedMutation: typeof run.expectedMutation === "boolean" ? run.expectedMutation : undefined,
 				allowDirtyWorkspace: run.allowDirtyWorkspace === true,
 				startedAt: typeof run.startedAt === "string" ? run.startedAt : now,
 				completedAt: typeof run.completedAt === "string" ? run.completedAt : undefined,

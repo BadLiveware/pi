@@ -11,6 +11,7 @@ import { formatFinalReportOverview } from "../final-reports.ts";
 import { formatCriterionCounts, formatLedgerOverview } from "../ledger.ts";
 import { evaluateAuditorGatePolicy, evaluateAuditorPolicy, evaluateBreakoutPolicy, evaluateCompletionPolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatAuditorPolicy, formatBreakoutPolicy, formatCompletionPolicy, formatParentReviewPolicy } from "../policy.ts";
 import { formatWorkerReportOverview } from "../worker-reports.ts";
+import { formatWorkerRunOverview } from "../worker-runs.ts";
 import { existingStatePath } from "../state/paths.ts";
 import { listLoops, loadState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
@@ -60,6 +61,7 @@ function runListFollowup(ctx: ExtensionContext, currentLoop: string | null, args
 	if (toolName === "stardock_breakout") return { name: toolName, args, content: formatBreakoutPackageOverview(state), details: { loopName, breakoutPackages: state.breakoutPackages } };
 	if (toolName === "stardock_handoff") return { name: toolName, args, content: formatAdvisoryHandoffOverview(state), details: { loopName, advisoryHandoffs: state.advisoryHandoffs } };
 	if (toolName === "stardock_worker_report") return { name: toolName, args, content: formatWorkerReportOverview(state), details: { loopName, workerReports: state.workerReports } };
+	if (toolName === "stardock_worker") return { name: toolName, args, content: formatWorkerRunOverview(state), details: { loopName, workerRuns: state.workerRuns } };
 	return { name: toolName, args, content: `Unsupported read-only Stardock followupTool: ${toolName}.`, details: { ok: false, reason: "unsupported_readonly" } };
 }
 

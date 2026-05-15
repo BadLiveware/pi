@@ -253,6 +253,7 @@ export type BreakoutPackageStatus = "draft" | "open" | "resolved" | "dismissed";
 export type AdvisoryHandoffStatus = "draft" | "requested" | "answered" | "failed" | "dismissed";
 export type WorkerReportStatus = "draft" | "submitted" | "accepted" | "needs_review" | "dismissed";
 export type WorkerRunStatus = "running" | "succeeded" | "failed" | "cancelled" | "needs_review" | "accepted" | "dismissed";
+export type WorkerRunScope = "brief" | "outside_request" | "loop";
 
 export interface FinalValidationRecord {
 	command?: string;
@@ -368,9 +369,12 @@ export interface WorkerRun {
 	id: string;
 	role: AdvisoryHandoffRole;
 	status: WorkerRunStatus;
-	briefId: string;
+	scope: WorkerRunScope;
+	briefId?: string;
+	outsideRequestId?: string;
 	requestId: string;
 	agentName: string;
+	model?: string;
 	context: "fresh" | "fork";
 	outputMode: "inline" | "file-only";
 	outputPath?: string;
@@ -379,6 +383,7 @@ export interface WorkerRun {
 	outputRefs: string[];
 	changedFiles: ChangedFileReport[];
 	reviewRationale?: string;
+	expectedMutation?: boolean;
 	allowDirtyWorkspace: boolean;
 	startedAt: string;
 	completedAt?: string;

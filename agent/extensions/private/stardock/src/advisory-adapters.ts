@@ -8,9 +8,9 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { buildBriefWorkerPayload } from "./briefs.ts";
 import type { AdvisoryHandoffRole, LoopState } from "./state/core.ts";
 import { loadState } from "./state/store.ts";
+import { buildBriefWorkerInvocation } from "./worker-role-registry.ts";
 
 export interface AdvisoryAdapterToolDeps {
 	getCurrentLoop(): string | null;
@@ -24,6 +24,7 @@ interface AdapterPayloadInput {
 	role?: AdvisoryAdapterRole;
 	briefId?: string;
 	agentName?: string;
+	model?: string;
 	context?: AdapterContext;
 }
 
@@ -35,56 +36,11 @@ function adapterContext(value: unknown): AdapterContext {
 	return value === "fork" ? "fork" : "fresh";
 }
 
-function defaultAgent(role: AdvisoryAdapterRole): string {
-	return role === "test_runner" ? "delegate" : "scout";
-}
-
-function outputContract(role: AdvisoryAdapterRole): string {
-	if (role === "test_runner") {
-		return [
-			"Return a compact test-runner WorkerReport. Run only bounded validation commands that are named in this brief or are necessary to verify the selected criteria.",
-			"Do not edit files, fix failures, spawn agents, or change Stardock state.",
-			"Report commands run, pass/fail/skipped results, compact failure summaries, artifact/log refs when available, evaluatedCriterionIds, risks, openQuestions, and reviewHints for parent inspection.",
-		].join(" ");
-	}
-	return [
-		"Return a compact explorer WorkerReport. Inspect the repository only enough to map relevant files/symbols/tests, likely validation commands, context gaps, risks, openQuestions, suggestedNextMove, and reviewHints.",
-		"Do not edit files, run broad validation, spawn agents, or change Stardock state.",
-	].join(" ");
-}
-
-function adapterInstructions(role: AdvisoryAdapterRole): string {
-	if (role === "test_runner") {
-		return [
-			"Adapter role: test_runner",
-			"You are an advisory validator. Prefer focused commands tied to selected criteria and brief verification requirements.",
-			"Keep full logs out of the chat when they are large; summarize and return paths/artifact refs when available.",
-			"Parent records useful outputs with stardock_ledger recordArtifact(s) and stardock_worker_report record.",
-		].join("\n");
-	}
-	return [
-		"Adapter role: explorer",
-		"You are an advisory scout. Build a read-next map and validation plan for the parent/governor.",
-		"Do not make edits. Do not treat discovered files as defects until the parent inspects or validates them.",
-		"Parent records useful outputs with stardock_worker_report record or stardock_handoff record.",
-	].join("\n");
-}
-
 export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input: AdapterPayloadInput): { ok: true; payload: string; invocation: Record<string, unknown>; role: AdvisoryAdapterRole } | { ok: false; error: string } {
 	const role = adapterRole(input.role);
-	const briefPayload = buildBriefWorkerPayload(state, { briefId: input.briefId, role, requestedOutput: outputContract(role) });
-	if (!briefPayload.ok) return briefPayload;
-	const task = [
-		adapterInstructions(role),
-		"",
-		briefPayload.payload,
-	].join("\n");
-	const invocation = {
-		agent: input.agentName?.trim() || defaultAgent(role),
-		task,
-		cwd,
-		context: adapterContext(input.context),
-	};
+	const built = buildBriefWorkerInvocation(state, cwd, { role, briefId: input.briefId, agentName: input.agentName, model: input.model, context: adapterContext(input.context) });
+	if (!built.ok) return built;
+	const invocation = built.invocation;
 	const payload = [
 		`Parent-owned ${role} adapter payload for loop "${state.name}"`,
 		"Target: pi-subagents subagent tool invocation",
@@ -103,19 +59,21 @@ export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input
 const adapterRoleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner")], { description: "Advisory adapter role. explorer maps context; test_runner runs bounded validation. Default: explorer." });
 const adapterTargetSchema = Type.Union([Type.Literal("pi_subagents")], { description: "Adapter target. Currently only pi_subagents is formatted." });
 const adapterContextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode for the suggested invocation. Default: fresh." });
+const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability and cost fit the brief complexity." });
 
 export function registerAdvisoryAdapterTool(pi: ExtensionAPI, deps: AdvisoryAdapterToolDeps): void {
 	pi.registerTool({
 		name: "stardock_advisory_adapter",
 		label: "Build Stardock Advisory Adapter Payloads",
-		description: "Build ready-to-run parent-owned explorer/test-runner adapter payloads without executing providers or mutating Stardock state.",
+		description: "Build ready-to-run parent-owned explorer/test-runner adapter payloads, optionally with a subagent model override, without executing providers or mutating Stardock state.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("payload")], { description: "payload builds a ready-to-run parent-owned adapter invocation." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			target: Type.Optional(adapterTargetSchema),
 			role: Type.Optional(adapterRoleSchema),
 			briefId: Type.Optional(Type.String({ description: "Brief id. Defaults to the active brief." })),
-			agentName: Type.Optional(Type.String({ description: "Subagent name to use in the suggested invocation. Defaults to scout for explorer and delegate for test_runner." })),
+			agentName: Type.Optional(Type.String({ description: "Subagent name to use in the suggested invocation. Defaults to Stardock's current transport agent for the role." })),
+			model: Type.Optional(modelSchema),
 			context: Type.Optional(adapterContextSchema),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext) {

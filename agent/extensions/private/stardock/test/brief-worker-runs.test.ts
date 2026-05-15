@@ -57,7 +57,7 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 			});
 		});
 
-		const result = await workerRun.execute("tool-brief-worker-run", { action: "run", loopName: "Brief_Worker", role: "explorer" }, undefined, undefined, ctx);
+		const result = await workerRun.execute("tool-brief-worker-run", { action: "run", loopName: "Brief_Worker", role: "explorer", model: "test/worker-model" }, undefined, undefined, ctx);
 		assert.match(result.content[0].text, /Subagent completed\./);
 		assert.match(result.content[0].text, /Recorded WorkerReport wr1/);
 		assert.match(result.content[0].text, /Explorer mapped briefs\.ts/);
@@ -68,6 +68,7 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 		assert.match(result.details.report.reviewHints[0], /Worker output refs:/);
 		assert.equal(result.details.subagent.requestId, capturedRequest.requestId);
 		assert.equal(capturedRequest.params.agent, "scout");
+		assert.equal(capturedRequest.params.model, "test/worker-model");
 		assert.equal(capturedRequest.params.context, "fresh");
 		assert.equal(capturedRequest.params.async, false);
 		assert.equal(capturedRequest.params.clarify, false);
@@ -76,10 +77,74 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 		assert.match(capturedRequest.params.task, /Adapter role: explorer/);
 		assert.match(capturedRequest.params.task, /Stardock advisory worker payload/);
 		assert.match(capturedRequest.params.task, /c-brief-worker \[pending\]/);
+		assert.equal(result.details.workerRun.model, "test/worker-model");
 
 		const listed = await workerReport.execute("tool-brief-worker-list", { action: "list", loopName: "Brief_Worker" }, undefined, undefined, ctx);
 		assert.match(listed.content[0].text, /Reports: 1 total/);
 		assert.match(listed.content[0].text, /wr1 \[submitted\/explorer\]/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_worker runs brief and request scoped Stardock roles", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-worker-tool-test-"));
+	try {
+		const { tools, events, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const brief = tools.get("stardock_brief");
+		const worker = tools.get("stardock_worker");
+		const govern = tools.get("stardock_govern");
+		const outside = tools.get("stardock_outside_requests");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(brief);
+		assert.ok(worker);
+		assert.ok(govern);
+		assert.ok(outside);
+
+		await start.execute("tool-worker-tool-start", { name: "Worker Tool", mode: "recursive", taskContent: "# Worker tool task\n", objective: "Exercise Stardock worker routing.", baseline: "No workers run yet.", validationCommand: "npm test --prefix agent/extensions -- private/stardock/brief-worker-runs.test.ts", maxIterations: 3 }, undefined, undefined, ctx);
+		await ledger.execute("tool-worker-tool-criterion", { action: "upsertCriterion", loopName: "Worker_Tool", id: "c-worker-tool", description: "Stardock worker role runs.", passCondition: "WorkerRun records the role output.", status: "pending" }, undefined, undefined, ctx);
+		await brief.execute("tool-worker-tool-brief", { action: "upsert", loopName: "Worker_Tool", id: "b-worker-tool", objective: "Map files.", task: "Find likely files and validation commands.", criterionIds: ["c-worker-tool"], activate: true }, undefined, undefined, ctx);
+
+		const responses = [
+			"Explorer WorkerReport: likelyFiles=brief-worker-runs.ts; validationPlan=focused tests.",
+			"Governor Decision: verdict=continue; rationale=brief remains valid; requiredNextMove=run validation.",
+		];
+		const capturedRequests: any[] = [];
+		events.on("subagent:slash:request", (data) => {
+			capturedRequests.push(data);
+			const request = data as { requestId: string; params: Record<string, unknown> };
+			const output = responses.shift() ?? "ok";
+			events.emit("subagent:slash:started", { requestId: request.requestId });
+			events.emit("subagent:slash:response", {
+				requestId: request.requestId,
+				isError: false,
+				result: { content: [{ type: "text", text: output }], details: { results: [{ agent: request.params.agent, exitCode: 0, finalOutput: output }] } },
+			});
+		});
+
+		const explorer = await worker.execute("tool-worker-tool-explorer", { action: "run", loopName: "Worker_Tool", role: "explorer", output: false }, undefined, undefined, ctx);
+		assert.match(explorer.content[0].text, /WorkerRun run1 is succeeded/);
+		assert.equal(explorer.details.workerRun.scope, "brief");
+		assert.equal(explorer.details.workerRun.expectedMutation, false);
+		assert.equal(capturedRequests[0].params.agent, "scout");
+		assert.match(capturedRequests[0].params.task, /Do not edit files/);
+
+		const governorRequest = await govern.execute("tool-worker-tool-govern", { loopName: "Worker_Tool" }, undefined, undefined, ctx);
+		const governorRequestId = governorRequest.details.request.id;
+		const governed = await worker.execute("tool-worker-tool-governor", { action: "run", loopName: "Worker_Tool", requestId: governorRequestId, output: false }, undefined, undefined, ctx);
+		assert.match(governed.content[0].text, /WorkerRun run2 is succeeded/);
+		assert.equal(governed.details.workerRun.scope, "outside_request");
+		assert.equal(governed.details.workerRun.outsideRequestId, governorRequestId);
+		assert.equal(capturedRequests[1].params.agent, "oracle");
+		assert.match(capturedRequests[1].params.task, /Adapter role: governor/);
+		assert.match(capturedRequests[1].params.task, /Do not edit files/);
+
+		const requests = await outside.execute("tool-worker-tool-outside", { loopName: "Worker_Tool" }, undefined, undefined, ctx);
+		assert.match(requests.content[0].text, new RegExp(governorRequestId));
+		assert.match(requests.content[0].text, /answered/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
