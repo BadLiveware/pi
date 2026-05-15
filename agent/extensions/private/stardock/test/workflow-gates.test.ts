@@ -80,6 +80,41 @@ test("stardock_done does not queue checklist prompts for ready-to-complete workf
 	}
 });
 
+test("stardock_done creates auditor requests for auditor gates", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
+	try {
+		const { tools, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const done = tools.get("stardock_done");
+		const payload = tools.get("stardock_outside_payload");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(done);
+		assert.ok(payload);
+
+		await start.execute("tool-workflow-audit-start", { name: "Workflow Audit", mode: "checklist", taskContent: "# Workflow audit\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await ledger.execute("tool-workflow-audit-criterion", { action: "upsertCriterion", loopName: "Workflow_Audit", id: "c-skipped", description: "Skipped criterion", passCondition: "Auditor accepts the gap.", status: "skipped" }, undefined, undefined, ctx);
+		const beforeDoneMessages = messages.length;
+		const doneResult = await done.execute("tool-workflow-audit-done", {}, undefined, undefined, ctx);
+
+		assert.equal(messages.length, beforeDoneMessages);
+		assert.match(doneResult.content[0].text, /No next checklist prompt queued because workflow is needs_auditor_review/);
+		assert.match(doneResult.content[0].text, /Auditor request auditor-1 is pending/);
+		assert.equal(doneResult.details.workflowStatus.state, "needs_auditor_review");
+		assert.equal(doneResult.details.auditorRequest.kind, "auditor_review");
+		assert.equal(doneResult.details.auditorRequest.trigger, "pre_completion");
+		assert.match(doneResult.details.auditorRequest.prompt, /Policy findings:/);
+		assert.match(doneResult.details.auditorRequest.prompt, /unresolved-completion-gate|criteria-risk-review/);
+
+		const payloadResult = await payload.execute("tool-workflow-audit-payload", { loopName: "Workflow_Audit", requestId: "auditor-1" }, undefined, undefined, ctx);
+		assert.match(payloadResult.content[0].text, /Auditor task:/);
+		assert.match(payloadResult.content[0].text, /record with stardock_auditor/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_done does not queue checklist prompts for gated workflow states", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {

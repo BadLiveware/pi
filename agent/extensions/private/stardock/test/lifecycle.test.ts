@@ -41,6 +41,7 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		assert.equal(state.taskFile, path.join(".stardock", "runs", "Demo_Loop", "task.md"));
 		assert.equal(state.mode, "checklist");
 		assert.deepEqual(state.modeState, { kind: "checklist" });
+		assert.deepEqual(state.governorState.completedMilestones, []);
 		assert.deepEqual(state.criterionLedger, { criteria: [], requirementTrace: [] });
 		assert.deepEqual(state.verificationArtifacts, []);
 		assert.deepEqual(state.briefs, []);

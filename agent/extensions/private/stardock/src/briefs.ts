@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runBriefActivate, runBriefClear, runBriefComplete, runBriefUpsert } from "./app/brief-tool.ts";
+import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
 import { type AdvisoryHandoffRole, type BriefLifecycleAction, compactText, type Criterion, type CriterionStatus, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
@@ -253,6 +254,7 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 	}
 	const artifacts = linkedArtifactIds(state, brief);
 	if (artifacts.length) lines.push("", "Linked artifact refs", `- ${artifacts.join(", ")}`);
+	if (hasGovernorMemory(state)) lines.push("", formatGovernorState(state.governorState));
 	const sections: Array<[string, string[]]> = [
 		["Acceptance criteria", brief.acceptanceCriteria],
 		["Verification required", brief.verificationRequired],

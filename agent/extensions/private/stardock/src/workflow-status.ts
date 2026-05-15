@@ -51,6 +51,10 @@ function openBreakoutReasons(state: LoopState): string[] {
 		.map((pkg) => `Breakout package ${pkg.id} is ${pkg.status} and needs a decision.`);
 }
 
+function pendingAuditorRequests(state: LoopState) {
+	return state.outsideRequests.filter((request) => request.kind === "auditor_review" && (request.status === "requested" || request.status === "in_progress"));
+}
+
 export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 	if (state.status === "completed") {
 		return { state: "completed", severity: "info", summary: `Loop ${state.name} is completed.`, reasons: [], recommendedActions: [] };
@@ -67,6 +71,17 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 			summary: "Auditor follow-up blocks gated workflow progress.",
 			reasons: compactReasons(auditorBlockers),
 			recommendedActions: [action("Inspect auditor gate policy", "stardock_policy", { action: "auditorGate", loopName: state.name }), action("Record or update auditor review", "stardock_auditor", { action: "payload", loopName: state.name })],
+		};
+	}
+
+	const auditorRequests = pendingAuditorRequests(state);
+	if (auditorRequests.length) {
+		return {
+			state: "needs_auditor_review",
+			severity: "warning",
+			summary: "An auditor review request is pending before gated workflow progress continues.",
+			reasons: compactReasons(auditorRequests.map((request) => `Auditor request ${request.id} is ${request.status} (${request.trigger}).`)),
+			recommendedActions: [action("Build auditor outside-request payload", "stardock_outside_payload", { loopName: state.name, requestId: auditorRequests[0].id }), action("Record auditor review", "stardock_auditor", { action: "record", loopName: state.name })],
 		};
 	}
 

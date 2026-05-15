@@ -4,7 +4,9 @@
 
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { type GovernorDecision, type LoopState, type OutsideRequest, type OutsideRequestKind, type OutsideRequestTrigger, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveModeState } from "./state/core.ts";
+import { evaluateAuditorPolicy, type PolicyFinding } from "./policy.ts";
+import { evaluateAuditorGatePolicy } from "./subagent-readiness-policy.ts";
+import { compactText, type GovernorDecision, type LoopState, type OutsideRequest, type OutsideRequestKind, type OutsideRequestTrigger, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveModeState } from "./state/core.ts";
 import { loadState, saveState } from "./state/store.ts";
 
 export interface OutsideRequestDeps {
@@ -59,6 +61,84 @@ function createGovernorRequest(state: LoopState, modeState: RecursiveModeState, 
 		requestedByIteration: state.iteration,
 		trigger,
 		prompt: buildGovernorPrompt(state, modeState, trigger),
+	});
+}
+
+function openAuditorRequest(state: LoopState): OutsideRequest | undefined {
+	return state.outsideRequests.find((request) => request.kind === "auditor_review" && (request.status === "requested" || request.status === "in_progress"));
+}
+
+function refsForFinding(finding: PolicyFinding): string {
+	const refs = [
+		finding.criterionIds.length ? `criteria=${finding.criterionIds.join(",")}` : "",
+		finding.artifactIds.length ? `artifacts=${finding.artifactIds.join(",")}` : "",
+		finding.finalReportIds.length ? `finalReports=${finding.finalReportIds.join(",")}` : "",
+		finding.auditorReviewIds.length ? `auditorReviews=${finding.auditorReviewIds.join(",")}` : "",
+		finding.breakoutPackageIds.length ? `breakouts=${finding.breakoutPackageIds.join(",")}` : "",
+		finding.workerReportIds.length ? `workerReports=${finding.workerReportIds.join(",")}` : "",
+		finding.advisoryHandoffIds.length ? `handoffs=${finding.advisoryHandoffIds.join(",")}` : "",
+		finding.attemptIds.length ? `attempts=${finding.attemptIds.join(",")}` : "",
+		finding.outsideRequestIds.length ? `outsideRequests=${finding.outsideRequestIds.join(",")}` : "",
+	].filter(Boolean);
+	return refs.length ? ` (${refs.join("; ")})` : "";
+}
+
+function formatFindingsForPrompt(findings: PolicyFinding[]): string {
+	return findings
+		.filter((finding) => finding.recommendation !== "ready")
+		.slice(0, 8)
+		.map((finding) => `- ${finding.id} [${finding.severity}/${finding.recommendation}] ${compactText(finding.rationale, 240)}${refsForFinding(finding)}`)
+		.join("\n");
+}
+
+function auditorTriggerFromFindings(findings: PolicyFinding[]): OutsideRequestTrigger {
+	const ids = new Set(findings.map((finding) => finding.id));
+	if ([...ids].some((id) => id.includes("subagent") || id.includes("automation") || id.includes("worker") || id.includes("evolve"))) return "automation_gate";
+	if ([...ids].some((id) => id.includes("completion") || id.includes("final") || id.includes("criteria") || id.includes("gap"))) return "pre_completion";
+	if ([...ids].some((id) => id.includes("breakout"))) return "stagnation";
+	return "periodic_audit";
+}
+
+function buildAuditorPrompt(state: LoopState, trigger: OutsideRequestTrigger, summary: string, findings: PolicyFinding[]): string {
+	const governorMemory = [
+		state.governorState.objective ? `Governor objective: ${state.governorState.objective}` : undefined,
+		state.governorState.currentStrategy ? `Current strategy: ${state.governorState.currentStrategy}` : undefined,
+		state.governorState.activeConstraints.length ? `Active constraints: ${state.governorState.activeConstraints.slice(0, 6).join("; ")}` : undefined,
+		state.governorState.knownRisks.length ? `Known risks: ${state.governorState.knownRisks.slice(0, 6).join("; ")}` : undefined,
+		state.governorState.evidenceGaps.length ? `Evidence gaps: ${state.governorState.evidenceGaps.slice(0, 6).join("; ")}` : undefined,
+	].filter((line): line is string => Boolean(line));
+	return [
+		`Audit Stardock loop "${state.name}" at iteration ${state.iteration}.`,
+		`Mode: ${state.mode}`,
+		`Trigger: ${trigger}`,
+		`Policy summary: ${summary}`,
+		governorMemory.length ? ["", "Governor memory:", ...governorMemory].join("\n") : undefined,
+		"",
+		"Policy findings:",
+		formatFindingsForPrompt(findings) || "- No non-ready findings were selected.",
+		"",
+		"Auditor task: review whether the governor direction, evidence, criteria, context routing, and automation gates remain aligned and safe. Do not mutate state or implementation. Return a compact review with status, concerns, recommendations, and required follow-ups. The parent should record the result with stardock_auditor.",
+	].filter((line): line is string => line !== undefined).join("\n");
+}
+
+export function maybeCreateAutomaticAuditorRequest(state: LoopState): OutsideRequest | undefined {
+	const existing = openAuditorRequest(state);
+	if (existing) return existing;
+	const gate = evaluateAuditorGatePolicy(state);
+	const auditor = evaluateAuditorPolicy(state);
+	const auditorFindings = auditor.findings.filter((finding) => ["criteria-risk-review", "final-report-gap-review", "automation-gate-review"].includes(finding.id));
+	const findings = gate.recommended ? gate.findings.filter((finding) => finding.recommendation === "gate_decision") : auditorFindings;
+	if (!findings.length) return undefined;
+	const trigger = auditorTriggerFromFindings(findings);
+	let id = `auditor-${state.iteration}`;
+	let suffix = 2;
+	while (state.outsideRequests.some((request) => request.id === id)) id = `auditor-${state.iteration}-${suffix++}`;
+	return addOutsideRequest(state, {
+		id,
+		kind: "auditor_review",
+		requestedByIteration: state.iteration,
+		trigger,
+		prompt: buildAuditorPrompt(state, trigger, gate.recommended ? gate.summary : auditor.summary, findings),
 	});
 }
 
@@ -144,12 +224,17 @@ export function buildOutsideRequestPayload(state: LoopState, request: OutsideReq
 		return `${common}\n\nGovernor task:\nReview the trajectory and decide the next move. Look for scaffolding drift, low-value lanes, missing measurements, and whether to continue, pivot, stop, measure, exploit existing scaffold, request research, or ask the user.\n\nReturn a concise answer plus structured decision fields:\n- verdict: continue | pivot | stop | measure | exploit_scaffold | ask_user\n- rationale\n- requiredNextMove, if any\n- forbiddenNextMoves, if any\n- evidenceGaps, if any`;
 	}
 
+	if (request.kind === "auditor_review") {
+		return `${common}\n\nAuditor task:\nReview the control loop, not implementation minutiae. Check objective alignment, criteria integrity, evidence sufficiency, context routing, governor memory, scope drift, and automation safety. Do not mutate Stardock state or code. Return a compact review that the parent can record with stardock_auditor:\n- status: passed | concerns | blocked\n- summary\n- concerns, if any\n- recommendations\n- requiredFollowups, if gated work should remain blocked`;
+	}
+
 	const researcherTasks: Record<OutsideRequestKind, string> = {
 		ideas: "Generate fresh plausible next hypotheses or implementation strategies. Prefer diverse, testable ideas over generic advice.",
 		research: "Find relevant prior art, examples, docs, or external evidence that can inform the next bounded attempt.",
 		mutation_suggestions: "Suggest concrete mutations to the current approach that can be tested in one bounded attempt.",
 		failure_analysis: "Analyze why recent attempts may have failed or stalled and propose discriminating checks.",
 		governor_review: "Review the trajectory and decide the next move.",
+		auditor_review: "Review control-loop alignment, criteria integrity, evidence sufficiency, and automation safety.",
 	};
 	return `${common}\n\nResearcher task:\n${researcherTasks[request.kind]}\n\nReturn concise, actionable findings with suggested next attempts and any evidence or sources used.`;
 }

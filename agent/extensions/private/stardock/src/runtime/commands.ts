@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { answerOutsideRequest, createManualGovernorPayload, formatOutsideRequests, getOutsideRequestPayload } from "../outside-requests.ts";
 import { DEFAULT_TEMPLATE, type LoopState } from "../state/core.ts";
-import { defaultCriterionLedger } from "../state/migration.ts";
+import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
 import { archiveDir, defaultTaskFile, ensureDir, legacyPath, runDir, sanitize, stardockDir, statePath, taskPath, tryDelete, tryRead, tryRemoveDir } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatLoop, formatRunOverview, formatRunTimeline } from "../views.ts";
@@ -95,6 +95,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 				startedAt: existing?.startedAt || new Date().toISOString(),
 				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
+				governorState: defaultGovernorState(),
 				outsideRequests: [],
 				criterionLedger: defaultCriterionLedger(),
 				verificationArtifacts: [],

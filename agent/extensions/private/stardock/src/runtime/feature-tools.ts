@@ -9,6 +9,7 @@ import { registerBreakoutTool } from "../breakout-packages.ts";
 import { registerBriefTool } from "../briefs.ts";
 import { registerBriefWorkerRunTool } from "../brief-worker-runs.ts";
 import { registerFinalReportTool } from "../final-reports.ts";
+import { registerGovernorStateTool } from "../governor-state.ts";
 import { formatCriterionCounts, registerLedgerTool } from "../ledger.ts";
 import { registerOutsideRequestTools } from "../outside-requests.ts";
 import { registerPolicyTool } from "../policy.ts";
@@ -23,6 +24,7 @@ export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime)
 	registerAuditorTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerBreakoutTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerFinalReportTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails }, formatCriterionCounts);
+	registerGovernorStateTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
 	registerLedgerTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerPolicyTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop });
 	registerWorkerReportTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });

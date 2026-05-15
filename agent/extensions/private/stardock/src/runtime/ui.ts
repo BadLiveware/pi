@@ -46,6 +46,7 @@ export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | nu
 	}
 
 	lines.push(theme.fg("dim", `Outside: ${pendingRequests}/${state.outsideRequests.length} pending`));
+	if (state.governorState.currentStrategy) lines.push(theme.fg("dim", `Strategy: ${compactText(state.governorState.currentStrategy, 88)}`));
 	if (latestDecision?.requiredNextMove) {
 		lines.push(theme.fg("warning", `Governor: ${compactText(latestDecision.requiredNextMove, 88)}`));
 	} else if (latestDecision?.verdict) {

@@ -6,6 +6,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { currentBrief } from "./briefs.ts";
 import { formatChecklistLedgerDrift, loadChecklistLedgerDrift } from "./checklist-drift.ts";
+import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
 import { criterionCounts,formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision,pendingOutsideRequests } from "./outside-requests.ts";
 import { type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
@@ -62,6 +63,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 							: undefined,
 					}
 				: undefined,
+		governorState: state.governorState,
 		outsideRequests: {
 			total: outsideRequests.length,
 			pending: pendingRequests.length,
@@ -246,6 +248,7 @@ export function formatRunOverview(ctx: ExtensionContext, state: LoopState, archi
 		lines.push("", "Active brief", `  ${activeBrief.id}: ${compactViewText(activeBrief.objective, 180)}`, `  Task: ${compactViewText(activeBrief.task, 180)}`);
 		if (activeBrief.criterionIds.length) lines.push(`  Criteria: ${activeBrief.criterionIds.join(", ")}`);
 	}
+	if (hasGovernorMemory(state)) lines.push("", formatGovernorState(state.governorState));
 	if (latestDecision) {
 		lines.push("", "Latest governor decision", `  Verdict: ${latestDecision.verdict}`, `  Rationale: ${compactViewText(latestDecision.rationale, 220) ?? "none"}`);
 		if (latestDecision.requiredNextMove) lines.push(`  Required next move: ${latestDecision.requiredNextMove}`);

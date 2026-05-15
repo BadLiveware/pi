@@ -156,9 +156,9 @@ export interface EvolveModeState {
 export type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;
 export type PromptReason = "iteration" | "reflection";
 export type StateView = "summary" | "overview" | "timeline";
-export type OutsideRequestKind = "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review";
+export type OutsideRequestKind = "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review" | "auditor_review";
 export type OutsideRequestStatus = "requested" | "in_progress" | "answered" | "dismissed";
-export type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane";
+export type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane" | "periodic_audit" | "pre_completion" | "scope_change" | "automation_gate";
 
 export interface GovernorDecision {
 	verdict: "continue" | "pivot" | "stop" | "measure" | "exploit_scaffold" | "ask_user";
@@ -179,6 +179,24 @@ export interface OutsideRequest {
 	answer?: string;
 	decision?: GovernorDecision;
 	consumedAt?: string;
+}
+
+export interface RejectedPath {
+	summary: string;
+	reason: string;
+}
+
+export interface GovernorState {
+	objective?: string;
+	currentStrategy?: string;
+	completedMilestones: string[];
+	activeConstraints: string[];
+	knownRisks: string[];
+	openQuestions: string[];
+	evidenceGaps: string[];
+	rejectedPaths: RejectedPath[];
+	nextContextHints: string[];
+	updatedAt: string;
 }
 
 export type CriterionStatus = "pending" | "passed" | "failed" | "skipped" | "blocked";
@@ -411,6 +429,7 @@ export interface LoopState {
 	completedAt?: string;
 	lastReflectionAt: number; // Last iteration we reflected at
 	modeState: LoopModeState;
+	governorState: GovernorState;
 	outsideRequests: OutsideRequest[];
 	criterionLedger: CriterionLedger;
 	verificationArtifacts: VerificationArtifact[];

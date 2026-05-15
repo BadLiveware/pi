@@ -3,6 +3,7 @@
  */
 
 import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendRecordedWorkerContextSection, appendTaskSourceSection, currentBrief } from "../briefs.ts";
+import { appendGovernorMemoryPromptSection } from "../governor-state.ts";
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
 import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/modes.ts";
@@ -44,6 +45,7 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	if (isReflection) parts.push(state.reflectInstructions, "\n---\n");
 
 	appendWorkflowStatusPromptSection(parts, state);
+	appendGovernorMemoryPromptSection(parts, state);
 	appendActiveBriefPromptSection(parts, state);
 	appendLedgerSummarySection(parts, state);
 	appendRecordedWorkerContextSection(parts, state);
@@ -122,6 +124,8 @@ const checklistModeHandler: LoopModeHandler = {
 	buildSystemInstructions(state) {
 		const brief = currentBrief(state);
 		let instructions = `You are in a Stardock loop. Task file: ${state.taskFile}\n`;
+		if (state.governorState.currentStrategy) instructions += `- Governor strategy: ${state.governorState.currentStrategy}\n`;
+		if (state.governorState.activeConstraints.length) instructions += `- Governor constraints: ${state.governorState.activeConstraints.slice(0, 3).join("; ")}\n`;
 		if (!brief) {
 			instructions += `- No active brief — create one with stardock_brief to scope this iteration\n`;
 		} else {
@@ -158,6 +162,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		if (recentAttempts.length > 0) parts.push("## Recent Attempt Reports", ...recentAttempts, "");
 		appendOutsideRequestPromptSections(parts, state);
 		appendWorkflowStatusPromptSection(parts, state);
+		appendGovernorMemoryPromptSection(parts, state);
 		appendActiveBriefPromptSection(parts, state);
 		appendRecordedWorkerContextSection(parts, state);
 		appendTaskSourceSection(parts, state, taskContent);
@@ -187,6 +192,8 @@ const recursiveModeHandler: LoopModeHandler = {
 		return [
 			"You are in a Stardock recursive loop.",
 			`- Objective: ${modeState.objective}`,
+			state.governorState.currentStrategy ? `- Governor strategy: ${state.governorState.currentStrategy}` : undefined,
+			state.governorState.activeConstraints.length ? `- Governor constraints: ${state.governorState.activeConstraints.slice(0, 3).join("; ")}` : undefined,
 			"- Work on one bounded hypothesis/attempt this iteration.",
 			modeState.validationCommand ? `- Validate with or explain: ${modeState.validationCommand}` : "- Run or describe relevant validation for the attempt.",
 			pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,

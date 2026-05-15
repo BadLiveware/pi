@@ -33,6 +33,8 @@ type WorkerReport,
 type WorkerReportStatus,
 type WorkerValidationRecord,
 } from "./core.ts";
+import { defaultGovernorState, migrateGovernorState } from "./governor-memory-migration.ts";
+export { defaultGovernorState, migrateGovernorState } from "./governor-memory-migration.ts";
 import { migrateModeState, numberOrDefault } from "./modes.ts";
 import { defaultTaskFile } from "./paths.ts";
 import { migrateWorkerRuns } from "./worker-runs-migration.ts";
@@ -474,6 +476,7 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		completedAt: typeof raw.completedAt === "string" ? raw.completedAt : undefined,
 		lastReflectionAt,
 		modeState: migrateModeState(mode, raw.modeState),
+		governorState: migrateGovernorState(raw.governorState),
 		outsideRequests: migrateOutsideRequests(raw.outsideRequests),
 		criterionLedger: migrateCriterionLedger(raw.criterionLedger),
 		verificationArtifacts: migrateVerificationArtifacts(raw.verificationArtifacts),

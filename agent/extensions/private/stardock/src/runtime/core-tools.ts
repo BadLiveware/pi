@@ -6,10 +6,11 @@ import * as path from "node:path";
 import { Type } from "typebox";
 import { currentBrief } from "../briefs.ts";
 import { loadChecklistLedgerDrift } from "../checklist-drift.ts";
+import { hasGovernorMemory } from "../governor-state.ts";
 import { formatCriterionCounts } from "../ledger.ts";
-import { latestGovernorDecision, pendingOutsideRequests } from "../outside-requests.ts";
+import { latestGovernorDecision, maybeCreateAutomaticAuditorRequest, pendingOutsideRequests } from "../outside-requests.ts";
 import { type BriefLifecycleAction, DEFAULT_REFLECT_INSTRUCTIONS, type LoopState, type StateView } from "../state/core.ts";
-import { defaultCriterionLedger } from "../state/migration.ts";
+import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
@@ -79,6 +80,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				startedAt: new Date().toISOString(),
 				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
+				governorState: defaultGovernorState(),
 				outsideRequests: [],
 				criterionLedger: defaultCriterionLedger(),
 				verificationArtifacts: [],
@@ -118,6 +120,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			if (ctx.hasPendingMessages()) return { content: [{ type: "text", text: "Pending messages already queued. Skipping stardock_done." }], details: {} };
 
 			getModeHandler(state.mode).onIterationDone(state);
+			const auditorRequest = maybeCreateAutomaticAuditorRequest(state);
 			const briefLifecycle = (params.briefLifecycle ?? "keep") as BriefLifecycleAction;
 			const lifecycleBrief = applyActiveBriefLifecycle(state, briefLifecycle);
 			state.iteration++;
@@ -135,7 +138,8 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			const workflowStatus = evaluateWorkflowStatus(state);
 			if (state.mode === "checklist" && !checklistDoneShouldQueueNext(workflowStatus)) {
 				const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
-				return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. No next checklist prompt queued because workflow is ${workflowStatus.state}.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, workflowStatus, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
+				const auditorText = auditorRequest ? ` Auditor request ${auditorRequest.id} is pending.` : "";
+				return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. No next checklist prompt queued because workflow is ${workflowStatus.state}.${lifecycleText}${auditorText}` }], details: { briefLifecycle, brief: lifecycleBrief, workflowStatus, auditorRequest, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
 			}
 			const content = tryRead(path.resolve(ctx.cwd, state.taskFile));
 			if (!content) {
@@ -144,7 +148,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			}
 			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"), { deliverAs: "followUp" });
 			const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
-			return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
+			return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, auditorRequest, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
 		},
 	});
 
@@ -184,6 +188,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 					formatCriterionCounts(state.criterionLedger),
 					`Verification artifacts: ${state.verificationArtifacts.length}`,
 					`Baseline validations: ${state.baselineValidations.length}`,
+					hasGovernorMemory(state) ? "Governor memory: recorded" : "Governor memory: empty",
 					`Final reports: ${state.finalVerificationReports.length}`,
 					`Auditor reviews: ${state.auditorReviews.length}`,
 					`Worker runs: ${state.workerRuns.length}`,

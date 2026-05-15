@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runAuditorReviewRecord } from "./app/auditor-review-tool.ts";
+import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision } from "./outside-requests.ts";
@@ -86,6 +87,8 @@ export function buildAuditorPayload(state: LoopState, focus?: string): string {
 		);
 	}
 
+	if (hasGovernorMemory(state)) lines.push("", formatGovernorState(state.governorState));
+
 	appendSection(
 		lines,
 		"Outside requests and governor decisions",
@@ -147,6 +150,12 @@ export function recordAuditorReview(ctx: ExtensionContext, loopName: string, inp
 	if (existingIndex >= 0) state.auditorReviews[existingIndex] = review;
 	else state.auditorReviews.push(review);
 	state.auditorReviews.sort((a, b) => a.id.localeCompare(b.id));
+	for (const request of state.outsideRequests) {
+		if (request.kind !== "auditor_review" || (request.status !== "requested" && request.status !== "in_progress")) continue;
+		request.status = "answered";
+		request.answer = `Recorded auditor review ${review.id}: ${review.summary}`;
+		request.consumedAt = now;
+	}
 	saveState(ctx, state);
 	return { ok: true, state, review, created: existingIndex < 0 };
 }

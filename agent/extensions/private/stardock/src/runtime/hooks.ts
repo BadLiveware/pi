@@ -1,6 +1,7 @@
 /** Stardock session and agent lifecycle hooks. */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { maybeCreateAutomaticAuditorRequest } from "../outside-requests.ts";
 import { COMPLETE_MARKER } from "../state/core.ts";
 import { existingStatePath, safeMtimeMs } from "../state/paths.ts";
 import { openMutableWorkerRun } from "../worker-runs.ts";
@@ -29,6 +30,13 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 			const openRun = openMutableWorkerRun(state);
 			if (openRun) {
 				pi.sendUserMessage(`Stardock completion blocked: implementer WorkerRun ${openRun.id} is ${openRun.status}. Review it with stardock_brief_worker({ action: "review", runId: "${openRun.id}" }) or dismiss it before completing.`, { deliverAs: "followUp" });
+				return;
+			}
+			const auditorRequest = maybeCreateAutomaticAuditorRequest(state);
+			if (auditorRequest) {
+				saveState(ctx, state);
+				runtime.updateUI(ctx);
+				pi.sendUserMessage(`Stardock completion blocked: auditor request ${auditorRequest.id} is ${auditorRequest.status}. Build the payload with stardock_outside_payload({ requestId: "${auditorRequest.id}" }), record the review with stardock_auditor, or escalate to the user before completing.`, { deliverAs: "followUp" });
 				return;
 			}
 			runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────

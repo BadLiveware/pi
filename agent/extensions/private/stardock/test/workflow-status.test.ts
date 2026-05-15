@@ -1,7 +1,7 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 import { evaluateWorkflowStatus } from "../src/workflow-status.ts";
-import { defaultCriterionLedger } from "../src/state/migration.ts";
+import { defaultCriterionLedger, defaultGovernorState } from "../src/state/migration.ts";
 import { defaultModeState } from "../src/state/modes.ts";
 import type { LoopState } from "../src/state/core.ts";
 
@@ -21,6 +21,7 @@ function baseState(overrides: Partial<LoopState> = {}): LoopState {
 		startedAt: "2026-05-08T00:00:00.000Z",
 		lastReflectionAt: 0,
 		modeState: defaultModeState("checklist"),
+		governorState: defaultGovernorState(),
 		outsideRequests: [],
 		criterionLedger: defaultCriterionLedger(),
 		verificationArtifacts: [],
@@ -70,6 +71,16 @@ test("workflow status surfaces auditor blockers before other work", () => {
 	}));
 	assert.equal(status.state, "needs_auditor_review");
 	assert.equal(status.severity, "blocked");
+});
+
+test("workflow status surfaces pending auditor requests", () => {
+	const status = evaluateWorkflowStatus(baseState({
+		outsideRequests: [{ id: "auditor-1", kind: "auditor_review", status: "requested", requestedAt: "2026-05-08T00:00:00.000Z", requestedByIteration: 1, trigger: "pre_completion", prompt: "Audit before completion." }],
+	}));
+	assert.equal(status.state, "needs_auditor_review");
+	assert.equal(status.severity, "warning");
+	assert.equal(status.recommendedActions[0].tool, "stardock_outside_payload");
+	assert.equal(status.recommendedActions[0].args?.requestId, "auditor-1");
 });
 
 test("workflow status surfaces breakout decisions for unresolved criteria", () => {
