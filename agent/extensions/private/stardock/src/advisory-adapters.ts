@@ -25,6 +25,8 @@ interface AdapterPayloadInput {
 	briefId?: string;
 	agentName?: string;
 	model?: string;
+	thinking?: string;
+	fallbackModel?: string;
 	context?: AdapterContext;
 }
 
@@ -36,9 +38,14 @@ function adapterContext(value: unknown): AdapterContext {
 	return value === "fork" ? "fork" : "fresh";
 }
 
+function currentModelId(ctx: ExtensionContext): string | undefined {
+	const model = ctx.model;
+	return model ? `${model.provider}/${model.id}` : undefined;
+}
+
 export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input: AdapterPayloadInput): { ok: true; payload: string; invocation: Record<string, unknown>; role: AdvisoryAdapterRole } | { ok: false; error: string } {
 	const role = adapterRole(input.role);
-	const built = buildBriefWorkerInvocation(state, cwd, { role, briefId: input.briefId, agentName: input.agentName, model: input.model, context: adapterContext(input.context) });
+	const built = buildBriefWorkerInvocation(state, cwd, { role, briefId: input.briefId, agentName: input.agentName, model: input.model, thinking: input.thinking, fallbackModel: input.fallbackModel, context: adapterContext(input.context) });
 	if (!built.ok) return built;
 	const invocation = built.invocation;
 	const payload = [
@@ -59,13 +66,14 @@ export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input
 const adapterRoleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner")], { description: "Advisory adapter role. explorer maps context; test_runner runs bounded validation. Default: explorer." });
 const adapterTargetSchema = Type.Union([Type.Literal("pi_subagents")], { description: "Adapter target. Currently only pi_subagents is formatted." });
 const adapterContextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode for the suggested invocation. Default: fresh." });
-const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability and cost fit the brief complexity." });
+const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the brief complexity." });
+const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
 
 export function registerAdvisoryAdapterTool(pi: ExtensionAPI, deps: AdvisoryAdapterToolDeps): void {
 	pi.registerTool({
 		name: "stardock_advisory_adapter",
 		label: "Build Stardock Advisory Adapter Payloads",
-		description: "Build ready-to-run parent-owned explorer/test-runner adapter payloads, optionally with a subagent model override, without executing providers or mutating Stardock state.",
+		description: "Build ready-to-run parent-owned explorer/test-runner adapter payloads, optionally with subagent model and thinking-level overrides, without executing providers or mutating Stardock state.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("payload")], { description: "payload builds a ready-to-run parent-owned adapter invocation." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
@@ -74,6 +82,7 @@ export function registerAdvisoryAdapterTool(pi: ExtensionAPI, deps: AdvisoryAdap
 			briefId: Type.Optional(Type.String({ description: "Brief id. Defaults to the active brief." })),
 			agentName: Type.Optional(Type.String({ description: "Subagent name to use in the suggested invocation. Defaults to Stardock's current transport agent for the role." })),
 			model: Type.Optional(modelSchema),
+			thinking: Type.Optional(thinkingSchema),
 			context: Type.Optional(adapterContextSchema),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx: ExtensionContext) {
@@ -83,7 +92,7 @@ export function registerAdvisoryAdapterTool(pi: ExtensionAPI, deps: AdvisoryAdap
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
-			const payload = buildAdvisoryAdapterPayload(state, ctx.cwd, params);
+			const payload = buildAdvisoryAdapterPayload(state, ctx.cwd, { ...params, fallbackModel: currentModelId(ctx) });
 			if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName, target } };
 			return { content: [{ type: "text", text: payload.payload }], details: { loopName, target, role: payload.role, invocation: payload.invocation } };
 		},

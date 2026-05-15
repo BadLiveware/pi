@@ -57,7 +57,7 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 			});
 		});
 
-		const result = await workerRun.execute("tool-brief-worker-run", { action: "run", loopName: "Brief_Worker", role: "explorer", model: "test/worker-model" }, undefined, undefined, ctx);
+		const result = await workerRun.execute("tool-brief-worker-run", { action: "run", loopName: "Brief_Worker", role: "explorer", model: "test/worker-model", thinking: "xhigh" }, undefined, undefined, ctx);
 		assert.match(result.content[0].text, /Subagent completed\./);
 		assert.match(result.content[0].text, /Recorded WorkerReport wr1/);
 		assert.match(result.content[0].text, /Explorer mapped briefs\.ts/);
@@ -68,7 +68,7 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 		assert.match(result.details.report.reviewHints[0], /Worker output refs:/);
 		assert.equal(result.details.subagent.requestId, capturedRequest.requestId);
 		assert.equal(capturedRequest.params.agent, "scout");
-		assert.equal(capturedRequest.params.model, "test/worker-model");
+		assert.equal(capturedRequest.params.model, "test/worker-model:xhigh");
 		assert.equal(capturedRequest.params.context, "fresh");
 		assert.equal(capturedRequest.params.async, false);
 		assert.equal(capturedRequest.params.clarify, false);
@@ -77,7 +77,8 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 		assert.match(capturedRequest.params.task, /Adapter role: explorer/);
 		assert.match(capturedRequest.params.task, /Stardock advisory worker payload/);
 		assert.match(capturedRequest.params.task, /c-brief-worker \[pending\]/);
-		assert.equal(result.details.workerRun.model, "test/worker-model");
+		assert.equal(result.details.workerRun.model, "test/worker-model:xhigh");
+		assert.equal(result.details.workerRun.thinking, "xhigh");
 
 		const listed = await workerReport.execute("tool-brief-worker-list", { action: "list", loopName: "Brief_Worker" }, undefined, undefined, ctx);
 		assert.match(listed.content[0].text, /Reports: 1 total/);

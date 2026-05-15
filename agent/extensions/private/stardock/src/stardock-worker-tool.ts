@@ -12,7 +12,7 @@ import { formatWorkerRunOverview, openMutableWorkerRun, reviewWorkerRun, updateW
 import { compactText, nextSequentialId, type AdvisoryHandoffRole, type ChangedFileReport, type IterationBrief, type LoopState, type OutsideRequest, type OutsideRequestKind, type WorkerRun, type WorkerRunScope } from "./state/core.ts";
 import { sanitize } from "./state/paths.ts";
 import { loadState, saveState } from "./state/store.ts";
-import { buildBriefWorkerInvocation, buildLoopWorkerInvocation, buildRequestWorkerInvocation, classifyWorkerReportStatus, classifyWorkerRunStatus, defaultWorkerAgent, isBriefScopedWorkerRole, isStardockWorkerRole, workerRoleDefinition, type StardockWorkerRole, type WorkerContext } from "./worker-role-registry.ts";
+import { buildBriefWorkerInvocation, buildLoopWorkerInvocation, buildRequestWorkerInvocation, classifyWorkerReportStatus, classifyWorkerRunStatus, defaultWorkerAgent, isBriefScopedWorkerRole, isStardockWorkerRole, normalizeWorkerThinking, workerRoleDefinition, type StardockWorkerRole, type WorkerContext } from "./worker-role-registry.ts";
 
 export interface StardockWorkerToolDeps {
 	getCurrentLoop(): string | null;
@@ -36,6 +36,7 @@ export interface WorkerRunParams {
 	reviewRationale?: string;
 	agentName?: string;
 	model?: string;
+	thinking?: string;
 	context?: WorkerContext;
 	output?: string | boolean;
 	outputMode?: OutputMode;
@@ -67,6 +68,11 @@ function inferRole(params: WorkerRunParams, request?: OutsideRequest): StardockW
 function defaultWorkerOutputPath(state: LoopState, scopeId: string, role: StardockWorkerRole): string {
 	const stamp = new Date().toISOString().replace(/[^0-9A-Za-z]+/g, "-").replace(/-$/, "");
 	return path.join(".stardock", "runs", sanitize(state.name), "workers", `${stamp}-${sanitize(scopeId)}-${role}.md`);
+}
+
+function currentModelId(ctx: ExtensionContext): string | undefined {
+	const model = ctx.model;
+	return model ? `${model.provider}/${model.id}` : undefined;
 }
 
 function contentSummary(response: SubagentResponse, reportId?: string, run?: WorkerRun): string {
@@ -102,10 +108,10 @@ function markRequestAnswered(ctx: ExtensionContext, loopName: string, requestId:
 	saveState(ctx, state);
 }
 
-function buildInvocationForScope(state: LoopState, cwd: string, params: WorkerRunParams, role: StardockWorkerRole, brief: IterationBrief | undefined, request: OutsideRequest | undefined) {
-	if (brief && isBriefScopedWorkerRole(role)) return buildBriefWorkerInvocation(state, cwd, { role, briefId: brief.id, agentName: params.agentName, model: params.model, context: params.context });
-	if (request) return buildRequestWorkerInvocation(state, cwd, { role, request, agentName: params.agentName, model: params.model, context: params.context });
-	if (workerRoleDefinition(role).scopes.includes("loop")) return buildLoopWorkerInvocation(state, cwd, { role, agentName: params.agentName, model: params.model, context: params.context });
+function buildInvocationForScope(state: LoopState, cwd: string, params: WorkerRunParams, role: StardockWorkerRole, brief: IterationBrief | undefined, request: OutsideRequest | undefined, fallbackModel?: string) {
+	if (brief && isBriefScopedWorkerRole(role)) return buildBriefWorkerInvocation(state, cwd, { role, briefId: brief.id, agentName: params.agentName, model: params.model, thinking: params.thinking, fallbackModel, context: params.context });
+	if (request) return buildRequestWorkerInvocation(state, cwd, { role, request, agentName: params.agentName, model: params.model, thinking: params.thinking, fallbackModel, context: params.context });
+	if (workerRoleDefinition(role).scopes.includes("loop")) return buildLoopWorkerInvocation(state, cwd, { role, agentName: params.agentName, model: params.model, thinking: params.thinking, fallbackModel, context: params.context });
 	return { ok: false as const, error: `Role "${role}" requires an active brief or briefId.` };
 }
 
@@ -119,7 +125,7 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 	if (!brief && !request && !roleDefinition.scopes.includes("loop")) return { content: [textContent("No active brief. Pass briefId or activate a brief first.")], details: { loopName, role }, isError: true };
 
 	const agentName = params.agentName?.trim() || defaultWorkerAgent(role);
-	const model = params.model?.trim();
+	const thinking = normalizeWorkerThinking(params.thinking);
 	if (role === "implementer") {
 		const openRun = openMutableWorkerRun(state);
 		if (openRun) return { content: [textContent(`Cannot start implementer worker: WorkerRun ${openRun.id} is ${openRun.status}. Review, dismiss, or wait for it before starting another mutable worker.`)], details: { loopName, workerRun: openRun }, isError: true };
@@ -130,13 +136,14 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 		}
 	}
 
-	const built = buildInvocationForScope(state, ctx.cwd, params, role, brief, request);
+	const built = buildInvocationForScope(state, ctx.cwd, params, role, brief, request, currentModelId(ctx));
 	if (!built.ok) return { content: [textContent(built.error)], details: { loopName, role }, isError: true };
 	const scope: WorkerRunScope = built.scope;
 	const scopeId = brief?.id ?? request?.id ?? "loop";
 	const output = params.output === false ? false : typeof params.output === "string" ? params.output : defaultWorkerOutputPath(state, scopeId, role);
 	const outputMode: OutputMode = params.outputMode ?? (output === false ? "inline" : "file-only");
 	const invocation = { ...built.invocation, output, outputMode, async: false, clarify: false };
+	const model = typeof built.invocation.model === "string" ? built.invocation.model : undefined;
 	const requestId = `stardock-${sanitize(state.name)}-${sanitize(scopeId)}-${role}-${randomUUID().slice(0, 8)}`;
 	const now = new Date().toISOString();
 	const run: WorkerRun = {
@@ -149,6 +156,7 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 		requestId,
 		agentName,
 		model,
+		thinking,
 		context: params.context === "fork" ? "fork" : "fresh",
 		outputMode,
 		outputPath: typeof output === "string" ? output : undefined,
@@ -222,7 +230,8 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 
 const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("researcher"), Type.Literal("reviewer")], { description: "Worker role. Roles are Stardock-owned prompt/output contracts; pi-subagents is only the execution transport." });
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
-const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability and cost fit the role complexity." });
+const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the role complexity." });
+const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
 const outputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file-only")], { description: "Return subagent output inline or as a concise file reference. Default: file-only." });
 const outputSchema = Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }], description: "Output file path for subagent findings, or false to disable saved output. Default is a .stardock/runs/<loop>/workers path." });
 
@@ -240,7 +249,7 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 	pi.registerTool({
 		name: "stardock_worker",
 		label: "Run Stardock Worker",
-		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence. Use this instead of raw subagent calls for Stardock work. Implementer runs are serial and require parent review.",
+		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence, with optional model and thinking-level overrides. Use this instead of raw subagent calls for Stardock work. Implementer runs are serial and require parent review.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review accepts or dismisses an implementer run." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
@@ -252,6 +261,7 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 			reviewRationale: Type.Optional(Type.String({ description: "Parent/governor rationale when accepting or dismissing an implementer WorkerRun." })),
 			agentName: Type.Optional(Type.String({ description: "Transport subagent name. Defaults to Stardock's current transport agent for the role." })),
 			model: Type.Optional(modelSchema),
+			thinking: Type.Optional(thinkingSchema),
 			context: Type.Optional(contextSchema),
 			output: Type.Optional(outputSchema),
 			outputMode: Type.Optional(outputModeSchema),

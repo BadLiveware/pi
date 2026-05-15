@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyWorkerReportStatus, classifyWorkerRunStatus, workerInstructions } from "../src/worker-role-registry.ts";
+import { classifyWorkerReportStatus, classifyWorkerRunStatus, modelWithThinkingSuffix, normalizeWorkerThinking, workerInstructions } from "../src/worker-role-registry.ts";
 
 const noChanges: never[] = [];
+
+test("worker thinking levels are normalized and encoded as model suffixes", () => {
+	assert.equal(normalizeWorkerThinking("none"), "off");
+	assert.equal(modelWithThinkingSuffix("openai-codex/gpt-5.5", "xhigh"), "openai-codex/gpt-5.5:xhigh");
+	assert.equal(modelWithThinkingSuffix("openai-codex/gpt-5.5:medium", "high"), "openai-codex/gpt-5.5:high");
+	assert.equal(modelWithThinkingSuffix("amazon-bedrock/anthropic.claude-opus-4-6-v1:0", "off"), "amazon-bedrock/anthropic.claude-opus-4-6-v1:0:off");
+	assert.equal(modelWithThinkingSuffix(undefined, "low", "openai-codex/gpt-5.5"), "openai-codex/gpt-5.5:low");
+});
 
 test("read-only Stardock worker roles explicitly forbid edits", () => {
 	for (const role of ["explorer", "test_runner", "governor", "auditor", "researcher", "reviewer"] as const) {

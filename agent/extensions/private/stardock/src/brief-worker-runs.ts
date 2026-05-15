@@ -11,7 +11,8 @@ export interface BriefWorkerRunDeps {
 
 const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer")], { description: "Worker role. explorer maps context; test_runner runs bounded validation; implementer performs one serial mutable brief-scoped edit. Default: explorer." });
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
-const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability and cost fit the brief complexity." });
+const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the brief complexity." });
+const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
 const outputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file-only")], { description: "Return subagent output inline or as a concise file reference. Default: file-only." });
 const outputSchema = Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }], description: "Output file path for subagent findings, or false to disable saved output. Default is a .stardock/runs/<loop>/workers path." });
 
@@ -19,7 +20,7 @@ export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRu
 	pi.registerTool({
 		name: "stardock_brief_worker",
 		label: "Run Stardock Brief Worker",
-		description: "Compatibility/convenience wrapper for brief-scoped Stardock worker roles. Prefer stardock_worker for new workflows; this tool uses the same execution path for explorer, test_runner, and implementer. Implementer runs are serial, mutable, and require parent review before another implementer can run.",
+		description: "Compatibility/convenience wrapper for brief-scoped Stardock worker roles, with optional model and thinking-level overrides. Prefer stardock_worker for new workflows; this tool uses the same execution path for explorer, test_runner, and implementer. Implementer runs are serial, mutable, and require parent review before another implementer can run.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit brief-scoped subagent; review accepts or dismisses an implementer run." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
@@ -30,6 +31,7 @@ export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRu
 			reviewRationale: Type.Optional(Type.String({ description: "Parent/governor rationale when accepting or dismissing an implementer WorkerRun." })),
 			agentName: Type.Optional(Type.String({ description: "Subagent name. Defaults to Stardock's current transport agent for the role." })),
 			model: Type.Optional(modelSchema),
+			thinking: Type.Optional(thinkingSchema),
 			context: Type.Optional(contextSchema),
 			output: Type.Optional(outputSchema),
 			outputMode: Type.Optional(outputModeSchema),

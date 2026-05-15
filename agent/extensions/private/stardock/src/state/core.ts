@@ -375,6 +375,7 @@ export interface WorkerRun {
 	requestId: string;
 	agentName: string;
 	model?: string;
+	thinking?: string;
 	context: "fresh" | "fork";
 	outputMode: "inline" | "file-only";
 	outputPath?: string;

@@ -7,6 +7,7 @@ export type StardockWorkerRole = AdvisoryHandoffRole;
 export type BriefScopedWorkerRole = Extract<AdvisoryHandoffRole, "explorer" | "test_runner" | "implementer" | "reviewer">;
 export type WorkerContext = "fresh" | "fork";
 export type WorkerMutability = "read_only" | "mutable";
+export type WorkerThinkingLevel = string;
 export type WorkerScope = "brief" | "outside_request" | "loop";
 
 export interface StardockWorkerRoleDefinition {
@@ -31,6 +32,8 @@ export interface BuildWorkerInvocationInput {
 	request?: OutsideRequest;
 	agentName?: string;
 	model?: string;
+	thinking?: WorkerThinkingLevel;
+	fallbackModel?: string;
 	context?: WorkerContext;
 }
 
@@ -207,8 +210,32 @@ function contextMode(value: unknown): WorkerContext {
 	return value === "fork" ? "fork" : "fresh";
 }
 
+const KNOWN_THINKING_SUFFIXES = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
+
+export function normalizeWorkerThinking(value: unknown): WorkerThinkingLevel | undefined {
+	if (typeof value !== "string") return undefined;
+	const thinking = value.trim();
+	if (!thinking) return undefined;
+	return thinking.toLowerCase() === "none" ? "off" : thinking;
+}
+
+function replaceThinkingSuffix(model: string, thinking: WorkerThinkingLevel): string {
+	const colonIndex = model.lastIndexOf(":");
+	if (colonIndex === -1) return `${model}:${thinking}`;
+	const suffix = model.slice(colonIndex + 1);
+	if (!KNOWN_THINKING_SUFFIXES.has(suffix)) return `${model}:${thinking}`;
+	return `${model.slice(0, colonIndex)}:${thinking}`;
+}
+
+export function modelWithThinkingSuffix(model: string | undefined, thinking: WorkerThinkingLevel | undefined, fallbackModel?: string): string | undefined {
+	const baseModel = model?.trim() || (thinking ? fallbackModel?.trim() : undefined);
+	if (!baseModel) return undefined;
+	return thinking ? replaceThinkingSuffix(baseModel, thinking) : baseModel;
+}
+
 function invocationFor(role: StardockWorkerRole, task: string, cwd: string, input: BuildWorkerInvocationInput): Record<string, unknown> {
-	const model = input.model?.trim();
+	const thinking = normalizeWorkerThinking(input.thinking);
+	const model = modelWithThinkingSuffix(input.model, thinking, input.fallbackModel);
 	return {
 		agent: input.agentName?.trim() || defaultWorkerAgent(role),
 		...(model ? { model } : {}),

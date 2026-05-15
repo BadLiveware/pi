@@ -20,7 +20,7 @@ export function formatWorkerRunOverview(state: LoopState): string {
 	if (!state.workerRuns.length) return lines.join("\n");
 	for (const run of state.workerRuns.slice(0, 12)) {
 		const scope = run.briefId ? `brief=${run.briefId}` : run.outsideRequestId ? `request=${run.outsideRequestId}` : `scope=${run.scope ?? "loop"}`;
-		lines.push(`- ${run.id} [${run.status}/${run.role}] ${scope} agent=${run.agentName}${run.model ? ` model=${run.model}` : ""}${run.reportId ? ` report=${run.reportId}` : ""}`);
+		lines.push(`- ${run.id} [${run.status}/${run.role}] ${scope} agent=${run.agentName}${run.model ? ` model=${run.model}` : ""}${run.thinking ? ` thinking=${run.thinking}` : ""}${run.reportId ? ` report=${run.reportId}` : ""}`);
 		if (run.summary) lines.push(`  ${compactText(run.summary, 160)}`);
 		if (run.changedFiles.length) lines.push(`  Files: ${run.changedFiles.slice(0, 4).map((file) => file.path).join(", ")}${run.changedFiles.length > 4 ? ",..." : ""}`);
 		if (run.reviewRationale) lines.push(`  Review: ${compactText(run.reviewRationale, 140)}`);

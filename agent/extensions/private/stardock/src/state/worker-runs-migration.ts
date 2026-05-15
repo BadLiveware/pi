@@ -62,6 +62,7 @@ export function migrateWorkerRuns(value: unknown): WorkerRun[] {
 				requestId,
 				agentName: typeof run.agentName === "string" && run.agentName.trim() ? compactText(run.agentName.trim(), 120) ?? run.agentName.trim() : "worker",
 				model: typeof run.model === "string" && run.model.trim() ? compactText(run.model.trim(), 120) ?? run.model.trim() : undefined,
+				thinking: typeof run.thinking === "string" && run.thinking.trim() ? compactText(run.thinking.trim(), 40) ?? run.thinking.trim() : undefined,
 				context: run.context === "fork" ? "fork" : "fresh",
 				outputMode: run.outputMode === "inline" ? "inline" : "file-only",
 				outputPath: typeof run.outputPath === "string" && run.outputPath.trim() ? compactText(run.outputPath.trim(), 240) ?? run.outputPath.trim() : undefined,

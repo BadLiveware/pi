@@ -2,7 +2,7 @@
 
 Adds a `list_pi_models` tool that lets agents inspect Pi's current model registry before choosing or recommending a model.
 
-Use it when model choice should depend on what is actually available in your Pi setup: auth status, local support notes, enabled/cycling preferences, context size, capabilities, quota guidance, and optional price data.
+Use it when model choice should depend on what is actually available in your Pi setup: auth status, local support notes, enabled/cycling preferences, context size, capabilities, supported thinking levels, quota guidance, and optional price data.
 
 ## Install
 
@@ -39,10 +39,11 @@ Default output is intentionally compact:
 - `auth`, `support`, and `enabled` status
 - context and max output tokens
 - capability marker: `text`, `think`, `img`, or `think+img`
+- supported Pi thinking levels, shown as `off`, `min`, `low`, `med`, `high`, and `xhi` in the compact table
 - price tier and rough relative cost
 - quota/scarcity guidance
 
-Pass `includeDetails: true` for verbose use/avoid guidance. Pass `includePricing: true` for numeric input/output prices and relative ratios.
+Pass `includeDetails: true` for verbose use/avoid guidance and full thinking level names. Pass `includePricing: true` for numeric input/output prices and relative ratios. Structured tool details include `thinkingLevels` and any model-specific `thinkingLevelMap`; Pi uses `off` for provider no/none thinking.
 
 ## Tool parameters
 
