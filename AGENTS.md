@@ -14,7 +14,9 @@ This repository contains the source for your global pi agent instructions and su
 - Start extension work with vertical slices. Put behavior, rendering, schemas, persistence, artifact handling, and tests in feature/workflow modules from the beginning; keep `index.ts` mostly registration and wiring.
 - Do not grow massive single-file extensions unless it is truly the best option (it probably is not). If an extension file is already large, add new behavior in a slice module instead of making the large file larger.
 - Never satisfy extension file-size guards by compressing formatting, merging readable statements onto one line, or deleting useful whitespace; split into slice modules instead.
-- Fast forward pushes to main are allowed, as long as gitleaks commit hook passes 
+- When designing agent-facing tools, extensions, skills, commands, or prompts, model the expected agent flow and remove semantically duplicate steps. For example, a flow like `code_intel_read_symbol_content -> read same range -> edit/write` wastes tokens and time; either return locator-only output that makes the later `read` the first source read, or return complete source/state output that lets the agent proceed without rereading the same thing.
+- Prefer tool outputs that make the next necessary action explicit: include precise read/edit hints for locator outputs, or include completeness/freshness metadata for source/state outputs. If another read or status call is only needed because the first tool omitted equivalent information, fix the tool interface instead of teaching agents to do redundant follow-ups.
+- Fast-forward pushes to main are allowed, as long as the gitleaks commit hook passes.
 
 ## Layout
 
