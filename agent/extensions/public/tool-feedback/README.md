@@ -86,7 +86,7 @@ Other options:
 
 ### Extra feedback fields
 
-The built-in feedback schema stays stable, but you can add project- or user-specific fields. The active prompt lists these fields and agents answer them inside `fieldResponses`.
+The built-in feedback schema stays stable, but you can add project- or user-specific fields. The active prompt lists these fields and agents answer them inside `fieldResponses`. Set `required: true` for fields you want every feedback prompt to answer; invalid or missing required answers are logged in `fieldResponseErrors`.
 
 ```json
 {
@@ -135,11 +135,12 @@ Read-only state/config inspection. Use it to see the loaded mode, watch rules, c
 
 ### `tool_feedback`
 
-Records one structured feedback entry. Typical agent response after a feedback prompt:
+Records one structured feedback entry. When several watched tools were used and the experience differed by tool, agents can set `primaryWatchedTool` and optional `perToolResponses` keyed by tool name. Typical agent response after a feedback prompt:
 
 ```json
 {
   "watchedTools": ["code_intel_impact_map"],
+  "primaryWatchedTool": "code_intel_impact_map",
   "perceivedUsefulness": "medium",
   "wouldUseAgainSameSituation": "yes",
   "followupWasRoutine": "yes",
@@ -151,6 +152,12 @@ Records one structured feedback entry. Typical agent response after a feedback p
   "improvement": "better_summary",
   "fieldResponses": {
     "rankingQuality": "mixed"
+  },
+  "perToolResponses": {
+    "code_intel_impact_map": {
+      "outputSeemedTooNoisy": "yes",
+      "fieldResponses": { "rankingQuality": "mixed" }
+    }
   }
 }
 ```

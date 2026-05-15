@@ -109,7 +109,7 @@ Default log directory:
 
 Each session writes its own `<session-id>.jsonl` file to avoid contention between concurrent Pi sessions. Set `PI_CODE_INTEL_USAGE_LOG` only when you explicitly want a single-file override for tests/debugging.
 
-Recorded metadata includes tool names, timestamps, repo/cwd, sanitized parameter shapes, result counts/status, duration, and coarse adjacent-tool categories such as `read`, `edit`, `bash:search`, or `bash:test`.
+Recorded metadata includes tool names, timestamps, stable per-call invocation ids, repo/cwd, sanitized parameter shapes, returned-file counts/ranks, result counts/status, truncation/max-result hints, duration, and coarse adjacent-tool categories such as `read`, `edit`, `bash:search`, or `bash:test`. Follow-up records can indicate whether a read/edit matched a returned file and its rank, or whether a later search/test looked like compensatory search or validation.
 
 Not recorded by default: prompts, full tool outputs, file contents, raw shell commands, raw search queries, raw edit text, or raw code-intel symbol/query/pattern values.
 
@@ -303,6 +303,13 @@ Focused extension tests use small temp repos for determinism:
 cd agent/extensions
 npm run typecheck
 node --experimental-strip-types --test private/code-intelligence/index.test.ts
+```
+
+A small read-next quality fixture is available as a dogfood eval:
+
+```bash
+cd agent/extensions
+npm run eval:code-intel
 ```
 
 Large repositories under `~/code/external/` or active local projects are useful for manual smoke and usefulness checks, but not required for deterministic tests.

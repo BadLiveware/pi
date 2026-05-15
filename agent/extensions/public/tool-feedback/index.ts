@@ -7,6 +7,7 @@ import {
 	feedbackLogPath,
 	feedbackPrompt,
 	feedbackRecord,
+	invocationIdFor,
 	isRecord,
 	loadToolFeedbackConfig,
 	logSafeFeedbackRecord,
@@ -17,6 +18,7 @@ import {
 	resultErrorKind,
 	resultOk,
 	resultTruncated,
+	sessionIdFromContext,
 	stringValue,
 	unique,
 	type AgentUsage,
@@ -131,6 +133,8 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 		description: "Record concise structured feedback after using watched tools. This stores feedback only; it does not change the watched tool.",
 		parameters: Type.Object({
 			watchedTools: Type.Array(Type.String(), { description: "Watched tool names this feedback covers." }),
+			primaryWatchedTool: Type.Optional(Type.String({ description: "Primary watched tool this feedback mostly concerns when multiple tools were used." })),
+			perToolResponses: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Optional per-tool structured responses when multiple watched tools differed materially. Keys are watched tool names; values may include base feedback fields and fieldResponses." })),
 			perceivedUsefulness: Type.Union([Type.Literal("high"), Type.Literal("medium"), Type.Literal("low"), Type.Literal("none"), Type.Literal("unknown")], { description: "How useful the tool felt for this task. Allowed values are: `high`, `medium`, `low`, `none`, `unknown`." }),
 			wouldUseAgainSameSituation: Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unsure"), Type.Literal("unknown")], { description: "Whether you would use the same tool again for a similar situation. Allowed values are: `yes`, `no`, `unsure`, `unknown`." }),
 			followupWasRoutine: Type.Optional(Type.Union([Type.Literal("yes"), Type.Literal("no"), Type.Literal("unknown")], { description: "Whether follow-up work felt routine rather than caused by tool insufficiency. Allowed values are: `yes`, `no`, `unknown`." })),
@@ -196,6 +200,7 @@ export default function toolFeedback(pi: ExtensionAPI): void {
 		const watched: WatchedToolCall & { startedAt: number } = {
 			toolName,
 			toolCallId,
+			invocationId: invocationIdFor(sessionIdFromContext(ctx), toolCallId),
 			category,
 			confirmReferences: inputRecord ? stringValue(inputRecord.confirmReferences) : undefined,
 			turnIndex: turn.turnIndex,

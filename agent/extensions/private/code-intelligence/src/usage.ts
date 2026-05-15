@@ -16,7 +16,9 @@ type UsageEvent = {
 	cwd?: string;
 	toolName: string;
 	category: string;
+	invocationId?: string;
 	inputShape?: Record<string, unknown>;
+	followupShape?: Record<string, unknown>;
 	resultShape?: Record<string, unknown>;
 	durationMs?: number;
 };
@@ -28,10 +30,30 @@ type PendingToolCall = {
 	cwd?: string;
 	toolName: string;
 	category: string;
+	invocationId: string;
 	inputShape?: Record<string, unknown>;
+	followupShape?: Record<string, unknown>;
+};
+
+type ReturnedFileRecord = {
+	file: string;
+	rank: number;
+	source: string;
+};
+
+type CodeIntelResultIndex = {
+	invocationId: string;
+	sessionId: string;
+	repoRoot?: string;
+	cwd?: string;
+	toolName: string;
+	timestampMs: number;
+	returnedFiles: ReturnedFileRecord[];
 };
 
 const pendingToolCalls = new Map<string, PendingToolCall>();
+const recentCodeIntelResults: CodeIntelResultIndex[] = [];
+const maxRecentCodeIntelResults = 80;
 const codeIntelPrefix = "code_intel_";
 
 function usageLogDir(): string {
@@ -65,6 +87,10 @@ function shortHash(value: string): string {
 	return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
+function invocationIdFor(sessionId: string, toolCallId: string): string {
+	return shortHash(`${sessionId}\0${toolCallId}`);
+}
+
 function lineCount(value: string): number {
 	if (value.length === 0) return 0;
 	return value.endsWith("\n") ? value.split("\n").length - 1 : value.split("\n").length;
@@ -84,6 +110,14 @@ function booleanValue(value: unknown): boolean | undefined {
 
 function arrayLength(value: unknown): number {
 	return Array.isArray(value) ? value.length : 0;
+}
+
+function rows(value: unknown): Record<string, unknown>[] {
+	return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+	return isRecord(value) ? value : undefined;
 }
 
 function bucketCount(value: unknown): string | undefined {
@@ -132,6 +166,10 @@ function shouldRecordToolCall(toolName: string): boolean {
 
 function codeIntelInputShape(toolName: string, input: Record<string, unknown>): Record<string, unknown> | undefined {
 	if (toolName === "code_intel_state") return { includeDiagnostics: booleanValue(input.includeDiagnostics) === true, hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_repo_overview") return { tier: stringValue(input.tier) ?? "shape", pathCount: arrayLength(input.paths), includeGlobCount: arrayLength(input.includeGlobs), excludeGlobCount: arrayLength(input.excludeGlobs), includeGenerated: booleanValue(input.includeGenerated), includeVendor: booleanValue(input.includeVendor), maxDepth: numberValue(input.maxDepth), maxDirs: numberValue(input.maxDirs), maxFilesPerDir: numberValue(input.maxFilesPerDir), maxSymbolsPerFile: numberValue(input.maxSymbolsPerFile), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_file_outline") return { hasPath: typeof input.path === "string", includeImports: booleanValue(input.includeImports), includeNonExported: booleanValue(input.includeNonExported), detail: stringValue(input.detail) ?? "locations", maxSymbols: numberValue(input.maxSymbols), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_repo_route") return { termCount: arrayLength(input.terms), pathCount: arrayLength(input.paths), maxResults: numberValue(input.maxResults), maxFiles: numberValue(input.maxFiles), maxMatchesPerFile: numberValue(input.maxMatchesPerFile), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_test_map") return { hasPath: typeof input.path === "string", symbolCount: arrayLength(input.symbols), nameCount: arrayLength(input.names), testPathCount: arrayLength(input.testPaths), detail: stringValue(input.detail) ?? "locations", maxResults: numberValue(input.maxResults), maxLiteralMatches: numberValue(input.maxLiteralMatches), confirmReferences: stringValue(input.confirmReferences), hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_local_map") return { anchorCount: arrayLength(input.anchors), nameCount: arrayLength(input.names), pathCount: arrayLength(input.paths), hasLanguage: typeof input.language === "string", includeSyntax: booleanValue(input.includeSyntax), detail: stringValue(input.detail) ?? "locations", maxResults: numberValue(input.maxResults), maxPerName: numberValue(input.maxPerName), hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_impact_map") return { symbolCount: arrayLength(input.symbols), changedFileCount: arrayLength(input.changedFiles), hasBaseRef: typeof input.baseRef === "string", detail: stringValue(input.detail) ?? "locations", maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string", confirmReferences: stringValue(input.confirmReferences), maxReferenceRoots: numberValue(input.maxReferenceRoots), maxReferenceResults: numberValue(input.maxReferenceResults), includeReferenceDeclarations: booleanValue(input.includeReferenceDeclarations) };
 	if (toolName === "code_intel_syntax_search") return { hasPattern: typeof input.pattern === "string" && input.pattern.trim().length > 0, patternLength: stringValue(input.pattern)?.length, hasLanguage: typeof input.language === "string", detail: stringValue(input.detail) ?? "snippets", pathCount: arrayLength(input.paths), includeGlobCount: arrayLength(input.includeGlobs), excludeGlobCount: arrayLength(input.excludeGlobs), hasStrictness: typeof input.strictness === "string", maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string" };
@@ -162,6 +200,79 @@ function inputShape(toolName: string, input: unknown): Record<string, unknown> |
 	return undefined;
 }
 
+function normalizeRepoRelativePath(repoRoot: string | undefined, cwd: string | undefined, inputPath: unknown): string | undefined {
+	const raw = stringValue(inputPath)?.replace(/^@/, "");
+	if (!raw) return undefined;
+	const normalized = raw.split(path.sep).join(path.posix.sep).replace(/^\.\//, "");
+	if (!path.isAbsolute(raw)) return normalized;
+	const roots = [repoRoot, cwd].filter((item): item is string => typeof item === "string" && item.length > 0);
+	for (const root of roots) {
+		const relative = path.relative(root, raw);
+		if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) return relative.split(path.sep).join(path.posix.sep);
+	}
+	return path.basename(raw);
+}
+
+function addReturnedFile(files: ReturnedFileRecord[], seen: Set<string>, file: unknown, source: string): void {
+	const value = stringValue(file)?.replace(/^\.\//, "");
+	if (!value || seen.has(value)) return;
+	seen.add(value);
+	files.push({ file: value, rank: files.length + 1, source });
+}
+
+function returnedFilesForResult(toolName: string, details: Record<string, unknown>): ReturnedFileRecord[] {
+	const files: ReturnedFileRecord[] = [];
+	const seen = new Set<string>();
+	if (toolName === "code_intel_file_outline") addReturnedFile(files, seen, details.file, "outline:file");
+	if (toolName === "code_intel_impact_map") {
+		for (const row of rows(details.related).slice(0, 200)) addReturnedFile(files, seen, row.file, "impact:related");
+		for (const row of rows(details.roots).slice(0, 50)) addReturnedFile(files, seen, row.file, "impact:root");
+	}
+	if (toolName === "code_intel_local_map") for (const row of rows(recordValue(details.summary)?.suggestedFiles).slice(0, 100)) addReturnedFile(files, seen, row.file, "local:suggested");
+	if (toolName === "code_intel_syntax_search") for (const row of rows(details.matches).slice(0, 200)) addReturnedFile(files, seen, row.file, "syntax:match");
+	if (toolName === "code_intel_repo_route") for (const row of rows(details.candidates).slice(0, 100)) addReturnedFile(files, seen, row.file, "route:candidate");
+	if (toolName === "code_intel_test_map") for (const row of rows(details.candidates).slice(0, 100)) addReturnedFile(files, seen, row.file, "test:candidate");
+	if (toolName === "code_intel_repo_overview") {
+		const visit = (dir: Record<string, unknown>): void => {
+			for (const row of rows(dir.fileEntries)) addReturnedFile(files, seen, row.path, "overview:file");
+			for (const child of rows(dir.children)) visit(child);
+		};
+		for (const dir of rows(details.directories)) visit(dir);
+	}
+	return files;
+}
+
+function rememberCodeIntelResult(index: CodeIntelResultIndex): void {
+	if (index.returnedFiles.length === 0) return;
+	recentCodeIntelResults.push(index);
+	while (recentCodeIntelResults.length > maxRecentCodeIntelResults) recentCodeIntelResults.shift();
+}
+
+function followupShape(toolName: string, input: unknown, pending: PendingToolCall): Record<string, unknown> | undefined {
+	if (toolName.startsWith(codeIntelPrefix)) return undefined;
+	const category = pending.category;
+	const recent = recentCodeIntelResults.filter((result) => result.sessionId === pending.sessionId && (!result.repoRoot || !pending.repoRoot || result.repoRoot === pending.repoRoot)).slice(-20);
+	if (recent.length === 0) return undefined;
+	const targetPath = isRecord(input) && (toolName === "read" || toolName === "edit") ? normalizeRepoRelativePath(pending.repoRoot, pending.cwd, input.path) : undefined;
+	const matches = targetPath ? recent.flatMap((result) => result.returnedFiles.filter((file) => file.file === targetPath).map((file) => ({ invocationId: result.invocationId, toolName: result.toolName, rank: file.rank, source: file.source }))).slice(-5) : [];
+	let followupKind: string | undefined;
+	if (matches.length > 0 && toolName === "read") followupKind = "returned-file-read";
+	else if (matches.length > 0 && toolName === "edit") followupKind = "returned-file-edit";
+	else if (category === "bash:search") followupKind = "compensatory-search";
+	else if (category === "bash:test") followupKind = "validation-test";
+	else if (category === "edit") followupKind = "edit-after-code-intel";
+	else if (category === "read") followupKind = "unmatched-read-after-code-intel";
+	if (!followupKind) return undefined;
+	return {
+		afterCodeIntel: true,
+		followupKind,
+		recentCodeIntelCount: recent.length,
+		matchedReturnedFileCount: matches.length,
+		minReturnedFileRank: matches.length ? Math.min(...matches.map((match) => match.rank)) : undefined,
+		matchedReturnedFiles: matches.length ? matches : undefined,
+	};
+}
+
 function errorKindFromText(text: string): string | undefined {
 	const lower = text.toLowerCase();
 	if (/eacces|permission denied|operation not permitted|owned by root|access denied/.test(lower)) return "permission";
@@ -180,11 +291,17 @@ function resultErrorKind(details: Record<string, unknown>, isError: boolean): st
 
 function codeIntelResultShape(toolName: string, details: Record<string, unknown>, isError: boolean): Record<string, unknown> {
 	const ok = details.ok === true || (details.ok !== false && !isError);
+	const summary = recordValue(details.summary);
+	const coverage = recordValue(details.coverage);
+	const returnedFiles = returnedFilesForResult(toolName, details);
 	const shape: Record<string, unknown> = {
 		ok,
 		isError,
 		backend: stringValue(details.backend),
 		errorKind: ok ? undefined : resultErrorKind(details, isError) ?? "unknown",
+		returnedFileCount: returnedFiles.length || undefined,
+		truncated: coverage ? coverage.truncated === true : booleanValue(details.truncated),
+		maxResults: coverage ? numberValue(coverage.maxResults) : undefined,
 	};
 	if (toolName === "code_intel_state") {
 		shape.hasRuntimeDiagnostics = isRecord(details.runtimeDiagnostics);
@@ -192,21 +309,40 @@ function codeIntelResultShape(toolName: string, details: Record<string, unknown>
 		const backends = isRecord(details.backends) ? details.backends : undefined;
 		if (backends) shape.backendStates = Object.fromEntries(Object.entries(backends).map(([name, status]) => [name, isRecord(status) ? status.available : undefined]));
 	}
+	if (toolName === "code_intel_repo_overview") {
+		shape.tier = stringValue(details.tier);
+		shape.dirCount = summary ? numberValue(summary.dirCount) : undefined;
+		shape.fileCount = summary ? numberValue(summary.fileCount) : undefined;
+		shape.parsedFileCount = summary ? numberValue(summary.parsedFileCount) : undefined;
+	}
+	if (toolName === "code_intel_file_outline") {
+		shape.declarationCount = summary ? numberValue(summary.declarationCount) : undefined;
+		shape.importCount = summary ? numberValue(summary.importCount) : undefined;
+	}
+	if (toolName === "code_intel_repo_route") {
+		shape.candidateCount = summary ? numberValue(summary.candidateCount) : undefined;
+		shape.returnedCount = summary ? numberValue(summary.returnedCount) : undefined;
+		shape.filesScanned = summary ? numberValue(summary.filesScanned) : undefined;
+	}
+	if (toolName === "code_intel_test_map") {
+		shape.candidateCount = summary ? numberValue(summary.candidateCount) : undefined;
+		shape.returnedCount = summary ? numberValue(summary.returnedCount) : undefined;
+		shape.searchedFileCount = coverage ? numberValue(coverage.searchedFileCount) : undefined;
+	}
 	if (toolName === "code_intel_syntax_search") {
 		shape.matchCount = numberValue(details.matchCount);
 		shape.returned = numberValue(details.returned);
-		shape.truncated = booleanValue(details.truncated) === true;
 	}
 	if (toolName === "code_intel_local_map") {
 		shape.nameCount = arrayLength(details.names);
 		shape.anchorCount = arrayLength(details.anchors);
-		shape.suggestedFileCount = isRecord(details.summary) ? arrayLength(details.summary.suggestedFiles) : undefined;
-		shape.truncated = isRecord(details.coverage) ? details.coverage.truncated === true : undefined;
+		shape.suggestedFileCount = summary ? arrayLength(summary.suggestedFiles) : undefined;
 	}
 	if (toolName === "code_intel_impact_map") {
 		shape.rootCount = arrayLength(details.rootSymbols);
 		shape.relatedCount = arrayLength(details.related);
-		shape.truncated = isRecord(details.coverage) ? details.coverage.truncated === true : undefined;
+		shape.rootSymbolsDiscovered = coverage ? numberValue(coverage.rootSymbolsDiscovered) : undefined;
+		shape.rootSymbolsUsed = coverage ? numberValue(coverage.rootSymbolsUsed) : undefined;
 	}
 	return Object.fromEntries(Object.entries(shape).filter(([, value]) => value !== undefined));
 }
@@ -238,6 +374,7 @@ export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void
 	if (!toolName || !toolCallId || !shouldRecordToolCall(toolName)) return;
 	const sessionId = sessionIdFromContext(ctx);
 	const repoRoot = repoRootFromInput(event.input, ctx);
+	const invocationId = invocationIdFor(sessionId, toolCallId);
 	const pending: PendingToolCall = {
 		startedAt: Date.now(),
 		sessionId,
@@ -245,8 +382,10 @@ export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void
 		cwd: ctx.cwd,
 		toolName,
 		category: toolCategory(toolName, event.input),
+		invocationId,
 		inputShape: inputShape(toolName, event.input),
 	};
+	pending.followupShape = followupShape(toolName, event.input, pending);
 	pendingToolCalls.set(toolCallId, pending);
 	appendUsageEvent({
 		version: 1,
@@ -257,7 +396,9 @@ export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void
 		cwd: ctx.cwd,
 		toolName,
 		category: pending.category,
+		invocationId,
 		inputShape: pending.inputShape,
+		followupShape: pending.followupShape,
 	});
 }
 
@@ -269,17 +410,24 @@ export function recordUsageToolResult(event: unknown, ctx: ExtensionContext): vo
 	const pending = pendingToolCalls.get(toolCallId);
 	pendingToolCalls.delete(toolCallId);
 	const sessionId = pending?.sessionId ?? sessionIdFromContext(ctx);
+	const repoRoot = pending?.repoRoot ?? repoRootFromInput(event.input, ctx);
+	const invocationId = pending?.invocationId ?? invocationIdFor(sessionId, toolCallId);
+	const details = isRecord(event.details) ? event.details : {};
+	const shape = resultShape(toolName, details, event.isError === true);
+	if (toolName.startsWith(codeIntelPrefix)) rememberCodeIntelResult({ invocationId, sessionId, repoRoot, cwd: pending?.cwd ?? ctx.cwd, toolName, timestampMs: Date.now(), returnedFiles: returnedFilesForResult(toolName, details) });
 	appendUsageEvent({
 		version: 1,
 		timestamp: nowIso(),
 		kind: "tool_result",
 		sessionId,
-		repoRoot: pending?.repoRoot ?? repoRootFromInput(event.input, ctx),
+		repoRoot,
 		cwd: pending?.cwd ?? ctx.cwd,
 		toolName,
 		category: pending?.category ?? toolCategory(toolName, event.input),
+		invocationId,
 		inputShape: pending?.inputShape,
-		resultShape: resultShape(toolName, event.details, event.isError === true),
+		followupShape: pending?.followupShape,
+		resultShape: shape,
 		durationMs: pending ? Date.now() - pending.startedAt : undefined,
 	});
 }
@@ -298,6 +446,12 @@ export function summarizeUsageEvents(events: UsageEvent[]): Record<string, unkno
 		byCategory: toObject(byCategory),
 		codeIntelResultCount: events.filter((event) => event.kind === "tool_result" && event.toolName.startsWith(codeIntelPrefix)).length,
 		searchAfterCodeIntelCount: events.filter((event) => event.kind === "tool_call" && event.category === "bash:search").length,
+		returnedFileFollowupCount: events.filter((event) => isRecord(event.followupShape) && numberValue(event.followupShape.matchedReturnedFileCount) && numberValue(event.followupShape.matchedReturnedFileCount)! > 0).length,
+		followupKinds: Object.fromEntries(Object.entries(events.reduce<Record<string, number>>((acc, event) => {
+			const kind = isRecord(event.followupShape) ? stringValue(event.followupShape.followupKind) : undefined;
+			if (kind) acc[kind] = (acc[kind] ?? 0) + 1;
+			return acc;
+		}, {}))),
 		detailBuckets: Object.fromEntries(Object.entries(events.reduce<Record<string, number>>((acc, event) => {
 			const detail = isRecord(event.inputShape) ? stringValue(event.inputShape.detail) : undefined;
 			if (detail) acc[detail] = (acc[detail] ?? 0) + 1;

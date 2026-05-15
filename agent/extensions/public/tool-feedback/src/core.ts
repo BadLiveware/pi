@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sanitizePerToolResponses } from "./per-tool.ts";
 import { BASE_FIELD_PROMPT, DEFAULT_TASK_PROMPT } from "./prompts.ts";
 
 export type FeedbackMode = "off" | "passive" | "ask-agent" | "both";
@@ -54,6 +55,7 @@ export interface LoadedConfig {
 export interface WatchedToolCall {
 	toolName: string;
 	toolCallId: string;
+	invocationId: string;
 	category: string;
 	confirmReferences?: string;
 	turnIndex: number;
@@ -101,6 +103,7 @@ export interface TurnSummary {
 	confirmReferences: string[];
 	toolCategories: string[];
 	categoriesAfterFirstWatchedCall: string[];
+	watchedResults: Array<Record<string, unknown>>;
 }
 
 export interface FeedbackRecord {
@@ -110,6 +113,8 @@ export interface FeedbackRecord {
 	sessionId: string;
 	repoRoot: string;
 	watchedTools: string[];
+	primaryWatchedTool?: string;
+	perToolResponses?: Record<string, Record<string, unknown>>;
 	perceivedUsefulness: PerceivedUsefulness;
 	wouldUseAgainSameSituation: WouldUseAgain;
 	followupWasRoutine?: YesNoUnknown;
@@ -306,6 +311,10 @@ function shortHash(value: string): string {
 	return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
+export function invocationIdFor(sessionId: string, toolCallId: string): string {
+	return shortHash(`${sessionId}\0${toolCallId}`);
+}
+
 export function unique(items: Array<string | undefined>): string[] {
 	return [...new Set(items.filter((item): item is string => typeof item === "string" && item.length > 0))];
 }
@@ -377,6 +386,7 @@ export function makeTurnSummary(turn: TurnUsage, ctx: ExtensionContext): TurnSum
 		confirmReferences: unique(turn.watchedCalls.map((call) => call.confirmReferences)),
 		toolCategories: unique(turn.toolCalls.map((call) => call.category)),
 		categoriesAfterFirstWatchedCall: unique(turn.toolCalls.filter((call) => call.sequence > firstWatchedSequence).map((call) => call.category)),
+		watchedResults: turn.watchedResults.map((result) => ({ toolName: result.toolName, invocationId: result.invocationId, ok: result.ok, isError: result.isError, truncated: result.truncated, errorKind: result.errorKind, durationMs: result.durationMs })),
 	};
 }
 
@@ -474,6 +484,8 @@ export function feedbackRecord(input: Record<string, unknown>, ctx: ExtensionCon
 		sessionId: sessionIdFromContext(ctx),
 		repoRoot: ctx.cwd,
 		watchedTools: normalizeStringArray(input.watchedTools),
+		primaryWatchedTool: stringValue(input.primaryWatchedTool),
+		perToolResponses: sanitizePerToolResponses(input.perToolResponses),
 		perceivedUsefulness: perceivedUsefulness(input.perceivedUsefulness),
 		wouldUseAgainSameSituation: wouldUseAgain(input.wouldUseAgainSameSituation),
 		followupWasRoutine: yesNoUnknown(input.followupWasRoutine),

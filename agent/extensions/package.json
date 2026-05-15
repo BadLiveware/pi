@@ -33,6 +33,7 @@
     "check:structure": "node scripts/check-extension-structure.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run check:structure && node --experimental-strip-types --test \"public/**/*.test.ts\" \"private/**/*.test.ts\"",
+    "eval:code-intel": "node --experimental-strip-types --test private/code-intelligence/eval-read-next.test.ts",
     "test:footer": "node --experimental-strip-types --test public/footer-framework/*.test.ts",
     "pack:public": "npm run check:structure && ./scripts/pack-public.sh"
   },
