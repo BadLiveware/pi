@@ -4,6 +4,7 @@ import type { CodeIntelConfig, CodeIntelFileOutlineParams, CodeIntelRepoOverview
 import { LANGUAGE_SPECS, languageSpec } from "./languages.ts";
 import { ensureInsideRoot } from "./repo.ts";
 import { runReferenceConfirmation } from "./lsp/confirmation.ts";
+import { rowWithTarget } from "./source-range.ts";
 import { extractFileRecords, parseFiles, type SymbolRecord } from "./tree-sitter.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
@@ -254,13 +255,10 @@ function scanRepo(repoRoot: string, params: { paths?: string[]; maxDepth: number
 	return { roots, directories, files, diagnostics, excludedDirs, truncated, dirsVisited, filesVisited };
 }
 
-function declarationRows(records: SymbolRecord[], detail: ResultDetail): Record<string, unknown>[] {
+function declarationRows(records: SymbolRecord[], detail: ResultDetail, source?: string, repoRoot?: string): Record<string, unknown>[] {
 	return records.map((record) => {
-		const row: Record<string, unknown> = { kind: record.kind, name: record.name, line: record.line, column: record.column, endLine: record.endLine, endColumn: record.endColumn };
-		if (record.owner) row.owner = record.owner;
-		if (record.exported !== undefined) row.exported = record.exported;
-		if (record.type) row.type = record.type;
-		if (detail === "snippets" && record.text) row.text = record.text;
+		const row = rowWithTarget(record, source, repoRoot, records);
+		if (detail !== "snippets") delete row.text;
 		return row;
 	});
 }
@@ -305,12 +303,16 @@ export async function runFileOutline(params: CodeIntelFileOutlineParams, repoRoo
 	} catch (error) {
 		diagnostics.push(`${safeFile}: Tree-sitter record extraction failed: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	const declarations = declarationRows(records, detail);
+	const declarations = declarationRows(records, detail, parsedFile.source, repoRoot);
 	return {
 		ok: true,
 		repoRoot,
 		file: safeFile,
 		language,
+		sourceIncluded: false,
+		sourceCompleteness: "locations-only",
+		nextReadRecommended: true,
+		nextReadReason: "source-not-included",
 		imports: params.includeImports === false ? undefined : importsFor(language, parsedFile.source),
 		declarations: declarations.slice(0, maxSymbols),
 		summary: { declarationCount: declarations.length, importCount: params.includeImports === false ? undefined : importsFor(language, parsedFile.source).length },
@@ -347,7 +349,7 @@ export async function runRepoOverview(params: CodeIntelRepoOverviewParams, repoR
 			parsedCount += parsed.parsedFiles.length;
 			for (const parsedFile of parsed.parsedFiles) {
 				try {
-					const rows = declarationRows(extractFileRecords(parsedFile, "locations").definitions, "locations");
+					const rows = declarationRows(extractFileRecords(parsedFile, "locations").definitions, "locations", parsedFile.source, repoRoot);
 					declarationsByFile.set(parsedFile.file, rows);
 				} catch (error) {
 					scan.diagnostics.push(`${parsedFile.file}: Tree-sitter record extraction failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -360,6 +362,10 @@ export async function runRepoOverview(params: CodeIntelRepoOverviewParams, repoR
 		ok: true,
 		repoRoot,
 		tier,
+		sourceIncluded: false,
+		sourceCompleteness: "locations-only",
+		nextReadRecommended: tier === "files",
+		nextReadReason: tier === "files" ? "source-not-included" : "filesystem-shape-only",
 		roots: scan.roots,
 		directories: serialized,
 		summary: { dirCount: scan.dirsVisited, fileCount: scan.filesVisited, sourceFileCount: scan.files.filter((file) => file.category === "source").length, testFileCount: scan.files.filter((file) => file.category === "test").length, parsedFileCount: parsedCount },

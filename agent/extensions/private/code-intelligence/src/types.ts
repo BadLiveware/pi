@@ -7,6 +7,7 @@ export type LanguageServerName = "gopls" | "rust-analyzer" | "typescript" | "cla
 export type Availability = "available" | "missing" | "error";
 export type IndexStatus = "not-required" | "error";
 export type ResultDetail = "locations" | "snippets";
+export type SourceDetail = "source" | "locations";
 
 export interface CodeIntelConfig {
 	maxResults: number;
@@ -166,6 +167,50 @@ export interface CodeIntelRepoRouteParams {
 	maxResults?: number;
 	maxFiles?: number;
 	maxMatchesPerFile?: number;
+	timeoutMs?: number;
+}
+
+export interface CodeIntelReadSymbolParams {
+	repoRoot?: string;
+	target?: Record<string, unknown>;
+	path?: string;
+	symbol?: string;
+	name?: string;
+	owner?: string;
+	kind?: string;
+	signature?: string;
+	symbolRef?: string;
+	rangeId?: string;
+	line?: number;
+	column?: number;
+	contextLines?: number;
+	include?: string[];
+	maxContextSegments?: number;
+	maxBytes?: number;
+	timeoutMs?: number;
+	detail?: SourceDetail;
+}
+
+export interface CodeIntelPostEditDiagnostic {
+	path: string;
+	line: number;
+	column?: number;
+	severity?: "error" | "warning" | "info" | "hint" | string;
+	source?: string;
+	code?: string;
+}
+
+export interface CodeIntelPostEditMapParams {
+	repoRoot?: string;
+	changedFiles?: string[];
+	baseRef?: string;
+	includeChangedSymbols?: boolean;
+	includeCallers?: boolean;
+	includeTests?: boolean;
+	includeDiagnostics?: boolean;
+	diagnostics?: Array<CodeIntelPostEditDiagnostic | Record<string, unknown>>;
+	avoidReReadingCompleteReturnedSegments?: boolean;
+	maxResults?: number;
 	timeoutMs?: number;
 }
 

@@ -15,8 +15,10 @@ Use `code_intel_*` tools to prepare candidate files and symbols to inspect next.
 4. Run `code_intel_impact_map` for review/edit impact context, or `code_intel_local_map` for a scoped subsystem with anchors plus related names.
 5. Use `code_intel_test_map` when you need likely tests to inspect or run for a file/symbol/name.
 6. Use `code_intel_syntax_search` only for explicit current-source shapes the map cannot express.
-7. Read the returned files before making findings, edits, or compatibility claims.
-8. Run project-native validation when behavior, public contracts, tests, or generated outputs matter.
+7. For locator-mode outputs, use `readHint` for one precise generic read or pass `symbolTarget` to `code_intel_read_symbol` when you need a complete declaration body.
+8. Treat a complete `code_intel_read_symbol` segment as the source read; do not generic-read the same range again unless it was truncated, stale, ambiguous, or too narrow for editing.
+9. After editing/writing, use `code_intel_post_edit_map` when you need changed-symbol, caller/test, or diagnostic follow-up context.
+10. Run project-native validation when behavior, public contracts, tests, or generated outputs matter.
 
 ## Delegating Review
 
@@ -34,12 +36,14 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 ## Tool Selection
 
 - `code_intel_repo_overview`: orientation tool. Use tier `shape` for broad directory counts/languages without parsing declarations; use tier `files` only for explicit subtrees to list files plus capped declaration names.
-- `code_intel_file_outline`: single-file orientation. Returns imports/includes and language-native declarations with line ranges before reading a large file.
+- `code_intel_file_outline`: single-file orientation. Returns imports/includes and language-native declarations with locator-mode `symbolTarget`/`readHint` fields before reading a large file.
 - `code_intel_test_map`: related-test candidates. Uses bounded test-root discovery, path/name evidence, and literal matches; pass file paths plus symbols/domain names for better non-code test results. It filters cache/log artifacts and avoids generic path-only noise where possible.
 - `code_intel_repo_route`: concept routing. Ranks likely implementation files for concept/API/function terms using bounded path and literal evidence without dumping raw search output. Scope paths in large repos, then outline/read returned files.
 - `code_intel_impact_map`: primary edit/review impact tool. Builds a Tree-sitter current-source candidate read-next map from changed files, root symbols, or a base ref. Impact routing currently covers Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++. Rust routing is syntax-only; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. Rows include evidence such as `syntax_call`, `syntax_selector`, and `syntax_keyed_field`. Use `confirmReferences` only for bounded, opt-in Go, TypeScript/JavaScript, or clangd-backed C/C++ exact-reference confirmation when exactness materially reduces risk and C/C++ has a usable `compile_commands.json`.
 - `code_intel_local_map`: scoped subsystem map. Uses Tree-sitter current-source rows plus bounded `rg` literal fallback when you have anchors plus related fields/types/API names and want suggested local files to read.
 - `code_intel_syntax_search`: explicit in-process Tree-sitter candidate search. Use supported patterns such as `foo($A)`, `$OBJ.Field`, `Field: $VALUE`, wrapper patterns containing those shapes, or raw Tree-sitter queries with captures.
+- `code_intel_read_symbol`: source-mode targeted declaration read. Prefer passing a `symbolTarget`; function-like targets return the full body. Optional referenced context is same-file, one-hop, and limited to constants, vars, and types; called functions/helpers are deferred.
+- `code_intel_post_edit_map`: read-only follow-up map after edits/writes. Returns changed-symbol locators, likely caller/test candidates, and optional diagnostic-focused targets; it does not run tests or fix code.
 - `code_intel_state`: inspect Tree-sitter, `rg`, and optional LSP availability, config, footer status, and diagnostics when that matters.
 
 ## Guardrails
@@ -55,5 +59,6 @@ Use a custom code-intel-aware reviewer only when it is explicitly configured wit
 - Do not run broad rule scans by default.
 - Do not perform rewrites through syntax search.
 - Keep result sets bounded. Prefer `detail: "locations"` when files will be read next; use `detail: "snippets"` only for inline triage.
+- Avoid double reads: locator-mode output should lead to the first source read; complete source-mode output should not be followed by a generic read of the same range without a freshness/truncation/ambiguity reason.
 - If an impact map is empty or `ok:false`, read the `reason` and `coverage.supportedImpactLanguages` / `unsupportedImpactFiles` / `nonSourceFiles`; do not treat it as a successful no-impact result.
 - Use standalone `rg` for comments/docs/generated text, literal fallback beyond caps, or unsupported-language gaps.

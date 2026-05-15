@@ -65,3 +65,39 @@ test("usage logs invocation ids, returned-file counts, and matched read follow-u
 		fs.rmSync(repo, { recursive: true, force: true });
 	}
 });
+
+test("usage logs returned source segments and write follow-ups", async () => {
+	const repo = fixtureRepo();
+	const logPath = path.join(repo, "usage-segment.jsonl");
+	const oldLog = process.env.PI_CODE_INTEL_USAGE_LOG;
+	process.env.PI_CODE_INTEL_USAGE_LOG = logPath;
+	try {
+		const { tools, handlers } = loadExtension();
+		const ctx = { cwd: repo, sessionManager: { getSessionId: () => "usage-segment-session" }, ui: { notify() {}, setStatus() {}, theme: { fg: (_style: string, text: string) => text } } };
+		const input = { path: "main.ts", symbol: "target" };
+		await emit(handlers, "tool_call", { toolName: "code_intel_read_symbol", toolCallId: "symbol", input }, ctx);
+		const result = await tools.get("code_intel_read_symbol")!.execute("symbol", input, undefined, undefined, ctx);
+		await emit(handlers, "tool_result", { toolName: "code_intel_read_symbol", toolCallId: "symbol", input, details: result.details, content: result.content, isError: false }, ctx);
+		await emit(handlers, "tool_call", { toolName: "read", toolCallId: "read-segment", input: { path: "main.ts", offset: 1, limit: 1 } }, ctx);
+		await emit(handlers, "tool_result", { toolName: "read", toolCallId: "read-segment", input: { path: "main.ts", offset: 1, limit: 1 }, details: {}, content: [], isError: false }, ctx);
+		await emit(handlers, "tool_call", { toolName: "write", toolCallId: "write-main", input: { path: "main.ts", content: "export function target() { return false }\n" } }, ctx);
+		await emit(handlers, "tool_result", { toolName: "write", toolCallId: "write-main", input: { path: "main.ts", content: "export function target() { return false }\n" }, details: {}, content: [], isError: false }, ctx);
+		await emit(handlers, "tool_call", { toolName: "code_intel_post_edit_map", toolCallId: "post", input: { changedFiles: ["main.ts"] } }, ctx);
+
+		const records = fs.readFileSync(logPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+		const symbolResult = records.find((record: any) => record.kind === "tool_result" && record.toolName === "code_intel_read_symbol");
+		assert.equal(symbolResult.resultShape.returnedSegmentCount, 1);
+		assert.equal(symbolResult.resultShape.sourceCompleteness, "complete-segment");
+		const readCall = records.find((record: any) => record.kind === "tool_call" && record.toolName === "read");
+		assert.equal(readCall.followupShape.followupKind, "returned-segment-read");
+		assert.equal(readCall.followupShape.possibleDuplicateRead, true);
+		const writeCall = records.find((record: any) => record.kind === "tool_call" && record.toolName === "write");
+		assert.equal(writeCall.followupShape.followupKind, "returned-file-write");
+		const postCall = records.find((record: any) => record.kind === "tool_call" && record.toolName === "code_intel_post_edit_map");
+		assert.equal(postCall.followupShape.followupKind, "post-edit-map-after-write");
+	} finally {
+		if (oldLog === undefined) delete process.env.PI_CODE_INTEL_USAGE_LOG;
+		else process.env.PI_CODE_INTEL_USAGE_LOG = oldLog;
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});

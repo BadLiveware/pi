@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { followupShape, rememberCodeIntelResult, rememberMutationFollowup, returnedFilesForResult, returnedSegmentsForResult } from "./usage-followup.ts";
 import { isRecord } from "./util.ts";
 
 type UsageKind = "tool_call" | "tool_result";
@@ -35,25 +36,7 @@ type PendingToolCall = {
 	followupShape?: Record<string, unknown>;
 };
 
-type ReturnedFileRecord = {
-	file: string;
-	rank: number;
-	source: string;
-};
-
-type CodeIntelResultIndex = {
-	invocationId: string;
-	sessionId: string;
-	repoRoot?: string;
-	cwd?: string;
-	toolName: string;
-	timestampMs: number;
-	returnedFiles: ReturnedFileRecord[];
-};
-
 const pendingToolCalls = new Map<string, PendingToolCall>();
-const recentCodeIntelResults: CodeIntelResultIndex[] = [];
-const maxRecentCodeIntelResults = 80;
 const codeIntelPrefix = "code_intel_";
 
 function usageLogDir(): string {
@@ -155,13 +138,14 @@ function toolCategory(toolName: string, input: unknown): string {
 	if (toolName.startsWith(codeIntelPrefix)) return "code-intel";
 	if (toolName === "read") return classifyPath(isRecord(input) ? input.path : undefined) ?? "read";
 	if (toolName === "edit") return "edit";
+	if (toolName === "write") return "write";
 	if (toolName === "bash") return `bash:${classifyBashCommand(isRecord(input) ? input.command : undefined) ?? "unknown"}`;
 	if (toolName === "code_search" || toolName === "web_search" || toolName === "greedy_search") return "external-info-search";
 	return "other";
 }
 
 function shouldRecordToolCall(toolName: string): boolean {
-	return toolName.startsWith(codeIntelPrefix) || toolName === "read" || toolName === "edit" || toolName === "bash" || toolName === "code_search" || toolName === "web_search" || toolName === "greedy_search";
+	return toolName.startsWith(codeIntelPrefix) || toolName === "read" || toolName === "edit" || toolName === "write" || toolName === "bash" || toolName === "code_search" || toolName === "web_search" || toolName === "greedy_search";
 }
 
 function codeIntelInputShape(toolName: string, input: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -173,6 +157,8 @@ function codeIntelInputShape(toolName: string, input: Record<string, unknown>): 
 	if (toolName === "code_intel_local_map") return { anchorCount: arrayLength(input.anchors), nameCount: arrayLength(input.names), pathCount: arrayLength(input.paths), hasLanguage: typeof input.language === "string", includeSyntax: booleanValue(input.includeSyntax), detail: stringValue(input.detail) ?? "locations", maxResults: numberValue(input.maxResults), maxPerName: numberValue(input.maxPerName), hasRepoRoot: typeof input.repoRoot === "string" };
 	if (toolName === "code_intel_impact_map") return { symbolCount: arrayLength(input.symbols), changedFileCount: arrayLength(input.changedFiles), hasBaseRef: typeof input.baseRef === "string", detail: stringValue(input.detail) ?? "locations", maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string", confirmReferences: stringValue(input.confirmReferences), maxReferenceRoots: numberValue(input.maxReferenceRoots), maxReferenceResults: numberValue(input.maxReferenceResults), includeReferenceDeclarations: booleanValue(input.includeReferenceDeclarations) };
 	if (toolName === "code_intel_syntax_search") return { hasPattern: typeof input.pattern === "string" && input.pattern.trim().length > 0, patternLength: stringValue(input.pattern)?.length, hasLanguage: typeof input.language === "string", detail: stringValue(input.detail) ?? "snippets", pathCount: arrayLength(input.paths), includeGlobCount: arrayLength(input.includeGlobs), excludeGlobCount: arrayLength(input.excludeGlobs), hasStrictness: typeof input.strictness === "string", maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_read_symbol") return { hasTarget: isRecord(input.target), hasPath: typeof input.path === "string", hasSymbol: typeof input.symbol === "string" || typeof input.name === "string", hasLine: typeof input.line === "number", includeCount: arrayLength(input.include), detail: stringValue(input.detail) ?? "source", maxBytes: numberValue(input.maxBytes), maxContextSegments: numberValue(input.maxContextSegments), hasRepoRoot: typeof input.repoRoot === "string" };
+	if (toolName === "code_intel_post_edit_map") return { changedFileCount: arrayLength(input.changedFiles), hasBaseRef: typeof input.baseRef === "string", includeChangedSymbols: booleanValue(input.includeChangedSymbols), includeCallers: booleanValue(input.includeCallers), includeTests: booleanValue(input.includeTests), includeDiagnostics: booleanValue(input.includeDiagnostics), diagnosticCount: arrayLength(input.diagnostics), maxResults: numberValue(input.maxResults), hasRepoRoot: typeof input.repoRoot === "string" };
 	return undefined;
 }
 
@@ -192,85 +178,13 @@ function editTextShape(edits: unknown): Record<string, unknown> {
 function inputShape(toolName: string, input: unknown): Record<string, unknown> | undefined {
 	if (!isRecord(input)) return undefined;
 	if (toolName.startsWith(codeIntelPrefix)) return codeIntelInputShape(toolName, input);
-	if (toolName === "read") return { pathKind: classifyPath(input.path), hasRange: typeof input.offset === "number" || typeof input.limit === "number" };
+	if (toolName === "read") return { pathKind: classifyPath(input.path), hasRange: typeof input.offset === "number" || typeof input.limit === "number", offset: numberValue(input.offset), limit: numberValue(input.limit) };
 	if (toolName === "edit") return { pathKind: classifyPath(input.path), ...editTextShape(input.edits) };
+	if (toolName === "write") return { pathKind: classifyPath(input.path), contentLineCount: typeof input.content === "string" ? lineCount(input.content) : undefined, contentHash: typeof input.content === "string" ? shortHash(input.content) : undefined };
 	if (toolName === "bash") return { commandKind: classifyBashCommand(input.command), hasTimeout: typeof input.timeout === "number" };
 	if (toolName === "code_search") return { hasQuery: typeof input.query === "string", maxTokens: numberValue(input.maxTokens) };
 	if (toolName === "web_search" || toolName === "greedy_search") return { hasQuery: typeof input.query === "string", queryCount: arrayLength(input.queries) };
 	return undefined;
-}
-
-function normalizeRepoRelativePath(repoRoot: string | undefined, cwd: string | undefined, inputPath: unknown): string | undefined {
-	const raw = stringValue(inputPath)?.replace(/^@/, "");
-	if (!raw) return undefined;
-	const normalized = raw.split(path.sep).join(path.posix.sep).replace(/^\.\//, "");
-	if (!path.isAbsolute(raw)) return normalized;
-	const roots = [repoRoot, cwd].filter((item): item is string => typeof item === "string" && item.length > 0);
-	for (const root of roots) {
-		const relative = path.relative(root, raw);
-		if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) return relative.split(path.sep).join(path.posix.sep);
-	}
-	return path.basename(raw);
-}
-
-function addReturnedFile(files: ReturnedFileRecord[], seen: Set<string>, file: unknown, source: string): void {
-	const value = stringValue(file)?.replace(/^\.\//, "");
-	if (!value || seen.has(value)) return;
-	seen.add(value);
-	files.push({ file: value, rank: files.length + 1, source });
-}
-
-function returnedFilesForResult(toolName: string, details: Record<string, unknown>): ReturnedFileRecord[] {
-	const files: ReturnedFileRecord[] = [];
-	const seen = new Set<string>();
-	if (toolName === "code_intel_file_outline") addReturnedFile(files, seen, details.file, "outline:file");
-	if (toolName === "code_intel_impact_map") {
-		for (const row of rows(details.related).slice(0, 200)) addReturnedFile(files, seen, row.file, "impact:related");
-		for (const row of rows(details.roots).slice(0, 50)) addReturnedFile(files, seen, row.file, "impact:root");
-	}
-	if (toolName === "code_intel_local_map") for (const row of rows(recordValue(details.summary)?.suggestedFiles).slice(0, 100)) addReturnedFile(files, seen, row.file, "local:suggested");
-	if (toolName === "code_intel_syntax_search") for (const row of rows(details.matches).slice(0, 200)) addReturnedFile(files, seen, row.file, "syntax:match");
-	if (toolName === "code_intel_repo_route") for (const row of rows(details.candidates).slice(0, 100)) addReturnedFile(files, seen, row.file, "route:candidate");
-	if (toolName === "code_intel_test_map") for (const row of rows(details.candidates).slice(0, 100)) addReturnedFile(files, seen, row.file, "test:candidate");
-	if (toolName === "code_intel_repo_overview") {
-		const visit = (dir: Record<string, unknown>): void => {
-			for (const row of rows(dir.fileEntries)) addReturnedFile(files, seen, row.path, "overview:file");
-			for (const child of rows(dir.children)) visit(child);
-		};
-		for (const dir of rows(details.directories)) visit(dir);
-	}
-	return files;
-}
-
-function rememberCodeIntelResult(index: CodeIntelResultIndex): void {
-	if (index.returnedFiles.length === 0) return;
-	recentCodeIntelResults.push(index);
-	while (recentCodeIntelResults.length > maxRecentCodeIntelResults) recentCodeIntelResults.shift();
-}
-
-function followupShape(toolName: string, input: unknown, pending: PendingToolCall): Record<string, unknown> | undefined {
-	if (toolName.startsWith(codeIntelPrefix)) return undefined;
-	const category = pending.category;
-	const recent = recentCodeIntelResults.filter((result) => result.sessionId === pending.sessionId && (!result.repoRoot || !pending.repoRoot || result.repoRoot === pending.repoRoot)).slice(-20);
-	if (recent.length === 0) return undefined;
-	const targetPath = isRecord(input) && (toolName === "read" || toolName === "edit") ? normalizeRepoRelativePath(pending.repoRoot, pending.cwd, input.path) : undefined;
-	const matches = targetPath ? recent.flatMap((result) => result.returnedFiles.filter((file) => file.file === targetPath).map((file) => ({ invocationId: result.invocationId, toolName: result.toolName, rank: file.rank, source: file.source }))).slice(-5) : [];
-	let followupKind: string | undefined;
-	if (matches.length > 0 && toolName === "read") followupKind = "returned-file-read";
-	else if (matches.length > 0 && toolName === "edit") followupKind = "returned-file-edit";
-	else if (category === "bash:search") followupKind = "compensatory-search";
-	else if (category === "bash:test") followupKind = "validation-test";
-	else if (category === "edit") followupKind = "edit-after-code-intel";
-	else if (category === "read") followupKind = "unmatched-read-after-code-intel";
-	if (!followupKind) return undefined;
-	return {
-		afterCodeIntel: true,
-		followupKind,
-		recentCodeIntelCount: recent.length,
-		matchedReturnedFileCount: matches.length,
-		minReturnedFileRank: matches.length ? Math.min(...matches.map((match) => match.rank)) : undefined,
-		matchedReturnedFiles: matches.length ? matches : undefined,
-	};
 }
 
 function errorKindFromText(text: string): string | undefined {
@@ -294,12 +208,14 @@ function codeIntelResultShape(toolName: string, details: Record<string, unknown>
 	const summary = recordValue(details.summary);
 	const coverage = recordValue(details.coverage);
 	const returnedFiles = returnedFilesForResult(toolName, details);
+	const returnedSegments = returnedSegmentsForResult(toolName, details);
 	const shape: Record<string, unknown> = {
 		ok,
 		isError,
 		backend: stringValue(details.backend),
 		errorKind: ok ? undefined : resultErrorKind(details, isError) ?? "unknown",
 		returnedFileCount: returnedFiles.length || undefined,
+		returnedSegmentCount: returnedSegments.length || undefined,
 		truncated: coverage ? coverage.truncated === true : booleanValue(details.truncated),
 		maxResults: coverage ? numberValue(coverage.maxResults) : undefined,
 	};
@@ -344,6 +260,18 @@ function codeIntelResultShape(toolName: string, details: Record<string, unknown>
 		shape.rootSymbolsDiscovered = coverage ? numberValue(coverage.rootSymbolsDiscovered) : undefined;
 		shape.rootSymbolsUsed = coverage ? numberValue(coverage.rootSymbolsUsed) : undefined;
 	}
+	if (toolName === "code_intel_read_symbol") {
+		shape.contextSegmentCount = summary ? numberValue(summary.contextSegmentCount) : undefined;
+		shape.deferredReferenceCount = summary ? numberValue(summary.deferredReferenceCount) : undefined;
+		shape.sourceCompleteness = stringValue(details.sourceCompleteness);
+	}
+	if (toolName === "code_intel_post_edit_map") {
+		shape.changedFileCount = arrayLength(details.changedFiles);
+		shape.changedSymbolCount = summary ? numberValue(summary.changedSymbolCount) : undefined;
+		shape.relatedCount = summary ? numberValue(summary.relatedCount) : undefined;
+		shape.testCandidateCount = summary ? numberValue(summary.testCandidateCount) : undefined;
+		shape.diagnosticTargetCount = summary ? numberValue(summary.diagnosticTargetCount) : undefined;
+	}
 	return Object.fromEntries(Object.entries(shape).filter(([, value]) => value !== undefined));
 }
 
@@ -386,6 +314,7 @@ export function recordUsageToolCall(event: unknown, ctx: ExtensionContext): void
 		inputShape: inputShape(toolName, event.input),
 	};
 	pending.followupShape = followupShape(toolName, event.input, pending);
+	rememberMutationFollowup(pending);
 	pendingToolCalls.set(toolCallId, pending);
 	appendUsageEvent({
 		version: 1,
@@ -414,7 +343,7 @@ export function recordUsageToolResult(event: unknown, ctx: ExtensionContext): vo
 	const invocationId = pending?.invocationId ?? invocationIdFor(sessionId, toolCallId);
 	const details = isRecord(event.details) ? event.details : {};
 	const shape = resultShape(toolName, details, event.isError === true);
-	if (toolName.startsWith(codeIntelPrefix)) rememberCodeIntelResult({ invocationId, sessionId, repoRoot, cwd: pending?.cwd ?? ctx.cwd, toolName, timestampMs: Date.now(), returnedFiles: returnedFilesForResult(toolName, details) });
+	if (toolName.startsWith(codeIntelPrefix)) rememberCodeIntelResult({ invocationId, sessionId, repoRoot, cwd: pending?.cwd ?? ctx.cwd, toolName, timestampMs: Date.now(), returnedFiles: returnedFilesForResult(toolName, details), returnedSegments: returnedSegmentsForResult(toolName, details) });
 	appendUsageEvent({
 		version: 1,
 		timestamp: nowIso(),
@@ -447,6 +376,8 @@ export function summarizeUsageEvents(events: UsageEvent[]): Record<string, unkno
 		codeIntelResultCount: events.filter((event) => event.kind === "tool_result" && event.toolName.startsWith(codeIntelPrefix)).length,
 		searchAfterCodeIntelCount: events.filter((event) => event.kind === "tool_call" && event.category === "bash:search").length,
 		returnedFileFollowupCount: events.filter((event) => isRecord(event.followupShape) && numberValue(event.followupShape.matchedReturnedFileCount) && numberValue(event.followupShape.matchedReturnedFileCount)! > 0).length,
+		returnedSegmentFollowupCount: events.filter((event) => isRecord(event.followupShape) && numberValue(event.followupShape.matchedReturnedSegmentCount) && numberValue(event.followupShape.matchedReturnedSegmentCount)! > 0).length,
+		possibleDuplicateReadCount: events.filter((event) => isRecord(event.followupShape) && event.followupShape.possibleDuplicateRead === true).length,
 		followupKinds: Object.fromEntries(Object.entries(events.reduce<Record<string, number>>((acc, event) => {
 			const kind = isRecord(event.followupShape) ? stringValue(event.followupShape.followupKind) : undefined;
 			if (kind) acc[kind] = (acc[kind] ?? 0) + 1;

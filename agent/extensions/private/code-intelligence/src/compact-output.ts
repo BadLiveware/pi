@@ -6,6 +6,10 @@ function rows(value: unknown): Record<string, unknown>[] {
 	return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+	return isRecord(value) ? value : {};
+}
+
 function str(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -21,6 +25,26 @@ function loc(row: Record<string, unknown>): string {
 	return endLine && endLine !== line ? `:${line}-${endLine}` : `:${line}`;
 }
 
+function compactRange(range: Record<string, unknown>): string | undefined {
+	const start = num(range.startLine);
+	const end = num(range.endLine);
+	if (!start) return undefined;
+	return end && end !== start ? `${start}-${end}` : `${start}`;
+}
+
+function shortRef(target: Record<string, unknown>): string | undefined {
+	const ref = str(target.targetRef) ?? str(target.rangeId) ?? str(target.symbolRef);
+	if (!ref) return undefined;
+	return ref.includes("@") ? ref.split("@").pop() : ref;
+}
+
+function readHintText(row: Record<string, unknown>): string | undefined {
+	const hint = asRecord(row.readHint);
+	const offset = num(hint.offset);
+	const limit = num(hint.limit);
+	return offset && limit ? `${offset}+${limit}` : undefined;
+}
+
 function compactKind(kind: unknown, owner?: unknown): string {
 	const text = String(kind ?? "item");
 	if (owner) {
@@ -33,17 +57,23 @@ function compactKind(kind: unknown, owner?: unknown): string {
 	if (text.includes("interface")) return "iface";
 	if (text.includes("type")) return "type";
 	if (text.includes("field")) return "field";
+	if (text.includes("constant")) return "const";
 	if (text.includes("variable")) return "var";
 	if (text.includes("function") || text.includes("method")) return "fn";
 	return text.replace(/_declaration|_definition|_specifier/g, "") || "item";
 }
 
 function declarationLine(row: Record<string, unknown>): string {
-	const owner = str(row.owner);
-	const name = str(row.name) ?? "(anonymous)";
+	const target = asRecord(row.symbolTarget);
+	const owner = str(row.containerName) ?? str(row.owner) ?? str(target.containerName) ?? str(target.owner);
+	const name = str(row.name) ?? str(target.name) ?? "(anonymous)";
 	const qname = owner ? `${owner}::${name}` : name;
-	const flags = [row.exported === true ? "exported" : undefined, str(row.type) ? `type=${str(row.type)}` : undefined].filter(Boolean).join(" ");
-	return `  ${compactKind(row.kind, owner)} ${qname}${loc(row)}${flags ? ` ${flags}` : ""}`;
+	const targetRange = asRecord(target.range);
+	const range = compactRange(targetRange) ?? loc(row).replace(/^:/, "");
+	const ref = shortRef(target);
+	const read = readHintText(row);
+	const meta = [ref ? `ref=${ref}` : undefined, read ? `read=${read}` : undefined].filter(Boolean).join(" ");
+	return `  ${compactKind(row.kind, owner)} ${qname}${range ? `:${range}` : ""}${meta ? ` ${meta}` : ""}`;
 }
 
 function header(tool: string, payload: Record<string, unknown>): string {
@@ -171,7 +201,49 @@ function compactSyntax(payload: Record<string, unknown>): string {
 	return lines.join("\n");
 }
 
-export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | "tests" | "route" | "impact" | "local" | "syntax", payload: Record<string, unknown>): string {
+function compactReadSymbol(payload: Record<string, unknown>): string {
+	const summary = isRecord(payload.summary) ? payload.summary : {};
+	const target = isRecord(payload.target) ? payload.target : {};
+	const ref = shortRef(target);
+	const owner = target.containerName ?? target.owner;
+	const targetName = `${owner ? `${String(owner)}::` : ""}${String(target.name ?? "?")}`;
+	const lines = [
+		`${header("read_symbol", payload)} ${String(payload.language ?? "?")} ${String(payload.file ?? "?")}`,
+		`target: ${compactKind(target.kind, target.containerName ?? target.owner)} ${targetName}${compactRange(asRecord(target.range)) ? `:${compactRange(asRecord(target.range))}` : ""}${ref ? ` ref=${ref}` : ""} ${String(payload.sourceCompleteness ?? "?")}`,
+		`context: ${summary.contextSegmentCount ?? 0} segment(s), deferred=${summary.deferredReferenceCount ?? 0}`,
+	];
+	for (const segment of [asRecord(payload.targetSegment), ...rows(payload.contextSegments)].filter((row) => Object.keys(row).length > 0).slice(0, 12)) {
+		const segmentTarget = asRecord(segment.target);
+		const range = asRecord(segment.range);
+		const segmentRef = shortRef(segmentTarget);
+		const label = String(segment.kind ?? "segment");
+		const completeness = segment.truncated ? " partial" : "";
+		lines.push("", `--- ${label} ${String(segmentTarget.path ?? payload.file ?? "")}:${compactRange(range) ?? "?"}${segmentRef ? ` ref=${segmentRef}` : ""}${completeness} ---`);
+		lines.push(String(segment.source ?? ""));
+	}
+	return lines.join("\n");
+}
+
+function compactPostEdit(payload: Record<string, unknown>): string {
+	const summary = isRecord(payload.summary) ? payload.summary : {};
+	const lines = [
+		`${header("post_edit_map", payload)} files=${Array.isArray(payload.changedFiles) ? payload.changedFiles.length : 0}`,
+		`summary: changed=${summary.changedSymbolCount ?? 0} related=${summary.relatedCount ?? 0} tests=${summary.testCandidateCount ?? 0} diagnostics=${summary.diagnosticTargetCount ?? 0}`,
+	];
+	for (const row of rows(payload.changedSymbols).slice(0, 12)) {
+		const target = asRecord(row.target);
+		const range = asRecord(target.range);
+		lines.push(`changed ${String(target.path ?? "")}:${String(range.startLine ?? "?")}-${String(range.endLine ?? "?")} ${String(target.name ?? "?")}`.trim());
+	}
+	for (const row of rows(payload.diagnosticTargets).slice(0, 8)) {
+		const target = asRecord(row.target);
+		const diagnostic = asRecord(row.diagnostic);
+		lines.push(`diagnostic ${String(target.path ?? diagnostic.path ?? "")}:${String(diagnostic.line ?? "?")} ${String(diagnostic.severity ?? "?")} ${String(target.name ?? "?")}`.trim());
+	}
+	return lines.join("\n");
+}
+
+export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | "tests" | "route" | "impact" | "local" | "syntax" | "read_symbol" | "post_edit", payload: Record<string, unknown>): string {
 	if (kind === "state") return compactState(payload);
 	if (kind === "overview") return compactOverview(payload);
 	if (kind === "outline") return compactOutline(payload);
@@ -179,5 +251,7 @@ export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | 
 	if (kind === "route") return compactRoute(payload);
 	if (kind === "impact") return compactImpact(payload);
 	if (kind === "local") return compactLocal(payload);
+	if (kind === "read_symbol") return compactReadSymbol(payload);
+	if (kind === "post_edit") return compactPostEdit(payload);
 	return compactSyntax(payload);
 }

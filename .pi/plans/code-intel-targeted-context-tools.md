@@ -7,8 +7,9 @@ Improve the private code-intelligence extension so agents can get precise code c
 ## Desired end state
 
 - Existing routing tools expose precise, bounded `readHint` data without returning source bodies.
+- Locator tools that identify declarations expose a shared `symbolTarget` object in the same shape accepted by the targeted source tool, so agents can pass it through instead of reconstructing symbol identity from prose or line numbers.
 - A new targeted source tool can return a complete declaration segment, especially full function/method bodies.
-- Optional referenced-definition context can include one-hop local constants, variables, types, and helpers when those definitions are needed to understand the target.
+- Optional referenced-definition context can include one-hop local constants, variables, and types when those definitions are needed to understand the target; function/helper expansion is deferred.
 - Each result explicitly tells the agent whether source is included, whether it is complete, and whether another read is recommended.
 - Post-edit follow-up remains read-only and validation-oriented; code-intel does not become a write or codemod tool.
 - Usage logging can measure whether the new surfaces reduce duplicate reads and broad compensatory searches.
@@ -52,11 +53,28 @@ Locator-mode output should include fields like:
   "sourceCompleteness": "none",
   "nextReadRecommended": true,
   "nextReadReason": "source-not-included",
+  "symbolTarget": {
+    "path": "src/api.ts",
+    "uri": "file:///repo/src/api.ts",
+    "source": "tree-sitter",
+    "positionEncoding": "utf-16",
+    "kind": "function_declaration",
+    "name": "fetchWithRetry",
+    "containerName": "ApiClient",
+    "detail": "fetchWithRetry(options: RetryOptions)",
+    "range": { "startLine": 120, "startColumn": 1, "endLine": 180, "endColumn": 2 },
+    "selectionRange": { "startLine": 120, "startColumn": 17, "endLine": 120, "endColumn": 31 },
+    "targetRef": "stable123",
+    "symbolRef": "src/api.ts#function_declaration#ApiClient.fetchWithRetry@stable123",
+    "rangeId": "exact456",
+    "relocation": { "version": 1, "before": ["opaque-before-anchor"], "after": ["opaque-after-anchor"] }
+  },
   "readHint": {
     "path": "src/api.ts",
     "offset": 120,
     "limit": 61,
-    "reason": "target declaration range"
+    "reason": "target declaration range",
+    "symbolTarget": "same-object-or-reference"
   }
 }
 ```
@@ -115,42 +133,55 @@ Implementation tasks:
    - bounded byte and line caps;
    - stable source hash for a file or selected range;
    - range freshness verification from file contents.
-2. Add shared result metadata fields:
+2. Add a shared `symbolTarget` contract used by locator outputs and accepted directly by source-mode tools:
+   - `path`, `uri`, `language`, `source`, `positionEncoding`, `kind`, `name`, optional `containerName`/`owner`, optional `detail`/`signature`, optional `arity`;
+   - normalized full declaration `range` plus identifier `selectionRange` for future LSP position-based operations;
+   - `targetRef`/`symbolRef` generated from stable file-local identity fields for compact pass-through targeting;
+   - `rangeId` generated from stable identity plus exact declaration range and range hash for freshness validation;
+   - opaque relocation hints with independently hashed before/after sibling anchors, kept out of compact output, for stale-target disambiguation after line shifts or nearby insertions;
+   - source/range hash metadata for freshness checks.
+3. Add shared result metadata fields:
    - `sourceIncluded`;
    - `sourceCompleteness`: `none`, `complete-segment`, `partial`, or `locations-only`;
    - `nextReadRecommended`;
    - `nextReadReason`;
    - `readHint` when source is not included or is partial.
-3. Keep these fields concise in model-facing output and richer in structured details.
+4. Keep these fields concise in model-facing output and richer in structured details.
 
 Acceptance criteria:
 
 - Range helpers reject paths outside repo root.
 - Range helpers produce deterministic slices for LF and CRLF files.
+- `symbolTarget` is serializable, compact, and can be passed unchanged into `code_intel_read_symbol`.
 - Result metadata can be used by multiple tools without each tool inventing its own wording.
-- Tests cover complete segment, partial/truncated segment, and locations-only cases.
+- Tests cover complete segment, partial/truncated segment, locations-only cases, and symbol-target round trips.
 
 Validation:
 
 - `cd agent/extensions && npm run typecheck`
 - targeted tests for the new range helper module
 
-### Slice 2 — Add locator-mode `readHints` to file outline first
+### Slice 2 — Add locator-mode `symbolTarget` and `readHints` to file outline first
 
 Goal: make the existing outline tool better without adding source bodies or new double-read risk.
 
+Current state: `code_intel_file_outline` and file-tier `code_intel_repo_overview` already expose partial declaration identity (`kind`, `name`, line/column range, optional `owner`, optional `type`, optional `exported`, and optional snippet text). That is useful for navigation, but it is not yet the exact selector shape a future source-mode read tool should accept: it lacks `symbolTarget`, stable `symbolRef`/`rangeId`, source/range hashes, and signature/arity metadata where available.
+
 Implementation tasks:
 
-1. Extend `code_intel_file_outline` declaration rows with a `readHint` containing `path`, `offset`, `limit`, range, reason, and source hash or file hash metadata.
-2. Add stable `rangeId` or equivalent range token for declarations in outline output.
-3. Re-check that outline output remains compact by default and does not include full bodies.
-4. Include nested declaration ranges where existing parser records can do this reliably.
+1. Extend `code_intel_file_outline` declaration rows with a `symbolTarget` object in the shared contract from Slice 1.
+2. Extend declaration rows with a `readHint` containing `path`, `offset`, `limit`, range, reason, and the same `symbolTarget` or a reference to it.
+3. Add stable `rangeId` or equivalent range token for declarations in outline output.
+4. Re-check that outline output remains compact by default and does not include full bodies.
+5. Include nested declaration ranges where existing parser records can do this reliably.
+6. Use the same declaration row shape in file-tier `code_intel_repo_overview` when declarations are included, while respecting overview caps.
 
 Acceptance criteria:
 
 - `file_outline` can point the agent to the exact declaration range without returning source.
 - `file_outline` output marks `sourceIncluded: false` and `sourceCompleteness: "locations-only"` or `"none"`.
-- A future source-mode tool can consume the same range metadata after verifying file freshness.
+- `file_outline` and file-tier `repo_overview` declarations use the same `symbolTarget` shape consumed by `code_intel_read_symbol`.
+- A future source-mode tool can consume the same symbol target after verifying file freshness.
 - Ambiguous or unsupported declaration ranges are omitted or marked with a limitation rather than guessed.
 
 Validation:
@@ -168,28 +199,38 @@ Initial API shape:
 ```json
 {
   "repoRoot": "/repo",
-  "path": "src/api.ts",
-  "symbol": "fetchWithRetry",
-  "owner": "ApiClient",
-  "kind": "function",
-  "line": 120,
-  "column": 5,
+  "target": {
+    "path": "src/api.ts",
+    "kind": "function",
+    "name": "fetchWithRetry",
+    "containerName": "ApiClient",
+    "range": { "startLine": 120, "startColumn": 1, "endLine": 180, "endColumn": 2 },
+    "selectionRange": { "startLine": 120, "startColumn": 17, "endLine": 120, "endColumn": 31 },
+    "targetRef": "stable123",
+    "rangeId": "exact456"
+  },
   "contextLines": 0,
   "maxBytes": 30000,
   "detail": "source"
 }
 ```
 
+The tool can support shorthand fields such as `path` + `symbol` for manual use, but the preferred agent flow is pass-through: previous code-intel tools emit `symbolTarget`, and `code_intel_read_symbol` accepts that object directly. This avoids making the agent reconstruct identity from prose, line ranges, or a second scan.
+
+`line` and `column` are not the primary agent workflow. They are a fallback for "read the declaration enclosing this existing location" cases, such as LSP diagnostics, stack traces, compiler errors, or a user pointing at a line.
+
 Implementation tasks:
 
-1. Require `path` for the first implementation to avoid repo-wide same-name ambiguity.
+1. Require `target.path` or `path` for the first implementation to avoid repo-wide same-name ambiguity.
 2. Select by one of:
-   - exact `rangeId` from outline;
-   - `symbol` plus optional `owner` and `kind`;
-   - enclosing declaration at `line` and optional `column`.
+   - exact `target.rangeId` from outline or another code-intel result;
+   - stable `target.targetRef`/`symbolRef`, then opaque relocation anchors when line/range data is stale;
+   - `target` fields such as `path`, `kind`, `name`, `owner`, range, and `signature`/arity metadata;
+   - shorthand `symbol` plus optional `owner`, `kind`, and `signature`/arity metadata;
+   - enclosing declaration at `line` and optional `column` only for location-originated workflows.
 3. For function-like targets, return the full function/method/constructor body by default.
 4. For small declarations, allow `contextLines` to include adjacent comments, decorators, attributes, or enclosing class/struct header when useful.
-5. Return alternatives instead of choosing silently when multiple declarations match.
+5. Return alternatives instead of choosing silently when multiple declarations match. Same-file ambiguity is real in languages with overloads, methods on different receivers/classes, nested functions, trait/impl methods, object literal methods, constructors, or duplicate/overload signatures.
 6. Return source without synthetic line-number prefixes so it can be copied into `edit.oldText` if needed.
 
 Acceptance criteria:
@@ -198,11 +239,13 @@ Acceptance criteria:
 - Truncated reads set `sourceCompleteness: "partial"`, include omitted counts, and provide a broader `readHint`.
 - Ambiguous selection returns alternatives and no arbitrary body.
 - File hash or range hash is included so later follow-up can detect staleness.
+- Locator outputs expose identifiers that make later source reads possible without asking the agent to rediscover the same symbol by line scanning.
 
 Validation:
 
-- TypeScript tests for exported function, arrow function, class method, field, constant, and same-name ambiguity.
+- TypeScript tests for exported function, arrow function, class method, field, constant, object method, constructor, and same-name/nested ambiguity.
 - Go tests for function, receiver method, const, var, and struct field.
+- C#/C++ or fixture-level overload test once those languages are in scope for this tool.
 - Path safety tests for absolute outside path and `..` traversal.
 
 ### Slice 4 — Add explicit referenced-definition context
@@ -213,13 +256,18 @@ API shape option:
 
 ```json
 {
-  "path": "src/api.ts",
-  "symbol": "fetchWithRetry",
+  "target": {
+    "path": "src/api.ts",
+    "language": "typescript",
+    "kind": "function",
+    "name": "fetchWithRetry",
+    "owner": "ApiClient",
+    "symbolRef": "src/api.ts#function#ApiClient.fetchWithRetry@range-hash"
+  },
   "include": [
     "referenced-constants",
     "referenced-vars",
-    "referenced-types",
-    "local-helpers"
+    "referenced-types"
   ],
   "maxContextSegments": 8,
   "maxBytes": 50000
@@ -229,25 +277,27 @@ API shape option:
 Implementation tasks:
 
 1. Start with one-hop same-file references only.
-2. Extract identifiers used inside the target range.
-3. Match identifiers to same-file declarations by kind and lexical scope.
-4. Return extra segments with evidence such as `identifier-used-in-target` and `same-file-declaration`.
-5. De-duplicate segments and avoid returning the target body twice.
-6. Cap by segment count, total lines, and total bytes.
-7. Include omitted counts and reasons when references are skipped.
+2. Limit the first version to constants, variables, and type declarations. Do not include fields/properties or called functions/helpers yet; those have broader context and recursive implications and belong in a later design after the non-recursive context model is proven.
+3. Extract identifiers used inside the target range.
+4. Match identifiers to same-file declarations by kind and lexical scope.
+5. Return extra segments with evidence such as `identifier-used-in-target` and `same-file-declaration`.
+6. De-duplicate segments and avoid returning the target body twice.
+7. Cap by segment count, total lines, and total bytes.
+8. Include omitted counts and reasons when references are skipped, including `function-reference-deferred` for function/helper references that are intentionally out of scope.
 
 Acceptance criteria:
 
 - A function using a module constant can return the full function plus the constant declaration.
 - A variable initialized from another variable can return both declarations when the relevant include option is enabled.
-- Types and helpers are included only when requested.
+- Types are included only when requested.
+- Called functions/helpers are not included in the first version; they are reported as deferred references when detected.
 - The output states this is lexical/AST context, not a full semantic dependency closure.
 - Recursive expansion is not performed in the first version.
 
 Validation:
 
-- TypeScript fixture with constants, variables initialized from variables, type aliases, interfaces, helper functions, imports, and shadowed identifiers.
-- Go fixture with package constants, vars, struct types, local variables, helper functions, and shadowing.
+- TypeScript fixture with constants, variables initialized from variables, type aliases, interfaces, fields/properties that are intentionally deferred, function calls that are deferred, imports, and shadowed identifiers.
+- Go fixture with package constants, vars, struct types, fields that are intentionally deferred, helper calls that are deferred, and shadowing.
 - Large-context fixture proves caps and omitted counts work.
 
 ### Slice 5 — Extend usage logging to measure double-read behavior
@@ -299,6 +349,17 @@ Possible API shape:
   "includeChangedSymbols": true,
   "includeCallers": true,
   "includeTests": true,
+  "includeDiagnostics": true,
+  "diagnostics": [
+    {
+      "path": "src/api.ts",
+      "line": 42,
+      "column": 17,
+      "severity": "error",
+      "source": "typescript",
+      "code": "TS2345"
+    }
+  ],
   "avoidReReadingCompleteReturnedSegments": true
 }
 ```
@@ -308,19 +369,22 @@ Implementation tasks:
 1. Reuse changed-file expansion from `code_intel_impact_map`.
 2. Return changed declaration ranges and read hints.
 3. Include likely caller/test files as locator-mode results first.
-4. Avoid re-suggesting the exact same complete source segment unless the file changed after that segment was produced.
-5. Include validation hints from `code_intel_test_map`, not auto-run commands.
+4. Optionally accept or collect LSP/compiler diagnostics when available and cheap. Diagnostics should guide the follow-up map toward declarations enclosing errors/warnings and toward likely validation targets; they should not become auto-fix instructions.
+5. Avoid re-suggesting the exact same complete source segment unless the file changed after that segment was produced or a diagnostic now points inside that segment.
+6. Include validation hints from `code_intel_test_map`, not auto-run commands.
 
 Acceptance criteria:
 
-- After an edit/write, the tool returns changed symbols, likely impacted files, and test candidates.
-- It does not encourage rereading complete source already returned before the edit unless freshness has changed.
-- It labels unsupported languages and non-source files as gaps.
+- After an edit/write, the tool returns changed symbols, likely impacted files, test candidates, and diagnostic-focused locations when diagnostics are supplied or available.
+- It does not encourage rereading complete source already returned before the edit unless freshness has changed or diagnostics make that segment newly relevant.
+- It labels unsupported languages, unavailable diagnostics, and non-source files as gaps.
+- Diagnostic-driven suggestions are labeled by severity/source/code and remain locator-mode unless the user asks for source mode.
 
 Validation:
 
 - Changed TypeScript fixture with source and tests.
 - Changed Go fixture with package function and test file.
+- Diagnostic fixture where an error points inside a changed declaration and the post-edit map prioritizes that enclosing symbol.
 - Usage test showing `post-edit-map-after-edit` and `post-edit-map-after-write` follow-up categories.
 
 ### Slice 7 — Consider caller/test source bundles only after dogfooding

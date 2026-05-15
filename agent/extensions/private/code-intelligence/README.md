@@ -11,6 +11,8 @@ Use it to prepare compact candidate file lists for reviews and edits. The produc
 - `code_intel_impact_map`
 - `code_intel_local_map`
 - `code_intel_syntax_search`
+- `code_intel_read_symbol`
+- `code_intel_post_edit_map`
 - `code_intel_state`
 
 It does not replace source inspection, language servers, compiler/type checks, tests, or project-native validation.
@@ -53,6 +55,7 @@ The extension is optimized for agent routing, not replacing source reads or proj
 | Keep `rg` as literal fallback | Text is still useful for comments, docs, generated files, and unsupported-language gaps, but should be labeled separately from syntax evidence. |
 | Small tool surface | The extension is about read-next routing, not exposing a general semantic database or experimental edit API. |
 | Default broad map tools to `detail: "locations"` | Agents usually read/edit returned files next, so inline snippets would duplicate source context. Use `detail: "snippets"` only for triage. |
+| Locator mode vs source mode | Locator tools return `symbolTarget`/`readHint` data without source bodies; `code_intel_read_symbol` returns complete bounded source segments. Do not do both for the same range unless freshness, truncation, or ambiguity requires it. |
 | Summaries before pagination | `fileCount` and `topFiles` show distribution and hidden breadth without encouraging agents to browse pages mechanically. |
 | Compact TUI cards, full structured JSON for the agent | The UI stays readable while agent-facing content remains available for reasoning and follow-up tool calls. |
 | Passive usage logs, no agent-facing usage tool | We can evaluate natural adoption without adding a tool that changes normal agent behavior. |
@@ -109,7 +112,7 @@ Default log directory:
 
 Each session writes its own `<session-id>.jsonl` file to avoid contention between concurrent Pi sessions. Set `PI_CODE_INTEL_USAGE_LOG` only when you explicitly want a single-file override for tests/debugging.
 
-Recorded metadata includes tool names, timestamps, stable per-call invocation ids, repo/cwd, sanitized parameter shapes, returned-file counts/ranks, result counts/status, truncation/max-result hints, duration, and coarse adjacent-tool categories such as `read`, `edit`, `bash:search`, or `bash:test`. Follow-up records can indicate whether a read/edit matched a returned file and its rank, or whether a later search/test looked like compensatory search or validation.
+Recorded metadata includes tool names, timestamps, stable per-call invocation ids, repo/cwd, sanitized parameter shapes, returned-file and returned-segment counts/ranks, result counts/status, truncation/max-result hints, duration, and coarse adjacent-tool categories such as `read`, `edit`, `write`, `bash:search`, or `bash:test`. Follow-up records can indicate whether a read/edit/write matched a returned file or source segment and its rank, whether a same-range read likely duplicated a complete segment, or whether a later search/test looked like compensatory search or validation.
 
 Not recorded by default: prompts, full tool outputs, file contents, raw shell commands, raw search queries, raw edit text, or raw code-intel symbol/query/pattern values.
 
@@ -143,6 +146,14 @@ The output is filesystem and Tree-sitter syntax evidence for navigation. It does
 
 Parse one file and return imports/includes plus language-native declarations with line ranges. Use this before reading very large source files, or after repo overview identifies a candidate file.
 
+Declaration rows are locator-mode: compact output shows a short stable `ref=<targetRef>` plus `read=<offset>+<limit>`, while structured details include the full `symbolTarget` and `readHint`. `symbolTarget` keeps a stable `targetRef`/`symbolRef`, an exact `rangeId`, and opaque relocation hints for stale-target resolution; normal compact output intentionally hides those relocation hints. Agents can either perform one precise generic `read`, or pass the target directly to `code_intel_read_symbol`. They do not include declaration bodies unless `detail: "snippets"` asks for small triage snippets.
+
+Example compact row:
+
+```text
+fn ApiClient::fetchWithRetry:120-180 ref=abc123 read=120+61
+```
+
 Example:
 
 ```json
@@ -172,6 +183,43 @@ Example:
 ```
 
 Route results are file candidates, not semantic proof. Read or outline returned files before making implementation claims.
+
+### `code_intel_read_symbol`
+
+Read one declaration by passing a `symbolTarget` from locator-mode output, or by using explicit `path` plus `symbol`/`owner`/`kind` selectors. Pass-through targets can survive harmless line shifts and nearby sibling insertions by combining stable identity, exact range validation, and opaque before/after relocation anchors; ambiguous matches return alternatives instead of guessing. This is source mode: compact content includes the returned source segment. When it returns `sourceCompleteness: "complete-segment"`, treat the returned segment as the source read and do not generic-read the same range again unless freshness, truncation, ambiguity, or edit context requires it.
+
+Function-like declarations return the full function/method/constructor body by default. `contextLines` is mainly for small declarations and adjacent comments, decorators, attributes, or class/struct context.
+
+Optional `include` values can add bounded one-hop same-file referenced definitions:
+
+```json
+{
+  "target": { "path": "src/api.ts", "name": "fetchWithRetry", "symbolRef": "..." },
+  "include": ["referenced-constants", "referenced-vars", "referenced-types"]
+}
+```
+
+Referenced context is lexical/AST evidence only. Constants, vars, and types are included when requested; called functions/helpers and fields/properties are reported as deferred rather than recursively expanded.
+
+### `code_intel_post_edit_map`
+
+Build a read-only follow-up map after edits or writes. It returns locator-mode changed symbols, likely caller/consumer rows, likely test candidates, and optional diagnostic-focused declaration targets. It does not run tests, apply fixes, or mutate files.
+
+Examples:
+
+```json
+{"changedFiles":["src/api.ts"],"includeCallers":true,"includeTests":true}
+```
+
+```json
+{
+  "changedFiles": ["src/api.ts"],
+  "includeDiagnostics": true,
+  "diagnostics": [{"path":"src/api.ts","line":42,"column":17,"severity":"error","source":"typescript","code":"TS2345"}]
+}
+```
+
+Diagnostics prioritize enclosing declarations and validation targets, but remain routing evidence.
 
 ### `code_intel_state`
 

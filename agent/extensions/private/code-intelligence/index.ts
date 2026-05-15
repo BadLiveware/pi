@@ -14,6 +14,7 @@ import { registerOrientationTools } from "./src/orientation-tools.ts";
 import { resolveRepoRoots } from "./src/repo.ts";
 import { backendStatuses, languageServerStatuses, statePayload } from "./src/state.ts";
 import { runSyntaxSearch } from "./src/syntax.ts";
+import { registerTargetedContextTools } from "./src/targeted-tools.ts";
 import type { CodeIntelImpactMapParams, CodeIntelLocalMapParams, CodeIntelStateParams, CodeIntelSyntaxSearchParams } from "./src/types.ts";
 import { recordUsageToolCall, recordUsageToolResult } from "./src/usage.ts";
 
@@ -459,4 +460,5 @@ export default function codeIntelligence(pi: ExtensionAPI): void {
 	registerLocalMapTool(pi);
 	registerImpactMapTool(pi);
 	registerSyntaxSearchTool(pi);
+	registerTargetedContextTools(pi);
 }

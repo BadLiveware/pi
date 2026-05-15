@@ -60,6 +60,8 @@ export interface SymbolRecord {
 	evidence?: string;
 	rootSymbol?: string;
 	inFunction?: string;
+	signature?: string;
+	arity?: number;
 	metaVariables?: Record<string, unknown>;
 	snippet?: string;
 	exported?: boolean;
@@ -440,7 +442,14 @@ export function extractFileRecords(parsed: ParsedFile, detail: ResultDetail): { 
 			if (name && valueNode && ["arrow_function", "function", "function_expression"].includes(valueNode.type)) {
 				nextFunction = name;
 				addDefinition(node, name, "function_variable");
+			} else if (name && !currentFunction) {
+				const prefix = parsed.source.slice(Math.max(0, node.startIndex - 48), node.startIndex);
+				addDefinition(node, name, /\bconst\s+$/.test(prefix) ? "constant_declaration" : "variable_declarator", currentType);
 			}
+		} else if (["const_spec", "var_spec"].includes(node.type)) {
+			const nameNode = childForField(node, "name") ?? namedChildren(node).find((child) => child.type === "identifier");
+			const name = nameNode ? nodeText(parsed.source, nameNode) : undefined;
+			if (name && !currentFunction) addDefinition(node, name, node.type === "const_spec" ? "constant_declaration" : "variable_declaration", currentType);
 		} else if (["field_declaration", "property_signature", "public_field_definition", "field_definition"].includes(node.type)) {
 			const fieldNames = namedChildren(node).filter((child) => ["field_identifier", "property_identifier", "identifier"].includes(child.type));
 			const typeNode = namedChildren(node).find((child) => !["field_identifier", "property_identifier", "identifier", "tag"].includes(child.type));
