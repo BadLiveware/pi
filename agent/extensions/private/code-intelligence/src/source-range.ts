@@ -60,6 +60,8 @@ export interface ReadHint {
 export interface SourceSegment {
 	kind: "target" | "context";
 	source: string;
+	oldHash?: string;
+	oldTextReady?: boolean;
 	sourceIncluded: true;
 	sourceCompleteness: "complete-segment" | "partial";
 	truncated: boolean;
@@ -108,6 +110,42 @@ export function sliceLines(source: string, range: SourceRange): string {
 	const normalized = normalizeRange(range);
 	const lines = source.split(/\r?\n/);
 	return lines.slice(normalized.startLine - 1, normalized.endLine).join("\n");
+}
+
+export function detectEol(source: string): "\r\n" | "\n" {
+	return source.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function lineStartOffsets(source: string): number[] {
+	const starts = [0];
+	for (let index = 0; index < source.length; index++) {
+		if (source[index] === "\n") starts.push(index + 1);
+	}
+	return starts;
+}
+
+function lineContentEnd(source: string, starts: number[], lineIndex: number): number {
+	const nextStart = starts[lineIndex + 1];
+	if (nextStart === undefined) return source.length;
+	return source[nextStart - 2] === "\r" ? nextStart - 2 : nextStart - 1;
+}
+
+export function exactLineSpan(source: string, range: SourceRange): { startIndex: number; endIndex: number; afterLineIndex: number; text: string; eol: "\r\n" | "\n" } {
+	const normalized = normalizeRange(range);
+	const starts = lineStartOffsets(source);
+	const startIndex = starts[Math.min(normalized.startLine - 1, starts.length - 1)] ?? 0;
+	const endLineIndex = Math.min(normalized.endLine - 1, starts.length - 1);
+	const endIndex = lineContentEnd(source, starts, endLineIndex);
+	const afterLineIndex = starts[endLineIndex + 1] ?? endIndex;
+	return { startIndex, endIndex, afterLineIndex, text: source.slice(startIndex, endIndex), eol: detectEol(source) };
+}
+
+export function exactLineSlice(source: string, range: SourceRange): string {
+	return exactLineSpan(source, range).text;
+}
+
+export function normalizeInsertedText(text: string, eol: "\r\n" | "\n"): string {
+	return eol === "\n" ? text.replace(/\r\n/g, "\n") : text.replace(/\r?\n/g, "\r\n");
 }
 
 export function expandedRange(range: SourceRange, contextLines: number, source: string): SourceRange {
@@ -233,7 +271,7 @@ function selectionRangeFromSource(source: string | undefined, range: SourceRange
 
 export function buildSymbolTarget(record: SymbolRecord, source?: string, repoRoot?: string, peers?: SymbolRecord[]): SymbolTarget {
 	const range = rangeFromRecord(record);
-	const rangeText = source ? sliceLines(source, range) : undefined;
+	const rangeText = source ? exactLineSlice(source, range) : undefined;
 	const rangeHash = rangeText !== undefined ? shortHash(rangeText) : undefined;
 	const sourceDigest = source !== undefined ? sourceHash(source) : undefined;
 	const signature = record.signature ?? signatureFromSource(source ?? record.text ?? "", source ? range : { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0 }, record.name);

@@ -122,9 +122,9 @@ test("read symbol returns a complete target segment and bounded referenced defin
 		assert.equal(result.nextReadRecommended, false);
 		assert.match(result.targetSegment.source, /export function fetchWithRetry/);
 		assert.match(result.targetSegment.source, /return DEFAULT_TIMEOUT/);
-		assert.match(toolResult.content[0].text, /--- target src\/api\.ts:\d+-\d+ ref=[a-f0-9]{16} ---/);
+		assert.match(toolResult.content[0].text, /--- target src\/api\.ts:\d+-\d+ ref=[a-f0-9]{16} hash=[a-f0-9]{16} ---/);
 		assert.match(toolResult.content[0].text, /export function fetchWithRetry/);
-		assert.match(toolResult.content[0].text, /--- context src\/api\.ts:\d+ ref=[a-f0-9]{16} ---/);
+		assert.match(toolResult.content[0].text, /--- context src\/api\.ts:\d+ ref=[a-f0-9]{16} hash=[a-f0-9]{16} ---/);
 		const contextNames = result.contextSegments.map((segment: any) => segment.target.name).sort();
 		assert.deepEqual(contextNames, ["DEFAULT_TIMEOUT", "MAX_RETRIES", "RetryOptions"]);
 		assert.equal(result.deferredReferences.some((row: any) => row.name === "shouldRetry" && row.reason === "function-reference-deferred"), true);

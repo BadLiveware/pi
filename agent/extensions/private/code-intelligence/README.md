@@ -12,6 +12,8 @@ Use it to prepare compact candidate file lists for reviews and edits. The produc
 - `code_intel_local_map`
 - `code_intel_syntax_search`
 - `code_intel_read_symbol`
+- `code_intel_replace_symbol`
+- `code_intel_insert_relative`
 - `code_intel_post_edit_map`
 - `code_intel_state`
 
@@ -53,7 +55,7 @@ The extension is optimized for agent routing, not replacing source reads or proj
 | --- | --- |
 | Tree-sitter first (`syn`) | Current-source syntax maps gave the useful read-next evidence without stale indexes, shelling out, or repo-local artifacts. |
 | Keep `rg` as literal fallback | Text is still useful for comments, docs, generated files, and unsupported-language gaps, but should be labeled separately from syntax evidence. |
-| Small tool surface | The extension is about read-next routing, not exposing a general semantic database or experimental edit API. |
+| Small tool surface | The extension is about read-next routing plus narrow symbol-targeted mutations, not exposing a general semantic database or broad codemod API. |
 | Default broad map tools to `detail: "locations"` | Agents usually read/edit returned files next, so inline snippets would duplicate source context. Use `detail: "snippets"` only for triage. |
 | Locator mode vs source mode | Locator tools return `symbolTarget`/`readHint` data without source bodies; `code_intel_read_symbol` returns complete bounded source segments. Do not do both for the same range unless freshness, truncation, or ambiguity requires it. |
 | Summaries before pagination | `fileCount` and `topFiles` show distribution and hidden breadth without encouraging agents to browse pages mechanically. |
@@ -199,7 +201,27 @@ Optional `include` values can add bounded one-hop same-file referenced definitio
 }
 ```
 
-Referenced context is lexical/AST evidence only. Constants, vars, and types are included when requested; called functions/helpers and fields/properties are reported as deferred rather than recursively expanded.
+Referenced context is lexical/AST evidence only. Constants, vars, and types are included when requested; called functions/helpers and fields/properties are reported as deferred rather than recursively expanded. Source segment headers include `hash=<oldHash>` so agents can perform token-light safety checks with symbol-aware mutation tools without echoing the whole old text.
+
+### `code_intel_replace_symbol`
+
+Replace the current text of a resolved declaration. This is a mutation tool: it resolves a pass-through `symbolTarget` freshly, then requires `oldText` or `oldHash` before writing. If both are supplied, both must match. Use `oldHash` from `code_intel_read_symbol` for compact safety, or `oldText` when exact reviewable replacement evidence matters.
+
+Example:
+
+```json
+{"target":{"path":"src/api.ts","name":"fetchWithRetry","targetRef":"..."},"oldHash":"abc123","newText":"export function fetchWithRetry() {\n  return true;\n}"}
+```
+
+### `code_intel_insert_relative`
+
+Insert text before or after a resolved declaration anchor. It accepts the same `symbolTarget` shape from `code_intel_file_outline` or `code_intel_read_symbol`, resolves stale anchors with stable refs and relocation hints, and inserts at the fresh symbol boundary. Use it from outline when you only need structural insertion; use read-symbol first when the inserted code depends on the anchor body. `anchorHash` is optional safety evidence from a prior read-symbol result.
+
+Example:
+
+```json
+{"anchor":{"path":"src/api.ts","name":"fetchWithRetry","targetRef":"..."},"position":"after","text":"export function newHelper() { return true; }"}
+```
 
 ### `code_intel_post_edit_map`
 

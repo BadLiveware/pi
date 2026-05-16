@@ -3,8 +3,9 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { compactCodeIntelOutput } from "./compact-output.ts";
 import { loadConfig } from "./config.ts";
 import { resolveRepoRoots } from "./repo.ts";
+import { runInsertRelative, runReplaceSymbol } from "./symbol-mutations.ts";
 import { runPostEditMap, runReadSymbol } from "./symbol-context.ts";
-import type { CodeIntelPostEditMapParams, CodeIntelReadSymbolParams } from "./types.ts";
+import type { CodeIntelInsertRelativeParams, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "./types.ts";
 
 const repoRootParam = Type.Optional(Type.String({ description: "Repository or directory to inspect. Defaults to the current working directory." }));
 const timeoutParam = Type.Optional(Type.Number({ description: "Command timeout in milliseconds. Defaults to config queryTimeoutMs." }));
@@ -48,6 +49,77 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
 			const payload = await runReadSymbol(params, roots.repoRoot, loadedConfig.config, signal);
 			return { content: [{ type: "text", text: compactCodeIntelOutput("read_symbol", payload) }], details: payload };
+		},
+	});
+
+	pi.registerTool({
+		name: "code_intel_replace_symbol",
+		label: "Code Intelligence Replace Symbol",
+		description: "Replace the current text of a resolved symbolTarget after verifying oldText or oldHash safety evidence.",
+		promptSnippet: "Use when you already have a code-intel symbolTarget and need to replace that exact declaration without reconstructing line numbers after edits.",
+		promptGuidelines: [
+			"Prefer passing a symbolTarget from code_intel_read_symbol or code_intel_file_outline. The tool resolves stale targets using stable refs and relocation anchors before writing.",
+			"Provide oldHash from code_intel_read_symbol for token-light safety, or oldText when exact reviewable replacement evidence is needed. If both are supplied, both must match.",
+			"This tool mutates files. Use it only for the intended symbol replacement, and run validation or code_intel_post_edit_map afterward when follow-up context is needed.",
+		],
+		parameters: Type.Object({
+			repoRoot: repoRootParam,
+			target: targetParam,
+			path: Type.Optional(Type.String({ description: "Repo-relative file path. Required when target is omitted." })),
+			symbol: Type.Optional(Type.String({ description: "Symbol/declaration name. Prefer target when available." })),
+			name: Type.Optional(Type.String({ description: "Alias for symbol." })),
+			owner: Type.Optional(Type.String({ description: "Optional owner such as class, struct, receiver, impl, or namespace." })),
+			kind: Type.Optional(Type.String({ description: "Optional declaration kind filter." })),
+			signature: Type.Optional(Type.String({ description: "Optional signature text to disambiguate overload-like declarations." })),
+			symbolRef: Type.Optional(Type.String({ description: "Stable symbolRef emitted by locator-mode code-intel tools." })),
+			rangeId: Type.Optional(Type.String({ description: "Exact range id emitted by locator-mode code-intel tools." })),
+			oldText: Type.Optional(Type.String({ description: "Exact expected current symbol text. If provided, it must match after fresh resolution." })),
+			oldHash: Type.Optional(Type.String({ description: "Hash of the exact expected current symbol text, e.g. oldHash from code_intel_read_symbol." })),
+			newText: Type.String({ description: "Replacement text for the resolved symbol range." }),
+			normalizeEol: Type.Optional(Type.Boolean({ description: "Normalize newText line endings to the target file style. Default true." })),
+			timeoutMs: timeoutParam,
+		}),
+		async execute(_toolCallId: string, params: CodeIntelReplaceSymbolParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+			const loadedConfig = loadConfig(ctx);
+			const roots = await resolveRepoRoots(ctx, params.repoRoot);
+			const payload = await runReplaceSymbol(params, roots.repoRoot, loadedConfig.config, signal);
+			return { content: [{ type: "text", text: compactCodeIntelOutput("replace_symbol", payload) }], details: payload };
+		},
+	});
+
+	pi.registerTool({
+		name: "code_intel_insert_relative",
+		label: "Code Intelligence Insert Relative",
+		description: "Insert text before or after a resolved symbolTarget anchor, using the same stale-target resolution as read_symbol.",
+		promptSnippet: "Use with a symbolTarget from file outline or read_symbol to add a declaration before/after an existing symbol without reading the whole file.",
+		promptGuidelines: [
+			"Prefer anchor from code_intel_file_outline when you only need structural insertion; use code_intel_read_symbol first when the inserted code depends on the anchor body.",
+			"The tool mutates files and inserts text verbatim except for default EOL normalization. Provide anchorHash when you want compact safety evidence from a prior read_symbol result.",
+			"Run validation or code_intel_post_edit_map afterward when follow-up context is needed.",
+		],
+		parameters: Type.Object({
+			repoRoot: repoRootParam,
+			anchor: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Symbol target object to insert before/after. Usually from file outline or read_symbol." })),
+			target: targetParam,
+			path: Type.Optional(Type.String({ description: "Repo-relative file path. Required when anchor/target is omitted." })),
+			symbol: Type.Optional(Type.String({ description: "Symbol/declaration name. Prefer anchor when available." })),
+			name: Type.Optional(Type.String({ description: "Alias for symbol." })),
+			owner: Type.Optional(Type.String({ description: "Optional owner such as class, struct, receiver, impl, or namespace." })),
+			kind: Type.Optional(Type.String({ description: "Optional declaration kind filter." })),
+			signature: Type.Optional(Type.String({ description: "Optional signature text to disambiguate overload-like declarations." })),
+			symbolRef: Type.Optional(Type.String({ description: "Stable symbolRef emitted by locator-mode code-intel tools." })),
+			rangeId: Type.Optional(Type.String({ description: "Exact range id emitted by locator-mode code-intel tools." })),
+			position: Type.Union([Type.Literal("before"), Type.Literal("after")], { description: "Insert before or after the resolved anchor symbol." }),
+			text: Type.String({ description: "Text to insert relative to the resolved anchor. A trailing newline is added when needed to avoid merging with following text." }),
+			anchorHash: Type.Optional(Type.String({ description: "Hash of the exact expected current anchor text, e.g. oldHash from code_intel_read_symbol." })),
+			normalizeEol: Type.Optional(Type.Boolean({ description: "Normalize inserted text line endings to the target file style. Default true." })),
+			timeoutMs: timeoutParam,
+		}),
+		async execute(_toolCallId: string, params: CodeIntelInsertRelativeParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
+			const loadedConfig = loadConfig(ctx);
+			const roots = await resolveRepoRoots(ctx, params.repoRoot);
+			const payload = await runInsertRelative(params, roots.repoRoot, loadedConfig.config, signal);
+			return { content: [{ type: "text", text: compactCodeIntelOutput("insert_relative", payload) }], details: payload };
 		},
 	});
 

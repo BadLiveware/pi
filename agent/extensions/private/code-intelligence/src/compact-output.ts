@@ -216,12 +216,26 @@ function compactReadSymbol(payload: Record<string, unknown>): string {
 		const segmentTarget = asRecord(segment.target);
 		const range = asRecord(segment.range);
 		const segmentRef = shortRef(segmentTarget);
+		const hash = str(segment.oldHash);
 		const label = String(segment.kind ?? "segment");
 		const completeness = segment.truncated ? " partial" : "";
-		lines.push("", `--- ${label} ${String(segmentTarget.path ?? payload.file ?? "")}:${compactRange(range) ?? "?"}${segmentRef ? ` ref=${segmentRef}` : ""}${completeness} ---`);
+		lines.push("", `--- ${label} ${String(segmentTarget.path ?? payload.file ?? "")}:${compactRange(range) ?? "?"}${segmentRef ? ` ref=${segmentRef}` : ""}${hash ? ` hash=${hash}` : ""}${completeness} ---`);
 		lines.push(String(segment.source ?? ""));
 	}
 	return lines.join("\n");
+}
+
+function compactMutation(payload: Record<string, unknown>, label: string): string {
+	const target = asRecord(payload.target ?? payload.anchor);
+	const range = asRecord(target.range);
+	const name = str(target.name) ?? "?";
+	const ref = shortRef(target);
+	const summary = asRecord(payload.summary);
+	return [
+		`${header(label, payload)} ${String(payload.file ?? target.path ?? "?")}`,
+		`${String(payload.operation ?? label)} ${name}${compactRange(range) ? `:${compactRange(range)}` : ""}${ref ? ` ref=${ref}` : ""} hash=${String(payload.oldHash ?? payload.anchorHash ?? "?")}`,
+		`summary: bytes=${String(summary.byteDelta ?? "?")} changed=${payload.changed === true}`,
+	].join("\n");
 }
 
 function compactPostEdit(payload: Record<string, unknown>): string {
@@ -243,7 +257,7 @@ function compactPostEdit(payload: Record<string, unknown>): string {
 	return lines.join("\n");
 }
 
-export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | "tests" | "route" | "impact" | "local" | "syntax" | "read_symbol" | "post_edit", payload: Record<string, unknown>): string {
+export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | "tests" | "route" | "impact" | "local" | "syntax" | "read_symbol" | "post_edit" | "replace_symbol" | "insert_relative", payload: Record<string, unknown>): string {
 	if (kind === "state") return compactState(payload);
 	if (kind === "overview") return compactOverview(payload);
 	if (kind === "outline") return compactOutline(payload);
@@ -253,5 +267,7 @@ export function compactCodeIntelOutput(kind: "state" | "overview" | "outline" | 
 	if (kind === "local") return compactLocal(payload);
 	if (kind === "read_symbol") return compactReadSymbol(payload);
 	if (kind === "post_edit") return compactPostEdit(payload);
+	if (kind === "replace_symbol") return compactMutation(payload, "replace_symbol");
+	if (kind === "insert_relative") return compactMutation(payload, "insert_relative");
 	return compactSyntax(payload);
 }

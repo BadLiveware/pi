@@ -5,7 +5,7 @@ import { LANGUAGE_SPECS, languageSpec } from "./languages.ts";
 import { changedFilesFromBase, ensureInsideRoot } from "./repo.ts";
 import { runImpactMap } from "./impact.ts";
 import { runTestMap } from "./orientation.ts";
-import { buildSymbolTarget, expandedRange, locatorMetadata, rangeFromRecord, readHintForTarget, rangeLineCount, shortHash, sliceLines, sourceHash, targetFromUnknown, type SourceRange, type SourceSegment, type SymbolRelocationHints, type SymbolTarget } from "./source-range.ts";
+import { buildSymbolTarget, exactLineSlice, expandedRange, locatorMetadata, rangeFromRecord, readHintForTarget, rangeLineCount, shortHash, sliceLines, sourceHash, targetFromUnknown, type SourceRange, type SourceSegment, type SymbolRelocationHints, type SymbolTarget } from "./source-range.ts";
 import { extractFileRecords, parseFiles, type ParsedFile, type SymbolRecord } from "./tree-sitter.ts";
 import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
 
@@ -16,7 +16,7 @@ const KEYWORDS = new Set([
 	"as", "async", "await", "break", "case", "catch", "class", "const", "continue", "default", "defer", "do", "else", "enum", "export", "extends", "false", "finally", "for", "from", "func", "function", "go", "if", "import", "in", "interface", "let", "new", "nil", "null", "package", "pub", "return", "select", "static", "struct", "switch", "this", "throw", "true", "try", "type", "undefined", "var", "void", "while",
 ]);
 
-type ResolvedSelection = {
+export type ResolvedSelection = {
 	parsed: ParsedFile;
 	records: SymbolRecord[];
 	record?: SymbolRecord;
@@ -201,6 +201,13 @@ function selectRecord(params: CodeIntelReadSymbolParams, parsed: ParsedFile, rec
 	return { alternatives: scored.slice(0, 20).map((item) => item.target) };
 }
 
+export async function resolveSymbolSelection(params: CodeIntelReadSymbolParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<ResolvedSelection> {
+	const parsedSelection = await parseTargetFile(params, repoRoot, config, signal);
+	if (!parsedSelection.parsed) return parsedSelection;
+	const selected = selectRecord(params, parsedSelection.parsed, parsedSelection.records, repoRoot);
+	return { ...parsedSelection, ...selected };
+}
+
 function isFunctionLike(record: SymbolRecord): boolean {
 	return FUNCTION_LIKE_KINDS.test(record.kind);
 }
@@ -209,7 +216,9 @@ function segmentForRecord(parsed: ParsedFile, record: SymbolRecord, target: Symb
 	const baseRange = rangeFromRecord(record);
 	const useContext = !isFunctionLike(record) && options.contextLines > 0;
 	const fullRange = useContext ? expandedRange(baseRange, options.contextLines, parsed.source) : baseRange;
-	let source = sliceLines(parsed.source, fullRange);
+	const fullSource = exactLineSlice(parsed.source, fullRange);
+	const oldHash = shortHash(fullSource);
+	let source = fullSource;
 	let outputRange = fullRange;
 	let truncated = false;
 	let omittedLineCount: number | undefined;
@@ -229,7 +238,7 @@ function segmentForRecord(parsed: ParsedFile, record: SymbolRecord, target: Symb
 		omittedLineCount = Math.max(0, rangeLineCount(fullRange) - kept.length);
 	}
 	const segmentTarget = { ...target, range: outputRange };
-	return { kind: options.kind, source, sourceIncluded: true, sourceCompleteness: truncated ? "partial" : "complete-segment", truncated, lineCount: source ? source.split(/\r?\n/).length : 0, byteCount: Buffer.byteLength(source, "utf8"), omittedLineCount, target: segmentTarget, range: outputRange, readHint: readHintForTarget({ ...target, range: fullRange }, truncated ? "complete target range" : "returned source segment"), reason: options.reason, evidence: options.evidence };
+	return { kind: options.kind, source, oldHash, oldTextReady: !truncated, sourceIncluded: true, sourceCompleteness: truncated ? "partial" : "complete-segment", truncated, lineCount: source ? source.split(/\r?\n/).length : 0, byteCount: Buffer.byteLength(source, "utf8"), omittedLineCount, target: segmentTarget, range: outputRange, readHint: readHintForTarget({ ...target, range: fullRange }, truncated ? "complete target range" : "returned source segment"), reason: options.reason, evidence: options.evidence };
 }
 
 function identifiersInSource(source: string): Set<string> {
@@ -284,10 +293,9 @@ function contextSegments(parsed: ParsedFile, records: SymbolRecord[], targetReco
 
 export async function runReadSymbol(params: CodeIntelReadSymbolParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {
 	const started = Date.now();
-	const parsedSelection = await parseTargetFile(params, repoRoot, config, signal);
-	if (!parsedSelection.parsed) return { ok: false, repoRoot, diagnostics: parsedSelection.diagnostics, reason: parsedSelection.diagnostics[0] ?? "Unable to parse target file", elapsedMs: Date.now() - started };
-	const { parsed, records, diagnostics } = parsedSelection;
-	const selected = selectRecord(params, parsed, records, repoRoot);
+	const selected = await resolveSymbolSelection(params, repoRoot, config, signal);
+	if (!selected.parsed) return { ok: false, repoRoot, diagnostics: selected.diagnostics, reason: selected.diagnostics[0] ?? "Unable to parse target file", elapsedMs: Date.now() - started };
+	const { parsed, records, diagnostics } = selected;
 	if (!selected.record || !selected.target) {
 		return { ok: false, repoRoot, file: parsed.file, language: parsed.language, sourceIncluded: false, sourceCompleteness: "locations-only", nextReadRecommended: false, nextReadReason: "ambiguous-or-missing-target", alternatives: (selected.alternatives ?? []).slice(0, 20).map((target) => ({ target, readHint: readHintForTarget(target, "candidate declaration range") })), summary: { alternativeCount: selected.alternatives?.length ?? 0 }, diagnostics, limitations: ["Symbol reads use current-source Tree-sitter syntax ranges; use language tooling for semantic definition proof when required."], elapsedMs: Date.now() - started };
 	}
