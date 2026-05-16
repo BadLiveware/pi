@@ -25,6 +25,7 @@ Approach software development work with understanding, correctness, testability,
 - Prefer fast, focused inner-loop validation plus broader checkpoints matched to the risk and codebase.
 - Treat guidance, validation gates, and guardrails as requirements to satisfy in spirit, not obstacles to route around. If a rule blocks the direct path, change the approach, improve the source of truth, or ask for an explicit decision instead of finding a technicality.
 - Choose extra investigation, verification, tool use, delegation, or stopping by expected net value: likely improvement and risk reduction minus cost, latency, and user friction.
+- For nontrivial fundamental behavior risks—cost/bounds, resources, state/protocol invariants, concurrency, progress, data-shape drift, or effect/idempotency boundaries—load `excession-behavior-modeling` and use a small `.exm` model only when it can answer a specific behavior question.
 - Prefer project-sanctioned commands over generic defaults.
 
 ### 4. Build testable, composable systems
