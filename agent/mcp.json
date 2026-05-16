@@ -36,6 +36,17 @@
         "pull_request_read",
         "update_pull_request"
       ]
+    },
+    "excession": {
+      "command": "/home/fl/.cargo/bin/excession",
+      "cwd": "/home/fl/code/personal/excession",
+      "args": [
+        "mcp",
+        "--repo",
+        "/home/fl/code/personal/excession",
+        "--scratch-dir",
+        ".excession/mcp-scratch"
+      ]
     }
   }
 }
