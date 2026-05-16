@@ -16,7 +16,8 @@ Use this skill to structure branches, commits, and pull requests for review.
 - a branch and review structure that keeps refactors, behavior changes, and pull request state understandable
 
 ## Safety Boundaries
-- Do not commit, push, create tags, or open pull requests unless the user explicitly asked for that.
+- Commit intended repository changes by default when this review produces a safe semantic commit; do not commit for inspect-only/review-only work or when staging would require guessing.
+- Do not push, create tags, or open pull requests unless the user explicitly asked for that.
 - Do not claim a PR is open or merged without checking its state.
 
 ## Branching

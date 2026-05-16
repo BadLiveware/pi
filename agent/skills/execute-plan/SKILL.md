@@ -24,7 +24,7 @@ If a prompt mixes continuous/open-ended intent with "quick" or "finite for now" 
 - bounded execution continues through all unblocked in-scope tasks until blocked or complete
 - unbounded execution continues through evaluated attempts until user stop, blocker, or agreed stop criteria
 - progress recorded in tasks, notes, plan files, loop files, or Stardock evidence records instead of standalone status chat
-- semantic checkpoint commits when commit permission is active
+- semantic checkpoint commits by default when completed work is safe to commit
 
 ## Stop Policy
 Do not stop merely to report status after task creation, validation, `git status`, a completed chunk, or an informational checkpoint.
@@ -73,9 +73,9 @@ When a plan is intended for Stardock or an active Stardock loop exists, use Star
 - Do not create vague tasks like `execute phase 2`, `continue slice C`, `finish the rest`, or separate red/green/refactor bookkeeping tasks.
 
 ## Commit Checkpoints
-Use `commit` when commit permission is active. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not commit tiny fragments, incomplete scaffolding, or unvalidated changes unless the validation gap is explicit and committing is still useful.
+Use `commit` for completed semantic units by default. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not commit tiny fragments, incomplete scaffolding, or unvalidated changes unless the validation gap is explicit and committing is still useful.
 
-Commit permission is active only when the user asked for commits or another active workflow includes committing. Otherwise leave changes uncommitted and summarize suggested boundaries at completion when useful.
+Do not commit when the user opted out, the execution is inspect-only/draft/WIP, repository or branch state needs a user decision, or no safe coherent commit exists. Otherwise leave only intentionally uncommitted changes and explain why.
 
 ## Workflow
 1. Treat the plan or loop charter as execution source; do not re-plan unless evidence forces it.
@@ -87,7 +87,7 @@ Commit permission is active only when the user asked for commits or another acti
 7. For Stardock-backed bounded plans, create or activate the current slice's `stardock_brief` before coding.
 8. Create/reconcile the next concrete task/attempt window and mark the first executable leaf `in_progress`.
 9. Execute the task/attempt in the same run.
-10. After each leaf task/attempt: update task/Stardock state, validate/evaluate, commit if permission is active and the work is a semantic checkpoint, call `TaskList` when task tools are in use, and continue with the next unblocked in-scope item.
+10. After each leaf task/attempt: update task/Stardock state, validate/evaluate, commit by default when the work is a safe semantic checkpoint, call `TaskList` when task tools are in use, and continue with the next unblocked in-scope item.
 11. When the visible window runs low, add the next few concrete tasks from the plan or next 1-3 hypotheses from the loop charter.
 12. If tasks are exhausted but bounded plan scope is not complete, add missing concrete tasks and continue; if an unbounded loop queue is empty, replenish from evidence instead of stopping.
 13. If progress needs recording mid-plan, update tasks, Stardock records, plan checklist, notes, loop file, or local evidence log; do not emit standalone progress chat.

@@ -17,7 +17,7 @@ Long/split plans are still bounded. Execute the current referenced document and 
 ## Execution
 1. Stay on the active execution file until its mandatory tasks and exit criteria are complete.
 2. Work the next unblocked item in execution-spine order unless a safer dependency order is required.
-3. After each meaningful increment: update tasks/Stardock records/progress notes, record validation evidence/gaps, and commit if permission is active and the work is a validated semantic checkpoint.
+3. After each meaningful increment: update tasks/Stardock records/progress notes, record validation evidence/gaps, and commit by default when the work is a safe validated semantic checkpoint.
 4. When an execution file completes, record validation and handoff notes, then continue to the next file without a standalone status report unless a stop condition applies.
 5. If the active file's checklist is exhausted but original scope is not complete, add missing concrete items and continue.
 6. Record out-of-scope discoveries under notes/deferred work without silently expanding scope.

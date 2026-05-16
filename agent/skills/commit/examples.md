@@ -65,7 +65,7 @@ state merges do not repeatedly rehash already-present samples.
 
 ## Behavior cases
 - Manual standalone invocation -> create appropriate commit(s) if changes are ready.
-- Ordinary coding task without commit permission -> do not commit.
+- Ordinary coding task -> commit validated intended changes by default unless the user opts out, the task is inspect-only/draft/WIP, or safe staging needs a decision.
 - Multiple unrelated validated groups -> separate semantic commits.
 - Unvalidated code change -> validate first or record the validation gap before committing.
 - Source/tests/docs/generated artifacts for one behavior -> one semantic commit.

@@ -71,7 +71,7 @@ Approach software development work with understanding, correctness, testability,
 6. Implement in small, reviewable steps.
 7. If tasks are being used, keep them reconciled to the user-requested scope and current referenced plan document; on context changes, reconcile first, preserve current-round completions unless obsolete, and trim older stale or superseded tasks before continuing. After each completed task call `TaskList` and continue with the next unblocked in-scope task. Treat `Continue` as instruction to resume from the task list.
 8. When executing from a plan, keep working the current referenced plan document until its own checklist or exit criteria are met.
-9. Validate with local project commands and summarize only when you are blocked or the scoped work is complete.
+9. Validate with local project commands, commit complete semantic checkpoints by default when safe, and summarize only when you are blocked or the scoped work is complete.
 
 ## Validation
 
@@ -82,7 +82,8 @@ Approach software development work with understanding, correctness, testability,
 
 ## Safety Boundaries
 
-- Do not commit, push, tag, open PRs, publish artifacts, apply infrastructure changes, or trigger external side effects unless explicitly asked.
+- Commit intended repository changes by default after validation at coherent semantic checkpoints unless the user asks not to, the task is inspect-only/draft/WIP, no safe coherent commit exists, or repository/branch state needs a user decision.
+- Do not push, tag, open PRs, publish artifacts, apply infrastructure changes, or trigger external side effects unless explicitly asked.
 - Do not run destructive or irreversible operations without explicit permission.
 
 ## Git and Review
@@ -101,6 +102,7 @@ Do not consider a change done until:
 - you understand the problem
 - the implementation matches explicit requirements and scope
 - relevant validation passed, or gaps are clearly disclosed
+- intended repository changes are committed at coherent semantic checkpoints, unless the user asked not to commit or an explicit safety/scope reason leaves them uncommitted
 - you measured performance if it matters
 - you considered compatibility, security, and operational concerns when relevant
 - non-obvious, compatibility-driven, or dependency-driven code has targeted comments explaining why it exists and, when needed, how it works or when it can be removed

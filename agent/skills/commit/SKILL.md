@@ -8,12 +8,13 @@ description: Use when committing changes or deciding commit boundaries. Creates 
 Use this skill whenever creating commits or deciding commit boundaries. Future readers should understand what changed and why without the chat, PR, or issue thread.
 
 ## Safety Boundaries
-- Do not commit unless the user explicitly asked for a commit, manually invoked this skill on its own, or the active skill/workflow includes committing.
+- Commit intended repository changes by default after validation at coherent semantic checkpoints. Do not wait for the user to separately request a commit when scoped work is complete enough to review, revert, or continue from.
+- Do not commit when the user asks not to, the task is inspect-only/planning-only/draft/WIP, changes are incomplete, validation is still missing without an explicit useful gap, safe staging would require guessing about unrelated changes, or repository/branch state needs a user decision.
 - Treat standalone/manual invocation of this skill as a request to create the appropriate commit(s), not just explain committing. It is not permission to sweep the whole working tree; first identify which changes are intended for this commit request.
-- When commit permission is active for multi-step work, commit at validated semantic checkpoints instead of waiting for one dump commit.
-- Do not push unless the user asked or the active workflow explicitly pushes by default.
+- For multi-step work, commit at validated semantic checkpoints instead of waiting for one dump commit.
+- Do not push unless the user asked for a push or explicitly invoked a workflow whose contract includes pushing by default.
 - Do not force-push, rebase, reset, squash, amend, tag, merge, or run destructive cleanup without explicit approval.
-- Preserve unrelated local changes. Unrelated means do not commit it at all, not even in a separate commit. Manual invocation does not expand scope to every changed file; stage only files or hunks that belong to the user-requested/current commit intent.
+- Preserve unrelated local changes. Unrelated means do not commit it at all, not even in a separate commit. Manual invocation and commit-by-default behavior do not expand scope to every changed file; stage only files or hunks that belong to the user-requested/current commit intent.
 
 ## Semantic Boundaries
 A commit should be one complete semantic piece of work: understandable, reviewable, testable, and revertible as a unit.
@@ -71,7 +72,7 @@ Body rules:
 5. Re-check `git diff --cached`; if it reads like a dump or fragment, adjust staging.
 6. Validate the staged change or record the validation gap if committing is still appropriate.
 7. Commit with the message structure above.
-8. Check `git status --short` and continue with the next semantic group when commit permission remains active.
+8. Check `git status --short` and continue with the next intended semantic group when more safe in-scope changes remain.
 
 ## Examples
 For examples and regression cases when editing this skill, see `examples.md`.

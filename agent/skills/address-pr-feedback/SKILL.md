@@ -7,7 +7,7 @@ description: Use when the user explicitly asks to inspect/address the current br
 
 Use this skill when the user asks to check an open PR for comments/review feedback, fix issues, commit fixes, and push the branch.
 
-This is the manual end-to-end PR feedback workflow. Do not use it just because a `pr-upstream-status` auto-solve prompt mentions PR comments or CI. Auto-solve prompts already provide starting feedback/CI context and do not imply PR watching, committing, or pushing.
+This is the manual end-to-end PR feedback workflow. Do not use it just because a `pr-upstream-status` auto-solve prompt mentions PR comments or CI. Auto-solve prompts already provide starting feedback/CI context and do not imply PR watching or pushing.
 
 This skill pushes by default after fixes are committed and validated unless the user says not to push or the task is explicitly inspect-only/preparation-only.
 
@@ -20,7 +20,7 @@ This skill pushes by default after fixes are committed and validated unless the 
 
 ## Safety Boundaries
 - Push after commits and validation unless user opts out, task is inspect-only, validation has unresolved decision-requiring failures, or branch/remote state is ambiguous.
-- When handling an auto-solve prompt, follow that prompt instead of this end-to-end workflow: verify/fix the provided feedback, inspect linked details only if needed, run relevant local validation, and summarize. Do not start PR check watchers, poll for pending checks, commit, or push unless the user explicitly asks.
+- When handling an auto-solve prompt, follow that prompt instead of this end-to-end workflow: verify/fix the provided feedback, inspect linked details only if needed, run relevant local validation, commit validated fixes by default according to the `commit` skill, and summarize. Do not start PR check watchers, poll for pending checks, or push unless the user explicitly asks.
 - For manual end-to-end PR handling, do not start coding from partial visible comments while PR checks are still pending. Wait for checks to reach terminal state first, or ask the user whether to proceed with incomplete feedback if waiting becomes unreasonable.
 - Do not force-push, reset, rebase, delete branches, merge, close, approve, request reviewers, edit PR metadata, or post/resolve PR comments unless explicitly asked.
 - If multiple open PRs match or no open PR is found, stop and ask which PR to use.

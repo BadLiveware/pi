@@ -63,7 +63,7 @@ Continuous unbounded loop (project-owned canonical context file).
 - Completion/readiness: use `stardock_policy({ action: "completion" })` and `stardock_final_report` when criteria/artifacts/final evidence exist or risk is high
 
 ## Inner Loop Cadence
-- Attempt completion includes measuring, selecting, implementing or explicitly splitting/deferring, post-measuring, deciding, committing accepted kept changes when commit permission is active, and recording outcome.
+- Attempt completion includes measuring, selecting, implementing or explicitly splitting/deferring, post-measuring, deciding, committing accepted kept changes by default when safe, and recording outcome.
 - Micro-batch limit: up to 3 independently evaluated/logged micro-attempts only when each reaches a terminal outcome before the Stardock iteration advances.
 - Do not call `stardock_done` after partial investigation, async process start, waiting for benchmarks, or unevaluated edits unless a predeclared pause/blocker policy applies.
 
@@ -92,6 +92,6 @@ Continuous unbounded loop (project-owned canonical context file).
 - [ ] Run post-change measurement or evaluation
 - [ ] Inspect benchmark/log/artifact output against decision rules
 - [ ] Decide accepted/rejected/deferred/split/blocked
-- [ ] Commit accepted kept change when commit permission is active, or record accepted state; revert/record non-accepted outcome
+- [ ] Commit accepted kept change by default when safe, or record why it remains uncommitted; revert/record non-accepted outcome
 - [ ] Update Recent Attempts row and current state snapshot when applicable
 - [ ] Record `stardock_attempt_report` with hypothesis, action, validation, result, keep/reset decision, and evidence pointer before `stardock_done`

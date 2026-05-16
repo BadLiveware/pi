@@ -57,7 +57,7 @@ Other files should reference owner locations with short pointers, not copy conte
 10. **Runner Policy**: use Stardock recursive mode by default when available; state whether the loop is attempt-driven or item-queue paced. For optimization/experiment loops, set one Stardock iteration to one full evaluated attempt and use `itemsPerIteration: 0`; if not using Stardock, record why and what runner/checkpoint mechanism replaces it.
 11. **Stardock Setup**: loop name, `objective`, optional `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, outside-help/governor cadence, and whether to use `stardock_ledger`, `stardock_attempt_report`, `stardock_final_report`, `stardock_policy`, or breakout/auditor records.
 12. **Compaction Policy**: when/how stale detail is archived while the canonical file stays small.
-13. **Commit Policy**: how accepted kept state is committed or recorded when commit permission is active.
+13. **Commit Policy**: how accepted kept state is committed by default or explicitly recorded when commits are disabled or unsafe.
 14. **Runtime Decision Policy**: all approval boundaries, cost ceilings, ambiguity handling, and fallback behavior needed during the loop must be decided before starting; the loop cannot rely on asking the user mid-iteration.
 15. **Pause Rules**: pause only for explicit user stop, unrecoverable blockers under the predeclared policy, unsafe actions without preapproval, or agreed stop criteria.
 

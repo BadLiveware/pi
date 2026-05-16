@@ -9,7 +9,7 @@ disable-model-invocation: true
 Use this skill only when the user manually invokes it. Its purpose is to turn the current uncommitted working tree into coherent, reviewable commits.
 
 ## Safety Boundaries
-- Manual invocation grants commit permission for current uncommitted work, but not push permission.
+- Manual invocation scopes commit-by-default behavior to safe intended current uncommitted work, but does not grant push permission.
 - Do not push, force-push, rebase, reset, squash, amend, tag, merge, delete files, or discard changes unless explicitly asked.
 - Inspect all tracked and untracked changes before staging anything.
 - Do not commit secrets, credentials, local machine config, editor files, build/cache junk, or accidental large/generated artifacts unless clearly intended.

@@ -31,7 +31,7 @@ For every attempt:
 7. **Record compactly**: attempt id, hypothesis, key evidence summary, result, keep/reset decision, next hypothesis, and pointer to the attempt/evidence artifact. Use `stardock_attempt_report` when available.
 8. **Archive detail only if useful**: raw logs/verbose tables go to optional archive/artifact paths, not the active loop context.
 9. **Persist outcome according to the loop's artifact policy**:
-   - Accept: commit kept state when commit permission is active and commits are the chosen durable artifact; otherwise record the accepted state in the canonical loop file or domain artifact.
+   - Accept: commit kept state by default when commits are the chosen durable artifact; otherwise record the accepted state in the canonical loop file or domain artifact.
    - Reject/defer/split: revert candidate code unless intentionally retained; write a durable negative-result artifact only when the lesson has long-term repo/product value, otherwise keep a compact anti-repeat note with retry conditions.
 10. **Advance Stardock only after the attempt reaches a terminal outcome**. Do not call `stardock_done` after partial investigation, async process start, waiting for benchmarks, or unevaluated edits unless a predeclared pause/blocker policy applies.
 
@@ -84,7 +84,7 @@ An optimization/experiment attempt is complete only after:
 - post-change measurement/evaluation using the charter protocol
 - benchmark/log/artifact inspection against acceptance and guardrail rules
 - accept/reject/defer/split/blocked decision
-- accepted kept changes committed when commit permission is active and commits are the chosen durable artifact
+- accepted kept changes committed by default when commits are the chosen durable artifact, unless committing is explicitly disabled or unsafe
 - rejected/deferred/split code reverted unless intentionally retained under the artifact policy
 - attempt artifact/canonical loop file updated with compact evidence pointers
 - `stardock_attempt_report` recorded when available
