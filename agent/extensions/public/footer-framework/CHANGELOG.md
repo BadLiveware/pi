@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Added cache read/write token and cost fields to the footer `stats` source so custom renderers can show cache activity alongside input, output, totals, and cost.
+- Improved footer render performance by caching session stats and text-width metadata for repeated renders of unchanged content.
+- Reduced startup and render work by deferring slower extension probes and rendering styled footer text in contiguous cell runs instead of per-cell wrappers.
+
 ## 0.2.2
 
 - Fixed custom footer rendering so layouts with all visible items on line 1 render as a single footer line instead of reserving an empty second line.
