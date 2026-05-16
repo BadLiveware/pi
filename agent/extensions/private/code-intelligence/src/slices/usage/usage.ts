@@ -270,7 +270,10 @@ function codeIntelResultShape(toolName: string, details: Record<string, unknown>
 		shape.changedSymbolCount = summary ? numberValue(summary.changedSymbolCount) : undefined;
 		shape.relatedCount = summary ? numberValue(summary.relatedCount) : undefined;
 		shape.testCandidateCount = summary ? numberValue(summary.testCandidateCount) : undefined;
+		shape.diagnosticCount = summary ? numberValue(summary.diagnosticCount) : undefined;
 		shape.diagnosticTargetCount = summary ? numberValue(summary.diagnosticTargetCount) : undefined;
+		shape.diagnosticsCollected = coverage ? booleanValue(coverage.diagnosticsCollected) : undefined;
+		shape.touchedFileSource = stringValue(details.touchedFileSource);
 	}
 	return Object.fromEntries(Object.entries(shape).filter(([, value]) => value !== undefined));
 }

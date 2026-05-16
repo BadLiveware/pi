@@ -8,6 +8,7 @@ import { runTestMap } from "../orientation/run.ts";
 import { buildSymbolTarget, exactLineSlice, expandedRange, locatorMetadata, rangeFromRecord, readHintForTarget, rangeLineCount, shortHash, sliceLines, sourceHash, targetFromUnknown, type SourceRange, type SourceSegment, type SymbolRelocationHints, type SymbolTarget } from "../../source-range.ts";
 import { extractFileRecords, parseFiles, type ParsedFile, type SymbolRecord } from "../../tree-sitter.ts";
 import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
+import { collectTouchedDiagnostics, mergeDiagnostics, normalizePostEditDiagnostics } from "../post-edit-map/diagnostics.ts";
 
 const FUNCTION_LIKE_KINDS = /function|method|constructor/i;
 const VALUE_KINDS = /constant|variable|var_spec|const_spec/i;
@@ -327,10 +328,6 @@ export async function runReadSymbol(params: CodeIntelReadSymbolParams, repoRoot:
 	};
 }
 
-function diagnosticRows(input: unknown): Record<string, unknown>[] {
-	return Array.isArray(input) ? input.filter(isRecord).map((row) => ({ path: stringValue(row.path), line: numberValue(row.line), column: numberValue(row.column), severity: stringValue(row.severity), source: stringValue(row.source), code: stringValue(row.code) })).filter((row) => row.path && row.line) : [];
-}
-
 async function symbolsForFile(repoRoot: string, file: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<{ file: string; language?: string; rows: Array<Record<string, unknown>>; records: SymbolRecord[]; diagnostics: string[]; parsed?: ParsedFile }> {
 	const language = languageForFile(file);
 	if (!language || !languageSpec(language)) return { file, language, rows: [], records: [], diagnostics: [`No Tree-sitter language configured for ${file}`] };
@@ -393,10 +390,13 @@ export async function runPostEditMap(params: CodeIntelPostEditMapParams, repoRoo
 			diagnostics.push(...(Array.isArray(testMap.diagnostics) ? testMap.diagnostics.map(String) : []));
 		}
 	}
-	const diagRows = diagnosticRows(params.diagnostics);
+	const suppliedDiagnostics = normalizePostEditDiagnostics(params.diagnostics);
+	const collectedDiagnostics = params.includeDiagnostics === true ? await collectTouchedDiagnostics(repoRoot, changedFiles, config, signal) : { diagnostics: [], providerStatuses: [], toolDiagnostics: [], limitations: [] };
+	diagnostics.push(...collectedDiagnostics.toolDiagnostics);
+	const diagRows = mergeDiagnostics(suppliedDiagnostics, collectedDiagnostics.diagnostics);
 	const diagnosticTargets: Record<string, unknown>[] = [];
 	if (params.includeDiagnostics === true || diagRows.length > 0) {
-		for (const diag of diagRows) {
+		for (const diag of diagRows.slice(0, params.maxResults ?? config.maxResults)) {
 			const file = stringValue(diag.path);
 			if (!file) continue;
 			let safeFile: string;
@@ -408,12 +408,13 @@ export async function runPostEditMap(params: CodeIntelPostEditMapParams, repoRoo
 			}
 			const symbolResult = parsedByFile.get(safeFile) ?? await symbolsForFile(repoRoot, safeFile, config, signal);
 			if (symbolResult.parsed) {
-				const target = enclosingTargetForDiagnostic(diag, symbolResult.parsed, symbolResult.records, repoRoot);
+				const target = enclosingTargetForDiagnostic(diag as Record<string, unknown>, symbolResult.parsed, symbolResult.records, repoRoot);
 				if (target) diagnosticTargets.push(target);
 			}
 		}
 	}
 	const uniqueTestCandidates = [...new Map(testCandidates.map((row) => [String(row.file ?? ""), row])).values()].slice(0, params.maxResults ?? config.maxResults);
+	const relatedRows = isRecord(impact) && Array.isArray(impact.related) ? impact.related : [];
 	return {
 		ok: true,
 		repoRoot,
@@ -423,13 +424,15 @@ export async function runPostEditMap(params: CodeIntelPostEditMapParams, repoRoo
 		nextReadRecommended: true,
 		nextReadReason: "post-edit-validation-context",
 		changedSymbols,
-		related: isRecord(impact) && Array.isArray(impact.related) ? impact.related : [],
+		related: relatedRows,
 		testCandidates: uniqueTestCandidates,
+		touchedDiagnostics: diagRows,
 		diagnosticTargets,
-		summary: { changedFileCount: changedFiles.length, changedSymbolCount: changedSymbols.length, relatedCount: isRecord(impact) && Array.isArray(impact.related) ? impact.related.length : 0, testCandidateCount: uniqueTestCandidates.length, diagnosticTargetCount: diagnosticTargets.length, ...summarizeFileDistribution(changedSymbols.map((row) => isRecord(row.target) ? { file: row.target.path } : row)) },
-		coverage: { truncated: changedFiles.length > 50 || changedSymbols.length > (params.maxResults ?? config.maxResults), diagnosticsAvailable: diagRows.length > 0, unsupportedFiles: changedFiles.filter((file) => !languageForFile(file)) },
+		diagnosticProviders: collectedDiagnostics.providerStatuses,
+		summary: { changedFileCount: changedFiles.length, changedSymbolCount: changedSymbols.length, relatedCount: relatedRows.length, testCandidateCount: uniqueTestCandidates.length, diagnosticCount: diagRows.length, diagnosticTargetCount: diagnosticTargets.length, ...summarizeFileDistribution(changedSymbols.map((row) => isRecord(row.target) ? { file: row.target.path } : row)) },
+		coverage: { truncated: changedFiles.length > 50 || changedSymbols.length > (params.maxResults ?? config.maxResults), diagnosticsAvailable: diagRows.length > 0, diagnosticsCollected: params.includeDiagnostics === true, unsupportedFiles: changedFiles.filter((file) => !languageForFile(file)) },
 		diagnostics,
-		limitations: ["Post-edit maps are locator-mode routing evidence and validation hints; they do not run tests or apply fixes.", "Diagnostics are used only when supplied by the caller or cheaply available."],
+		limitations: ["Post-edit maps are locator-mode routing evidence and validation hints; they do not run tests or apply fixes.", "Collected diagnostics are current touched-file diagnostics, not baseline-compared proof that the issue is new.", ...collectedDiagnostics.limitations],
 		elapsedMs: Date.now() - started,
 	};
 }

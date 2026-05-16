@@ -221,8 +221,28 @@ test("post-edit map returns locator follow-up and diagnostic targets", async () 
 		assert.equal(result.sourceIncluded, false);
 		assert.equal(result.sourceCompleteness, "locations-only");
 		assert.equal(result.changedSymbols.some((row: any) => row.target?.name === "fetchWithRetry" && row.readHint), true);
+		assert.equal(result.touchedDiagnostics.some((row: any) => row.code === "TS2345" && row.provenance === "supplied"), true);
 		assert.equal(result.diagnosticTargets.some((row: any) => row.target?.name === "fetchWithRetry" && row.diagnostic?.code === "TS2345"), true);
 		assert.equal(Array.isArray(result.testCandidates), true);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("post-edit map collects current TypeScript diagnostics for changed files", async () => {
+	const repo = fixtureRepo();
+	try {
+		fs.writeFileSync(path.join(repo, "src", "broken.ts"), `export const value: number = "wrong";\n`);
+		const tools = loadTools();
+		const toolResult = await tools.get("code_intel_post_edit_map")!.execute("post", { changedFiles: ["src/broken.ts"], includeDiagnostics: true, includeCallers: false, includeTests: false, maxResults: 10 }, undefined, undefined, mockContext(repo));
+		const result = parseToolResult(toolResult);
+		assert.equal(result.ok, true);
+		assert.equal(result.coverage.diagnosticsCollected, true);
+		assert.equal(result.summary.diagnosticCount >= 1, true);
+		assert.equal(result.touchedDiagnostics.some((row: any) => row.source === "typescript" && row.code === "TS2322" && row.severity === "error" && /not assignable/.test(row.message)), true);
+		assert.equal(result.touchedDiagnostics.every((row: any) => row.baselineStatus === "not-compared"), true);
+		assert.equal(result.diagnosticProviders.some((row: any) => row.provider === "typescript" && row.diagnosticCount >= 1), true);
+		assert.match(toolResult.content[0].text, /diagnostic src\/broken\.ts:1 error TS2322/);
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });
 	}

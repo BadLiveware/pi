@@ -2,9 +2,14 @@ export interface CodeIntelPostEditDiagnostic {
 	path: string;
 	line: number;
 	column?: number;
+	endLine?: number;
+	endColumn?: number;
 	severity?: "error" | "warning" | "info" | "hint" | string;
 	source?: string;
 	code?: string;
+	message?: string;
+	provenance?: "supplied" | "collected" | string;
+	freshness?: string;
 }
 
 export interface CodeIntelPostEditMapParams {

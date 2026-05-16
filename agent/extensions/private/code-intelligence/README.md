@@ -43,7 +43,7 @@ Use returned locations to choose files to read next; do not treat the result as 
 | Tree-sitter WASM | current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | no index |
 | rg | bounded literal fallback in local maps and human follow-up searches | no index |
 
-Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, TypeScript, and clangd availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback. C/C++ clangd confirmation also requires a usable `compile_commands.json` in the repository root or common build directories.
+Optional language-server probes in `code_intel_state` (`gopls`, Rust Analyzer, TypeScript, and clangd availability) are status-only. Exact-reference work is separate and opt-in through `code_intel_impact_map` reference confirmation; default routing remains Tree-sitter plus bounded `rg` fallback. `code_intel_post_edit_map` can also collect current TypeScript/JavaScript touched-file diagnostics when `includeDiagnostics:true`, but those rows are validation hints rather than project-wide typecheck proof. C/C++ clangd confirmation also requires a usable `compile_commands.json` in the repository root or common build directories.
 
 Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path anymore.
 
@@ -238,7 +238,7 @@ Example:
 
 ### `code_intel_post_edit_map`
 
-Build a read-only follow-up map after edits or writes. It returns locator-mode changed symbols, likely caller/consumer rows, likely test candidates, and optional diagnostic-focused declaration targets. It does not run tests, apply fixes, or mutate files.
+Build a read-only follow-up map after edits or writes. It returns locator-mode changed symbols, likely caller/consumer rows, likely test candidates, and optional diagnostic-focused declaration targets. When `changedFiles` is omitted, it uses session-tracked files from recent `edit`, `write`, `code_intel_replace_symbol`, and `code_intel_insert_relative` results when available. It does not run tests, apply fixes, or mutate files.
 
 Examples:
 
@@ -254,7 +254,7 @@ Examples:
 }
 ```
 
-Diagnostics prioritize enclosing declarations and validation targets, but remain routing evidence.
+With `includeDiagnostics:true`, the tool merges supplied diagnostics with current TypeScript/JavaScript touched-file diagnostics when the local TypeScript language service can inspect the files. Structured output includes `touchedDiagnostics`, `diagnosticTargets`, `diagnosticProviders`, and `coverage.diagnosticsCollected`. Collected diagnostics are current diagnostics in touched files and are not baseline-compared; do not describe them as new unless a baseline explicitly says so.
 
 ### `code_intel_state`
 

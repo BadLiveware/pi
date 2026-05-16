@@ -4,6 +4,7 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { loadConfig } from "../../config.ts";
 import { resolveRepoRoots } from "../../repo.ts";
 import { runInsertRelative, runReplaceSymbol } from "../symbol-mutations/run.ts";
+import { recentTouchedFilesForContext } from "../post-edit-map/touched-files.ts";
 import { runPostEditMap, runReadSymbol } from "./run.ts";
 import type { CodeIntelInsertRelativeParams, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "../../types.ts";
 
@@ -131,17 +132,18 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use this after edit/write when you need changed-symbol, caller, test, or diagnostic follow-up context. It is read-only and does not run tests or apply fixes.",
 			"Treat results as locator-mode routing evidence. Use readHint or code_intel_read_symbol for source only when source is needed.",
-			"Diagnostics, when supplied, prioritize enclosing declarations but are not auto-fix instructions.",
+			"When includeDiagnostics is true, treat collected rows as current touched-file diagnostics unless a baseline explicitly says they are new.",
+			"Diagnostics prioritize enclosing declarations but are not auto-fix instructions.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
-			changedFiles: Type.Optional(Type.Array(Type.String(), { description: "Files edited or written in the current task." })),
+			changedFiles: Type.Optional(Type.Array(Type.String(), { description: "Files edited or written in the current task. Defaults to session-tracked edit/write/code-intel mutation files when omitted." })),
 			baseRef: Type.Optional(Type.String({ description: "Optional git base ref for discovering changed files." })),
 			includeChangedSymbols: Type.Optional(Type.Boolean({ description: "Include changed declaration ranges/read hints. Default true." })),
 			includeCallers: Type.Optional(Type.Boolean({ description: "Include likely caller/consumer rows via impact map. Default true." })),
 			includeTests: Type.Optional(Type.Boolean({ description: "Include likely test candidates. Default true." })),
-			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Use supplied or cheaply available diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
-			diagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), Type.Unknown()), { description: "Optional LSP/compiler diagnostics with path, line, column, severity, source, and code." })),
+			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Collect current touched-file diagnostics when available, and use supplied diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
+			diagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), Type.Unknown()), { description: "Optional LSP/compiler diagnostics with path, line, column, endLine/endColumn, severity, source, code, and message." })),
 			avoidReReadingCompleteReturnedSegments: Type.Optional(Type.Boolean({ description: "Avoid re-suggesting exact complete source segments unless freshness or diagnostics make them relevant. Default true." })),
 			maxResults: Type.Optional(Type.Number({ description: "Maximum related/test rows returned. Defaults to config maxResults." })),
 			timeoutMs: timeoutParam,
@@ -149,7 +151,11 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 		async execute(_toolCallId: string, params: CodeIntelPostEditMapParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const payload = await runPostEditMap(params, roots.repoRoot, loadedConfig.config, signal);
+			const useTrackedTouchedFiles = params.changedFiles === undefined && params.baseRef === undefined;
+			const trackedChangedFiles = useTrackedTouchedFiles ? recentTouchedFilesForContext(ctx, roots.repoRoot) : [];
+			const effectiveParams = trackedChangedFiles.length > 0 ? { ...params, changedFiles: trackedChangedFiles } : params;
+			const payload = await runPostEditMap(effectiveParams, roots.repoRoot, loadedConfig.config, signal);
+			if (trackedChangedFiles.length > 0) payload.touchedFileSource = "session-tracker";
 			return { content: [{ type: "text", text: compactCodeIntelOutput("post_edit", payload) }], details: payload };
 		},
 	});

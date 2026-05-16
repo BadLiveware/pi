@@ -18,7 +18,7 @@ Use `code_intel_*` tools to prepare candidate files and symbols to inspect next.
 7. For locator-mode outputs, use `readHint` for one precise generic read or pass `symbolTarget` to `code_intel_read_symbol` when you need a complete declaration body.
 8. Treat a complete `code_intel_read_symbol` segment as the source read; do not generic-read the same range again unless it was truncated, stale, ambiguous, or too narrow for editing.
 9. For symbol-scoped mutations, use `code_intel_replace_symbol` only with `oldText` or `oldHash` safety evidence, and use `code_intel_insert_relative` only when inserting before/after a resolved symbol anchor is clearer than manual line edits.
-10. After editing/writing, use `code_intel_post_edit_map` when you need changed-symbol, caller/test, or diagnostic follow-up context.
+10. After editing/writing, use `code_intel_post_edit_map` when you need changed-symbol, caller/test, or touched-code diagnostic follow-up context. Omit `changedFiles` to use session-tracked edit/write/code-intel mutation files when available.
 11. Run project-native validation when behavior, public contracts, tests, or generated outputs matter.
 
 ## Delegating Review
@@ -56,7 +56,7 @@ When editing this extension, preserve the vertical-slice layout:
 - `code_intel_read_symbol`: source-mode targeted declaration read. Prefer passing a `symbolTarget`; function-like targets return the full body. Optional referenced context is same-file, one-hop, and limited to constants, vars, and types; called functions/helpers are deferred. Segment headers include `hash=<oldHash>` for token-light mutation safety.
 - `code_intel_replace_symbol`: mutation tool for replacing one resolved declaration. Requires `oldText` or `oldHash`; prefer `oldHash` from `code_intel_read_symbol` when avoiding large oldText echo is useful.
 - `code_intel_insert_relative`: mutation tool for inserting text before/after a resolved declaration anchor. It can consume `symbolTarget` from either `code_intel_file_outline` or `code_intel_read_symbol`.
-- `code_intel_post_edit_map`: read-only follow-up map after edits/writes. Returns changed-symbol locators, likely caller/test candidates, and optional diagnostic-focused targets; it does not run tests or fix code.
+- `code_intel_post_edit_map`: read-only follow-up map after edits/writes. Returns changed-symbol locators, likely caller/test candidates, session-tracked touched files when `changedFiles` is omitted, and optional diagnostic-focused targets. With `includeDiagnostics:true`, it collects current TypeScript/JavaScript touched-file diagnostics when available and merges any supplied diagnostics. It does not run tests or fix code.
 - `code_intel_state`: inspect Tree-sitter, `rg`, and optional LSP availability, config, footer status, and diagnostics when that matters.
 
 ## Guardrails
@@ -67,6 +67,7 @@ When editing this extension, preserve the vertical-slice layout:
 - Treat `rg` fallback as literal text discovery, not symbol/reference proof.
 - Do not turn tool output directly into a review finding; inspect current source first.
 - Treat LSP status in `code_intel_state` as availability-only; it is not exact-reference evidence. For C/C++, clangd also depends on a usable `compile_commands.json`; missing or stale compile databases make confirmation unavailable or incomplete.
+- Treat `code_intel_post_edit_map` collected diagnostics as current touched-file diagnostics, not proof that issues are new, unless a future baseline explicitly marks them new.
 - Treat `referenceConfirmation` rows from opt-in providers such as `gopls` or `typescript` as confirmation evidence, not a replacement for reading current source.
 - Do not use code-intel as a substitute for `gopls`, TypeScript language services, Rust Analyzer, or project-native checks when exact references matter.
 - Do not run broad rule scans by default.

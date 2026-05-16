@@ -124,6 +124,7 @@ export function returnedFilesForResult(toolName: string, details: Record<string,
 	}
 	if (toolName === "code_intel_post_edit_map") {
 		for (const row of rows(details.changedSymbols).slice(0, 100)) addReturnedFile(files, seen, recordValue(row.target)?.path, "post_edit:changed");
+		for (const row of rows(details.diagnosticTargets).slice(0, 100)) addReturnedFile(files, seen, recordValue(row.target)?.path ?? recordValue(row.diagnostic)?.path, "post_edit:diagnostic");
 		for (const row of rows(details.related).slice(0, 100)) addReturnedFile(files, seen, row.file, "post_edit:related");
 		for (const row of rows(details.testCandidates).slice(0, 100)) addReturnedFile(files, seen, row.file, "post_edit:test");
 	}

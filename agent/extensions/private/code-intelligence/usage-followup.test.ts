@@ -82,6 +82,9 @@ test("usage logs returned source segments and write follow-ups", async () => {
 		await emit(handlers, "tool_result", { toolName: "read", toolCallId: "read-segment", input: { path: "main.ts", offset: 1, limit: 1 }, details: {}, content: [], isError: false }, ctx);
 		await emit(handlers, "tool_call", { toolName: "write", toolCallId: "write-main", input: { path: "main.ts", content: "export function target() { return false }\n" } }, ctx);
 		await emit(handlers, "tool_result", { toolName: "write", toolCallId: "write-main", input: { path: "main.ts", content: "export function target() { return false }\n" }, details: {}, content: [], isError: false }, ctx);
+		const postResult = await tools.get("code_intel_post_edit_map")!.execute("post", { includeCallers: false, includeTests: false }, undefined, undefined, ctx);
+		assert.equal(postResult.details.touchedFileSource, "session-tracker");
+		assert.deepEqual(postResult.details.changedFiles, ["main.ts"]);
 		await emit(handlers, "tool_call", { toolName: "code_intel_post_edit_map", toolCallId: "post", input: { changedFiles: ["main.ts"] } }, ctx);
 
 		const records = fs.readFileSync(logPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
