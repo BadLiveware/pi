@@ -92,7 +92,8 @@ Approach software development work with understanding, correctness, testability,
 - Use the `commit` skill when creating commits or deciding commit boundaries.
 - Keep commits coherent and preserve the why.
 - Commit headers should briefly summarize the actual change, stay under 72 characters, and avoid source-only messages like `fix: address PR feedback` unless the source is itself relevant.
-- Non-trivial commits should include a short body explaining what changed and why, including relevant constraints, trade-offs, compatibility notes, or validation context.
+- Non-trivial commits should include a short body explaining what changed and why, including relevant constraints, trade-offs, compatibility notes, or noteworthy validation context.
+- Do not add routine `Validation:` trailers to commit messages for expected project checks such as tests, typecheck, lint, or `git diff --check`; report routine validation in the final response instead.
 - Never use commit messages to report plan progress ("Completed phase 2", "Finished step 3"). Commits describe domain behavior, not checklist status.
 - Verify PR state before describing it; prefer stacked PRs when refactors should land before features.
 

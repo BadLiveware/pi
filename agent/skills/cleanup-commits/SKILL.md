@@ -59,6 +59,6 @@ Use the project style. Prefer conventional prefixes when they fit: `fix:`, `feat
 For non-trivial commits, include a short body explaining:
 - what changed and why
 - important constraints, compatibility notes, or tradeoffs
-- validation run or validation gaps when useful
+- noteworthy validation context or validation gaps when useful
 
-Avoid source-only messages like `cleanup changes`, `address feedback`, or `misc fixes`.
+Do not add routine `Validation:` trailers for expected project checks. Avoid source-only messages like `cleanup changes`, `address feedback`, or `misc fixes`.

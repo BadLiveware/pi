@@ -37,7 +37,7 @@ Before writing the message, inspect the intended diff and identify:
 - the overall goal of the commit group
 - the problem solved and why this approach exists
 - relevant constraints, trade-offs, compatibility notes, or operational concerns
-- validation evidence or explicit validation gaps when useful
+- noteworthy validation evidence or explicit validation gaps when useful
 
 Do not summarize by request source unless the source itself matters. Commit headers and bodies should describe the domain behavior or technical invariant that changed, not that CI, clang-tidy, a reviewer, a bot, or a user comment requested it. Prefer `fix: keep sweep artifacts stable` over `fix: address PR feedback`; prefer `fix: sequence AST predicate ownership` over `fix: resolve clang-tidy finding`.
 
@@ -61,7 +61,9 @@ Header rules:
 Body rules:
 - include a brief body for every non-trivial commit
 - explain motivation and important behavior changes without restating the diff mechanically
-- preserve important constraints, trade-offs, compatibility decisions, or validation context
+- preserve important constraints, trade-offs, compatibility decisions, or noteworthy validation context
+- do not add a routine `Validation:` trailer listing expected project checks such as tests, typecheck, lint, structure checks, or `git diff --check`; report those in the final response instead
+- include validation in the commit body only when it affects how the change should be reviewed or trusted, such as skipped or unavailable checks, validation gaps, manual validation, non-standard external tooling, benchmark/performance evidence, migrations, data-safety checks, or unusual operational constraints
 - optional only for truly trivial commits where the header fully explains the change
 
 ## Workflow

@@ -34,7 +34,7 @@ Before editing any skill file, identify:
 - Resolve relative references from the skill directory.
 - Prefer the smallest coherent edit, split, or new skill that materially reduces future-agent error.
 - When splitting, keep normal-use decisions in the main skill and rerun behavior tests for the branches the split must preserve.
-- Record validation evidence or gaps in the final summary, commit body, PR notes, task comments, or relevant plan/session log.
+- Record routine validation evidence or gaps in the final summary, PR notes, task comments, or relevant plan/session log; use the commit body only for noteworthy validation context or gaps that affect review or trust.
 
 ## Description Guidance
 

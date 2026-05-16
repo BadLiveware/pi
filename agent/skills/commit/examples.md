@@ -63,10 +63,28 @@ Reserve the combined sample capacity before merging quantile buckets so aggregat
 state merges do not repeatedly rehash already-present samples.
 ```
 
+## Avoid routine validation trailers
+Avoid adding routine expected checks to the commit body:
+
+```text
+Validation: npm --prefix agent/extensions test; npm --prefix agent/extensions run typecheck; git diff --check.
+```
+
+Prefer omitting that line when those are normal project checks. Report routine validation in the final response, PR notes, task comments, or evidence log instead.
+
+Include validation context only when it changes review or trust, for example:
+
+```text
+The cloud import path was validated manually against a staging tenant because the
+fixture generator cannot cover provider-side retry behavior.
+```
+
 ## Behavior cases
 - Manual standalone invocation -> create appropriate commit(s) if changes are ready.
 - Ordinary coding task -> commit validated intended changes by default unless the user opts out, the task is inspect-only/draft/WIP, or safe staging needs a decision.
 - Multiple unrelated validated groups -> separate semantic commits.
 - Unvalidated code change -> validate first or record the validation gap before committing.
+- Routine expected validation -> do not add a `Validation:` trailer to the commit body; report it in the final response instead.
+- Manual, external, skipped, unavailable, benchmark, migration, or otherwise unusual validation -> include concise commit-body context when it affects review or trust.
 - Source/tests/docs/generated artifacts for one behavior -> one semantic commit.
 - Preparatory refactor plus behavior change -> separate commits when each stands alone.
