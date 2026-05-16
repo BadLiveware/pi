@@ -6,6 +6,8 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterCellRuns } from "./src/cell-runs.ts";
+import { createFooterStatsCache } from "./src/stats-cache.ts";
+import { createFooterTextMetricsCache } from "./src/text-metrics-cache.ts";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
 export type FooterAnchorMode = "gap" | "left" | "center" | "right" | "spread";
@@ -1818,11 +1820,11 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		return sorted.sort((a, b) => a.placement.order - b.placement.order || a.id.localeCompare(b.id));
 	}
 
-	function renderVisibilityDiagnostics(items: FooterItem[], lines: Array<{ line: FooterLine; plainText: string }>): FooterRenderDiagnostic[] {
+	function renderVisibilityDiagnostics(items: FooterItem[], lines: Array<{ line: FooterLine; plainText: string }>, plainTextFor: (text: string) => string = plainFooterText): FooterRenderDiagnostic[] {
 		const lineTextByNumber = new Map(lines.map((line) => [line.line, line.plainText]));
 		const diagnostics: FooterRenderDiagnostic[] = [];
 		for (const item of items) {
-			const itemPlainText = plainFooterText(item.text).trim();
+			const itemPlainText = plainTextFor(item.text).trim();
 			if (!itemPlainText) continue;
 			const linePlainText = lineTextByNumber.get(item.placement.line);
 			if (linePlainText === undefined) {
@@ -2136,6 +2138,8 @@ export default function footerFramework(pi: ExtensionAPI): void {
 		ctx.ui.setFooter((tui, theme, footerData) => {
 			requestRender = () => tui.requestRender();
 			const unsubscribe = footerData.onBranchChange(() => tui.requestRender());
+			const footerStats = createFooterStatsCache(formatTokens);
+			const textMetrics = createFooterTextMetricsCache(plainFooterText, visibleWidth);
 
 			return {
 				dispose() {
@@ -2144,25 +2148,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 				},
 				invalidate() {},
 					render(width: number): string[] {
-					let input = 0;
-					let output = 0;
-					let cost = 0;
-					for (const entry of ctx.sessionManager.getEntries()) {
-						if (entry.type !== "message" || entry.message.role !== "assistant") continue;
-						input += entry.message.usage.input;
-						output += entry.message.usage.output;
-						cost += entry.message.usage.cost.total;
-					}
-
-					const stats = {
-						input,
-						output,
-						cost,
-						inputText: formatTokens(input),
-						outputText: formatTokens(output),
-						costText: cost.toFixed(3),
-						value: `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`,
-					};
+					const stats = footerStats(ctx.sessionManager.getEntries());
 					const diagnostics: FooterTemplateDiagnostic[] = [];
 					const items = collectItems(theme, footerData, stats, diagnostics);
 					lastTemplateDiagnostics = diagnostics;
@@ -2170,21 +2156,24 @@ export default function footerFramework(pi: ExtensionAPI): void {
 					const lineResults = Array.from({ length: maxLine }, (_, index) => {
 						const line = index + 1;
 						const result = renderFooterLine(theme, width, items, line, getLineAnchor(settings, line));
-						return { line, text: result.line, plainText: plainFooterText(result.line), layout: result.layout };
+						return { line, text: result.line, plainText: textMetrics(result.line).plainText, layout: result.layout };
 					});
 					const line1Result = lineResults[0];
 					const line2Result = lineResults[1];
-					const renderedItems = items.map((item) => ({
-						id: item.id,
-						line: item.placement.line,
-						zone: item.placement.zone,
-						order: item.placement.order,
-						column: item.placement.column,
-						width: visibleWidth(item.text),
-						plainText: plainFooterText(item.text),
-						renderSource: item.renderSource,
-						tokens: item.tokens,
-					}));
+					const renderedItems = items.map((item) => {
+						const metrics = textMetrics(item.text);
+						return {
+							id: item.id,
+							line: item.placement.line,
+							zone: item.placement.zone,
+							order: item.placement.order,
+							column: item.placement.column,
+							width: metrics.width,
+							plainText: metrics.plainText,
+							renderSource: item.renderSource,
+							tokens: item.tokens,
+						};
+					});
 
 					lastFooterSnapshot = {
 						width,
@@ -2197,7 +2186,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 						line2Layout: line2Result?.layout ?? renderFooterLine(theme, width, [], 2, getLineAnchor(settings, 2)).layout,
 						gitBranch: footerData.getGitBranch(),
 						renderedItems,
-						renderDiagnostics: renderVisibilityDiagnostics(items, lineResults),
+						renderDiagnostics: renderVisibilityDiagnostics(items, lineResults, (text) => textMetrics(text).plainText),
 						extensionStatuses: Array.from(footerData.getExtensionStatuses().entries()).map(([key, value]) => ({ key, value })),
 						model: ctx.model?.id ?? "no-model",
 						contextUsage: ctx.getContextUsage() ?? null,
