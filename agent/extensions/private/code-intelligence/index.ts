@@ -16,7 +16,9 @@ export default function codeIntelligence(pi: ExtensionAPI): void {
 	pi.on("tool_call", (event, ctx) => recordUsageToolCall(event, ctx));
 	pi.on("tool_result", (event, ctx) => recordUsageToolResult(event, ctx));
 	pi.on("session_start", (_event, ctx) => {
-		void refreshFooterStatus(ctx);
+		setTimeout(() => {
+			void refreshFooterStatus(ctx);
+		}, 0);
 	});
 	registerStateTool(pi);
 	registerOrientationTools(pi);

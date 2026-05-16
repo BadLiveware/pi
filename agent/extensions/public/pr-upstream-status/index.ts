@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { deferExtensionWork } from "./src/defer.ts";
+import { runGit } from "./src/git.ts";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
 
@@ -927,13 +929,6 @@ async function findOpenPullRequestViaGitRefs(pi: ExtensionAPI, cwd: string, base
 	return undefined;
 }
 
-async function runGit(pi: ExtensionAPI, cwd: string, ...args: string[]): Promise<string | undefined> {
-	const result = await pi.exec("git", args, { cwd, timeout: 6_000 });
-	if (result.code !== 0) return undefined;
-	const value = result.stdout.trim();
-	return value.length > 0 ? value : undefined;
-}
-
 async function discoverRepoContext(pi: ExtensionAPI, cwd: string, provider: CodeHostProvider): Promise<{ branch: string; repos: RepoRef[]; headOwners: string[] } | undefined> {
 	const branch = await runGit(pi, cwd, "branch", "--show-current");
 	if (!branch) return undefined;
@@ -1433,7 +1428,7 @@ export default function prUpstreamStatus(pi: ExtensionAPI): void {
 		updateStatus(ctx);
 		emitPrimitives();
 		ensureTimer(ctx);
-		await refresh(ctx, true);
+		deferExtensionWork(() => refresh(ctx, true));
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {

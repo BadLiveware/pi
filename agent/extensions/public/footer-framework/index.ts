@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { renderFooterCellRuns } from "./src/cell-runs.ts";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
 export type FooterAnchorMode = "gap" | "left" | "center" | "right" | "spread";
@@ -58,6 +59,8 @@ export interface FooterCell {
 	itemId?: string;
 	continuation?: boolean;
 	filler?: boolean;
+	prefix?: string;
+	suffix?: string;
 }
 
 export interface FooterColumnItem {
@@ -148,7 +151,7 @@ export function footerCellsFromText(text: string, itemId?: string): FooterCell[]
 				pendingZeroWidthPlain += cluster;
 			}
 		} else {
-			cells.push({ raw: `${pendingZeroWidthRaw}${activeCellPrefix(state)}${cluster}${activeCellSuffix(state)}`, plainText: `${pendingZeroWidthPlain}${cluster}`, itemId });
+			cells.push({ raw: `${pendingZeroWidthRaw}${cluster}`, plainText: `${pendingZeroWidthPlain}${cluster}`, itemId, prefix: activeCellPrefix(state), suffix: activeCellSuffix(state) });
 			pendingZeroWidthRaw = "";
 			pendingZeroWidthPlain = "";
 			for (let i = 1; i < clusterWidth; i += 1) cells.push({ raw: "", plainText: "", itemId, continuation: true });
@@ -219,15 +222,7 @@ export function writeFooterText(cells: FooterCell[], start: number, text: string
 	}
 }
 
-export function renderFooterCells(cells: FooterCell[]): string {
-	let end = cells.length;
-	while (end > 0) {
-		const cell = cells[end - 1];
-		if (cell.continuation || !cell.filler) break;
-		end -= 1;
-	}
-	return cells.slice(0, end).map((cell) => (cell.continuation ? "" : cell.raw)).join("");
-}
+export const renderFooterCells = renderFooterCellRuns;
 
 export function resolveFooterColumn(column: FooterColumn | undefined, width: number, itemWidth: number): number | undefined {
 	if (column === undefined) return undefined;
