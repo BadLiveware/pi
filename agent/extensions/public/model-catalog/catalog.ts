@@ -422,12 +422,12 @@ export function table(result: ModelCatalogResult, includeDetails: boolean, unsup
 	}
 	if (result.pricingBaseline) {
 		lines.push("", includePricing
-			? `Pricing: $/million tokens. Relative columns compare against ${result.pricingBaseline}; rel-blend uses input+output rates as a rough 1:1 token-mix weight.`
-			: `rel-cost compares input+output rates against ${result.pricingBaseline}; pass relativeTo/--relative-to to choose a different baseline.`);
+			? `Pricing: $/M; rel-* ratios compare against ${result.pricingBaseline}.`
+			: `rel-cost: rough local-registry cost vs ${result.pricingBaseline}; pass relativeTo to choose a different baseline.`);
 	} else if (result.pricingBaselineMissing) {
-		lines.push("", `Pricing: relative baseline '${result.pricingBaselineMissing}' was not found or has no numeric pricing.`);
+		lines.push("", `Pricing: baseline '${result.pricingBaselineMissing}' was not found or lacks numeric pricing.`);
 	} else if (includePricing) {
-		lines.push("", "Pricing: $/million tokens. Pass relativeTo: 'provider/model-id' to include relative cost ratios.");
+		lines.push("", "Pricing: $/M. Pass relativeTo: 'provider/model-id' to include ratios.");
 	}
 	if (includeDetails) {
 		lines.push("", "Usage guidance:");
@@ -440,8 +440,8 @@ export function table(result: ModelCatalogResult, includeDetails: boolean, unsup
 		}
 	}
 	if (unsupportedMode === "exclude" && result.excludedUnsupportedRows.length > 0) {
-		lines.push("", `Excluded ${result.excludedUnsupportedRows.length} locally unsupported model(s). Call with unsupported: 'include' to show them.`);
+		lines.push("", `Excluded ${result.excludedUnsupportedRows.length} unsupported model(s); pass unsupported: 'include' to show them.`);
 	}
-	lines.push("", "Notes: think-levels are Pi thinking level names (off/minimal/low/medium/high/xhigh; table abbreviates minimal=min, medium=med, xhigh=xhi). `off` corresponds to provider no/none thinking when supported. Structured details include full thinkingLevels and any thinkingLevelMap provider mapping. price-tier uses input+output $/million-token rates from Pi's local model registry: low ≤ $1, medium ≤ $8, high ≤ $30, premium > $30; local models are free/local and spark models are premium-speed. Local models are usually free from API billing but can be slow and effectively serial/concurrency-constrained: avoid using multiple local models or many same-local-model tasks at once unless your local backend supports it. Numeric prices may be nominal weights for subscription-backed providers. Zero/blank pricing outside free/local can mean unknown, bundled, or non-metered rather than free. Quota is guidance, not live remaining quota. Support is a local compatibility hint, not provider live availability.");
+	lines.push("", "Legend: think-levels use Pi abbreviations; price/quota/support are local guidance, not live guarantees.");
 	return lines.join("\n");
 }

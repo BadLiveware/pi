@@ -38,6 +38,27 @@ function registeredTool() {
 	return tool;
 }
 
+test("list_pi_models keeps repeated output notes compact", async () => {
+	const model = fakeModel({ provider: "test", id: "reasoner", reasoning: true });
+	const ctx = {
+		model,
+		modelRegistry: {
+			getAll: () => [model],
+			getAvailable: () => [model],
+		},
+	} as any;
+
+	const tool = registeredTool();
+	const result = await tool.execute("tool-call", { includePricing: true, relativeTo: "test/reasoner" }, undefined, undefined, ctx);
+	const text = result.content[0].text;
+	assert.match(text, /Pricing: \$\/M; rel-\* ratios compare against test\/reasoner\./);
+	assert.match(text, /Legend: think-levels use Pi abbreviations; price\/quota\/support are local guidance, not live guarantees\./);
+	assert.doesNotMatch(text, /Notes:/);
+	assert.doesNotMatch(text, /Numeric prices may be nominal weights/);
+	assert.ok(tool.promptGuidelines.some((line: string) => line.includes("local guidance")));
+	assert.ok(tool.promptGuidelines.some((line: string) => line.includes("thinking levels are Pi names")));
+});
+
 test("list_pi_models exposes supported thinking levels and mappings", async () => {
 	const tempAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-model-catalog-test-"));
 	const previousAgentDir = process.env.PI_AGENT_DIR;

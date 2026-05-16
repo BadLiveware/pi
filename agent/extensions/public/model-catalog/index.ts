@@ -26,9 +26,11 @@ export default function modelCatalog(pi: ExtensionAPI): void {
 			"Use list_pi_models before choosing or recommending a model when current model availability, local support status, cost, quota, thinking levels, or capability matters.",
 			"For model overrides, choose rows with support yes and enabled yes unless the user explicitly authorizes configuration changes; auth yes alone only means credentials exist.",
 			"list_pi_models excludes locally unsupported models by default; use unsupported: 'include' or 'only' only for diagnostics.",
-			"list_pi_models price-tier/quota fields are guidance tiers, not live remaining quota.",
+			"Interpret list_pi_models fields as local guidance: support is local compatibility, quota is not live remaining quota, numeric pricing can be nominal/unknown, and rel-cost/rel-blend are rough local-registry ratios.",
+			"list_pi_models thinking levels are Pi names: off means provider no/none thinking when supported, and compact table abbreviations min/med/xhi mean minimal/medium/xhigh.",
+			"Treat local/free models as potentially slow or serial unless the local backend is known to support concurrent use; spark models are premium-speed, not cheap/mini substitutes.",
 			"Default output is intentionally concise; request includeDetails: true only when use/avoid prose would materially help selection.",
-			"When precise cost comparisons matter, pass includePricing: true and relativeTo: 'provider/model-id'. Treat numeric prices as local registry data, not guaranteed live billing for subscription-backed providers.",
+			"When precise cost comparisons matter, pass includePricing: true and relativeTo: 'provider/model-id'.",
 		],
 		parameters: listPiModelsParameters,
 		async execute(_toolCallId: string, params: ListPiModelsParams, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
