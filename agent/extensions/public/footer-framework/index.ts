@@ -6,7 +6,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterCellRuns } from "./src/cell-runs.ts";
-import { createFooterStatsCache } from "./src/stats-cache.ts";
+import { createFooterStatsCache, type FooterStats } from "./src/stats-cache.ts";
 import { createFooterTextMetricsCache } from "./src/text-metrics-cache.ts";
 
 type ChecksState = "pass" | "fail" | "running" | "unknown";
@@ -1895,7 +1895,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 
 	function buildPiSources(
 		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
-		stats: { input: number; output: number; cost: number; inputText: string; outputText: string; costText: string; value: string },
+		stats: FooterStats,
 	): Record<string, FooterAdapterSourceValue> {
 		const sources: Record<string, FooterAdapterSourceValue> = {
 			cwd: { label: "cwd", value: currentCtx?.cwd ?? "", tone: "muted", data: { path: currentCtx?.cwd ?? "" } },
@@ -2001,7 +2001,7 @@ export default function footerFramework(pi: ExtensionAPI): void {
 	function collectItems(
 		theme: ExtensionContext["ui"]["theme"],
 		footerData: { getGitBranch(): string | null; getExtensionStatuses(): ReadonlyMap<string, string> },
-		stats: { input: number; output: number; cost: number; inputText: string; outputText: string; costText: string; value: string },
+		stats: FooterStats,
 		diagnostics: FooterTemplateDiagnostic[],
 	): FooterItem[] {
 		const items: FooterItem[] = [];

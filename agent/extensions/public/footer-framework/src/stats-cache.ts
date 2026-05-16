@@ -1,10 +1,20 @@
 export interface FooterStats {
 	input: number;
 	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
 	cost: number;
+	cacheReadCost: number;
+	cacheWriteCost: number;
 	inputText: string;
 	outputText: string;
+	cacheReadText: string;
+	cacheWriteText: string;
+	totalText: string;
 	costText: string;
+	cacheReadCostText: string;
+	cacheWriteCostText: string;
 	value: string;
 }
 
@@ -15,7 +25,10 @@ type SessionEntry = {
 		usage?: {
 			input?: number;
 			output?: number;
-			cost?: { total?: number };
+			cacheRead?: number;
+			cacheWrite?: number;
+			totalTokens?: number;
+			cost?: { total?: number; cacheRead?: number; cacheWrite?: number };
 		};
 	};
 };
@@ -29,7 +42,7 @@ function lastAssistantSignature(entries: readonly SessionEntry[]): string {
 		const entry = entries[index];
 		if (entry?.type !== "message" || entry.message?.role !== "assistant") continue;
 		const usage = entry.message.usage;
-		return `${index}:${numberValue(usage?.input)}:${numberValue(usage?.output)}:${numberValue(usage?.cost?.total)}`;
+		return `${index}:${numberValue(usage?.input)}:${numberValue(usage?.output)}:${numberValue(usage?.cacheRead)}:${numberValue(usage?.cacheWrite)}:${numberValue(usage?.cost?.total)}`;
 	}
 	return "none";
 }
@@ -47,13 +60,40 @@ export function createFooterStatsCache(formatTokens: (value: number) => string):
 
 		let input = 0;
 		let output = 0;
+		let cacheRead = 0;
+		let cacheWrite = 0;
+		let totalTokens = 0;
 		let cost = 0;
+		let cacheReadCost = 0;
+		let cacheWriteCost = 0;
 		for (const entry of entries) {
 			if (entry.type !== "message" || entry.message?.role !== "assistant") continue;
-			input += numberValue(entry.message.usage?.input);
-			output += numberValue(entry.message.usage?.output);
-			cost += numberValue(entry.message.usage?.cost?.total);
+			const usage = entry.message.usage;
+			const entryInput = numberValue(usage?.input);
+			const entryOutput = numberValue(usage?.output);
+			const entryCacheRead = numberValue(usage?.cacheRead);
+			const entryCacheWrite = numberValue(usage?.cacheWrite);
+			input += entryInput;
+			output += entryOutput;
+			cacheRead += entryCacheRead;
+			cacheWrite += entryCacheWrite;
+			totalTokens += numberValue(usage?.totalTokens) || entryInput + entryOutput + entryCacheRead + entryCacheWrite;
+			cost += numberValue(usage?.cost?.total);
+			cacheReadCost += numberValue(usage?.cost?.cacheRead);
+			cacheWriteCost += numberValue(usage?.cost?.cacheWrite);
 		}
+
+		const inputText = formatTokens(input);
+		const outputText = formatTokens(output);
+		const cacheReadText = formatTokens(cacheRead);
+		const cacheWriteText = formatTokens(cacheWrite);
+		const totalText = formatTokens(totalTokens);
+		const costText = cost.toFixed(3);
+		const cacheReadCostText = cacheReadCost.toFixed(3);
+		const cacheWriteCostText = cacheWriteCost.toFixed(3);
+		const hasCacheActivity = cacheRead > 0 || cacheWrite > 0;
+		const cacheReadValue = hasCacheActivity ? ` ↺${cacheReadText}` : "";
+		const cacheWriteValue = hasCacheActivity ? ` ↻${cacheWriteText}` : "";
 
 		cachedLength = entries.length;
 		cachedLastEntry = lastEntry;
@@ -61,11 +101,21 @@ export function createFooterStatsCache(formatTokens: (value: number) => string):
 		cachedStats = {
 			input,
 			output,
+			cacheRead,
+			cacheWrite,
+			totalTokens,
 			cost,
-			inputText: formatTokens(input),
-			outputText: formatTokens(output),
-			costText: cost.toFixed(3),
-			value: `↑${formatTokens(input)} ↓${formatTokens(output)} $${cost.toFixed(3)}`,
+			cacheReadCost,
+			cacheWriteCost,
+			inputText,
+			outputText,
+			cacheReadText,
+			cacheWriteText,
+			totalText,
+			costText,
+			cacheReadCostText,
+			cacheWriteCostText,
+			value: `↑${inputText}${cacheReadValue} ↓${outputText}${cacheWriteValue} $${costText}`,
 		};
 		return cachedStats;
 	};
