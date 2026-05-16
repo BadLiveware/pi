@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { isRecord } from "./util.ts";
+import { isRecord } from "../../util.ts";
 
 export type ReturnedFileRecord = {
 	file: string;

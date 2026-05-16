@@ -1,8 +1,8 @@
-import type { CodeIntelConfig, CodeIntelLocalMapParams, CommandResult, ResultDetail } from "./types.ts";
-import { runTreeSitterImpact, runTreeSitterSelectorBatchSearch } from "./tree-sitter.ts";
-import { findExecutable, runCommand, summarizeCommandBrief } from "./exec.ts";
-import { pathArgsForRepo } from "./repo.ts";
-import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
+import type { CodeIntelConfig, CodeIntelLocalMapParams, CommandResult, ResultDetail } from "../../types.ts";
+import { runTreeSitterImpact, runTreeSitterSelectorBatchSearch } from "../../tree-sitter.ts";
+import { findExecutable, runCommand, summarizeCommandBrief } from "../../exec.ts";
+import { pathArgsForRepo } from "../../repo.ts";
+import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 
 const LOCAL_MAP_DEFAULT_MAX_RESULTS = 25;
 const LOCAL_MAP_DEFAULT_MAX_PER_NAME = 8;

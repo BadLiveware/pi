@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CodeIntelConfig, CodeIntelRepoRouteParams } from "./types.ts";
-import { LANGUAGE_SPECS } from "./languages.ts";
-import { ensureInsideRoot } from "./repo.ts";
-import { normalizePositiveInteger, normalizeStringArray } from "./util.ts";
+import type { CodeIntelConfig, CodeIntelRepoRouteParams } from "../../types.ts";
+import { LANGUAGE_SPECS } from "../../languages.ts";
+import { ensureInsideRoot } from "../../repo.ts";
+import { normalizePositiveInteger, normalizeStringArray } from "../../util.ts";
 
 const EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "contrib", "build", "build_debug", "build_release", "dist", "target", ".cache", "__pycache__"]);
 const BINARY_OR_NOISY_EXTENSIONS = new Set([".pyc", ".pyo", ".o", ".a", ".so", ".dylib", ".dll", ".log", ".tmp", ".out", ".err", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".zip", ".gz", ".xz", ".zst"]);

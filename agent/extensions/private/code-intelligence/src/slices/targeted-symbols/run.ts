@@ -1,13 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CodeIntelConfig, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, ResultDetail } from "./types.ts";
-import { LANGUAGE_SPECS, languageSpec } from "./languages.ts";
-import { changedFilesFromBase, ensureInsideRoot } from "./repo.ts";
-import { runImpactMap } from "./impact.ts";
-import { runTestMap } from "./orientation.ts";
-import { buildSymbolTarget, exactLineSlice, expandedRange, locatorMetadata, rangeFromRecord, readHintForTarget, rangeLineCount, shortHash, sliceLines, sourceHash, targetFromUnknown, type SourceRange, type SourceSegment, type SymbolRelocationHints, type SymbolTarget } from "./source-range.ts";
-import { extractFileRecords, parseFiles, type ParsedFile, type SymbolRecord } from "./tree-sitter.ts";
-import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
+import type { CodeIntelConfig, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, ResultDetail } from "../../types.ts";
+import { LANGUAGE_SPECS, languageSpec } from "../../languages.ts";
+import { changedFilesFromBase, ensureInsideRoot } from "../../repo.ts";
+import { runImpactMap } from "../impact-map/run.ts";
+import { runTestMap } from "../orientation/run.ts";
+import { buildSymbolTarget, exactLineSlice, expandedRange, locatorMetadata, rangeFromRecord, readHintForTarget, rangeLineCount, shortHash, sliceLines, sourceHash, targetFromUnknown, type SourceRange, type SourceSegment, type SymbolRelocationHints, type SymbolTarget } from "../../source-range.ts";
+import { extractFileRecords, parseFiles, type ParsedFile, type SymbolRecord } from "../../tree-sitter.ts";
+import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 
 const FUNCTION_LIKE_KINDS = /function|method|constructor/i;
 const VALUE_KINDS = /constant|variable|var_spec|const_spec/i;

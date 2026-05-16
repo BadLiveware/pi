@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CodeIntelConfig, CodeIntelInsertRelativeParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "./types.ts";
-import { ensureInsideRoot } from "./repo.ts";
-import { exactLineSpan, normalizeInsertedText, rangeFromRecord, readHintForTarget, shortHash, sourceHash, type SymbolTarget } from "./source-range.ts";
-import { resolveSymbolSelection } from "./symbol-context.ts";
+import type { CodeIntelConfig, CodeIntelInsertRelativeParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "../../types.ts";
+import { ensureInsideRoot } from "../../repo.ts";
+import { exactLineSpan, normalizeInsertedText, rangeFromRecord, readHintForTarget, shortHash, sourceHash, type SymbolTarget } from "../../source-range.ts";
+import { resolveSymbolSelection } from "../targeted-symbols/run.ts";
 
 function readParams(params: CodeIntelReplaceSymbolParams | CodeIntelInsertRelativeParams): CodeIntelReadSymbolParams {
 	const anchor = "anchor" in params ? params.anchor ?? params.target : params.target;

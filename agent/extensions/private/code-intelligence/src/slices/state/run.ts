@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import type { BackendName, BackendStatus, CodeIntelConfig, LanguageServerName, LanguageServerStatus, LoadedConfig, RepoRoots } from "./types.ts";
-import { commandDiagnostic, findExecutable, firstLine, runCommand } from "./exec.ts";
+import type { BackendName, BackendStatus, CodeIntelConfig, LanguageServerName, LanguageServerStatus, LoadedConfig, RepoRoots } from "../../types.ts";
+import { commandDiagnostic, findExecutable, firstLine, runCommand } from "../../exec.ts";
 
 const TREE_SITTER_LANGUAGES = ["go", "typescript", "tsx", "javascript", "rust", "python", "java", "c", "cpp", "csharp", "ruby", "php", "bash", "css"];
 

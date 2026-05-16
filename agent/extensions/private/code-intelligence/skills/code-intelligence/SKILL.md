@@ -34,6 +34,16 @@ Before delegating review, the parent should usually:
 
 Use a custom code-intel-aware reviewer only when it is explicitly configured with the narrow tools it needs.
 
+## Source Layout for Extension Work
+
+When editing this extension, preserve the vertical-slice layout:
+
+- Put each tool's schema, prompt guidance, registration, and TUI result rendering in `src/slices/<slice>/tool.ts`.
+- Put slice behavior in `src/slices/<slice>/run.ts` when it is not shared parser/core behavior.
+- Put compact agent-visible output in `src/slices/<slice>/compact.ts`; keep `src/compact-output.ts` as a dispatcher only.
+- Put slice-specific parameter types in `src/slices/<slice>/types.ts`; keep `src/types.ts` as compatibility re-exports plus shared types only through `src/core/types.ts`.
+- Do not add new tool behavior to `index.ts`; it should only wire lifecycle hooks and slice registrations.
+
 ## Tool Selection
 
 - `code_intel_repo_overview`: orientation tool. Use tier `shape` for broad directory counts/languages without parsing declarations; use tier `files` only for explicit subtrees to list files plus capped declaration names.

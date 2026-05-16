@@ -1,11 +1,11 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { compactCodeIntelOutput } from "./compact-output.ts";
-import { loadConfig } from "./config.ts";
-import { resolveRepoRoots } from "./repo.ts";
-import { runInsertRelative, runReplaceSymbol } from "./symbol-mutations.ts";
-import { runPostEditMap, runReadSymbol } from "./symbol-context.ts";
-import type { CodeIntelInsertRelativeParams, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "./types.ts";
+import { compactCodeIntelOutput } from "../../compact-output.ts";
+import { loadConfig } from "../../config.ts";
+import { resolveRepoRoots } from "../../repo.ts";
+import { runInsertRelative, runReplaceSymbol } from "../symbol-mutations/run.ts";
+import { runPostEditMap, runReadSymbol } from "./run.ts";
+import type { CodeIntelInsertRelativeParams, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "../../types.ts";
 
 const repoRootParam = Type.Optional(Type.String({ description: "Repository or directory to inspect. Defaults to the current working directory." }));
 const timeoutParam = Type.Optional(Type.Number({ description: "Command timeout in milliseconds. Defaults to config queryTimeoutMs." }));

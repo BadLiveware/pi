@@ -1,12 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { CodeIntelConfig, CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelTestMapParams, ResultDetail } from "./types.ts";
-import { LANGUAGE_SPECS, languageSpec } from "./languages.ts";
-import { ensureInsideRoot } from "./repo.ts";
-import { runReferenceConfirmation } from "./lsp/confirmation.ts";
-import { rowWithTarget } from "./source-range.ts";
-import { extractFileRecords, parseFiles, type SymbolRecord } from "./tree-sitter.ts";
-import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "./util.ts";
+import type { CodeIntelConfig, CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelTestMapParams, ResultDetail } from "../../types.ts";
+import { LANGUAGE_SPECS, languageSpec } from "../../languages.ts";
+import { ensureInsideRoot } from "../../repo.ts";
+import { runReferenceConfirmation } from "../../lsp/confirmation.ts";
+import { rowWithTarget } from "../../source-range.ts";
+import { extractFileRecords, parseFiles, type SymbolRecord } from "../../tree-sitter.ts";
+import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 
 const DEFAULT_EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "out", "target", ".cache", "build", "build_debug", "build_release", "cmake-build-debug", "cmake-build-release"]);
 const VENDOR_DIRS = new Set(["contrib", "third_party", "3rdparty", "external", "externals", "vendor"]);

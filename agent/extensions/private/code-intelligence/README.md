@@ -62,6 +62,19 @@ The extension is optimized for agent routing, not replacing source reads or proj
 | Compact TUI cards, full structured JSON for the agent | The UI stays readable while agent-facing content remains available for reasoning and follow-up tool calls. |
 | Passive usage logs, no agent-facing usage tool | We can evaluate natural adoption without adding a tool that changes normal agent behavior. |
 
+## Source Layout
+
+Code-intelligence is organized by vertical slices. `index.ts` is lifecycle wiring only: resource discovery, passive usage hooks, session-start footer refresh, and tool registration calls.
+
+- `src/slices/<slice>/tool.ts` owns tool schema, prompt guidance, execution wiring, and custom TUI rendering for that slice.
+- `src/slices/<slice>/run.ts` owns the slice behavior when the implementation is slice-specific.
+- `src/slices/<slice>/compact.ts` owns the compact agent-visible text renderer for that slice; `src/compact-output.ts` is only a dispatcher.
+- `src/slices/<slice>/types.ts` owns slice-specific parameter types; `src/types.ts` re-exports shared and slice types for compatibility with existing imports.
+- `src/core/` contains small shared primitives for compact rendering, tool-card rendering, and cross-slice types.
+- Shared parser/range/repo/config helpers stay outside slices and should remain behavior-neutral. If `tree-sitter.ts` or another shared engine keeps growing, split it by parser concern before adding more feature-specific logic to it.
+
+When adding a tool, start with a slice folder and keep the tool contract, run behavior, compact renderer, and focused tests close together. Avoid adding new tool behavior to `index.ts`, `compact-output.ts`, or `types.ts` beyond dispatcher/re-export wiring.
+
 ## Evaluation Notes
 
 - 2026-04-28: Initial prompt tests showed agents naturally chose code-intel tools, but overused detailed diagnostics. Guidance now keeps diagnostics for error/debug paths.

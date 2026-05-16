@@ -1,8 +1,8 @@
-import type { CodeIntelConfig, CodeIntelImpactMapParams, ResultDetail } from "./types.ts";
-import { changedFilesFromBase } from "./repo.ts";
-import { runReferenceConfirmation } from "./lsp/confirmation.ts";
-import { runTreeSitterImpact } from "./tree-sitter.ts";
-import { normalizePositiveInteger, normalizeStringArray } from "./util.ts";
+import type { CodeIntelConfig, CodeIntelImpactMapParams, ResultDetail } from "../../types.ts";
+import { changedFilesFromBase } from "../../repo.ts";
+import { runReferenceConfirmation } from "../../lsp/confirmation.ts";
+import { runTreeSitterImpact } from "../../tree-sitter.ts";
+import { normalizePositiveInteger, normalizeStringArray } from "../../util.ts";
 
 const IMPACT_DEFAULT_LOCATION_RESULTS = 125;
 const IMPACT_DEFAULT_SNIPPET_RESULTS = 25;
