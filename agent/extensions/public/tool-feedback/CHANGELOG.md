@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- Add per-tool feedback responses so agents can report different experiences for different watched tools in the same turn.
+- Record follow-up tool categories after watched calls so feedback logs can distinguish routine verification from compensatory follow-up work.
+- Update package imports and peer dependencies for the `@earendil-works/*` Pi packages.
+
 ## 0.1.1
 
 - Clarified dogfood feedback prompts so agents call `tool_feedback` silently and avoid acknowledging the feedback request to the user.
