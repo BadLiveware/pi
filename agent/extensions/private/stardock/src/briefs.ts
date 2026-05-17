@@ -10,6 +10,7 @@ import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } fro
 import { type AdvisoryHandoffRole, type BriefLifecycleAction, compactText, type Criterion, type CriterionStatus, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isBriefSource, normalizeId, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
+import { WORKER_EVIDENCE_PROMOTION_NOTE } from "./worker-evidence-guidance.ts";
 
 export interface BriefToolDeps {
 	getCurrentLoop(): string | null;
@@ -265,7 +266,7 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 	];
 	for (const [title, items] of sections) if (items.length) lines.push("", title, ...compactList(items).map((item) => `- ${item}`));
 	lines.push("", "Requested output", compactText(input.requestedOutput?.trim() || brief.outputContract || "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.", 500) ?? "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.");
-	lines.push("", "Parent recording options:", "- Parent may use stardock_worker_report record for worker-style results", "- Parent may use stardock_handoff record for advisory handoff results", isImplementer ? "The parent/governor must review and accept or dismiss the implementer WorkerRun before another mutable worker or completion." : "The worker should not mutate Stardock state unless the parent separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when parent inspection is warranted.");
+	lines.push("", "Parent recording options:", "- Parent may use stardock_worker_report record for worker-style results", "- Parent may use stardock_handoff record for advisory handoff results", `- ${WORKER_EVIDENCE_PROMOTION_NOTE}`, isImplementer ? "The parent/governor must review and accept or dismiss the implementer WorkerRun before another mutable worker or completion." : "The worker should not mutate Stardock state unless the parent separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when parent inspection is warranted.");
 	return { ok: true, payload: lines.join("\n"), brief };
 }
 
@@ -295,7 +296,8 @@ export function appendRecordedWorkerContextSection(parts: string[], state: LoopS
 		if (report.reviewHints.length) parts.push(`  Review hints: ${compactList(report.reviewHints, 3, 100).join("; ")}`);
 		if (report.suggestedNextMove) parts.push(`  Suggested next move: ${compactText(report.suggestedNextMove, 140)}`);
 	}
-	parts.push("Use stardock_policy({ action: \"parentReview\" }) before relying on risky worker output.", "");
+	parts.push("Use stardock_policy({ action: \"parentReview\" }) before relying on risky worker output.");
+	parts.push(WORKER_EVIDENCE_PROMOTION_NOTE, "");
 }
 
 export function appendTaskSourceSection(parts: string[], state: LoopState, _taskContent: string): void {

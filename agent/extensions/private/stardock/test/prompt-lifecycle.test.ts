@@ -68,6 +68,9 @@ test("checklist prompt includes ledger summary when brief has linked criteria", 
 		// Iteration 2 prompt should have no criteria section (no brief)
 		assert.equal(messages.length, 2);
 		assert.match(messages[1].content, /No active brief/);
+		assert.match(messages[1].content, /## Worker Evidence Promotion/);
+		assert.match(messages[1].content, /Worker output is advisory until the parent records it as Stardock state/);
+		assert.match(messages[1].content, /does not automatically turn worker claims into passed criteria/);
 
 		// Create a brief linking the two criteria
 		await brief.execute("tool-brief", {
@@ -88,6 +91,7 @@ test("checklist prompt includes ledger summary when brief has linked criteria", 
 		assert.equal(messages.length, 3);
 		const prompt3 = messages[2].content;
 		assert.match(prompt3, /## Criteria/);
+		assert.match(prompt3, /Worker output is advisory until the parent records it as Stardock state/);
 		assert.match(prompt3, /c-summary-01/);
 		assert.match(prompt3, /c-summary-02/);
 		assert.match(prompt3, /First criterion/);
@@ -156,6 +160,8 @@ test("recursive prompt without brief shows reference-only task source", async ()
 		assert.match(promptText, /reference only/);
 		// Should reference the recursive objective
 		assert.match(promptText, /recursive objective/);
+		assert.match(promptText, /## Worker Evidence Promotion/);
+		assert.match(promptText, /does not automatically turn worker claims into passed criteria/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

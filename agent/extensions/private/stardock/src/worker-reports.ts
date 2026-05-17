@@ -10,6 +10,7 @@ import { formatCriterionCounts } from "./ledger.ts";
 import { type ChangedFileReport, compactText, type LoopState, nextSequentialId, type WorkerReport } from "./state/core.ts";
 import { isAdvisoryHandoffRole, isValidationResult, isWorkerReportStatus, normalizeId, normalizeStringList } from "./state/migration.ts";
 import { loadState, saveState } from "./state/store.ts";
+import { WORKER_EVIDENCE_PROMOTION_NOTE } from "./worker-evidence-guidance.ts";
 
 export interface WorkerReportToolDeps {
 	getCurrentLoop(): string | null;
@@ -121,6 +122,7 @@ export function buildWorkerReportPayload(state: LoopState, input: WorkerReportIn
 		"",
 		"Worker report contract:",
 		"Return compact results that the parent/governor can use for selective review. Do not apply edits, call tools, spawn agents, or assume a provider-specific output format unless separately instructed.",
+		WORKER_EVIDENCE_PROMOTION_NOTE,
 	];
 	appendSection(lines, "Criteria to evaluate", selectedCriteria.map((criterion) => `- ${criterion.id} [${criterion.status}] ${compactText(criterion.description, 140)} | Pass: ${compactText(criterion.passCondition, 140)}`));
 	appendSection(lines, "Artifacts", selectedArtifacts.map((artifact) => `- ${artifact.id} [${artifact.kind}] ${compactText(artifact.summary, 160)}${artifact.path ? ` | Path: ${artifact.path}` : ""}`));
@@ -194,7 +196,7 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 	pi.registerTool({
 		name: "stardock_worker_report",
 		label: "Manage Stardock Worker Reports",
-		description: "Build provider-neutral WorkerReport payloads and record compact worker results for selective parent review.",
+		description: "Build provider-neutral WorkerReport payloads and record compact worker results for selective parent review. Reports are advisory until the parent records lifecycle evidence with Stardock tools.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("list"), Type.Literal("payload"), Type.Literal("record")], { description: "list returns worker reports; payload builds a provider-neutral report contract; record creates or updates one report." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),

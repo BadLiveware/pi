@@ -2,6 +2,7 @@
 
 import { buildBriefWorkerPayload } from "./briefs.ts";
 import type { AdvisoryHandoffRole, ChangedFileReport, LoopState, OutsideRequest, WorkerReportStatus, WorkerRunStatus } from "./state/core.ts";
+import { WORKER_EVIDENCE_PROMOTION_NOTE } from "./worker-evidence-guidance.ts";
 
 export type StardockWorkerRole = AdvisoryHandoffRole;
 export type BriefScopedWorkerRole = Extract<AdvisoryHandoffRole, "explorer" | "test_runner" | "implementer" | "reviewer">;
@@ -149,7 +150,7 @@ export function workerInstructions(role: StardockWorkerRole): string {
 			"Do not edit files. Do not run broad validation. Do not spawn agents. Do not call Stardock tools or mutate Stardock state.",
 			"Inspect only enough repository context to map likely files, symbols, tests, validation commands, context gaps, risks, open questions, and parent review hints for this brief.",
 			"Treat code-intel/search results as routing evidence only; do not report defects until the parent inspects or validates them.",
-			"Parent records useful outputs with stardock_worker_report record or stardock_handoff record.",
+			WORKER_EVIDENCE_PROMOTION_NOTE,
 		].join("\n");
 	}
 	if (role === "test_runner") {
@@ -159,7 +160,7 @@ export function workerInstructions(role: StardockWorkerRole): string {
 			"Do not edit files. Do not fix failures. Do not spawn agents. Do not call Stardock tools or mutate Stardock state.",
 			"Run only bounded validation commands named in the brief or the smallest project-native checks needed for the selected criteria.",
 			"Keep large logs out of the chat; summarize and return paths/artifact refs when available.",
-			"Parent records useful outputs with stardock_ledger recordArtifact(s) and stardock_worker_report record.",
+			WORKER_EVIDENCE_PROMOTION_NOTE,
 		].join("\n");
 	}
 	if (role === "implementer") {
@@ -274,6 +275,7 @@ export function buildRequestWorkerInvocation(state: LoopState, cwd: string, inpu
 		"Parent recording options:",
 		"- Parent may record plain answers with stardock_outside_answer",
 		"- Parent may record compact worker results with stardock_worker_report",
+		`- ${WORKER_EVIDENCE_PROMOTION_NOTE}`,
 		role === "auditor" ? "- Parent may record oversight results with stardock_auditor" : "",
 	].filter(Boolean).join("\n");
 	return { ok: true, invocation: invocationFor(role, task, cwd, input), role, scope: "outside_request", requestedOutput: workerOutputContract(role) };
@@ -309,6 +311,7 @@ export function buildLoopWorkerInvocation(state: LoopState, cwd: string, input: 
 		"",
 		"Parent recording options:",
 		"- Parent may record compact worker results with stardock_worker_report",
+		`- ${WORKER_EVIDENCE_PROMOTION_NOTE}`,
 		role === "governor" ? "- Parent may record structured decisions with stardock_governor_state and stardock_outside_answer when a request exists" : "",
 		role === "auditor" ? "- Parent may record oversight results with stardock_auditor" : "",
 	].filter(Boolean).join("\n");

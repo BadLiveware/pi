@@ -6,6 +6,7 @@ import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendRecor
 import { appendGovernorMemoryPromptSection } from "../governor-state.ts";
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
+import { formatWorkerEvidencePromotionLines, WORKER_EVIDENCE_PROMOTION_NOTE } from "../worker-evidence-guidance.ts";
 import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/modes.ts";
 import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
 
@@ -49,6 +50,7 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	appendActiveBriefPromptSection(parts, state);
 	appendLedgerSummarySection(parts, state);
 	appendRecordedWorkerContextSection(parts, state);
+	parts.push("## Worker Evidence Promotion", ...formatWorkerEvidencePromotionLines(), "");
 	appendTaskSourceSection(parts, state, _taskContent);
 	parts.push(`\n## Instructions\n`);
 	parts.push("User controls: ESC pauses the assistant. Send a message to resume. Run /stardock-stop when idle to stop the loop.\n");
@@ -56,15 +58,16 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
 	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
 	parts.push(`3. Prefer Stardock worker roles for non-trivial implementation or governance-request help so the governor preserves context and can match worker model capability to scope complexity: call stardock_worker({ action: "run", role: "explorer" | "test_runner" | "implementer" | "governor" | "auditor" | "researcher" | "reviewer", briefId, requestId, model: "provider/model" }) when overriding the model, or omit model for the default. Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision. Use list_pi_models before setting a non-default model. Implementer workers are serial mutable workers: start one only for scoped edits, then review/accept or dismiss the WorkerRun before another implementer or completion.`);
-	parts.push(`4. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
+	parts.push(`4. After any worker returns, inspect the WorkerReport or saved output and explicitly record useful validation/artifact/criterion/final-report/auditor/breakout/governor facts with the matching Stardock tools before relying on them as lifecycle evidence.`);
+	parts.push(`5. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
 	if (activeBrief) {
-		parts.push(`5. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
-		parts.push(`6. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
-		parts.push(`7. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
-		parts.push(`8. Otherwise, call stardock_done to proceed to the next iteration.`);
+		parts.push(`6. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
+		parts.push(`7. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
+		parts.push(`8. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
+		parts.push(`9. Otherwise, call stardock_done to proceed to the next iteration.`);
 	} else {
-		parts.push(`5. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL work is done.`);
-		parts.push(`6. Otherwise, call stardock_done to proceed to the next iteration.`);
+		parts.push(`6. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL work is done.`);
+		parts.push(`7. Otherwise, call stardock_done to proceed to the next iteration.`);
 	}
 	if (state.itemsPerIteration > 0) parts.push(`\nAim to make measurable progress on the brief this iteration.`);
 
@@ -132,6 +135,7 @@ const checklistModeHandler: LoopModeHandler = {
 			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
 			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
 			instructions += `- Prefer stardock_worker for non-trivial mapping, validation, scoped implementation, or governance request help so the governor preserves context; use list_pi_models before a non-default model override and choose cheaper/faster or stronger enabled models according to scope complexity\n`;
+			instructions += `- ${WORKER_EVIDENCE_PROMOTION_NOTE}\n`;
 			instructions += `- Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision; implementer runs must be reviewed and accepted/dismissed before another mutable worker or completion\n`;
 			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
@@ -166,12 +170,14 @@ const recursiveModeHandler: LoopModeHandler = {
 		appendGovernorMemoryPromptSection(parts, state);
 		appendActiveBriefPromptSection(parts, state);
 		appendRecordedWorkerContextSection(parts, state);
+		parts.push("## Worker Evidence Promotion", ...formatWorkerEvidencePromotionLines(), "");
 		appendTaskSourceSection(parts, state, taskContent);
 		parts.push("\n## Attempt Instructions\n");
 		parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
 		parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
 		parts.push("2. Make one bounded attempt that tests that hypothesis.");
 		parts.push("Prefer stardock_worker for non-trivial mapping, validation, scoped implementation, or governance request help before the attempt so the governor preserves context and can choose a cheaper/faster or stronger enabled model for the scope. Use list_pi_models before setting a non-default model. Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision. Implementer runs are serial mutable workers and must be reviewed before another implementer or completion.");
+		parts.push("After any worker returns, inspect the WorkerReport or saved output and explicitly record useful validation/artifact/criterion/final-report/auditor/breakout/governor facts with the matching Stardock tools before relying on them as lifecycle evidence.");
 		if (modeState.validationCommand) {
 			parts.push(`3. Run or explain the validation check: ${modeState.validationCommand}`);
 		} else {
@@ -200,6 +206,7 @@ const recursiveModeHandler: LoopModeHandler = {
 			pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,
 			decision?.requiredNextMove ? `- Governor required next move: ${decision.requiredNextMove}` : undefined,
 			"- Prefer stardock_worker for non-trivial scoped implementation or governance request help to preserve governor context; use list_pi_models before a non-default model override and keep implementer runs serial/reviewed.",
+			`- ${WORKER_EVIDENCE_PROMOTION_NOTE}`,
 			"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.",
 			`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
 			"- Otherwise, call stardock_done tool to proceed to next iteration.",

@@ -13,6 +13,7 @@ import { compactText, nextSequentialId, type AdvisoryHandoffRole, type ChangedFi
 import { sanitize } from "./state/paths.ts";
 import { loadState, saveState } from "./state/store.ts";
 import { buildBriefWorkerInvocation, buildLoopWorkerInvocation, buildRequestWorkerInvocation, classifyWorkerReportStatus, classifyWorkerRunStatus, defaultWorkerAgent, isBriefScopedWorkerRole, isStardockWorkerRole, normalizeWorkerThinking, workerRoleDefinition, type StardockWorkerRole, type WorkerContext } from "./worker-role-registry.ts";
+import { WORKER_EVIDENCE_PROMOTION_NOTE } from "./worker-evidence-guidance.ts";
 
 export interface StardockWorkerToolDeps {
 	getCurrentLoop(): string | null;
@@ -83,6 +84,7 @@ function contentSummary(response: SubagentResponse, reportId?: string, run?: Wor
 		run ? `WorkerRun ${run.id} is ${run.status}.` : undefined,
 		reportId ? `Recorded WorkerReport ${reportId}.` : undefined,
 		refs.length ? `Refs: ${refs.map((ref) => `\`${ref}\``).join(", ")}` : undefined,
+		WORKER_EVIDENCE_PROMOTION_NOTE,
 		run?.changedFiles.length ? "Changed files:" : undefined,
 		...(run?.changedFiles.length ? formatChangedFiles(run.changedFiles) : []),
 		"",
@@ -249,7 +251,7 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 	pi.registerTool({
 		name: "stardock_worker",
 		label: "Run Stardock Worker",
-		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence, with optional model and thinking-level overrides. Use this instead of raw subagent calls for Stardock work. Implementer runs are serial and require parent review.",
+		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence, with optional model and thinking-level overrides. Use this instead of raw subagent calls for Stardock work. Worker output is advisory until the parent records lifecycle evidence with Stardock tools. Implementer runs are serial and require parent review.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review accepts or dismisses an implementer run." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
