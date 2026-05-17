@@ -47,6 +47,3 @@ Hypothesis: I think ... because ...
 Fix: <root cause addressed, files changed>
 Validation: <focused check, regression/invariant check, gaps>
 ```
-
-## Attribution
-Adapted from the systematic-debugging guidance in `pcvelz/superpowers` (MIT), reduced for Pi's lighter, scope-aware workflow.

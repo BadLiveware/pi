@@ -8,12 +8,12 @@ Some agent skills adapt ideas, structure, and testing discipline from `pcvelz/su
 
 - Source: https://github.com/pcvelz/superpowers
 - License: MIT
-- Local notice: [`agent/skills/writing-skills/SUPERPOWERS-LICENSE.md`](./agent/skills/writing-skills/SUPERPOWERS-LICENSE.md)
+- Local notice: [`instruction-metadata/notices/superpowers.md`](./instruction-metadata/notices/superpowers.md)
 
-Skills with explicit attribution include:
+Adapted guidance currently includes material used in:
 
 - [`agent/skills/writing-skills/SKILL.md`](./agent/skills/writing-skills/SKILL.md)
-- [`agent/skills/writing-skills/testing-skills-with-subagents.md`](./agent/skills/writing-skills/testing-skills-with-subagents.md)
+- [`agent/skills/prompt-behavior-testing/SKILL.md`](./agent/skills/prompt-behavior-testing/SKILL.md)
 - [`agent/skills/systematic-debugging/SKILL.md`](./agent/skills/systematic-debugging/SKILL.md)
 - [`agent/skills/verification-before-completion/SKILL.md`](./agent/skills/verification-before-completion/SKILL.md)
 
@@ -24,7 +24,7 @@ The Feynman skills and research workflow prompts adapt selected workflows from F
 - Source: https://github.com/getcompanion-ai/feynman
 - License: MIT
 - Copyright: Companion, Inc.
-- Local notice: [`agent/skills/feynman/FEYNMAN-LICENSE.md`](./agent/skills/feynman/FEYNMAN-LICENSE.md)
+- Local notice: [`instruction-metadata/notices/feynman.md`](./instruction-metadata/notices/feynman.md)
 
 The adapted integration lives under:
 

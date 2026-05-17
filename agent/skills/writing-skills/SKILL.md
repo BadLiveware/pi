@@ -92,7 +92,3 @@ Behavior checks:
 6. Run `./link-into-pi-agent.sh` after changing global agent files.
 7. Verify `~/.pi/agent` symlinks point into `agent/`.
 8. Summarize source changes, live linked layout, validation, and any semantic-change questions.
-
-## Attribution
-
-Adapted from the writing-skills and skill-testing framework in `pcvelz/superpowers` (MIT). See `SUPERPOWERS-LICENSE.md`.

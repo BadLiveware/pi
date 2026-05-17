@@ -50,6 +50,3 @@ Validation:
 - Not run / unavailable: <reason>
 - Remaining risk: <if any>
 ```
-
-## Attribution
-Adapted from the verification-before-completion guidance in `pcvelz/superpowers` (MIT), reduced for Pi's evidence-reporting workflow.

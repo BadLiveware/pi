@@ -120,7 +120,3 @@ Do not add vague warnings like “be careful.” Add the specific counter that a
 ## Reference
 
 Use `testing-agent-guidance-with-subagents.md` for detailed subagent/external Pi test procedures, hermetic runs, examples, and completion checklist.
-
-## Attribution
-
-Adapted from the writing-skills and skill-testing framework in `pcvelz/superpowers` (MIT). See `SUPERPOWERS-LICENSE.md`.

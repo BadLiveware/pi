@@ -1,6 +1,6 @@
 # Superpowers Attribution
 
-This skill adapts ideas and selected structure from `pcvelz/superpowers`, especially `skills/writing-skills/` and its skill-testing guidance.
+Some skills in this repository adapt ideas and selected structure from `pcvelz/superpowers`, especially around skill authoring and skill-behavior testing.
 
 Source: https://github.com/pcvelz/superpowers
 

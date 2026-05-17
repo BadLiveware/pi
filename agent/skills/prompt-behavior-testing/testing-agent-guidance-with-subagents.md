@@ -185,7 +185,3 @@ Record:
 - [ ] Trigger descriptions remain trigger-only.
 - [ ] If a skill was pruned or split, before/after approximate tokens and core-branch behavior results are recorded.
 - [ ] `./link-into-pi-agent.sh` ran for global agent changes.
-
-## Attribution
-
-Adapted from `pcvelz/superpowers` skill-testing guidance (MIT).

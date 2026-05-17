@@ -6,7 +6,8 @@ This repository contains the source for your global pi agent instructions and su
 
 ## Source of Truth
 
-- Treat `agent/` as the source of truth for files that should appear in `~/.pi/agent`.
+- Treat `agent/` as the source of truth for agent-facing instruction files that should appear in `~/.pi/agent`.
+- Keep non-instructional metadata and provenance in root-level support files such as `instruction-metadata/`, but keep Pi-required routing frontmatter in the markdown files that Pi loads.
 - Do not edit `~/.pi/agent` directly unless you are debugging the live environment and the user explicitly wants that.
 - Root-level files are for repository-local meta guidance and tooling. They are not part of the global agent payload unless the linking script says so.
 
@@ -23,6 +24,7 @@ This repository contains the source for your global pi agent instructions and su
 - `agent/AGENTS.md` is the global always-loaded instruction file.
 - `agent/skills/` contains discoverable skills.
 - `agent/extensions/`, `agent/mcp.json`, `agent/agents/`, and `agent/keybindings.json` are linked into `~/.pi/agent`.
+- `instruction-metadata/` stores provenance and notices that should not live in instruction bodies.
 - `link-into-pi-agent.sh` syncs the contents of `agent/` into `~/.pi/agent` via symlinks.
 
 ## Working on Global Instructions
@@ -39,8 +41,8 @@ This repository contains the source for your global pi agent instructions and su
 After changing global agent files:
 1. Run `./link-into-pi-agent.sh` or `./link-into-pi-agent.sh --force` if existing managed paths need to be replaced.
 2. Verify the symlinks in `~/.pi/agent` point into `agent/`.
-3. Check changed files for obvious structural problems, such as invalid JSON or broken paths.
-4. Summarize what changed in the source files and what changed in the live linked layout.
+3. Check changed files for obvious structural problems, such as invalid JSON, broken paths, or stale notices.
+4. Summarize what changed in the source files, metadata files, and live linked layout.
 
 ## Safety Boundaries
 
