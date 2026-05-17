@@ -96,7 +96,7 @@ The expected Pi workflow keeps these boundaries:
 | Tree-sitter WASM / scanners | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, Markdown document structure, local maps, and syntax search where supported. | No index. |
 | `rg` | Bounded literal fallback in local maps and follow-up searches. | No index. |
 | Optional reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, Rust (`rust-analyzer`), and C/C++ (`clangd` with `compile_commands.json`). | Opt-in per map run. |
-| Optional diagnostics providers | Bounded current touched-file diagnostics from TypeScript/JavaScript, Go (`gopls check`), Rust Analyzer, Python (Pyrefly, ty, basedpyright/pyright), ShellCheck, `zsh -n`, and `markdownlint-cli2` when those tools apply and are available. | Not baseline-compared; not a project-wide validation run. |
+| Optional diagnostics providers | Bounded current touched-file diagnostics from TypeScript/JavaScript, Go (`gopls check`), Rust Analyzer, Python (Pyrefly, ty, basedpyright/pyright), C/C++ (`clangd`), ShellCheck, `zsh -n`, and `markdownlint-cli2` when those tools apply and are available. | Not baseline-compared; not a project-wide validation run. |
 
 ### Language coverage
 
@@ -106,7 +106,7 @@ The expected Pi workflow keeps these boundaries:
 | TypeScript / TSX / JavaScript | Strong outline/read/mutate, syntax search, impact, local map, and test map. | TypeScript language service opt-in. | TypeScript language-service diagnostics for touched TS/JS files. | Diagnostics are current, not baseline-compared. |
 | Rust | Outline/read/mutate and syntax-only impact/local/test routing. | Rust Analyzer opt-in. | Rust Analyzer publishDiagnostics for touched `.rs` files. | Default routing is syntax evidence and does not require Rust Analyzer. |
 | Python | Python-specific outline/read/mutate plus syntax impact/local/test routing. | Pyrefly/ty/Pyright/Jedi planned. | Pyrefly preferred, then ty, basedpyright, and pyright for touched `.py` files. | Default routing is syntax evidence; diagnostics are current and not baseline-compared. |
-| C/C++ | C/C++ outline/read/mutate, scoped impact/local/test routing, includes, templates, methods, fields, and macros. | `clangd` opt-in with `compile_commands.json`. | `clangd` diagnostics planned. | Compile database quality controls exact-reference usefulness. |
+| C/C++ | C/C++ outline/read/mutate, scoped impact/local/test routing, includes, templates, methods, fields, and macros. | `clangd` opt-in with `compile_commands.json`. | `clangd` publishDiagnostics for touched C/C++ files with `compile_commands.json`. | Compile database quality controls provider usefulness. |
 | C# | C# outline/read/mutate for common declarations plus syntax impact/local/test routing. | `csharp-ls` planned. | `csharp-ls` planned. | Routing is current-source syntax evidence until provider support lands. |
 | Bash | Shell outline/read/mutate for tested ranges plus syntax impact/local/test routing. | None. | ShellCheck for touched `.sh`/`.bash` files. | Command routing cannot prove whether a command is local or external without source reads. |
 | zsh | zsh-labeled shell outline/read/mutate plus syntax impact/local/test routing. | None. | `zsh -n` for touched `.zsh` files. | Uses the Bash Tree-sitter grammar, so zsh-specific syntax can parse imperfectly. |
@@ -194,7 +194,7 @@ Builds a read-only follow-up map after edits or writes.
 
 It returns locator-mode changed symbols, likely caller/consumer rows, likely test candidates, and optional diagnostic-focused declaration targets. When changed files are omitted, it can use session-tracked files from recent edit/write/code-intel mutation calls. It does not run tests, apply fixes, or mutate files.
 
-With diagnostics enabled, it can merge supplied diagnostics with current touched-file diagnostics from bounded providers such as TypeScript/JavaScript language services, `gopls check`, Rust Analyzer, Python providers (Pyrefly, ty, basedpyright/pyright), ShellCheck, `zsh -n`, and `markdownlint-cli2`. These diagnostics are not baseline-compared.
+With diagnostics enabled, it can merge supplied diagnostics with current touched-file diagnostics from bounded providers such as TypeScript/JavaScript language services, `gopls check`, Rust Analyzer, Python providers (Pyrefly, ty, basedpyright/pyright), `clangd`, ShellCheck, `zsh -n`, and `markdownlint-cli2`. These diagnostics are not baseline-compared.
 
 If recent edits touched files with an applicable diagnostics provider, the extension can automatically surface current touched-file diagnostics when the agent becomes idle. That automatic message is a safety net, not a replacement for project-native validation.
 

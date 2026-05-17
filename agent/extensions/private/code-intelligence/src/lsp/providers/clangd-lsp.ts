@@ -10,7 +10,7 @@ import { uriToRepoFile } from "../uri.ts";
 const clangdMetadata = referenceProviderMetadata("clangd");
 const clangdReferenceEvidence = clangdMetadata.evidence.references ?? "clangd:textDocument/references";
 
-function findCompileCommandsDir(repoRoot: string): string | undefined {
+export function findCompileCommandsDir(repoRoot: string): string | undefined {
 	const candidates = ["compile_commands.json", "build/compile_commands.json", "build_debug/compile_commands.json", "build_release/compile_commands.json", "cmake-build-debug/compile_commands.json"];
 	for (const candidate of candidates) {
 		const full = path.join(repoRoot, candidate);

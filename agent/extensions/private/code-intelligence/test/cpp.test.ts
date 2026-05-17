@@ -5,6 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import codeIntelligence from "../index.ts";
+import { collectTouchedDiagnostics } from "../src/slices/post-edit-map/diagnostics.ts";
+import { DEFAULT_CONFIG } from "../src/types.ts";
 
 function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }> {
 	const tools = new Map<string, any>();
@@ -93,7 +95,10 @@ function parse() {
 }
 function handle(message) {
   if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: { capabilities: {} } });
-  else if (message.method === "textDocument/references") {
+  else if (message.method === "textDocument/didOpen") {
+    const uri = message.params?.textDocument?.uri;
+    write({ jsonrpc: "2.0", method: "textDocument/publishDiagnostics", params: { uri, diagnostics: [{ range: { start: { line: 18, character: 4 }, end: { line: 18, character: 10 } }, severity: 1, source: "clangd", code: "undeclared_var", message: "use of undeclared identifier 'helper'" }] } });
+  } else if (message.method === "textDocument/references") {
     const uri = message.params?.textDocument?.uri;
     write({ jsonrpc: "2.0", id: message.id, result: [{ uri, range: { start: { line: 20, character: 12 }, end: { line: 20, character: 20 } } }] });
   } else if (message.method === "shutdown") write({ jsonrpc: "2.0", id: message.id, result: null });
@@ -147,6 +152,58 @@ test("impact map confirms C++ references through fake clangd LSP", async () => {
 			assert.equal(impact.referenceConfirmation.ok, true);
 			assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "storage.cpp" && row.rootSymbol === "fillData" && row.evidence === "clangd:textDocument/references"), true);
 			assert.equal(impact.referenceConfirmation.summary.referenceCount, 1);
+		});
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("post-edit diagnostics collect clangd publishDiagnostics rows", async () => {
+	const repo = cppRepo();
+	try {
+		fs.writeFileSync(path.join(repo, "compile_commands.json"), "[]\n");
+		const binDir = path.join(repo, "bin");
+		fs.mkdirSync(binDir);
+		writeFakeClangd(path.join(binDir, "clangd"));
+		await withPath(`${binDir}${path.delimiter}${process.env.PATH ?? ""}`, async () => {
+			const result = await collectTouchedDiagnostics(repo, ["storage.cpp"], DEFAULT_CONFIG);
+			assert.equal(result.diagnostics.some((row) => row.path === "storage.cpp" && row.line === 19 && row.column === 5 && row.severity === "error" && row.source === "clangd" && row.code === "undeclared_var"), true);
+			assert.equal(result.providerStatuses.some((row) => row.provider === "clangd" && row.available === "available" && row.fileCount === 1 && row.diagnosticCount === 1), true);
+		});
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("post-edit diagnostics report missing clangd prerequisites without failing collection", async () => {
+	const repo = cppRepo();
+	try {
+		const binDir = path.join(repo, "bin");
+		fs.mkdirSync(binDir);
+		writeFakeClangd(path.join(binDir, "clangd"));
+		await withPath(`${binDir}${path.delimiter}${process.env.PATH ?? ""}`, async () => {
+			const result = await collectTouchedDiagnostics(repo, ["storage.cpp"], DEFAULT_CONFIG);
+			assert.equal(result.diagnostics.length, 0);
+			const status = result.providerStatuses.find((row) => row.provider === "clangd");
+			assert.equal(status?.available, "missing");
+			assert.match(String(status?.diagnostic ?? ""), /compile_commands\.json not found/);
+		});
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("post-edit diagnostics report missing clangd without failing collection", async () => {
+	const repo = cppRepo();
+	try {
+		const emptyBin = path.join(repo, "empty-bin");
+		fs.mkdirSync(emptyBin);
+		await withPath(emptyBin, async () => {
+			const result = await collectTouchedDiagnostics(repo, ["storage.cpp"], DEFAULT_CONFIG);
+			assert.equal(result.diagnostics.length, 0);
+			const status = result.providerStatuses.find((row) => row.provider === "clangd");
+			assert.equal(status?.available, "missing");
+			assert.match(String(status?.diagnostic ?? ""), /clangd not found/);
 		});
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });
