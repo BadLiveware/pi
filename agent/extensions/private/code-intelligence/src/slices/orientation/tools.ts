@@ -117,7 +117,7 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 			testPaths: Type.Optional(Type.Array(Type.String(), { description: "Explicit repo-relative test directories/files to search. Defaults to discovered test roots." })),
 			maxResults: maxResultsParam,
 			maxLiteralMatches: Type.Optional(Type.Number({ description: "Maximum literal evidence rows per candidate. Default 5." })),
-			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd"), Type.Literal("rust-analyzer"), Type.Literal("csharp-ls")], { description: "Optional exact-reference confirmation for matching source-code tests when applicable." })),
+			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd"), Type.Literal("rust-analyzer"), Type.Literal("csharp-ls"), Type.Literal("pyrefly")], { description: "Optional exact-reference confirmation for matching source-code tests when applicable." })),
 			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum roots to confirm when confirmReferences is set." })),
 			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum reference rows returned when confirmReferences is set." })),
 			timeoutMs: timeoutParam,

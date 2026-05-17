@@ -57,7 +57,7 @@ These are not npm package dependencies unless explicitly noted. They are local c
 | Python | `pyrefly` | Preferred diagnostics | Prefer `pyrefly check --output-format json --summary=none` for touched-file diagnostics when available. |
 | Python | `ty` | Fallback diagnostics | Use `ty check --output-format gitlab --no-progress` as the next structured diagnostics fallback. |
 | Python | `basedpyright` or `pyright` | Legacy fallback diagnostics | Use CLI `--outputjson` for touched-file diagnostics after Pyrefly/ty are unavailable. |
-| Python | Pyrefly LSP | Default exact-reference candidate | Use shared LSP client only after provider tests prove reliable locations; no Python reference provider is exposed yet. |
+| Python | Pyrefly LSP (`pyrefly lsp`) | Default exact-reference provider | Uses the shared LSP client for opt-in `textDocument/references` after fake LSP tests prove bounded locations. |
 | Python | `ty server`, `pyright-langserver`, or `jedi-language-server` | Non-default exact-reference alternatives | Evaluate only if Pyrefly cannot provide reliable bounded locations in fixture tests. |
 | Python | `ruff` | Syntax/lint diagnostics | Optional supplemental diagnostics. Keep separate from type diagnostics. |
 | Markdown | `markdownlint-cli2` | Markdown diagnostics | Run on touched Markdown files with JSON output. |

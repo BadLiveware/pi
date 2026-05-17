@@ -3,6 +3,7 @@ import { isRecord, normalizePositiveInteger, summarizeFileDistribution } from ".
 import { clangdReferenceProvider } from "./providers/clangd-lsp.ts";
 import { csharpLsReferenceProvider } from "./providers/csharp-ls-lsp.ts";
 import { goplsReferenceProvider } from "./providers/gopls-command.ts";
+import { pyreflyReferenceProvider } from "./providers/pyrefly-lsp.ts";
 import { rustAnalyzerReferenceProvider } from "./providers/rust-analyzer-lsp.ts";
 import { typescriptReferenceProvider } from "./providers/typescript-language-service.ts";
 import type { ReferenceConfirmationOptions, ReferenceConfirmationProvider, ReferenceConfirmationProviderName, ReferenceRoot } from "./types.ts";
@@ -13,6 +14,7 @@ const providers: Record<ReferenceConfirmationProviderName, ReferenceConfirmation
 	clangd: clangdReferenceProvider,
 	"rust-analyzer": rustAnalyzerReferenceProvider,
 	"csharp-ls": csharpLsReferenceProvider,
+	pyrefly: pyreflyReferenceProvider,
 };
 
 function asRoot(value: unknown): ReferenceRoot | undefined {

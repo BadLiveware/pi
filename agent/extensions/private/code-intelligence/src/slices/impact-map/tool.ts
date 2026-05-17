@@ -79,7 +79,7 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 			maxRootSymbols: Type.Optional(Type.Number({ description: "Maximum root symbols to query after expanding changed files. Default 20." })),
 			timeoutMs: timeoutParam,
 			detail: detailParam,
-			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd"), Type.Literal("rust-analyzer"), Type.Literal("csharp-ls")], { description: "Opt-in exact-reference confirmation for returned roots using gopls, the TypeScript language service, clangd for C/C++ with compile_commands.json, Rust Analyzer, or csharp-ls." })),
+			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd"), Type.Literal("rust-analyzer"), Type.Literal("csharp-ls"), Type.Literal("pyrefly")], { description: "Opt-in exact-reference confirmation for returned roots using gopls, the TypeScript language service, clangd for C/C++ with compile_commands.json, Rust Analyzer, csharp-ls, or Pyrefly for Python." })),
 			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum roots to confirm when confirmReferences is set. Default 5." })),
 			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum reference rows returned when confirmReferences is set. Default min(config maxResults, 25)." })),
 			includeReferenceDeclarations: Type.Optional(Type.Boolean({ description: "Include declarations in reference-confirmation output. Default false." })),

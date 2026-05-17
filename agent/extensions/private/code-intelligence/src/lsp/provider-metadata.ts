@@ -84,12 +84,14 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["python"],
 		command: "pyrefly",
 		versionArgs: ["--version"],
-		capabilities: capabilities("planned", "implemented"),
+		capabilities: capabilities("implemented", "implemented"),
 		evidence: { references: "pyrefly:textDocument/references", diagnostics: "pyrefly:check-json" },
 		missingDiagnostic: "pyrefly not found on PATH",
+		noRootsDiagnostic: "No Python roots with current-source definition locations were available for Pyrefly confirmation.",
 		limitations: [
+			"Pyrefly confirmation is opt-in and only runs for Python roots with current-source definition locations.",
 			"Pyrefly diagnostics are preferred for Python touched-file diagnostics when available.",
-			"Pyrefly is the default planned Python LSP for reference confirmation and is not exposed in confirmReferences yet.",
+			"The default Python routing map remains Tree-sitter syntax evidence and does not require Pyrefly.",
 		],
 	},
 	{

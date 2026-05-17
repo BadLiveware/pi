@@ -83,7 +83,7 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		category: "source",
 		supportLevel: "partial",
 		features: features({ impact: "code", exactReferences: ["pyrefly"], diagnostics: ["pyrefly", "ty", "basedpyright", "pyright"] }),
-		limitations: ["Python routing is current-source syntax evidence; Pyrefly is the default planned Python LSP for exact references."],
+		limitations: ["Python routing is current-source syntax evidence by default; Pyrefly references and diagnostics are optional provider features."],
 	},
 	{
 		id: "cpp",

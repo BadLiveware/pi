@@ -113,16 +113,16 @@ Add diagnostics provider:
 - Parse each tool's structured diagnostics into normalized rows.
 - Respect each tool's own config discovery; do not implement custom type environment logic.
 
-Add reference provider after diagnostics:
+Reference provider status:
 
-- Default Python LSP: Pyrefly.
-- Use shared LSP session for Pyrefly `textDocument/references`.
-- Treat `ty server`, `pyright-langserver --stdio`, and `jedi-language-server` as non-default alternatives only if Pyrefly cannot provide reliable locations in bounded fixture tests.
-- Provider should be opt-in only after tool schemas are extended and fake LSP tests cover Pyrefly.
+- Default Python LSP: Pyrefly via `pyrefly lsp`.
+- Shared LSP session support for Pyrefly `textDocument/references` is implemented and exposed through opt-in `confirmReferences: "pyrefly"`.
+- `ty server`, `pyright-langserver --stdio`, and `jedi-language-server` remain non-default alternatives only if Pyrefly cannot provide reliable locations in future bounded fixture tests.
 
 Acceptance criteria:
 
 - Fake Pyrefly JSON test covers errors and filters non-touched files.
+- Fake Pyrefly LSP test covers bounded reference locations and decorated-definition symbol positioning.
 - Fake ty GitLab JSON test covers fallback diagnostics.
 - Fake basedpyright/pyright JSON test covers legacy fallback rows.
 - Missing Python providers return unavailable status.

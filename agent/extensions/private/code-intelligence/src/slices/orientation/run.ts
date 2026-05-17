@@ -404,7 +404,7 @@ export async function runTestMap(params: CodeIntelTestMapParams, repoRoot: strin
 		limitations: ["Test maps are evidence-ranked candidates, not exhaustive coverage proof. Non-code tests may only match path or literal terms."],
 		elapsedMs: Date.now() - started,
 	};
-	if (params.confirmReferences === "gopls" || params.confirmReferences === "typescript" || params.confirmReferences === "clangd" || params.confirmReferences === "rust-analyzer" || params.confirmReferences === "csharp-ls") {
+	if (params.confirmReferences === "gopls" || params.confirmReferences === "typescript" || params.confirmReferences === "clangd" || params.confirmReferences === "rust-analyzer" || params.confirmReferences === "csharp-ls" || params.confirmReferences === "pyrefly") {
 		const outline = safePath ? await runFileOutline({ path: safePath, maxSymbols: 20, detail: "locations" }, repoRoot, config, signal) : undefined;
 		const roots = Array.isArray(outline?.declarations) ? (outline.declarations as Record<string, unknown>[]).filter((row) => normalizeStringArray(params.symbols).includes(String(row.name))).map((row) => ({ name: String(row.name), file: safePath ?? "", language: String(outline?.language ?? ""), kind: String(row.kind ?? "definition"), line: Number(row.line ?? 1), column: Number(row.column ?? 1), endLine: Number(row.endLine ?? row.line ?? 1), endColumn: Number(row.endColumn ?? row.column ?? 1) })) : [];
 		output.referenceConfirmation = await runReferenceConfirmation(params.confirmReferences, roots, repoRoot, { maxRoots: params.maxReferenceRoots, maxResults: params.maxReferenceResults, timeoutMs, includeDeclarations: false }, config, signal);

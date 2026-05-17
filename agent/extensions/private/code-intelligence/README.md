@@ -70,8 +70,8 @@ Code-intel output is deliberately conservative about what it claims.
 | --- | --- | --- |
 | Tree-sitter | Current-source syntax facts: declarations, calls, selectors, fields, import/include structure, and explicit syntax matches. | Type-resolved semantics, complete reference graphs, or safety claims. |
 | `rg` fallback | Literal text evidence in source, comments, docs, fixtures, generated files, or unsupported-language gaps. | Symbol/reference proof. |
-| Optional reference confirmation | Bounded exact-reference evidence for selected Go, TypeScript/JavaScript, or clangd-backed C/C++ roots. | Whole-program proof or a replacement for reading source. |
-| Touched-file diagnostics | Current diagnostics for touched files when a bounded provider applies: TypeScript/JavaScript language services, `gopls check`, ShellCheck, `zsh -n`, or `markdownlint-cli2`. | Proof that diagnostics are new unless a baseline says so. |
+| Optional reference confirmation | Bounded exact-reference evidence for selected Go, TypeScript/JavaScript, Rust, Python, clangd-backed C/C++, or C# roots. | Whole-program proof or a replacement for reading source. |
+| Touched-file diagnostics | Current diagnostics for touched files when a bounded provider applies: TypeScript/JavaScript language services, `gopls check`, Rust Analyzer, Python providers, `clangd`, `csharp-ls`, ShellCheck, `zsh -n`, or `markdownlint-cli2`. | Proof that diagnostics are new unless a baseline says so. |
 
 Mapping and search results are a queue of places to inspect, not findings to report directly. Mutation results confirm a scoped file change, not broader correctness.
 
@@ -95,7 +95,7 @@ The expected Pi workflow keeps these boundaries:
 | --- | --- | --- |
 | Tree-sitter WASM / scanners | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, Markdown document structure, local maps, and syntax search where supported. | No index. |
 | `rg` | Bounded literal fallback in local maps and follow-up searches. | No index. |
-| Optional reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, Rust (`rust-analyzer`), C/C++ (`clangd` with `compile_commands.json`), and C# (`csharp-ls`). | Opt-in per map run. |
+| Optional reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, Rust (`rust-analyzer`), Python (`pyrefly`), C/C++ (`clangd` with `compile_commands.json`), and C# (`csharp-ls`). | Opt-in per map run. |
 | Optional diagnostics providers | Bounded current touched-file diagnostics from TypeScript/JavaScript, Go (`gopls check`), Rust Analyzer, Python (Pyrefly, ty, basedpyright/pyright), C/C++ (`clangd`), C# (`csharp-ls`), ShellCheck, `zsh -n`, and `markdownlint-cli2` when those tools apply and are available. | Not baseline-compared; not a project-wide validation run. |
 
 ### Language coverage
@@ -105,7 +105,7 @@ The expected Pi workflow keeps these boundaries:
 | Go | Strong outline/read/mutate, imports, syntax impact, local map, and test map. | `gopls` opt-in. | `gopls check` for touched `.go` files. | Default maps remain syntax evidence until confirmation is requested. |
 | TypeScript / TSX / JavaScript | Strong outline/read/mutate, syntax search, impact, local map, and test map. | TypeScript language service opt-in. | TypeScript language-service diagnostics for touched TS/JS files. | Diagnostics are current, not baseline-compared. |
 | Rust | Outline/read/mutate and syntax-only impact/local/test routing. | Rust Analyzer opt-in. | Rust Analyzer publishDiagnostics for touched `.rs` files. | Default routing is syntax evidence and does not require Rust Analyzer. |
-| Python | Python-specific outline/read/mutate plus syntax impact/local/test routing. | Pyrefly planned as the default Python LSP. | Pyrefly preferred, then ty, basedpyright, and pyright for touched `.py` files. | Default routing is syntax evidence; diagnostics are current and not baseline-compared. |
+| Python | Python-specific outline/read/mutate plus syntax impact/local/test routing. | Pyrefly opt-in. | Pyrefly preferred, then ty, basedpyright, and pyright for touched `.py` files. | Default routing is syntax evidence; diagnostics are current and not baseline-compared. |
 | C/C++ | C/C++ outline/read/mutate, scoped impact/local/test routing, includes, templates, methods, fields, and macros. | `clangd` opt-in with `compile_commands.json`. | `clangd` publishDiagnostics for touched C/C++ files with `compile_commands.json`. | Compile database quality controls provider usefulness. |
 | C# | C# outline/read/mutate for common declarations plus syntax impact/local/test routing. | `csharp-ls` opt-in. | `csharp-ls` publishDiagnostics for touched `.cs` files. | Default routing is syntax evidence and does not require `csharp-ls`. |
 | Bash | Shell outline/read/mutate for tested ranges plus syntax impact/local/test routing. | None. | ShellCheck for touched `.sh`/`.bash` files. | Command routing cannot prove whether a command is local or external without source reads. |
