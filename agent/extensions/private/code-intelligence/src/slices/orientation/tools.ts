@@ -20,8 +20,8 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 		promptSnippet: "Use first in large unfamiliar repositories to see objective structure before broad searches.",
 		promptGuidelines: [
 			"Use code_intel_repo_overview to answer what exists and where to start before global rg/find in large repos.",
-			"Start with tier:'shape' at broad scope, then tier:'files' for an explicit subtree; do not request file declarations for an entire large repo by default.",
-			"Treat paths, counts, languages, declarations, and truncation as navigation evidence only; there are no semantic role summaries.",
+			"Start with tier:'shape' at broad scope, then tier:'files' for an explicit subtree when declarations will help choose source reads.",
+			"Use paths, counts, languages, declarations, and truncation as objective navigation facts, then read source for semantic roles.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
@@ -52,8 +52,8 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 		promptSnippet: "Use to inspect what is inside a file before reading the full source.",
 		promptGuidelines: [
 			"Use code_intel_file_outline after repo overview points at a candidate file and before reading a very large source file.",
-			"Output is deterministic syntax structure: imports/includes, declaration names/kinds, and line ranges; infer meaning from repository names and source reads.",
-			"Use this for orientation, not exact references or architecture claims.",
+			"Use imports/includes, declaration names/kinds, line ranges, symbolTargets, and readHints to pick precise reads or symbol operations.",
+			"Use this as the fast orientation step before source reads, targeted symbol reads, or anchor-relative edits.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
@@ -105,9 +105,9 @@ export function registerOrientationTools(pi: ExtensionAPI): void {
 		description: "Find evidence-ranked test candidates for a file or symbols using bounded test-root discovery, path/name evidence, and literal matches.",
 		promptSnippet: "Use to find likely tests to run or inspect for a scoped file/symbol.",
 		promptGuidelines: [
-			"Use code_intel_test_map to answer which tests likely exercise this file or symbol; results are candidates, not coverage proof.",
+			"Use code_intel_test_map to choose likely tests to inspect or run for a source file, symbol, or domain term.",
 			"Provide path plus symbols or domain names when possible, especially for non-code tests such as SQL fixtures.",
-			"Inspect evidence and read candidate tests before claiming coverage or choosing validation commands.",
+			"Use the returned evidence to read candidate tests and select focused validation commands.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,

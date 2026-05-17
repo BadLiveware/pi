@@ -47,7 +47,7 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal(state.semanticProviders["csharp-ls"].details.supportedLanguages.includes("csharp"), true);
 	assert.equal(state.semanticProviders.shellcheck.details.capabilities.references, "none");
 	assert.equal(state.semanticProviders["markdownlint-cli2"].details.supportedLanguages.includes("markdown"), true);
-	assert.match(state.limitations.join("\n"), /availability-only/);
+	assert.match(state.limitations.join("\n"), /Use language-server status/);
 	assert.deepEqual(state.config, { maxResults: 125, queryTimeoutMs: 30000, maxOutputBytes: 5000000 });
 	assert.equal(statuses.at(-1)?.key, "code-intel");
 	assert.match(statuses.at(-1)?.value ?? "", /^ci\s+syn:ok/);

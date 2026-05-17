@@ -41,13 +41,13 @@ export function registerLocalMapTool(pi: ExtensionAPI): void {
 		name: "code_intel_local_map",
 		label: "Code Intelligence Local Map",
 		description: "Build a scoped local read-next map from anchor names, related symbol/field names, optional path scope, Tree-sitter candidates, and bounded rg literal fallback.",
-		promptSnippet: "Map a local subsystem into candidate files to read next; not an exact reference report.",
+		promptSnippet: "Map a local subsystem into candidate files to read next from anchors plus related names.",
 		promptGuidelines: [
 			"Use code_intel_local_map when a scoped edit/review has a central anchor plus related fields/types/API terms and you need a candidate file list.",
-			"Use it to answer: which local files should I read next, and why are they candidates? Do not treat it as exhaustive usage proof.",
+			"Use it to answer: which local files should I read next, and why are they candidates?",
 			"Provide anchors for central functions/types and names for related fields/types/API terms; add paths to keep the map local.",
 			"Language aliases such as c#, c++, py, md/markdown, and zsh are normalized; Markdown uses heading/link/code-fence routing plus literal fallback rather than Tree-sitter syntax search.",
-			"Use detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or unsupported-language gaps.",
+			"Use detail:'locations' for routing to files; use standalone rg afterward when you need comments/docs/generated text beyond the returned cap or unsupported-language gaps.",
 		],
 		renderCall: renderToolCall("code_intel_local_map", (args) => {
 			const anchors = asArray(args.anchors).length;

@@ -54,13 +54,13 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use code_intel_impact_map as the default code-intel tool after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
 			"Use it to answer: which unchanged caller, consumer, or test files should I read before changing or reviewing this code, and what evidence made them candidates?",
-			"Rows like syntax_call, syntax_selector, and syntax_keyed_field are current-source Tree-sitter candidates with real locations, not type-resolved references.",
+			"Rows like syntax_call, syntax_selector, and syntax_keyed_field are current-source Tree-sitter candidates with real locations; read candidates and use confirmReferences when exactness matters.",
 			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, truncation, and limitations.",
-			"If the map is empty or ok:false, inspect reason plus coverage.supportedImpactLanguages, unsupportedImpactFiles, docFiles, and nonSourceFiles before falling back to syntax search, source reads, or bounded rg.",
-			"Use detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
-			"Impact maps are a candidate read list, not exhaustive proof of all callers or safe compatibility.",
-			"Use confirmReferences only when exact-reference confirmation is worth the extra bounded provider call; keep it opt-in.",
-			"When delegating review, run this in the parent and pass the candidate files/reasons to subagents unless the subagent is explicitly configured with code-intel tools.",
+			"If the map is empty or ok:false, use reason plus coverage.supportedImpactLanguages, unsupportedImpactFiles, docFiles, and nonSourceFiles to choose syntax search, source reads, or bounded rg fallback.",
+			"Use detail:'locations' for routing to files; use detail:'snippets' when inline context helps avoid extra reads.",
+			"Use impact maps as the candidate read list for caller, consumer, test, and compatibility inspection.",
+			"Use confirmReferences when exact-reference confirmation is worth the extra bounded provider call.",
+			"When delegating review, run this in the parent and pass candidate files/reasons to subagents, or choose a code-intel-aware subagent that can run it directly.",
 		],
 		renderCall: renderToolCall("code_intel_impact_map", (args) => {
 			const parts = [];

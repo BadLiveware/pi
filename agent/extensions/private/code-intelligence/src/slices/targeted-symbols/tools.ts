@@ -20,10 +20,10 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 		description: "Read one symbol/declaration/Markdown section by a code-intel symbolTarget or explicit path/symbol selector, returning a complete bounded source segment when possible.",
 		promptSnippet: "Use after locator-mode code-intel output when you need exact source for one function, method, type, constant, variable, field, property, or Markdown section without reading the whole file.",
 		promptGuidelines: [
-			"Prefer passing a symbolTarget returned by code_intel_file_outline or another locator tool; do not reconstruct identity from prose when a target object is available.",
-			"Treat a complete-segment source result as the source read; do not call generic read on the same range unless it was truncated, stale, ambiguous, or too narrow for the edit.",
+			"Prefer passing a symbolTarget returned by code_intel_file_outline or another locator tool; target objects avoid brittle identity reconstruction.",
+			"Use a complete-segment source result as the source read and continue from it when it is fresh and sufficient for the edit/review.",
 			"For functions and methods, the tool returns the full declaration body by default. contextLines are mainly for small declarations and adjacent comments/attributes.",
-			"Referenced-definition context is same-file, one-hop, and limited to constants, variables, fields/properties, and types; called functions/helpers are intentionally deferred.",
+			"Use referenced-definition context for same-file constants, variables, fields/properties, and types when that local context helps the next step.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
@@ -59,9 +59,9 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 		description: "Replace the current text of a resolved symbolTarget after verifying oldText or oldHash safety evidence.",
 		promptSnippet: "Use when you already have a code-intel symbolTarget and need to replace that exact declaration without reconstructing line numbers after edits.",
 		promptGuidelines: [
-			"Prefer passing a symbolTarget from code_intel_read_symbol or code_intel_file_outline. The tool resolves stale targets using stable refs and relocation anchors before writing.",
-			"Provide oldHash from code_intel_read_symbol for token-light safety, or oldText when exact reviewable replacement evidence is needed. If both are supplied, both must match.",
-			"This tool mutates files. Use it only for the intended symbol replacement, and run validation or code_intel_post_edit_map afterward when follow-up context is needed.",
+			"Prefer code_intel_replace_symbol for declaration-sized replacements when you have a symbolTarget from code_intel_read_symbol or code_intel_file_outline.",
+			"Provide oldHash from code_intel_read_symbol for token-light safety, or oldText when exact reviewable replacement evidence is useful. If both are supplied, both must match.",
+			"After the anchored mutation, use code_intel_post_edit_map or project validation when you need changed-symbol, caller, test, or diagnostic follow-up context.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
@@ -94,9 +94,9 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 		description: "Insert text before or after a resolved symbolTarget anchor, using the same stale-target resolution as read_symbol.",
 		promptSnippet: "Use with a symbolTarget from file outline or read_symbol to add a declaration before/after an existing symbol without reading the whole file.",
 		promptGuidelines: [
-			"Prefer anchor from code_intel_file_outline when you only need structural insertion; use code_intel_read_symbol first when the inserted code depends on the anchor body.",
-			"The tool mutates files and inserts text verbatim except for default EOL normalization. Provide anchorHash when you want compact safety evidence from a prior read_symbol result.",
-			"Run validation or code_intel_post_edit_map afterward when follow-up context is needed.",
+			"Prefer code_intel_insert_relative for adding declarations or sections next to a resolved anchor from code_intel_file_outline or code_intel_read_symbol.",
+			"Use code_intel_read_symbol first when the inserted code depends on the anchor body; provide anchorHash when compact safety evidence from a prior read helps.",
+			"After the anchored insertion, use code_intel_post_edit_map or project validation when you need changed-symbol, caller, test, or diagnostic follow-up context.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
@@ -130,10 +130,10 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 		description: "Build a read-only follow-up map after edits/writes: changed symbols, likely callers/tests, and optional diagnostic-focused locations.",
 		promptSnippet: "Use after editing or writing files to decide what to inspect or validate next without re-reading complete segments unnecessarily.",
 		promptGuidelines: [
-			"Use this after edit/write when you need changed-symbol, caller, test, or diagnostic follow-up context. It is read-only and does not run tests or apply fixes.",
-			"Treat results as locator-mode routing evidence. Use readHint or code_intel_read_symbol for source only when source is needed.",
-			"When includeDiagnostics is true, treat collected rows as current touched-file diagnostics unless a baseline explicitly says they are new.",
-			"Diagnostics prioritize enclosing declarations but are not auto-fix instructions.",
+			"Use code_intel_post_edit_map after edit/write when changed-symbol, caller, test, or diagnostic follow-up context would improve confidence.",
+			"Use returned readHints or code_intel_read_symbol when source is needed for follow-up inspection.",
+			"Use includeDiagnostics:true when current touched-file diagnostics would help decide the next fix or validation step.",
+			"Use diagnostic-focused targets to prioritize source reads and fixes; pair the result with project-native validation when needed.",
 		],
 		parameters: Type.Object({
 			repoRoot: repoRootParam,

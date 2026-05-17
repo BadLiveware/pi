@@ -5,7 +5,7 @@ description: "Use when orienting in a large repo or preparing a bounded read-nex
 
 # Code Intelligence
 
-Use `code_intel_*` tools to prepare candidate files and symbols to inspect next. Outputs are routing evidence, not exact references, complete impact, or proof of a defect.
+Use `code_intel_*` tools whenever they fit the code task. They are owned dogfood surfaces: prefer them over ad hoc broad searches, line-number reconstruction, or repeated whole-file reads when they can route, read, or mutate more directly. If a result is noisy or incomplete, continue with the best fallback and surface that feedback instead of avoiding the tool next time.
 
 ## Core Workflow
 
@@ -14,10 +14,10 @@ Use `code_intel_*` tools to prepare candidate files and symbols to inspect next.
 3. For a concrete edit/review, start from the task boundary: diff, changed files, base ref, or a small set of root symbols.
 4. Run `code_intel_impact_map` for review/edit impact context, or `code_intel_local_map` for a scoped subsystem with anchors plus related names.
 5. Use `code_intel_test_map` when you need likely tests to inspect or run for a file/symbol/name.
-6. Use `code_intel_syntax_search` only for explicit current-source shapes the map cannot express.
+6. Use `code_intel_syntax_search` for explicit current-source shapes the map cannot express, then read or edit the matched targets with the normal/source-aware tools.
 7. For locator-mode outputs, use `readHint` for one precise generic read or pass `symbolTarget` to `code_intel_read_symbol` when you need a complete declaration body.
-8. Treat a complete `code_intel_read_symbol` segment as the source read; do not generic-read the same range again unless it was truncated, stale, ambiguous, or too narrow for editing.
-9. For symbol-scoped mutations, use `code_intel_replace_symbol` only with `oldText` or `oldHash` safety evidence, and use `code_intel_insert_relative` only when inserting before/after a resolved symbol anchor is clearer than manual line edits.
+8. Let a complete `code_intel_read_symbol` segment count as the source read and proceed from it; reread only when freshness, truncation, ambiguity, or edit context requires more.
+9. Prefer `code_intel_replace_symbol` for declaration-sized replacements once you have `oldText` or `oldHash` safety evidence. Prefer `code_intel_insert_relative` when inserting before/after a resolved symbol anchor is clearer than manual line edits.
 10. After editing/writing, use `code_intel_post_edit_map` when you need changed-symbol, caller/test, or touched-code diagnostic follow-up context. Omit `changedFiles` to use session-tracked edit/write/code-intel mutation files when available.
 11. Run project-native validation when behavior, public contracts, tests, or generated outputs matter.
 
@@ -32,7 +32,7 @@ Before delegating review, the parent should usually:
 3. Add any scoped `code_intel_syntax_search` results for known risky syntax patterns.
 4. Pass the candidate files/reasons and limitations in the reviewer prompt.
 
-Use a custom code-intel-aware reviewer only when it is explicitly configured with the narrow tools it needs.
+Prefer a custom code-intel-aware reviewer when review quality depends on these maps and the agent is configured with the relevant tools.
 
 ## Source Layout for Extension Work
 
@@ -59,23 +59,18 @@ When editing this extension, preserve the vertical-slice layout:
 - `code_intel_post_edit_map`: read-only follow-up map after edits/writes. Returns changed-symbol locators, likely caller/test candidates, session-tracked touched files when `changedFiles` is omitted, and optional diagnostic-focused targets. With `includeDiagnostics:true`, it collects current touched-file diagnostics from applicable bounded providers such as TypeScript/JavaScript language services, `gopls check`, Rust Analyzer, Python providers (Pyrefly, ty, basedpyright/pyright), `clangd`, `csharp-ls`, ShellCheck, `zsh -n`, and `markdownlint-cli2`, then merges any supplied diagnostics. It does not run tests or fix code.
 - `code_intel_state`: inspect Tree-sitter, `rg`, and optional LSP availability, config, footer status, and diagnostics when that matters.
 
-## Guardrails
+## Usage Notes
 
-- Treat repo overview and file outlines as deterministic structure and syntax facts for navigation, not generated architecture explanations.
-- Do not expect model summaries or semantic role hints; infer meaning from paths, filenames, imports/includes, and declarations, then read source.
-- Treat Tree-sitter output as a read-next queue, not semantic truth.
-- Treat `rg` fallback as literal text discovery, not symbol/reference proof.
-- Do not turn tool output directly into a review finding; inspect current source first.
-- Treat LSP status in `code_intel_state` as availability-only; it is not exact-reference evidence. For C/C++, clangd also depends on a usable `compile_commands.json`; missing or stale compile databases make confirmation unavailable or incomplete.
-- Treat `code_intel_post_edit_map` collected diagnostics as current touched-file diagnostics, not proof that issues are new, unless a future baseline explicitly marks them new.
-- Treat `referenceConfirmation` rows from opt-in providers such as `gopls` or `typescript` as confirmation evidence, not a replacement for reading current source.
-- Do not use code-intel as a substitute for `gopls`, TypeScript language services, Rust Analyzer, `clangd`, `csharp-ls`, or project-native checks when exact references matter.
-- Treat Markdown rows as document-structure routing, not code semantics; use local-map for Markdown heading/link/code-fence matching rather than syntax search.
-- Treat zsh as zsh-labeled shell support backed by the Bash grammar; inspect source when zsh-specific syntax could matter.
-- Do not run broad rule scans by default.
-- Do not perform rewrites through syntax search.
-- Treat `code_intel_replace_symbol` and `code_intel_insert_relative` as narrow mutation tools, not general codemods. Resolve anchors with `symbolTarget`, keep inserted/replacement text scoped, and validate afterward.
-- Keep result sets bounded. Prefer `detail: "locations"` when files will be read next; use `detail: "snippets"` only for inline triage.
-- Avoid double reads: locator-mode output should lead to the first source read; complete source-mode output should not be followed by a generic read of the same range without a freshness/truncation/ambiguity reason.
-- If an impact map is empty or `ok:false`, read the `reason` and `coverage.supportedImpactLanguages` / `unsupportedImpactFiles` / `docFiles` / `nonSourceFiles`; do not treat it as a successful no-impact result.
-- Use standalone `rg` for comments/docs/generated text, literal fallback beyond caps, or unsupported-language gaps.
+- Use repo overview and file outlines for deterministic structure and syntax facts: paths, filenames, imports/includes, declarations, line ranges, and locator targets.
+- Use Tree-sitter rows as the first read-next queue. Read the suggested current source before making review findings or compatibility claims.
+- Use `rg` fallback rows for literal text in source, comments, docs, fixtures, generated files, or unsupported-language gaps.
+- Use `code_intel_state` when parser, `rg`, config, footer, or optional provider availability affects the next move.
+- Use `code_intel_post_edit_map` diagnostics as current touched-file feedback. Fix or disclose them according to the task's validation needs.
+- Use `referenceConfirmation` rows from opt-in providers such as `gopls`, TypeScript, Rust Analyzer, Pyrefly, clangd, or csharp-ls when exact-reference confirmation materially helps.
+- Pair code-intel with project-native tests, typechecks, linters, benchmarks, or language tools when those are the right validation evidence for the change.
+- For Markdown, use local-map document matching for headings, links, and code fences; inspect section text before making document claims.
+- For zsh, use the zsh-labeled shell support backed by the Bash grammar, then inspect source when zsh-specific syntax could affect behavior.
+- For broad repeated edits, use overview/route/impact/local/syntax tools to discover and verify targets, then apply the right edit path: `code_intel_replace_symbol`, `code_intel_insert_relative`, generic `edit`, or a project codemod when appropriate.
+- Prefer `detail: "locations"` when files will be read next; use `detail: "snippets"` when inline context saves a read.
+- Let locator-mode output lead to the first source read, and let complete source-mode output stand as the read when it is fresh and complete.
+- If an impact map is empty or `ok:false`, read the `reason` and coverage fields to choose the next code-intel tool or fallback search.

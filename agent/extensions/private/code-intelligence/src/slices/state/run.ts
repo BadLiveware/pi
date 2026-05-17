@@ -69,10 +69,10 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		backends: statuses,
 		languages: languageCapabilitySummary(),
 		limitations: [
-			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
-			"rg literal fallback is for text discovery only; use source reads and project-native validation before making claims.",
-			`Impact maps currently route ${IMPACT_LANGUAGE_IDS.join(", ")}; Tree-sitter rows remain candidate read-next evidence rather than semantic references.`,
-			"Language-server status is availability-only; default code-intel routing does not use LSPs unless explicit reference confirmation or post-edit touched-file diagnostics are requested.",
+			"Use Tree-sitter rows as current-source read-next routing with real locations, then read selected source for claims or edits.",
+			"Use rg literal fallback for text discovery in comments, docs, fixtures, generated files, and unsupported-language gaps.",
+			`Impact maps currently route ${IMPACT_LANGUAGE_IDS.join(", ")}; use returned coverage fields to choose follow-up source reads, syntax searches, or fallback searches.`,
+			"Use language-server status to decide when opt-in reference confirmation or post-edit touched-file diagnostics are available.",
 		],
 	};
 	if (languageServers) payload.languageServers = languageServers;

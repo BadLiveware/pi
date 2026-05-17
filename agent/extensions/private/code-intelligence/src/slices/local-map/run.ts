@@ -269,8 +269,8 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 			truncated,
 		},
 		limitations: [
-			"Local maps are candidate read-next maps built from Tree-sitter current-source syntax and bounded literal fallback, not exact reference reports.",
-			"Results are routing evidence, not proof of complete usage or safe compatibility.",
+			"Use local maps as read-next maps built from Tree-sitter current-source syntax and bounded literal fallback.",
+			"Read selected source files to confirm usage and compatibility claims.",
 			"Use rg afterward for literal text, comments/docs, generated files, or unsupported-language gaps.",
 		],
 	};

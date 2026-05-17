@@ -57,7 +57,7 @@ test("README language coverage table names requested language behavior", () => {
 test("code-intelligence skill guidance avoids stale diagnostic and Markdown claims", () => {
 	const skill = readExtensionFile("skills/code-intelligence/SKILL.md");
 	assert.match(skill, /includeDiagnostics:true[\s\S]*gopls check[\s\S]*Rust Analyzer[\s\S]*Pyrefly[\s\S]*ty[\s\S]*basedpyright\/pyright[\s\S]*clangd[\s\S]*csharp-ls[\s\S]*ShellCheck[\s\S]*zsh -n[\s\S]*markdownlint-cli2/);
-	assert.match(skill, /Markdown rows as document-structure routing, not code semantics/);
+	assert.match(skill, /For Markdown, use local-map document matching for headings, links, and code fences/);
 	assert.match(skill, /zsh[\s\S]*Bash grammar/);
 	assert.doesNotMatch(skill, /current TypeScript\/JavaScript touched-file diagnostics/);
 });
