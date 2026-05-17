@@ -65,11 +65,16 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["rust"],
 		command: "rust-analyzer",
 		versionArgs: ["--version"],
-		capabilities: capabilities("planned", "planned"),
+		capabilities: capabilities("implemented", "implemented"),
 		evidence: { references: "rust-analyzer:textDocument/references", diagnostics: "rust-analyzer:publishDiagnostics" },
 		missingDiagnostic: "rust-analyzer not found on PATH",
+		noRootsDiagnostic: "No Rust roots with current-source definition locations were available for Rust Analyzer confirmation.",
 		workspacePrerequisites: ["Cargo.toml workspace discovery"],
-		limitations: ["Rust Analyzer support is availability-only until the shared LSP provider is implemented."],
+		limitations: [
+			"Rust Analyzer confirmation is opt-in and only runs for Rust roots with current-source definition locations.",
+			"Rust Analyzer diagnostics are current touched-file diagnostics unless a future baseline marks rows as new.",
+			"The default Rust routing map remains Tree-sitter syntax evidence and does not require Rust Analyzer.",
+		],
 		legacyLanguageServer: "rust-analyzer",
 	},
 	{

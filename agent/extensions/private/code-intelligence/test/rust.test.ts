@@ -5,6 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import codeIntelligence from "../index.ts";
+import { collectTouchedDiagnostics } from "../src/slices/post-edit-map/diagnostics.ts";
+import { DEFAULT_CONFIG } from "../src/types.ts";
 
 function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }> {
 	const tools = new Map<string, any>();
@@ -25,6 +27,11 @@ function rustRepo(): string {
 	execFileSync("git", ["init", "-q"], { cwd: repo });
 	fs.mkdirSync(path.join(repo, "src"), { recursive: true });
 	fs.mkdirSync(path.join(repo, "tests"), { recursive: true });
+	fs.writeFileSync(path.join(repo, "Cargo.toml"), `[package]
+name = "sample"
+version = "0.1.0"
+edition = "2021"
+`);
 	fs.writeFileSync(path.join(repo, "src", "lib.rs"), `use std::sync::Arc;
 mod parser;
 
@@ -59,6 +66,58 @@ fn build_model_smoke() {
 	return repo;
 }
 
+async function withPath(pathValue: string, run: () => Promise<void>): Promise<void> {
+	const originalPath = process.env.PATH;
+	process.env.PATH = pathValue;
+	try {
+		await run();
+	} finally {
+		process.env.PATH = originalPath;
+	}
+}
+
+function writeFakeRustAnalyzer(file: string): void {
+	fs.writeFileSync(file, `#!/usr/bin/env node
+if (process.argv.includes("--version")) {
+  console.log("rust-analyzer fake 1.0");
+  process.exit(0);
+}
+let buffer = Buffer.alloc(0);
+function write(message) {
+  const body = JSON.stringify(message);
+  process.stdout.write("Content-Length: " + Buffer.byteLength(body, "utf-8") + "\\r\\n\\r\\n" + body);
+}
+function parse() {
+  while (true) {
+    const headerEnd = buffer.indexOf("\\r\\n\\r\\n");
+    if (headerEnd < 0) return;
+    const header = buffer.subarray(0, headerEnd).toString("utf-8");
+    const match = /Content-Length:\\s*(\\d+)/i.exec(header);
+    if (!match) { buffer = buffer.subarray(headerEnd + 4); continue; }
+    const bodyStart = headerEnd + 4;
+    const bodyEnd = bodyStart + Number(match[1]);
+    if (buffer.length < bodyEnd) return;
+    const message = JSON.parse(buffer.subarray(bodyStart, bodyEnd).toString("utf-8"));
+    buffer = buffer.subarray(bodyEnd);
+    handle(message);
+  }
+}
+function handle(message) {
+  if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: { capabilities: {} } });
+  else if (message.method === "textDocument/didOpen") {
+    const uri = message.params?.textDocument?.uri;
+    write({ jsonrpc: "2.0", method: "textDocument/publishDiagnostics", params: { uri, diagnostics: [{ range: { start: { line: 3, character: 26 }, end: { line: 3, character: 30 } }, severity: 1, source: "rust-analyzer", code: "E0308", message: "mismatched types" }] } });
+  } else if (message.method === "textDocument/references") {
+    const uri = message.params?.textDocument?.uri;
+    write({ jsonrpc: "2.0", id: message.id, result: [{ uri, range: { start: { line: 16, character: 7 }, end: { line: 16, character: 18 } } }] });
+  } else if (message.method === "shutdown") write({ jsonrpc: "2.0", id: message.id, result: null });
+  else if (message.method === "exit") process.exit(0);
+}
+process.stdin.on("data", (chunk) => { buffer = Buffer.concat([buffer, chunk]); parse(); });
+`);
+	fs.chmodSync(file, 0o755);
+}
+
 test("Rust file outline reports imports, declarations, methods, and fields", async () => {
 	const repo = rustRepo();
 	try {
@@ -89,6 +148,57 @@ test("Rust impact map routes current-source definitions and callers", async () =
 		assert.equal(impact.rootSymbols.includes("build_model"), true);
 		assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.file === "tests/parser_integration.rs" && row.text === "build_model(\"a\")"), true);
 		assert.match(impact.limitations.join("\n"), /not type-resolved semantic references/);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("Rust impact map optionally confirms references with rust-analyzer", async () => {
+	const repo = rustRepo();
+	try {
+		const binDir = path.join(repo, "bin");
+		fs.mkdirSync(binDir);
+		writeFakeRustAnalyzer(path.join(binDir, "rust-analyzer"));
+		await withPath(`${binDir}${path.delimiter}${process.env.PATH ?? ""}`, async () => {
+			const tools = loadTools();
+			const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["build_model"], confirmReferences: "rust-analyzer", maxReferenceRoots: 1, maxReferenceResults: 5, detail: "locations" }, undefined, undefined, mockContext(repo)));
+			assert.equal(impact.referenceConfirmation.backend, "rust-analyzer");
+			assert.equal(impact.referenceConfirmation.ok, true);
+			assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "src/lib.rs" && row.rootSymbol === "build_model" && row.evidence === "rust-analyzer:textDocument/references"), true);
+		});
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("Rust post-edit diagnostics collect rust-analyzer publishDiagnostics rows", async () => {
+	const repo = rustRepo();
+	try {
+		const binDir = path.join(repo, "bin");
+		fs.mkdirSync(binDir);
+		writeFakeRustAnalyzer(path.join(binDir, "rust-analyzer"));
+		await withPath(`${binDir}${path.delimiter}${process.env.PATH ?? ""}`, async () => {
+			const result = await collectTouchedDiagnostics(repo, ["src/lib.rs"], DEFAULT_CONFIG);
+			assert.equal(result.diagnostics.some((row) => row.path === "src/lib.rs" && row.line === 4 && row.column === 27 && row.severity === "error" && row.source === "rust-analyzer" && row.code === "E0308" && /mismatched/.test(row.message ?? "")), true);
+			assert.equal(result.providerStatuses.some((row) => row.provider === "rust-analyzer" && row.available === "available" && row.fileCount === 1 && row.diagnosticCount === 1), true);
+		});
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
+test("Rust post-edit diagnostics report missing rust-analyzer without failing collection", async () => {
+	const repo = rustRepo();
+	try {
+		const emptyBin = path.join(repo, "empty-bin");
+		fs.mkdirSync(emptyBin);
+		await withPath(emptyBin, async () => {
+			const result = await collectTouchedDiagnostics(repo, ["src/lib.rs"], DEFAULT_CONFIG);
+			assert.equal(result.diagnostics.length, 0);
+			const status = result.providerStatuses.find((row) => row.provider === "rust-analyzer");
+			assert.equal(status?.available, "missing");
+			assert.match(String(status?.diagnostic ?? ""), /rust-analyzer not found/);
+		});
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });
 	}

@@ -2,6 +2,7 @@ import type { CodeIntelConfig } from "../types.ts";
 import { isRecord, normalizePositiveInteger, summarizeFileDistribution } from "../util.ts";
 import { clangdReferenceProvider } from "./providers/clangd-lsp.ts";
 import { goplsReferenceProvider } from "./providers/gopls-command.ts";
+import { rustAnalyzerReferenceProvider } from "./providers/rust-analyzer-lsp.ts";
 import { typescriptReferenceProvider } from "./providers/typescript-language-service.ts";
 import type { ReferenceConfirmationOptions, ReferenceConfirmationProvider, ReferenceConfirmationProviderName, ReferenceRoot } from "./types.ts";
 
@@ -9,6 +10,7 @@ const providers: Record<ReferenceConfirmationProviderName, ReferenceConfirmation
 	gopls: goplsReferenceProvider,
 	typescript: typescriptReferenceProvider,
 	clangd: clangdReferenceProvider,
+	"rust-analyzer": rustAnalyzerReferenceProvider,
 };
 
 function asRoot(value: unknown): ReferenceRoot | undefined {

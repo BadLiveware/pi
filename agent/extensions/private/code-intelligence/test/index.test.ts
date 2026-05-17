@@ -28,6 +28,8 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal(state.languages.cpp.features.impact, "code");
 	assert.equal(state.languageServers.gopls.server, "gopls");
 	assert.equal(state.languageServers["rust-analyzer"].server, "rust-analyzer");
+	assert.equal(state.semanticProviders["rust-analyzer"].details.capabilities.references, "implemented");
+	assert.equal(state.semanticProviders["rust-analyzer"].details.capabilities.diagnostics, "implemented");
 	assert.equal(state.languageServers.typescript.server, "typescript");
 	assert.equal(state.languageServers.typescript.available, "available");
 	assert.equal(["tsserver", "typescript-language-server", "typescript-language-service"].includes(state.languageServers.typescript.details.command), true);

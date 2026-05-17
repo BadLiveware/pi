@@ -59,7 +59,7 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 			"If the map is empty or ok:false, inspect reason plus coverage.supportedImpactLanguages, unsupportedImpactFiles, docFiles, and nonSourceFiles before falling back to syntax search, source reads, or bounded rg.",
 			"Use detail:'locations' for routing to files; use detail:'snippets' only when inline context helps avoid extra reads.",
 			"Impact maps are a candidate read list, not exhaustive proof of all callers or safe compatibility.",
-			"Use confirmReferences only when exact-reference confirmation is worth the extra bounded LSP call; keep it opt-in.",
+			"Use confirmReferences only when exact-reference confirmation is worth the extra bounded provider call; keep it opt-in.",
 			"When delegating review, run this in the parent and pass the candidate files/reasons to subagents unless the subagent is explicitly configured with code-intel tools.",
 		],
 		renderCall: renderToolCall("code_intel_impact_map", (args) => {
@@ -79,7 +79,7 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 			maxRootSymbols: Type.Optional(Type.Number({ description: "Maximum root symbols to query after expanding changed files. Default 20." })),
 			timeoutMs: timeoutParam,
 			detail: detailParam,
-			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd")], { description: "Opt-in exact-reference confirmation for returned roots using gopls, the TypeScript language service, or clangd for C/C++ with compile_commands.json." })),
+			confirmReferences: Type.Optional(Type.Union([Type.Literal("gopls"), Type.Literal("typescript"), Type.Literal("clangd"), Type.Literal("rust-analyzer")], { description: "Opt-in exact-reference confirmation for returned roots using gopls, the TypeScript language service, clangd for C/C++ with compile_commands.json, or Rust Analyzer." })),
 			maxReferenceRoots: Type.Optional(Type.Number({ description: "Maximum roots to confirm when confirmReferences is set. Default 5." })),
 			maxReferenceResults: Type.Optional(Type.Number({ description: "Maximum reference rows returned when confirmReferences is set. Default min(config maxResults, 25)." })),
 			includeReferenceDeclarations: Type.Optional(Type.Boolean({ description: "Include declarations in reference-confirmation output. Default false." })),

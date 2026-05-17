@@ -9,7 +9,7 @@ export interface CodeIntelImpactMapParams {
 	maxRootSymbols?: number;
 	timeoutMs?: number;
 	detail?: ResultDetail;
-	confirmReferences?: "gopls" | "typescript" | "clangd";
+	confirmReferences?: "gopls" | "typescript" | "clangd" | "rust-analyzer";
 	maxReferenceRoots?: number;
 	maxReferenceResults?: number;
 	includeReferenceDeclarations?: boolean;
