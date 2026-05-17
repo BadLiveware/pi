@@ -1,37 +1,48 @@
 # Pi Code Intelligence
 
-Pi Code Intelligence is a private local Pi extension that helps **agents** choose the next files, symbols, callers, tests, or syntax patterns to inspect during coding work.
+Pi Code Intelligence is a private local Pi extension for repository orientation and read-next context gathering. It gives Pi agents bounded, current-source maps of files, symbols, callers, tests, and syntax patterns that are likely worth inspecting before a non-trivial edit or review.
 
-As a human, you do not normally call these tools directly. You use this extension by asking your agent to orient in a repository, inspect impact before editing, find likely tests, or gather bounded review context. The agent then calls the code-intel tools and uses their output as a read-next map.
+## How It Fits the Pi Workflow
 
-## What It Gives You
+Code-intel sits between the user's coding request and the agent's source reads:
 
-- Faster orientation in large or unfamiliar repositories.
-- Compact candidate lists instead of broad, noisy search dumps.
-- Better review and edit prep: likely callers, consumers, tests, and related files.
-- Safer symbol-scoped reads and mutations when a declaration target is known.
-- Clear evidence limits so the agent does not confuse syntax matches with semantic proof.
+1. The user asks Pi to inspect, edit, review, or understand code.
+2. For non-trivial work, the agent asks code-intel for a bounded map of likely relevant files, symbols, tests, or patterns.
+3. The agent reads current source from that map instead of relying on broad search output or memory.
+4. The agent implements, reviews, or explains the change with project-native validation where needed.
+
+The extension supplies navigation evidence, not final answers. It is most useful when a small amount of structured context can prevent missed callers, missed tests, noisy searches, or unnecessary full-file reads.
+
+## What It Improves
+
+- Repository orientation in large or unfamiliar codebases.
+- Review/edit prep with compact caller, consumer, test, and related-file candidates.
+- Concept routing without dumping raw global search output.
+- Test discovery for source files, symbols, and domain terms.
+- Targeted symbol reads and narrow symbol-scoped mutations.
+- Evidence discipline: syntax matches remain syntax evidence, not semantic proof.
 
 ## What It Is Not
 
 Code Intelligence is not a compiler, language server replacement, full semantic index, linter, typechecker, test runner, or bug detector. It does not prove a change is safe.
 
-Its output means: “these are useful places for the agent to inspect next.” Before the agent reports a finding, edits code, or claims a fix is complete, it still needs current source reads and project-native validation.
+Its output means: "these are useful places to inspect next." Findings, edits, and completion claims still need current source reads and project-native validation.
 
-## Good Requests to Give Your Agent
+## Where It Helps
 
-These are natural-language requests that should cause the agent to use code-intel when the work is non-trivial:
+| Workflow need | What code-intel contributes |
+| --- | --- |
+| Repository orientation | Directory/file shape, dominant languages, and capped declarations for scoped subtrees. |
+| Concept or API routing | Likely implementation files for terms such as feature names, API names, symbols, or domain strings. |
+| Diff review or edit prep | Likely callers, consumers, tests, and related files from changed files, root symbols, or a git base ref. |
+| Scoped subsystem exploration | Local maps from known anchors plus related fields, types, names, or APIs. |
+| Test selection | Ranked test candidates for a source file, symbol, or domain term. |
+| Pattern investigation | Explicit Tree-sitter syntax search for calls, selectors, keyed fields, object properties, or raw queries. |
+| Targeted symbol work | Complete declaration reads plus safe replace/insert operations around resolved symbol anchors. |
+| Post-edit follow-up | Changed symbols, likely callers/tests, and optional touched-file diagnostics after edits. |
+| Extension troubleshooting | Parser, `rg`, optional LSP, config, footer, and runtime diagnostic state. |
 
-- “Before editing this handler, map likely callers and tests.”
-- “Orient in this repository and tell me where the PromQL parser lives.”
-- “Review this diff with impact context, not just the changed lines.”
-- “Find the likely tests for this storage-table code.”
-- “Inspect this large file’s structure before reading the whole thing.”
-- “After that edit, check what callers or tests we should inspect next.”
-
-For tiny changes—typos, docs-only edits, obvious one-line local fixes—the agent should usually skip code-intel and work directly.
-
-## Available Agent Tools
+## Tool Surface
 
 The extension exposes these tools to Pi agents:
 
@@ -50,20 +61,6 @@ The extension exposes these tools to Pi agents:
 | `code_intel_post_edit_map` | Post-edit follow-up: changed symbols, likely callers/tests, and optional touched-file diagnostics. |
 | `code_intel_state` | Extension health: Tree-sitter, `rg`, optional LSP availability, config, footer status, and diagnostics. |
 
-## How Agents Typically Use It
-
-| Human goal | Agent behavior | Typical tool path |
-| --- | --- | --- |
-| Understand a large repo | Build a shape map, then zoom into explicit subtrees. | `repo_overview` → `file_outline` / source reads |
-| Find where a concept lives | Route terms to likely files, then inspect candidates. | `repo_route` → `file_outline` / source reads |
-| Prepare for a review or edit | Map changed symbols and likely related files before judging impact. | `impact_map` → source reads → validation |
-| Explore a known subsystem | Combine central anchors with related field/type/API names. | `local_map` → source reads |
-| Choose validation targets | Rank likely tests and inspect them before running or claiming coverage. | `test_map` → source/test reads |
-| Investigate a specific pattern | Search explicit syntax shapes without broad rule scans. | `syntax_search` → source reads |
-| Safely edit a declaration | Read the resolved symbol, then replace or insert with safety evidence. | `read_symbol` → `replace_symbol` / `insert_relative` |
-| Check follow-up after edits | Re-map changed declarations, callers, tests, and optional diagnostics. | `post_edit_map` → validation |
-| Debug the extension | Inspect parser, fallback, LSP, config, footer, and runtime diagnostics. | `state` |
-
 ## Evidence Model
 
 Code-intel output is deliberately conservative about what it claims.
@@ -75,27 +72,27 @@ Code-intel output is deliberately conservative about what it claims.
 | Optional reference confirmation | Bounded exact-reference evidence for selected Go, TypeScript/JavaScript, or clangd-backed C/C++ roots. | Whole-program proof or a replacement for reading source. |
 | Touched-file diagnostics | Current TypeScript/JavaScript diagnostics for files involved in the task. | Proof that diagnostics are new unless a baseline says so. |
 
-In a trustworthy transcript, tool results are treated as a queue of places to inspect, not as findings to report directly.
+Tool results are a queue of places to inspect, not findings to report directly.
 
-## Guardrails You Should Expect From Agents
+## Workflow Guardrails
 
-A well-behaved agent using this extension should:
+The expected Pi workflow keeps these boundaries:
 
-- read current source before making claims from code-intel output;
-- run project-native tests, typechecks, benchmarks, linters, or manual checks when those match the risk;
-- keep result sets bounded instead of scanning the whole repo by default;
-- prefer location output when it intends to read files next, and snippet output only for quick triage;
-- avoid double-reading the same complete symbol segment without a freshness, truncation, ambiguity, or edit-context reason;
-- inspect coverage and limitation fields when an impact map is empty or fails;
-- use standalone search only for comments/docs/generated text, literal fallback beyond caps, or unsupported-language gaps;
-- pass code-intel context to subagents instead of assuming every subagent can call these tools.
+- Current source is read before claims are made from code-intel output.
+- Project-native tests, typechecks, benchmarks, linters, or manual checks still validate behavior when they match the risk.
+- Result sets stay bounded instead of scanning the whole repo by default.
+- Location output is preferred when files will be read next; snippets are for quick triage.
+- Complete symbol segments are not reread without a freshness, truncation, ambiguity, or edit-context reason.
+- Empty or failed impact maps require checking coverage and limitation fields before falling back.
+- Standalone search remains useful for comments/docs/generated text, literal fallback beyond caps, and unsupported-language gaps.
+- Review subagents receive code-intel context from the parent when they do not have the tools themselves.
 
 ## Engines and Coverage
 
 | Engine | Used for | Artifact behavior |
 | --- | --- | --- |
 | Tree-sitter WASM | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++ source files. Rust routing is syntax-only; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | No index. |
-| `rg` | Bounded literal fallback in local maps and human follow-up searches. | No index. |
+| `rg` | Bounded literal fallback in local maps and follow-up searches. | No index. |
 | Optional LSP/reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, and C/C++ (`clangd` with `compile_commands.json`). | Opt-in per map run. |
 
 `code_intel_state` can report availability for `gopls`, Rust Analyzer, TypeScript, and clangd, but availability is not evidence that reference confirmation was run. Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path.
@@ -114,7 +111,7 @@ The output is filesystem and Tree-sitter syntax evidence for navigation. It does
 
 Parses one source file and returns imports/includes plus language-native declarations with line ranges.
 
-Declaration rows are locator-mode: compact output shows a short stable reference plus a read hint, while structured details include the full `symbolTarget` and `readHint`. Agents can either perform one precise source read or pass the target metadata to `code_intel_read_symbol`. Outlines do not include declaration bodies unless snippet detail is requested.
+Declaration rows are locator-mode: compact output shows a short stable reference plus a read hint, while structured details include the full `symbolTarget` and `readHint`. The next step is either one precise source read or a `code_intel_read_symbol` call with the target metadata. Outlines do not include declaration bodies unless snippet detail is requested.
 
 ### `code_intel_repo_route`
 
@@ -126,9 +123,9 @@ Route results are file candidates, not semantic proof. Implementation claims sti
 
 Builds the primary candidate read-next impact map from explicit symbols, changed files, or a git base ref.
 
-The output groups root symbols and related caller/consumer candidates, with truncation and limitation metadata. Defaults are bounded but close to normal agent search habits: up to 20 root symbols after changed-file expansion and 125 location rows unless overridden.
+The output groups root symbols and related caller/consumer candidates, with truncation and limitation metadata. Defaults are bounded but close to normal search habits: up to 20 root symbols after changed-file expansion and 125 location rows unless overridden.
 
-Impact routing currently supports Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++ source files. When changed files are non-source or outside the supported set, coverage fields explain what was unsupported so agents can fall back deliberately.
+Impact routing currently supports Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++ source files. When changed files are non-source or outside the supported set, coverage fields explain what was unsupported so fallback can be deliberate.
 
 For high-value exactness checks, the tool supports bounded confirmation with `gopls`, TypeScript/JavaScript language services, or clangd. Missing or broken confirmation tooling should not affect the default Tree-sitter map.
 
@@ -160,7 +157,7 @@ Reads one declaration by locator target or explicit selector.
 
 This is source mode: compact content includes the returned source segment. Function-like declarations return the full function/method/constructor body by default. Optional one-hop same-file referenced definitions can include constants, variables, and types; called functions/helpers are deliberately not recursively expanded.
 
-Source segment headers include an `oldHash` so agents can perform token-light safety checks with symbol-aware mutation tools.
+Source segment headers include an `oldHash` for token-light safety checks with symbol-aware mutation tools.
 
 ### `code_intel_replace_symbol`
 
@@ -229,13 +226,13 @@ Tool results use compact TUI cards. The default view shows a short status/count 
 
 ## Diagnostics and Troubleshooting
 
-For parser, fallback, LSP, config, footer, or runtime problems, ask the agent to inspect code-intel state with diagnostics enabled. The diagnostic payload includes config diagnostics, backend probe diagnostics, recent runtime operations, and the JSONL log path.
+For parser, fallback, LSP, config, footer, or runtime problems, `code_intel_state` can include diagnostics. The diagnostic payload includes config diagnostics, backend probe diagnostics, recent runtime operations, and the JSONL log path.
 
 Runtime diagnostics are best-effort. They are written to a small cache log and are meant for local debugging, not as proof of code impact.
 
 ## Usage Tracking
 
-The extension passively records low-cardinality local usage metadata to help evaluate whether agents actually use the code-intelligence tools well. It does not register an agent-facing usage-inspection tool by default.
+The extension passively records low-cardinality local usage metadata to help evaluate whether code-intelligence tools are used well in real sessions. It does not register a usage-inspection tool by default.
 
 Default log directory:
 
@@ -259,18 +256,18 @@ tail -n 40 ~/.cache/pi-code-intelligence/usage/*.jsonl
 
 ## Design Rationale
 
-The extension is optimized for agent routing, not replacing source reads or project validation.
+The extension is optimized for read-next routing, not replacing source reads or project validation.
 
 | Decision | Rationale |
 | --- | --- |
 | Tree-sitter first (`syn`) | Current-source syntax maps provide useful read-next evidence without stale indexes, shelling out, or repo-local artifacts. |
 | Keep `rg` as literal fallback | Text is still useful for comments, docs, generated files, and unsupported-language gaps, but should be labeled separately from syntax evidence. |
 | Small tool surface | The extension is about read-next routing plus narrow symbol-targeted mutations, not a general semantic database or broad codemod API. |
-| Default broad map tools to location detail | Agents usually read/edit returned files next, so inline snippets would duplicate source context. Snippets are best for triage. |
+| Default broad map tools to location detail | Returned files are usually read or edited next, so inline snippets would duplicate source context. Snippets are best for triage. |
 | Locator mode vs source mode | Locator tools return target/read-hint data without source bodies; `code_intel_read_symbol` returns complete bounded source segments. The workflow avoids doing both for the same range unless freshness, truncation, or ambiguity requires it. |
 | Summaries before pagination | File counts and top files show distribution and hidden breadth without encouraging agents to browse pages mechanically. |
 | Compact TUI cards, structured details | The UI stays readable while structured payloads remain available for reasoning and tests. |
-| Passive usage logs, no usage-inspection tool | Natural adoption can be evaluated without adding a tool that changes normal agent behavior. |
+| Passive usage logs, no usage-inspection tool | Natural adoption can be evaluated without adding a tool that changes normal behavior. |
 
 ## Source Layout and Extension Work
 
@@ -287,7 +284,7 @@ When adding a tool, start with a slice folder and keep the tool contract, run be
 
 ## Evaluation Notes
 
-- 2026-04-28: Initial prompt tests showed agents naturally chose code-intel tools, but overused detailed diagnostics. Guidance now keeps diagnostics for error/debug paths.
+- 2026-04-28: Initial prompt tests showed code-intel tools were selected naturally, but detailed diagnostics were overused. Guidance now keeps diagnostics for error/debug paths.
 - 2026-04-29: Cymbal/sqry/ast-grep were evaluated and found useful for exploration but too uneven or too much operational surface for the default read-next product boundary.
 - 2026-04-29: A `@vscode/tree-sitter-wasm` prototype on promshim produced correct current-source locations for `buildMatchedSeriesSQL` calls plus `NeedTags` field declarations, selector expressions, and keyed literals.
 - 2026-04-29: Tree-sitter became the default map/search engine. `impact_map`, `local_map`, and `syntax_search` no longer shell out to Cymbal/sqry/ast-grep.
