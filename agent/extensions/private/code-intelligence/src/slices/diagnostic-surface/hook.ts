@@ -34,7 +34,7 @@ export function buildDiagnosticSurfaceContent(rows: NormalizedPostEditDiagnostic
 	const sorted = sortDiagnostics(rows);
 	const shown = sorted.slice(0, 8);
 	const omitted = sorted.length - shown.length;
-	const header = `Code-intel found ${rows.length} current TypeScript diagnostic${rows.length === 1 ? "" : "s"} in ${changedFiles.length} recently touched file${changedFiles.length === 1 ? "" : "s"}.`;
+	const header = `Code-intel found ${rows.length} current touched-file diagnostic${rows.length === 1 ? "" : "s"} in ${changedFiles.length} recently touched file${changedFiles.length === 1 ? "" : "s"}.`;
 	return [
 		header,
 		"These are current touched-file diagnostics, not baseline-compared proof that the issues are new.",

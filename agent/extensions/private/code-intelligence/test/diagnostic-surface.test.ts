@@ -70,7 +70,7 @@ test("agent_end surfaces TypeScript diagnostics for touched files", async () => 
 		assert.deepEqual(sentMessages[0].options, { triggerTurn: true });
 		assert.equal(sentMessages[0].message.customType, "code-intel:lsp-diagnostics");
 		assert.equal(sentMessages[0].message.display, true);
-		assert.match(sentMessages[0].message.content, /current TypeScript diagnostic/);
+		assert.match(sentMessages[0].message.content, /current touched-file diagnostic/);
 		assert.doesNotMatch(sentMessages[0].message.content, /post_edit_map|post-edit map/i);
 		assert.match(sentMessages[0].message.content, /src\/broken\.ts:1/);
 		assert.match(sentMessages[0].message.content, /TS2322/);

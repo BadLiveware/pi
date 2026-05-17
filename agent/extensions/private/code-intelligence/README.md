@@ -40,7 +40,7 @@ For mapping and search tools, output means: "these are useful places to inspect 
 | Test selection | Ranked test candidates for a source file, symbol, or domain term. |
 | Pattern investigation | Explicit Tree-sitter syntax search for calls, selectors, keyed fields, object properties, or raw queries. |
 | Targeted symbol work | Complete declaration reads plus safe replace/insert operations around resolved symbol anchors. |
-| Post-edit follow-up | Changed symbols, likely callers/tests, optional touched-file diagnostics, and automatic idle surfacing for current TypeScript/JavaScript diagnostics after edits. |
+| Post-edit follow-up | Changed symbols, likely callers/tests, optional touched-file diagnostics, and automatic idle surfacing for current touched-file diagnostics after edits. |
 | Extension troubleshooting | Parser, `rg`, optional LSP, config, footer, and runtime diagnostic state. |
 
 ## Tool Surface
@@ -71,7 +71,7 @@ Code-intel output is deliberately conservative about what it claims.
 | Tree-sitter | Current-source syntax facts: declarations, calls, selectors, fields, import/include structure, and explicit syntax matches. | Type-resolved semantics, complete reference graphs, or safety claims. |
 | `rg` fallback | Literal text evidence in source, comments, docs, fixtures, generated files, or unsupported-language gaps. | Symbol/reference proof. |
 | Optional reference confirmation | Bounded exact-reference evidence for selected Go, TypeScript/JavaScript, or clangd-backed C/C++ roots. | Whole-program proof or a replacement for reading source. |
-| Touched-file diagnostics | Current TypeScript/JavaScript diagnostics for files involved in the task. | Proof that diagnostics are new unless a baseline says so. |
+| Touched-file diagnostics | Current diagnostics for touched files when a bounded provider applies: TypeScript/JavaScript language services, `gopls check`, ShellCheck, `zsh -n`, or `markdownlint-cli2`. | Proof that diagnostics are new unless a baseline says so. |
 
 Mapping and search results are a queue of places to inspect, not findings to report directly. Mutation results confirm a scoped file change, not broader correctness.
 
@@ -93,11 +93,12 @@ The expected Pi workflow keeps these boundaries:
 
 | Engine | Used for | Artifact behavior |
 | --- | --- | --- |
-| Tree-sitter WASM | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++ source files. Rust routing is syntax-only; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | No index. |
+| Tree-sitter WASM | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, C/C++, C#, Bash, and zsh source files; Markdown changes are reported as documentation files rather than code impact. Rust, C#, shell, and zsh routing are syntax-only; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | No index. |
 | `rg` | Bounded literal fallback in local maps and follow-up searches. | No index. |
 | Optional LSP/reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, and C/C++ (`clangd` with `compile_commands.json`). | Opt-in per map run. |
+| Optional diagnostics providers | Bounded current touched-file diagnostics from TypeScript/JavaScript, Go (`gopls check`), ShellCheck, `zsh -n`, and `markdownlint-cli2` when those tools apply and are available. | Not baseline-compared; not a project-wide validation run. |
 
-`code_intel_state` can report availability for `gopls`, Rust Analyzer, TypeScript, and clangd, but availability is not evidence that reference confirmation was run. Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path.
+`code_intel_state` can report availability for `gopls`, Rust Analyzer, TypeScript, clangd, and diagnostics-only providers such as ShellCheck, `zsh`, and `markdownlint-cli2`, but availability is not evidence that reference confirmation or diagnostics were run. Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path.
 
 ## Tool Details
 
@@ -179,9 +180,9 @@ Builds a read-only follow-up map after edits or writes.
 
 It returns locator-mode changed symbols, likely caller/consumer rows, likely test candidates, and optional diagnostic-focused declaration targets. When changed files are omitted, it can use session-tracked files from recent edit/write/code-intel mutation calls. It does not run tests, apply fixes, or mutate files.
 
-With diagnostics enabled, it can merge supplied diagnostics with current TypeScript/JavaScript touched-file diagnostics. These diagnostics are not baseline-compared.
+With diagnostics enabled, it can merge supplied diagnostics with current touched-file diagnostics from bounded providers such as TypeScript/JavaScript language services, `gopls check`, ShellCheck, `zsh -n`, and `markdownlint-cli2`. These diagnostics are not baseline-compared.
 
-If recent edits touched TypeScript/JavaScript files, the extension can automatically surface current touched-file diagnostics when the agent becomes idle. That automatic message is a safety net, not a replacement for project-native validation.
+If recent edits touched files with an applicable diagnostics provider, the extension can automatically surface current touched-file diagnostics when the agent becomes idle. That automatic message is a safety net, not a replacement for project-native validation.
 
 ### `code_intel_state`
 

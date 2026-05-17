@@ -123,10 +123,10 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["bash"],
 		command: "shellcheck",
 		versionArgs: ["--version"],
-		capabilities: capabilities("none", "planned"),
+		capabilities: capabilities("none", "implemented"),
 		evidence: { diagnostics: "shellcheck:json" },
 		missingDiagnostic: "shellcheck not found on PATH",
-		limitations: ["ShellCheck diagnostics are planned for touched sh/bash files; zsh files require dialect-specific handling."],
+		limitations: ["ShellCheck diagnostics run only for touched sh/bash files; zsh files use a separate syntax-only provider."],
 	},
 	{
 		name: "zsh",
@@ -134,10 +134,10 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["zsh"],
 		command: "zsh",
 		versionArgs: ["--version"],
-		capabilities: capabilities("none", "planned"),
+		capabilities: capabilities("none", "implemented"),
 		evidence: { diagnostics: "zsh -n" },
 		missingDiagnostic: "zsh not found on PATH",
-		limitations: ["zsh diagnostics are planned as syntax-only touched-file checks."],
+		limitations: ["zsh diagnostics are syntax-only touched-file checks; they do not prove runtime behavior."],
 	},
 	{
 		name: "markdownlint-cli2",
@@ -145,10 +145,10 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["markdown"],
 		command: "markdownlint-cli2",
 		versionArgs: ["--version"],
-		capabilities: capabilities("none", "planned"),
+		capabilities: capabilities("none", "implemented"),
 		evidence: { diagnostics: "markdownlint-cli2:json" },
 		missingDiagnostic: "markdownlint-cli2 not found on PATH",
-		limitations: ["Markdown diagnostics are planned for touched Markdown files only; link checks remain explicit and non-default."],
+		limitations: ["Markdown diagnostics run only for touched Markdown files; link checks remain explicit and non-default."],
 	},
 ];
 

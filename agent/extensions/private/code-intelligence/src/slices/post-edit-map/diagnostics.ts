@@ -4,6 +4,9 @@ import type { CodeIntelConfig } from "../../types.ts";
 import { ensureInsideRoot } from "../../repo.ts";
 import { isRecord } from "../../util.ts";
 import { collectGoplsDiagnostics } from "./providers/gopls.ts";
+import { collectMarkdownlintDiagnostics } from "./providers/markdownlint.ts";
+import { collectShellCheckDiagnostics } from "./providers/shellcheck.ts";
+import { collectZshDiagnostics } from "./providers/zsh.ts";
 
 const TS_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 
@@ -229,15 +232,18 @@ async function collectTypeScriptDiagnostics(repoRoot: string, changedFiles: stri
 }
 
 export async function collectTouchedDiagnostics(repoRoot: string, changedFiles: string[], config: CodeIntelConfig, signal?: AbortSignal): Promise<DiagnosticCollectionResult> {
-	const [typescript, gopls] = await Promise.all([
+	const [typescript, gopls, shellcheck, zsh, markdownlint] = await Promise.all([
 		collectTypeScriptDiagnostics(repoRoot, changedFiles, config, signal),
 		collectGoplsDiagnostics(repoRoot, changedFiles, config, signal),
+		collectShellCheckDiagnostics(repoRoot, changedFiles, config, signal),
+		collectZshDiagnostics(repoRoot, changedFiles, config, signal),
+		collectMarkdownlintDiagnostics(repoRoot, changedFiles, config, signal),
 	]);
 	return {
-		diagnostics: mergeDiagnostics(typescript.diagnostics, gopls.diagnostics),
-		providerStatuses: [...typescript.providerStatuses, gopls.providerStatus],
-		toolDiagnostics: [...typescript.toolDiagnostics, ...gopls.toolDiagnostics],
-		limitations: [...new Set([...typescript.limitations, ...gopls.limitations])],
+		diagnostics: mergeDiagnostics(typescript.diagnostics, gopls.diagnostics, shellcheck.diagnostics, zsh.diagnostics, markdownlint.diagnostics),
+		providerStatuses: [...typescript.providerStatuses, gopls.providerStatus, shellcheck.providerStatus, zsh.providerStatus, markdownlint.providerStatus],
+		toolDiagnostics: [...typescript.toolDiagnostics, ...gopls.toolDiagnostics, ...shellcheck.toolDiagnostics, ...zsh.toolDiagnostics, ...markdownlint.toolDiagnostics],
+		limitations: [...new Set([...typescript.limitations, ...gopls.limitations, ...shellcheck.limitations, ...zsh.limitations, ...markdownlint.limitations])],
 	};
 }
 
