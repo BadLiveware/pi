@@ -13,10 +13,11 @@ Use this skill to build a fast validation loop while changing behavior.
 - inspection alone is not enough to trust the change
 
 ## Outcome
-- a fast validation loop with focused checks, useful seams, and explicit coverage of preserved behavior and invariants
+- a fast validation loop with focused checks, useful seams, explicit coverage of preserved behavior and invariants, and enough confidence to finish the real change instead of punting it
 
 ## Core Practices
 - Write or update tests early.
+- For bug fixes, prefer RED -> GREEN -> REFACTOR: capture the failing behavior first, then fix it, then clean up.
 - Capture both current and desired behavior.
 - Protect invariants with focused validation.
 - Prefer deterministic doubles over brittle integration-heavy setups when unit-level confidence is needed.
@@ -32,12 +33,14 @@ Use this skill to build a fast validation loop while changing behavior.
 
 ## Workflow
 1. Define what behavior and public contracts must be preserved.
-2. Add tests for existing behavior if missing.
-3. Add tests or other focused validation for intended behavior and invariants.
-4. Introduce interfaces or seams if needed.
-5. Implement in small increments.
-6. Re-run the fastest relevant validation after each meaningful step and broader checks at milestones.
-7. Report what was validated, what could not be validated, and any remaining risk.
+2. For bug fixes, first add the smallest focused failing test or equivalent executable check that proves the current bug when practical.
+3. Add tests for existing behavior if missing.
+4. Add tests or other focused validation for intended behavior and invariants.
+5. Introduce interfaces, seams, or observability if needed.
+6. Use that tighter loop to finish the requested behavior, not just the scaffolding, unless a real blocker remains.
+7. Re-run the fastest relevant validation after each meaningful step and broader checks at milestones.
+8. If a failing test first is genuinely impractical, report the reason and the substitute evidence used instead.
+9. Report what was validated, what could not be validated, and any remaining risk.
 
 ## Output Template
 

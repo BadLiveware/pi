@@ -38,6 +38,8 @@ Stop and verify before saying: "should work", "probably", "looks good", "done", 
 
 ## Practical Guidance
 - Match validation depth to risk: typo -> diff inspection may suffice; parser or contract change -> focused tests plus broader checks.
+- For bug-fix claims, prefer evidence that shows RED then GREEN: a focused failing test or equivalent executable check before the fix, then the passing result after the fix.
+- If RED-first evidence is genuinely impractical, explicitly say why and name the substitute evidence.
 - Prefer project-sanctioned commands from README, scripts, CI, or local docs.
 - Do not claim broad success from narrow checks; say "typecheck passed; tests not run" when true.
 - If validation is impossible because credentials, services, time, or tooling are unavailable, disclose the blocker and do not overstate confidence.

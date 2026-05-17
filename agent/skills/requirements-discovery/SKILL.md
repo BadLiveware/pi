@@ -32,6 +32,7 @@ Urgency is not permission to guess. If the user says "just do it" or "quick fix"
 
 ## Concise Alignment
 - Ask only when missing information would materially change what you do or create meaningful risk.
+- Do not ask just because the implementation looks invasive, cross-cutting, or difficult. If the desired behavior is clear, state the assumption, build the needed validation, and proceed.
 - Ask the highest-leverage missing question first; follow up only if the answer leaves material ambiguity.
 - Prefer one precise, discriminative question per turn.
 - Keep options to 2-3 one-line choices plus a recommendation when useful.

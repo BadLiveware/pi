@@ -36,6 +36,8 @@ Stop only when:
 4. validation reveals a failure that cannot be safely resolved in scope
 5. context is nearly exhausted and a handoff is required
 
+Do not stop merely because the remaining work is invasive, cross-cutting, or difficult. If it is still the clearest in-scope next move, strengthen validation, narrow the active slice, or add enabling seams/instrumentation, then keep going.
+
 Before summarizing, ask: "Is there any unblocked in-scope work left?" If yes, keep executing.
 
 ## Artifact Hygiene
@@ -73,7 +75,7 @@ When a plan is intended for Stardock or an active Stardock loop exists, use Star
 - Do not create vague tasks like `execute phase 2`, `continue slice C`, `finish the rest`, or separate red/green/refactor bookkeeping tasks.
 
 ## Commit Checkpoints
-Use `commit` for completed semantic units by default. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not commit tiny fragments, incomplete scaffolding, or unvalidated changes unless the validation gap is explicit and committing is still useful.
+Use `commit` for completed semantic units by default. Commit after each validated semantic unit that can be reviewed, tested, and reverted independently. Do not commit tiny fragments, incomplete scaffolding, or unvalidated changes unless the validation gap is explicit and committing is still useful. A semantic checkpoint is not permission to leave the requested behavior half-done when more unblocked in-scope work remains.
 
 Do not commit when the user opted out, the execution is inspect-only/draft/WIP, repository or branch state needs a user decision, or no safe coherent commit exists. Otherwise leave only intentionally uncommitted changes and explain why.
 
@@ -87,10 +89,11 @@ Do not commit when the user opted out, the execution is inspect-only/draft/WIP, 
 7. For Stardock-backed bounded plans, create or activate the current slice's `stardock_brief` before coding.
 8. Create/reconcile the next concrete task/attempt window and mark the first executable leaf `in_progress`.
 9. Execute the task/attempt in the same run.
-10. After each leaf task/attempt: update task/Stardock state, validate/evaluate, commit by default when the work is a safe semantic checkpoint, call `TaskList` when task tools are in use, and continue with the next unblocked in-scope item.
-11. When the visible window runs low, add the next few concrete tasks from the plan or next 1-3 hypotheses from the loop charter.
-12. If tasks are exhausted but bounded plan scope is not complete, add missing concrete tasks and continue; if an unbounded loop queue is empty, replenish from evidence instead of stopping.
-13. If progress needs recording mid-plan, update tasks, Stardock records, plan checklist, notes, loop file, or local evidence log; do not emit standalone progress chat.
+10. If the current task is enabling work such as seams, instrumentation, or preparatory refactors, use the improved feedback loop to continue into the dependent behavior change in the same execution whenever it remains unblocked and in scope.
+11. After each leaf task/attempt: update task/Stardock state, validate/evaluate, commit by default when the work is a safe semantic checkpoint, call `TaskList` when task tools are in use, and continue with the next unblocked in-scope item.
+12. When the visible window runs low, add the next few concrete tasks from the plan or next 1-3 hypotheses from the loop charter.
+13. If tasks are exhausted but bounded plan scope is not complete, add missing concrete tasks and continue; if an unbounded loop queue is empty, replenish from evidence instead of stopping.
+14. If progress needs recording mid-plan, update tasks, Stardock records, plan checklist, notes, loop file, or local evidence log; do not emit standalone progress chat.
 
 ## Scope Control
 - Treat the plan/loop charter and user request together as the source of in-scope work.

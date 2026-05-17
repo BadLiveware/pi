@@ -23,8 +23,10 @@ Approach software development work with understanding, correctness, testability,
 
 ### 3. Work in feedback loops
 - Prefer fast, focused inner-loop validation plus broader checkpoints matched to the risk and codebase.
+- For bug fixes and behavior regressions, prefer RED -> GREEN -> REFACTOR when practical: first capture the failure with the smallest focused failing test or equivalent executable check, then fix it, then clean up.
 - Treat guidance, validation gates, and guardrails as requirements to satisfy in spirit, not obstacles to route around. If a rule blocks the direct path, change the approach, improve the source of truth, or ask for an explicit decision instead of finding a technicality.
 - Choose extra investigation, verification, tool use, delegation, or stopping by expected net value: likely improvement and risk reduction minus cost, latency, and user friction.
+- Do not treat invasiveness, cross-cutting impact, or implementation difficulty by themselves as reasons to defer required in-scope work. When the needed change is clear, reduce risk with better tests, seams, instrumentation, review, or smaller proof steps, then continue.
 - For nontrivial fundamental behavior risks—cost/bounds, resources, state/protocol invariants, concurrency, progress, data-shape drift, or effect/idempotency boundaries—load `excession-behavior-modeling` and use a small `.exm` model only when it can answer a specific behavior question.
 - Prefer project-sanctioned commands over generic defaults.
 
@@ -48,7 +50,8 @@ Approach software development work with understanding, correctness, testability,
 
 ### 7. Control scope deliberately
 - Prefer the smallest sufficient change and avoid unrelated cleanup unless it materially reduces risk.
-- Keep refactors separate from behavior changes when that improves validation and review.
+- Smallest sufficient change means the smallest change that actually completes the requested behavior, not the smallest easy slice that postpones hard but necessary in-scope work.
+- Keep refactors separate from behavior changes when that improves validation and review, but do not stop at preparatory refactors, scaffolding, or test harness work when the real requested change can still be completed safely in scope.
 - For referenced multi-phase plans, scope execution and task creation to the requested phase or document, treat plan reading as context gathering, and do not silently pull in later phases. Translate plan requirements into domain-facing implementation and documentation instead of citing the plan or stage in produced artifacts.
 - For ordered plan documents, finish the current referenced document before proposing the next unless the user explicitly reprioritizes.
 - Judge completion against the current document’s own scope, mandatory items, and exit criteria; do not call scaffolding, observability, or partial groundwork done when required implementation work remains.
@@ -69,10 +72,11 @@ Approach software development work with understanding, correctness, testability,
 3. Clarify assumptions or conflicts.
 4. Produce requirements and a short plan.
 5. Add or update validation for preserved behavior, new behavior, invariants, and public contracts.
-6. Implement in small, reviewable steps.
-7. If tasks are being used, keep them reconciled to the user-requested scope and current referenced plan document; on context changes, reconcile first, preserve current-round completions unless obsolete, and trim older stale or superseded tasks before continuing. After each completed task call `TaskList` and continue with the next unblocked in-scope task. Treat `Continue` as instruction to resume from the task list.
-8. When executing from a plan, keep working the current referenced plan document until its own checklist or exit criteria are met.
-9. Validate with local project commands, commit complete semantic checkpoints by default when safe, and summarize only when you are blocked or the scoped work is complete.
+6. For bug fixes, capture the failing behavior before changing production code when practical; if you cannot, say why and use the strongest available executable evidence.
+7. If the change is risky or invasive, strengthen the feedback loop first with focused tests, seams, or instrumentation, then complete the required behavior in small, reviewable steps instead of stopping at groundwork.
+8. If tasks are being used, keep them reconciled to the user-requested scope and current referenced plan document; on context changes, reconcile first, preserve current-round completions unless obsolete, and trim older stale or superseded tasks before continuing. After each completed task call `TaskList` and continue with the next unblocked in-scope task. Treat `Continue` as instruction to resume from the task list.
+9. When executing from a plan, keep working the current referenced plan document until its own checklist or exit criteria are met.
+10. Validate with local project commands, commit complete semantic checkpoints by default when safe, and summarize only when you are blocked or the scoped work is complete.
 
 ## Validation
 

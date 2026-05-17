@@ -87,12 +87,13 @@ Detailed templates live in `output-templates.md`.
 5. If working from an existing plan, isolate the current referenced document and immediate prerequisites.
 6. For scale-sensitive paths, include a concise performance-shape note before task sequencing: what scales, what bounds it, and what representative validation will show.
 7. Order independently validatable steps, separating preparatory refactors, behavior changes, validation, docs, migration, cleanup, and delegation points.
-8. For broad plans, create an ordered execution spine and move reusable runbooks/maps/design notes into separate reference folders.
-9. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
-10. Decide bounded/unbounded and simple/split shape. For unbounded work, read `unbounded-work.md` and write a loop charter instead of a finite plan.
-11. For bounded work, decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
-12. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, plan topology, Stardock handoff shape, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
-13. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks for bounded work or 1-3 active attempts for unbounded work; keep the rest in the plan/loop file.
+8. Do not let sequencing turn preparatory work into a parking lot for the real change. When a risky or invasive behavior change is in scope, plan the testability/instrumentation work that makes it safe, then include the completion step for the actual behavior in the same execution path.
+9. For broad plans, create an ordered execution spine and move reusable runbooks/maps/design notes into separate reference folders.
+10. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
+11. Decide bounded/unbounded and simple/split shape. For unbounded work, read `unbounded-work.md` and write a loop charter instead of a finite plan.
+12. For bounded work, decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
+13. Self-review for requirement coverage, task granularity, acceptance criteria, exact validation, missing affected areas, placeholders, plan topology, Stardock handoff shape, and artifact hygiene. For high-risk plans, consider reviewer prompt `plan-quality-review.md`.
+14. If task tools are useful, create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks for bounded work or 1-3 active attempts for unbounded work; keep the rest in the plan/loop file.
 
 ## Task and Handoff Guidance
 - Use `TaskCreate`, `TaskList`, `TaskGet`, and `TaskUpdate` for meaningful multi-step work.
@@ -110,6 +111,7 @@ Detailed templates live in `output-templates.md`.
 ## Status and Completion
 - For ordered plan documents, stay on the current referenced document until its mandatory work and exit criteria are complete unless the user reprioritizes.
 - Do not call scaffolding, observability, or partial groundwork done when required implementation remains.
+- When a plan contains enabling testability/instrumentation work, pair it with the downstream behavior change it unlocks unless a real blocker or explicit user decision splits them.
 - During execution, progress belongs in tasks/plan notes unless the user asked for status only, execution is complete, or a blocker requires a decision.
 
 ## Editing This Skill
