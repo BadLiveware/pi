@@ -6,7 +6,6 @@
     "npm:pi-smart-fetch",
     "npm:pi-mcp-adapter",
     "npm:@apmantza/greedysearch-pi",
-    "npm:pi-subagents",
     "npm:pi-intercom",
     "npm:@mjakl/pi-kagi-search",
     "npm:@companion-ai/alpha-hub",
@@ -18,7 +17,8 @@
     "../../code/personal/pi-processes",
     "../../code/personal/pi-tasks",
     "../../code/personal/pi-markdown-preview",
-    "../../code/personal/pi-vcc"
+    "../../code/personal/pi-vcc",
+    "../../code/personal/pi-subagents"
   ],
   "skills": [],
   "steeringMode": "all",
