@@ -12,7 +12,7 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["go"],
 		command: "gopls",
 		versionArgs: ["version"],
-		capabilities: capabilities("implemented", "planned"),
+		capabilities: capabilities("implemented", "implemented"),
 		evidence: { references: "gopls:references", diagnostics: "gopls:check" },
 		missingDiagnostic: "gopls not found on PATH",
 		noRootsDiagnostic: "No Go roots with current-source definition locations were available for gopls confirmation.",

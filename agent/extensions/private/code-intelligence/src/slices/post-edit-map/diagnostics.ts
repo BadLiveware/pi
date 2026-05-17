@@ -3,6 +3,7 @@ import * as ts from "typescript";
 import type { CodeIntelConfig } from "../../types.ts";
 import { ensureInsideRoot } from "../../repo.ts";
 import { isRecord } from "../../util.ts";
+import { collectGoplsDiagnostics } from "./providers/gopls.ts";
 
 const TS_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 
@@ -175,7 +176,7 @@ function dedupeDiagnostics(rows: NormalizedPostEditDiagnostic[]): NormalizedPost
 	return output;
 }
 
-export async function collectTouchedDiagnostics(repoRoot: string, changedFiles: string[], config: CodeIntelConfig, signal?: AbortSignal): Promise<DiagnosticCollectionResult> {
+async function collectTypeScriptDiagnostics(repoRoot: string, changedFiles: string[], config: CodeIntelConfig, signal?: AbortSignal): Promise<DiagnosticCollectionResult> {
 	const toolDiagnostics: string[] = [];
 	const safeFiles = [...new Set(changedFiles.filter(isTypeScriptLike).slice(0, 50))];
 	const providerStatuses: Array<Record<string, unknown>> = [{
@@ -225,6 +226,19 @@ export async function collectTouchedDiagnostics(repoRoot: string, changedFiles: 
 			limitations,
 		};
 	}
+}
+
+export async function collectTouchedDiagnostics(repoRoot: string, changedFiles: string[], config: CodeIntelConfig, signal?: AbortSignal): Promise<DiagnosticCollectionResult> {
+	const [typescript, gopls] = await Promise.all([
+		collectTypeScriptDiagnostics(repoRoot, changedFiles, config, signal),
+		collectGoplsDiagnostics(repoRoot, changedFiles, config, signal),
+	]);
+	return {
+		diagnostics: mergeDiagnostics(typescript.diagnostics, gopls.diagnostics),
+		providerStatuses: [...typescript.providerStatuses, gopls.providerStatus],
+		toolDiagnostics: [...typescript.toolDiagnostics, ...gopls.toolDiagnostics],
+		limitations: [...new Set([...typescript.limitations, ...gopls.limitations])],
+	};
 }
 
 export function mergeDiagnostics(...groups: NormalizedPostEditDiagnostic[][]): NormalizedPostEditDiagnostic[] {
