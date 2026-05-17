@@ -26,7 +26,7 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "go",
 		category: "source",
 		supportLevel: "strong",
-		features: features({ impact: "code", exactReferences: ["gopls"] }),
+		features: features({ impact: "code", exactReferences: ["gopls"], diagnostics: ["gopls"] }),
 	},
 	{
 		id: "typescript",
@@ -83,7 +83,7 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		category: "source",
 		supportLevel: "partial",
 		features: features({ impact: "code", exactReferences: ["pyright", "jedi"], diagnostics: ["pyright"] }),
-		limitations: ["Python extraction is currently generic until the language-specific extractor is completed."],
+		limitations: ["Python routing is current-source syntax evidence; Pyright/Jedi references and diagnostics are planned provider features."],
 	},
 	{
 		id: "cpp",
@@ -141,8 +141,8 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "markdown",
 		category: "doc",
 		supportLevel: "doc",
-		features: features({ impact: "doc", mutateSymbol: false, syntaxSearch: false, exactReferences: ["marksman"], diagnostics: ["markdownlint"] }),
-		limitations: ["Markdown support is planned as document structure routing, not code impact."],
+		features: features({ impact: "doc", syntaxSearch: false, diagnostics: ["markdownlint"] }),
+		limitations: ["Markdown support is document-structure routing, not code semantics or exact code impact."],
 	},
 	{
 		id: "java",

@@ -49,7 +49,7 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_impact_map",
 		label: "Code Intelligence Impact Map",
-		description: "Build the primary Tree-sitter read-next impact map from edited files, queried symbols, or a git base ref. Impact routing currently supports Go, TypeScript/TSX, JavaScript, Rust, Python, C/C++, C#, Bash, and zsh source files; Markdown changes are reported as documentation files rather than code impact.",
+		description: "Build the primary Tree-sitter read-next impact map from edited files, queried symbols, or a git base ref. Code impact routing follows the language registry; Markdown changes are reported as documentation files rather than code impact.",
 		promptSnippet: "Primary code-intel entry point: list candidate caller/consumer/test files to read before edits or reviews.",
 		promptGuidelines: [
 			"Use code_intel_impact_map as the default code-intel tool after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",

@@ -53,7 +53,7 @@ export function registerSyntaxSearchTool(pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			repoRoot: repoRootParam,
 			pattern: Type.String({ description: "Explicit Tree-sitter query or supported ast-grep-style pattern, e.g. 'foo($A)', '$OBJ.Field', or 'Field: $VALUE'. Required and read-only." }),
-			language: Type.Optional(Type.String({ description: "Tree-sitter language, e.g. ts, javascript, go, python, rust. If omitted, Go is used when paths are Go-scoped; otherwise provide a language." })),
+			language: Type.Optional(Type.String({ description: "Tree-sitter language, e.g. ts, javascript, go, python, rust, c#, c++, or zsh. Markdown uses local-map document matching instead of syntax search. If omitted, Go is used when paths are Go-scoped; otherwise provide a language." })),
 			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files or directories to search. Defaults to '.'. Paths outside the repo are rejected." })),
 			includeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional glob-like include patterns." })),
 			excludeGlobs: Type.Optional(Type.Array(Type.String(), { description: "Additional glob-like exclude patterns. Leading '!' is optional." })),

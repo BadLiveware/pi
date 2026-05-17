@@ -87,18 +87,32 @@ The expected Pi workflow keeps these boundaries:
 - Empty or failed impact maps require checking coverage and limitation fields before falling back.
 - Standalone search remains useful for comments/docs/generated text, literal fallback beyond caps, and unsupported-language gaps.
 - Review subagents receive code-intel context from the parent when they do not have the tools themselves.
-- At agent quiescence, recent touched TypeScript/JavaScript files can surface current diagnostics as a safety net.
+- At agent quiescence, recent touched files with applicable diagnostics providers can surface current diagnostics as a safety net.
 
 ## Engines and Coverage
 
 | Engine | Used for | Artifact behavior |
 | --- | --- | --- |
-| Tree-sitter WASM | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, local maps, and syntax search. Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, C/C++, C#, Bash, and zsh source files; Markdown changes are reported as documentation files rather than code impact. Rust, C#, shell, and zsh routing are syntax-only; C/C++ changed-file routing is scoped for large-repo safety unless explicit paths broaden it. | No index. |
+| Tree-sitter WASM / scanners | Current-source definitions, file outlines, capped repo file-tier declarations, call candidates, selector/member fields, keyed/object-literal fields, Markdown document structure, local maps, and syntax search where supported. | No index. |
 | `rg` | Bounded literal fallback in local maps and follow-up searches. | No index. |
-| Optional LSP/reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, and C/C++ (`clangd` with `compile_commands.json`). | Opt-in per map run. |
+| Optional reference providers | Bounded exact-reference confirmation for Go (`gopls`), TypeScript/JavaScript, and C/C++ (`clangd` with `compile_commands.json`). | Opt-in per map run. |
 | Optional diagnostics providers | Bounded current touched-file diagnostics from TypeScript/JavaScript, Go (`gopls check`), ShellCheck, `zsh -n`, and `markdownlint-cli2` when those tools apply and are available. | Not baseline-compared; not a project-wide validation run. |
 
-`code_intel_state` can report availability for `gopls`, Rust Analyzer, TypeScript, clangd, and diagnostics-only providers such as ShellCheck, `zsh`, and `markdownlint-cli2`, but availability is not evidence that reference confirmation or diagnostics were run. Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path.
+### Language coverage
+
+| Language | Structure and routing | Exact refs | Diagnostics | Key limits |
+| --- | --- | --- | --- | --- |
+| Go | Strong outline/read/mutate, imports, syntax impact, local map, and test map. | `gopls` opt-in. | `gopls check` for touched `.go` files. | Default maps remain syntax evidence until confirmation is requested. |
+| TypeScript / TSX / JavaScript | Strong outline/read/mutate, syntax search, impact, local map, and test map. | TypeScript language service opt-in. | TypeScript language-service diagnostics for touched TS/JS files. | Diagnostics are current, not baseline-compared. |
+| Rust | Outline/read/mutate and syntax-only impact/local/test routing. | Rust Analyzer planned. | Rust Analyzer planned. | Default routing is syntax evidence; provider support is availability-only today. |
+| Python | Python-specific outline/read/mutate plus syntax impact/local/test routing. | Pyright/Jedi planned. | Pyright/basedpyright planned. | References and diagnostics remain planned provider work. |
+| C/C++ | C/C++ outline/read/mutate, scoped impact/local/test routing, includes, templates, methods, fields, and macros. | `clangd` opt-in with `compile_commands.json`. | `clangd` diagnostics planned. | Compile database quality controls exact-reference usefulness. |
+| C# | C# outline/read/mutate for common declarations plus syntax impact/local/test routing. | `csharp-ls` planned. | `csharp-ls` planned. | Routing is current-source syntax evidence until provider support lands. |
+| Bash | Shell outline/read/mutate for tested ranges plus syntax impact/local/test routing. | None. | ShellCheck for touched `.sh`/`.bash` files. | Command routing cannot prove whether a command is local or external without source reads. |
+| zsh | zsh-labeled shell outline/read/mutate plus syntax impact/local/test routing. | None. | `zsh -n` for touched `.zsh` files. | Uses the Bash Tree-sitter grammar, so zsh-specific syntax can parse imperfectly. |
+| Markdown | Frontmatter, headings/sections, links, reference definitions, code fences, section reads, and section-scoped mutations. Local/test maps use document structure and literals; impact reports doc changes instead of code impact. | None. | `markdownlint-cli2` for touched Markdown files. | Document structure support, not code semantics or link-checking by default. |
+
+`code_intel_state` reports the registry-backed language capability summary and optional provider availability. Availability is not evidence that reference confirmation or diagnostics were run, and missing optional providers do not break default Tree-sitter/scanner maps. Cymbal, sqry, and ast-grep are intentionally not part of the normal extension path.
 
 ## Tool Details
 
@@ -128,7 +142,7 @@ Builds the primary candidate read-next impact map from explicit symbols, changed
 
 The output groups root symbols and related caller/consumer candidates, with truncation and limitation metadata. Defaults are bounded but close to normal search habits: up to 20 root symbols after changed-file expansion and 125 location rows unless overridden.
 
-Impact routing currently supports Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++ source files. When changed files are non-source or outside the supported set, coverage fields explain what was unsupported so fallback can be deliberate.
+Impact routing currently supports registry-backed code impact for Go, TypeScript/TSX, JavaScript, Rust, Python, C/C++, C#, Bash, and zsh. Markdown changed files are reported as documentation changes instead of code impact. When changed files are non-source or outside the supported set, coverage fields explain what was unsupported so fallback can be deliberate.
 
 For high-value exactness checks, the tool supports bounded confirmation with `gopls`, TypeScript/JavaScript language services, or clangd. Missing or broken confirmation tooling should not affect the default Tree-sitter map.
 
@@ -136,7 +150,7 @@ For high-value exactness checks, the tool supports bounded confirmation with `go
 
 Builds a scoped local read-next map from central anchors plus related names. This replaces many ad hoc compound context-gathering searches over a known subsystem.
 
-The tool combines Tree-sitter current-source map rows, optional selector syntax matches, and bounded `rg` literal fallback, then returns suggested files to read next.
+The tool combines Tree-sitter current-source map rows, optional selector syntax matches, Markdown heading/link/code-fence matches, and bounded `rg` literal fallback, then returns suggested files to read next.
 
 ### `code_intel_test_map`
 
@@ -150,7 +164,7 @@ The result means “likely tests to inspect or run,” not proof of coverage.
 
 Runs a read-only in-process Tree-sitter search for an explicit pattern.
 
-Supported convenience patterns include calls such as `authenticate($A)`, selectors/properties such as `$OBJ.NeedTags`, keyed fields/object-literal properties such as `NeedTags: $VALUE`, wrapper patterns containing those shapes, and raw Tree-sitter S-expression queries with captures.
+Supported convenience patterns include calls such as `authenticate($A)`, selectors/properties such as `$OBJ.NeedTags`, keyed fields/object-literal properties such as `NeedTags: $VALUE`, wrapper patterns containing those shapes, and raw Tree-sitter S-expression queries with captures. Markdown uses the local-map document scanner rather than Tree-sitter syntax search.
 
 The extension never rewrites files through syntax search.
 
@@ -158,7 +172,7 @@ The extension never rewrites files through syntax search.
 
 Reads one declaration by locator target or explicit selector.
 
-This is source mode: compact content includes the returned source segment. Function-like declarations return the full function/method/constructor body by default. Optional one-hop same-file referenced definitions can include constants, variables, and types; called functions/helpers are deliberately not recursively expanded.
+This is source mode: compact content includes the returned source segment. Function-like declarations return the full function/method/constructor body by default; Markdown targets return the selected section, frontmatter block, or code fence. Optional one-hop same-file referenced definitions can include constants, variables, and types; called functions/helpers are deliberately not recursively expanded.
 
 Source segment headers include an `oldHash` for token-light safety checks with symbol-aware mutation tools.
 

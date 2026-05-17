@@ -17,8 +17,8 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "code_intel_read_symbol",
 		label: "Code Intelligence Read Symbol",
-		description: "Read one symbol/declaration by a code-intel symbolTarget or explicit path/symbol selector, returning a complete bounded source segment when possible.",
-		promptSnippet: "Use after locator-mode code-intel output when you need the exact source for one function, method, type, constant, variable, field, or property without reading the whole file.",
+		description: "Read one symbol/declaration/Markdown section by a code-intel symbolTarget or explicit path/symbol selector, returning a complete bounded source segment when possible.",
+		promptSnippet: "Use after locator-mode code-intel output when you need exact source for one function, method, type, constant, variable, field, property, or Markdown section without reading the whole file.",
 		promptGuidelines: [
 			"Prefer passing a symbolTarget returned by code_intel_file_outline or another locator tool; do not reconstruct identity from prose when a target object is available.",
 			"Treat a complete-segment source result as the source read; do not call generic read on the same range unless it was truncated, stale, ambiguous, or too narrow for the edit.",
@@ -142,7 +142,7 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 			includeChangedSymbols: Type.Optional(Type.Boolean({ description: "Include changed declaration ranges/read hints. Default true." })),
 			includeCallers: Type.Optional(Type.Boolean({ description: "Include likely caller/consumer rows via impact map. Default true." })),
 			includeTests: Type.Optional(Type.Boolean({ description: "Include likely test candidates. Default true." })),
-			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Collect current touched-file diagnostics when available, and use supplied diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
+			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Collect current touched-file diagnostics from applicable providers such as TypeScript, gopls, ShellCheck, zsh -n, or markdownlint-cli2, and use supplied diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
 			diagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), Type.Unknown()), { description: "Optional LSP/compiler diagnostics with path, line, column, endLine/endColumn, severity, source, code, and message." })),
 			avoidReReadingCompleteReturnedSegments: Type.Optional(Type.Boolean({ description: "Avoid re-suggesting exact complete source segments unless freshness or diagnostics make them relevant. Default true." })),
 			maxResults: Type.Optional(Type.Number({ description: "Maximum related/test rows returned. Defaults to config maxResults." })),
