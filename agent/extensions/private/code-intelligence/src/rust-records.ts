@@ -1,5 +1,5 @@
 import type { ResultDetail } from "./types.ts";
-import type { ParsedFile, SymbolRecord, TreeSitterNode } from "./tree-sitter.ts";
+import type { ParsedFile, SymbolRecord, TreeSitterNode } from "./tree-sitter/nodes.ts";
 
 function nodeText(source: string, node: TreeSitterNode): string {
 	return source.slice(node.startIndex, node.endIndex);

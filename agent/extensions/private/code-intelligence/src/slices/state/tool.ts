@@ -113,6 +113,14 @@ function renderStateResult(details: Record<string, unknown>, expanded: boolean, 
 		lines.push(`${renderColor(theme, "muted", "rg")} ${rg.version ? String(rg.version).split(/\s+/).slice(0, 2).join(" ") : String(rg.available ?? "?")}`);
 		const lspSummary = (["gopls", "rust-analyzer", "typescript", "clangd"] as const).map((server) => `${server}:${String(asRecord(languageServers[server]).available ?? "?")}`).join(" · ");
 		lines.push(`${renderColor(theme, "muted", "language servers")} ${lspSummary}`);
+		const languages = asRecord(details.languages);
+		const languageGroups = Object.entries(languages).reduce<Record<string, string[]>>((groups, [id, value]) => {
+			const level = String(asRecord(value).supportLevel ?? "unknown");
+			(groups[level] ??= []).push(id);
+			return groups;
+		}, {});
+		const languageSummary = Object.entries(languageGroups).map(([level, ids]) => `${level}:${ids.join(",")}`).join(" · ");
+		if (languageSummary) lines.push(`${renderColor(theme, "muted", "languages")} ${languageSummary}`);
 		const diagnostics = Array.isArray(details.diagnostics) ? details.diagnostics : [];
 		if (diagnostics.length > 0) lines.push(`${renderColor(theme, "warning", "diagnostics")} ${diagnostics.length}`);
 		const runtime = asRecord(details.runtimeDiagnostics);

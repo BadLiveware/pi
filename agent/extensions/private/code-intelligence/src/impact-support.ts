@@ -1,41 +1,30 @@
 import * as path from "node:path";
+import { IMPACT_LANGUAGE_IDS, LANGUAGE_CAPABILITIES, languageIdsForExtension } from "./languages.ts";
 
-export const IMPACT_LANGUAGES = ["go", "typescript", "tsx", "javascript", "rust", "python", "cpp"];
+export const IMPACT_LANGUAGES = IMPACT_LANGUAGE_IDS;
 const IMPACT_LANGUAGE_SET = new Set(IMPACT_LANGUAGES);
 
-const LANGUAGE_EXTENSIONS: Array<{ id: string; extensions: string[] }> = [
-	{ id: "go", extensions: [".go"] },
-	{ id: "typescript", extensions: [".ts", ".mts", ".cts"] },
-	{ id: "tsx", extensions: [".tsx"] },
-	{ id: "javascript", extensions: [".js", ".mjs", ".cjs", ".jsx"] },
-	{ id: "rust", extensions: [".rs"] },
-	{ id: "python", extensions: [".py"] },
-	{ id: "java", extensions: [".java"] },
-	{ id: "cpp", extensions: [".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx"] },
-	{ id: "csharp", extensions: [".cs"] },
-	{ id: "ruby", extensions: [".rb"] },
-	{ id: "php", extensions: [".php"] },
-	{ id: "bash", extensions: [".sh", ".bash", ".zsh"] },
-	{ id: "css", extensions: [".css"] },
-];
-
-function languageIdsForFile(file: string): string[] {
-	const extension = path.extname(file);
-	return LANGUAGE_EXTENSIONS.filter((spec) => spec.extensions.includes(extension)).map((spec) => spec.id);
-}
+const capabilityById = new Map(LANGUAGE_CAPABILITIES.map((capability) => [capability.id, capability]));
 
 export function changedFileSupportSummary(changedFiles: string[]): Record<string, unknown> {
 	const unsupportedImpactFiles: Array<Record<string, unknown>> = [];
 	const nonSourceFiles: string[] = [];
 	const supportedImpactFiles: Array<Record<string, unknown>> = [];
 	for (const file of changedFiles) {
-		const languages = languageIdsForFile(file);
+		const extension = path.extname(file);
+		const languages = languageIdsForExtension(extension);
 		if (languages.length === 0) {
 			nonSourceFiles.push(file);
 			continue;
 		}
-		if (languages.some((language) => IMPACT_LANGUAGE_SET.has(language))) supportedImpactFiles.push({ file, languages: languages.filter((language) => IMPACT_LANGUAGE_SET.has(language)) });
-		else unsupportedImpactFiles.push({ file, languages });
+		const sourceLanguages = languages.filter((language) => capabilityById.get(language)?.category === "source");
+		if (sourceLanguages.length === 0) {
+			nonSourceFiles.push(file);
+			continue;
+		}
+		const supported = sourceLanguages.filter((language) => IMPACT_LANGUAGE_SET.has(language));
+		if (supported.length > 0) supportedImpactFiles.push({ file, languages: supported });
+		else unsupportedImpactFiles.push({ file, languages: sourceLanguages });
 	}
 	return { supportedImpactLanguages: IMPACT_LANGUAGES, supportedImpactFiles, unsupportedImpactFiles, nonSourceFiles };
 }

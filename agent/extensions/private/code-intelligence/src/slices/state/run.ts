@@ -1,8 +1,7 @@
 import { createRequire } from "node:module";
 import type { BackendName, BackendStatus, CodeIntelConfig, LanguageServerName, LanguageServerStatus, LoadedConfig, RepoRoots } from "../../types.ts";
 import { commandDiagnostic, findExecutable, firstLine, runCommand } from "../../exec.ts";
-
-const TREE_SITTER_LANGUAGES = ["go", "typescript", "tsx", "javascript", "rust", "python", "java", "c", "cpp", "csharp", "ruby", "php", "bash", "css"];
+import { IMPACT_LANGUAGE_IDS, LANGUAGE_SPECS, languageCapabilitySummary } from "../../languages.ts";
 
 function treeSitterStatus(): BackendStatus {
 	try {
@@ -16,7 +15,7 @@ function treeSitterStatus(): BackendStatus {
 			writesToRepo: false,
 			artifacts: [],
 			diagnostics: [],
-			details: { runtime: "@vscode/tree-sitter-wasm", languages: TREE_SITTER_LANGUAGES },
+			details: { runtime: "@vscode/tree-sitter-wasm", languages: LANGUAGE_SPECS.map((spec) => spec.id) },
 		};
 	} catch (error) {
 		return {
@@ -115,10 +114,11 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		configPaths: loadedConfig.paths,
 		loadedConfig: loadedConfig.loaded,
 		backends: statuses,
+		languages: languageCapabilitySummary(),
 		limitations: [
 			"Tree-sitter rows are current-source syntax evidence for read-next routing, not exact semantic references or proof of complete impact.",
 			"rg literal fallback is for text discovery only; use source reads and project-native validation before making claims.",
-			"Impact maps currently route Go, TypeScript/TSX, JavaScript, Rust, Python, and C/C++; Tree-sitter rows remain candidate read-next evidence rather than semantic references.",
+			`Impact maps currently route ${IMPACT_LANGUAGE_IDS.join(", ")}; Tree-sitter rows remain candidate read-next evidence rather than semantic references.`,
 			"Language-server status is availability-only; default code-intel routing does not use LSPs unless explicit reference confirmation or post-edit touched-file diagnostics are requested.",
 		],
 	};

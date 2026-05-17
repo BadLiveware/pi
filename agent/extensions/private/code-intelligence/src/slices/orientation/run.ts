@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CodeIntelConfig, CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelTestMapParams, ResultDetail } from "../../types.ts";
-import { LANGUAGE_SPECS, languageSpec } from "../../languages.ts";
+import { LANGUAGE_CAPABILITIES, LANGUAGE_SPECS, languageSpec } from "../../languages.ts";
+import { importsFor } from "../../language-support/imports.ts";
 import { ensureInsideRoot } from "../../repo.ts";
 import { runReferenceConfirmation } from "../../lsp/confirmation.ts";
 import { rowWithTarget } from "../../source-range.ts";
@@ -69,7 +70,7 @@ function isIgnoredDir(name: string, includeVendor: boolean, includeGenerated: bo
 
 function fileLanguage(file: string): string | undefined {
 	const ext = path.extname(file);
-	return LANGUAGE_SPECS.find((spec) => spec.extensions.includes(ext))?.id;
+	return LANGUAGE_CAPABILITIES.find((capability) => capability.extensions.includes(ext))?.id;
 }
 
 function fileCategory(file: string, language?: string): ScanFile["category"] {
@@ -261,23 +262,6 @@ function declarationRows(records: SymbolRecord[], detail: ResultDetail, source?:
 		if (detail !== "snippets") delete row.text;
 		return row;
 	});
-}
-
-function importsFor(language: string | undefined, source: string): string[] {
-	const imports: string[] = [];
-	for (const line of source.split(/\r?\n/)) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		let match: RegExpExecArray | null = null;
-		if (language === "cpp") match = /^#\s*include\s*[<"]([^>"]+)/.exec(trimmed);
-		else if (language === "go") match = /^import\s+(?:[\w.]+\s+)?"([^"]+)"/.exec(trimmed);
-		else if (language === "rust") match = /^(?:pub\s+)?(?:use\s+([^;]+)|mod\s+([A-Za-z_][\w]*))\s*;/.exec(trimmed);
-		else if (language === "python") match = /^(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))/.exec(trimmed);
-		else match = /^import\s+(?:.+?\s+from\s+)?["']([^"']+)["']/.exec(trimmed) ?? /^export\s+.+?\s+from\s+["']([^"']+)["']/.exec(trimmed);
-		const value = match?.[1] ?? match?.[2];
-		if (value) imports.push(value);
-	}
-	return [...new Set(imports)].slice(0, 200);
 }
 
 export async function runFileOutline(params: CodeIntelFileOutlineParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {

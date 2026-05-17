@@ -22,6 +22,10 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal("sqryArtifactPolicy" in state, false);
 	assert.equal("cymbal" in state.backends, false);
 	assert.equal("sqry" in state.backends, false);
+	assert.equal(state.languages.csharp.extensions.includes(".cs"), true);
+	assert.equal(state.languages.zsh.parser, "tree-sitter-bash.wasm");
+	assert.equal(state.languages.markdown.category, "doc");
+	assert.equal(state.languages.cpp.features.impact, "code");
 	assert.equal(state.languageServers.gopls.server, "gopls");
 	assert.equal(state.languageServers["rust-analyzer"].server, "rust-analyzer");
 	assert.equal(state.languageServers.typescript.server, "typescript");
