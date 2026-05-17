@@ -1,17 +1,18 @@
 # Pi Code Intelligence
 
-Pi Code Intelligence is a private local Pi extension for repository orientation and read-next context gathering. It gives Pi agents bounded, current-source maps of files, symbols, callers, tests, and syntax patterns that are likely worth inspecting before a non-trivial edit or review.
+Pi Code Intelligence is a private local Pi extension for repository orientation, read-next context gathering, and targeted symbol operations. It gives Pi agents bounded, current-source maps of files, symbols, callers, tests, and syntax patterns, plus narrow helpers for reading or mutating resolved declarations.
 
 ## How It Fits the Pi Workflow
 
-Code-intel sits between the user's coding request and the agent's source reads:
+Code-intel covers two adjacent parts of the Pi workflow: context routing before source reads, and symbol-targeted operations after a declaration has been resolved.
 
 1. The user asks Pi to inspect, edit, review, or understand code.
 2. For non-trivial work, the agent asks code-intel for a bounded map of likely relevant files, symbols, tests, or patterns.
 3. The agent reads current source from that map instead of relying on broad search output or memory.
-4. The agent implements, reviews, or explains the change with project-native validation where needed.
+4. When the task needs a focused declaration read or edit, symbol tools can use resolved targets and hash/text safety checks instead of reconstructed line numbers.
+5. The agent implements, reviews, or explains the change with project-native validation where needed.
 
-The extension supplies navigation evidence, not final answers. It is most useful when a small amount of structured context can prevent missed callers, missed tests, noisy searches, or unnecessary full-file reads.
+The mapping tools supply navigation evidence, not final answers. The symbol tools supply narrow source reads and anchored mutations, not general codemods. The extension is most useful when structured context or resolved declaration targets can prevent missed callers, missed tests, noisy searches, unnecessary full-file reads, or brittle line-number edits.
 
 ## What It Improves
 
@@ -26,7 +27,7 @@ The extension supplies navigation evidence, not final answers. It is most useful
 
 Code Intelligence is not a compiler, language server replacement, full semantic index, linter, typechecker, test runner, or bug detector. It does not prove a change is safe.
 
-Its output means: "these are useful places to inspect next." Findings, edits, and completion claims still need current source reads and project-native validation.
+For mapping and search tools, output means: "these are useful places to inspect next." For mutation tools, output means only that a narrow anchored edit was applied. Findings, broader edits, and completion claims still need current source reads and project-native validation.
 
 ## Where It Helps
 
@@ -72,7 +73,7 @@ Code-intel output is deliberately conservative about what it claims.
 | Optional reference confirmation | Bounded exact-reference evidence for selected Go, TypeScript/JavaScript, or clangd-backed C/C++ roots. | Whole-program proof or a replacement for reading source. |
 | Touched-file diagnostics | Current TypeScript/JavaScript diagnostics for files involved in the task. | Proof that diagnostics are new unless a baseline says so. |
 
-Tool results are a queue of places to inspect, not findings to report directly.
+Mapping and search results are a queue of places to inspect, not findings to report directly. Mutation results confirm a scoped file change, not broader correctness.
 
 ## Workflow Guardrails
 
@@ -256,7 +257,7 @@ tail -n 40 ~/.cache/pi-code-intelligence/usage/*.jsonl
 
 ## Design Rationale
 
-The extension is optimized for read-next routing, not replacing source reads or project validation.
+The extension is optimized for read-next routing and targeted symbol operations, not replacing source reads or project validation.
 
 | Decision | Rationale |
 | --- | --- |
