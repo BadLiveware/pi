@@ -13,12 +13,12 @@ Use Excession as a small proof-oriented behavior-model lane for one risky questi
 - an architecture or design choice depends on cost growth, resource ownership, protocol/state invariants, interleavings, progress/liveness, data-shape consistency, or idempotency/effect boundaries
 - a code review has one of those behavior-risk families and a small model would produce clearer evidence than prose alone
 
-## Do Not Use It For
+## Use Lighter Evidence For
 - routine edits, docs-only changes, style fixes, renames, or simple refactors with no behavior-risk question
-- broad automatic source review, general linting, security scanning, numeric correctness, or compatibility/API review unless the concern is explicitly one of Excession's core behavior families
-- replacing project-native tests, typecheckers, linters, benchmarks, code-intel, or normal review evidence
-- source-wide analysis when you cannot state a specific behavior question first
-- speculative warnings: Excession output is evidence to verify, not permission to surface maybes
+- broad source review, general linting, security scanning, numeric correctness, or compatibility/API review when a project-native tool directly covers the concern
+- checks already covered by project-native tests, typecheckers, linters, benchmarks, code-intel, or normal review evidence
+- source-wide exploration before you can state a specific behavior question
+- speculative concerns that need source inspection or validation before they become findings
 
 ## Workflow
 1. State the behavior question in one sentence, including the property to check and the path/scope it applies to.

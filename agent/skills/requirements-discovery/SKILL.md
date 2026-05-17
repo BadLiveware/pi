@@ -17,7 +17,7 @@ Use when:
 - assumptions would materially change behavior, UX, contracts, data safety, architecture, operations, validation, or scope
 - requirements depend on prior work, external evidence, papers, or comparing approaches
 
-Do not use for trivial/scoped changes where the implementation path is obvious and assumptions are low-risk; state assumptions briefly and proceed.
+For trivial/scoped changes where the implementation path is obvious and assumptions are low-risk, state assumptions briefly and proceed without adding discovery ceremony.
 
 ## Scope Triage
 Classify before asking questions:

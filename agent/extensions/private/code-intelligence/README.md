@@ -12,7 +12,7 @@ Code-intel covers two adjacent parts of the Pi workflow: context routing before 
 4. When the task needs a focused declaration read or edit, symbol tools can use resolved targets and hash/text safety checks instead of reconstructed line numbers.
 5. The agent implements, reviews, or explains the change with project-native validation where needed.
 
-The mapping tools supply navigation evidence, not final answers. The symbol tools supply narrow source reads and anchored mutations, not general codemods. The extension is most useful when structured context or resolved declaration targets can prevent missed callers, missed tests, noisy searches, unnecessary full-file reads, or brittle line-number edits.
+The mapping tools supply navigation evidence for source reads and validation. The symbol tools supply focused source reads and anchored mutations. For broad repeated changes, use overview/route/impact/local/syntax tools to discover and verify targets, then choose the right edit path: symbol-aware mutation, generic `edit`, or a project codemod. The extension is most useful when structured context or resolved declaration targets can prevent missed callers, missed tests, noisy searches, unnecessary full-file reads, or brittle line-number edits.
 
 ## What It Improves
 
@@ -23,11 +23,11 @@ The mapping tools supply navigation evidence, not final answers. The symbol tool
 - Targeted symbol reads and narrow symbol-scoped mutations.
 - Evidence discipline: syntax matches remain syntax evidence, not semantic proof.
 
-## What It Is Not
+## Boundaries and Validation
 
-Code Intelligence is not a compiler, language server replacement, full semantic index, linter, typechecker, test runner, or bug detector. It does not prove a change is safe.
+Use Code Intelligence for bounded current-source routing, file outlines, symbol reads, and anchored mutations. Pair it with compilers, language servers, linters, typecheckers, test runners, benchmarks, or manual checks when those are the validation evidence the task needs.
 
-For mapping and search tools, output means: "these are useful places to inspect next." For mutation tools, output means only that a narrow anchored edit was applied. Findings, broader edits, and completion claims still need current source reads and project-native validation.
+For mapping and search tools, output means: "these are useful places to inspect next." For mutation tools, output means that an anchored edit was applied. Findings, broader edits, and completion claims still need current source reads and project-native validation.
 
 ## Where It Helps
 
@@ -158,7 +158,7 @@ Returns evidence-ranked test candidates for a scoped file, symbol, or domain nam
 
 It uses bounded test-root discovery, path/name similarity, literal matches, and optional reference confirmation for source-code tests. It can find non-code tests such as SQL fixtures as well as source-code tests. Generated/cache/log artifacts are ignored by default, and generic path-only terms are downranked.
 
-The result means “likely tests to inspect or run,” not proof of coverage.
+Use the result as a ranked shortlist of likely tests to inspect or run, then confirm coverage through the test source or validation command.
 
 ### `code_intel_syntax_search`
 

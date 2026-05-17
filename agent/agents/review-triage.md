@@ -26,7 +26,7 @@ The parent should provide at least one of:
 
 A compact context packet is a short JSON-like summary with fields such as `depth`, `change_summary`, `change_families`, `changed_files`, `impact_map`, `changed_tests`, `validation`, `deterministic_evidence`, `tool_lanes_skipped`, `high_risk_flags`, and `relevant_config_or_guidance`.
 
-An impact map is routing evidence: changed symbols/files, likely callers/consumers/tests/config/docs, contract risks, and unchanged consumers to inspect. It is not proof of a defect.
+An impact map is routing evidence: changed symbols/files, likely callers/consumers/tests/config/docs, contract risks, and unchanged consumers to inspect. Use it to choose source reads and validation that can support candidate defects.
 
 If the parent does not provide a context packet but a diff is available, build a minimal one from `git status --short`, `git diff --stat`, `git diff --name-only`, focused `git diff -- <path>`, and bounded code-intel maps when useful. If no diff, files, or scope are available, return empty arrays and put the missing context in `gaps` instead of doing broad review.
 
@@ -34,7 +34,7 @@ If the parent does not provide a context packet but a diff is available, build a
 
 - Do not edit files, stage changes, commit, push, or open PRs.
 - Do not call subagents or delegate your work.
-- Inspect the actual diff or files named by the parent. If a context packet includes an impact map, use it as routing evidence, not proof.
+- Inspect the actual diff or files named by the parent. If a context packet includes an impact map, use it to prioritize current-source reads and validation.
 - Do not assume terms like `context packet`, `impact map`, `change family`, or `deterministic evidence` refer to hidden skills; use the definitions in this prompt and the parent-supplied packet.
 - Return candidate issues and escalation requests only. Do not write final review comments.
 - Avoid style nits, generic best practices, speculative concerns, unrelated tool output, and pre-existing issues unless the parent explicitly asks for audit.
