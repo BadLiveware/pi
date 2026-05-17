@@ -46,6 +46,7 @@ export function registerLocalMapTool(pi: ExtensionAPI): void {
 			"Use code_intel_local_map when a scoped edit/review has a central anchor plus related fields/types/API terms and you need a candidate file list.",
 			"Use it to answer: which local files should I read next, and why are they candidates? Do not treat it as exhaustive usage proof.",
 			"Provide anchors for central functions/types and names for related fields/types/API terms; add paths to keep the map local.",
+			"Language aliases such as c#, c++, py, md/markdown, and zsh are normalized; Markdown uses heading/link/code-fence routing plus literal fallback rather than Tree-sitter syntax search.",
 			"Use detail:'locations' for routing to files; use standalone rg afterward for comments/docs/generated text beyond the returned cap or unsupported-language gaps.",
 		],
 		renderCall: renderToolCall("code_intel_local_map", (args) => {
@@ -60,7 +61,7 @@ export function registerLocalMapTool(pi: ExtensionAPI): void {
 			anchors: Type.Optional(Type.Array(Type.String(), { description: "Central function/type names that anchor the implementation area, e.g. lowerAggregation." })),
 			names: Type.Optional(Type.Array(Type.String(), { description: "Related symbol, field, type, or API names to map, e.g. RequiredTagLabels." })),
 			paths: Type.Optional(Type.Array(Type.String(), { description: "Repo-relative files or directories to keep the map local." })),
-			language: Type.Optional(Type.String({ description: "Language for optional selector syntax matches, e.g. go, ts, python." })),
+			language: Type.Optional(Type.String({ description: "Language for optional selector syntax/doc matches, e.g. go, ts, python, c#, c++, zsh, markdown." })),
 			includeSyntax: Type.Optional(Type.Boolean({ description: "Run optional selector syntax matches like $X.Name when language is provided. Default true." })),
 			maxResults: Type.Optional(Type.Number({ description: "Maximum suggested files returned. Default min(config maxResults, 25)." })),
 			maxPerName: Type.Optional(Type.Number({ description: "Maximum refs/syntax/literal matches per name. Default min(config maxResults, 8)." })),

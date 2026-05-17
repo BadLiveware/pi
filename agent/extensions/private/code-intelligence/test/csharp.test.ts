@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { extractFileRecords, parseFiles } from "../src/tree-sitter.ts";
 import { loadTools, mockContext, parseToolResult } from "./test-harness.ts";
 
 function csharpRepo(): string {
@@ -90,17 +89,23 @@ test("C# read_symbol returns complete methods and properties", async () => {
 	}
 });
 
-test("C# extractor emits invocation, member access, and initializer candidates", async () => {
+test("C# impact routes changed-file roots, invocations, member access, and initializers", async () => {
 	const repo = csharpRepo();
 	try {
-		const parsed = await parseFiles(repo, ["csharp"], ["AuthService.cs"]);
-		const file = parsed.parsedFiles[0];
-		const records = extractFileRecords(file, "snippets");
-		assert.equal(parsed.diagnostics.length, 0);
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_call" && row.text === "service.Authenticate(\"x\")"), true);
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_selector" && row.text === "service.Authenticate"), false);
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags = true"), true);
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_selector" && row.text === "model.NeedTags"), true);
+		const tools = loadTools();
+		const ctx = mockContext(repo).ctx;
+		const changed = parseToolResult(await tools.get("code_intel_impact_map")!.execute("impact", { changedFiles: ["AuthService.cs"], maxRootSymbols: 8, maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+		assert.equal(changed.ok, true);
+		assert.equal(changed.coverage.supportedImpactFiles.some((row: any) => row.file === "AuthService.cs" && row.languages.includes("csharp")), true);
+		assert.equal(changed.rootSymbols.includes("AuthService"), true);
+
+		const method = parseToolResult(await tools.get("code_intel_impact_map")!.execute("impact", { symbols: ["Authenticate"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+		assert.equal(method.related.some((row: any) => row.kind === "syntax_call" && row.text === "service.Authenticate(\"x\")"), true);
+		assert.equal(method.related.some((row: any) => row.kind === "syntax_selector" && row.text === "service.Authenticate"), false);
+
+		const property = parseToolResult(await tools.get("code_intel_impact_map")!.execute("impact", { symbols: ["NeedTags"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+		assert.equal(property.related.some((row: any) => row.kind === "syntax_keyed_field" && row.text === "NeedTags = true"), true);
+		assert.equal(property.related.some((row: any) => row.kind === "syntax_selector" && row.text === "model.NeedTags"), true);
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });
 	}

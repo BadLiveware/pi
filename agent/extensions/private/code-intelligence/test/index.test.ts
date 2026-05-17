@@ -131,7 +131,7 @@ test("impact map supports Python changed-file routing", async () => {
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["watcher.py", "README.md"], maxRootSymbols: 3, maxResults: 10, detail: "snippets" }, undefined, undefined, ctx));
 	assert.equal(impact.ok, true);
 	assert.equal(impact.coverage.parsedByLanguage.python, 1);
-	assert.equal(impact.coverage.nonSourceFiles.includes("README.md"), true);
+	assert.equal(impact.coverage.docFiles.includes("README.md"), true);
 	assert.deepEqual(impact.rootSymbols, ["load_state", "save_state", "run_poll_cycle"]);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "load_state(config[\"state\"])") , true);
 });
@@ -146,8 +146,9 @@ test("impact map explains non-source changed files when no impact language files
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["README.md", "config.json"], maxResults: 10 }, undefined, undefined, ctx));
 	assert.equal(impact.ok, false);
 	assert.match(impact.reason, /Supported impact languages/);
-	assert.deepEqual(impact.coverage.nonSourceFiles, ["README.md", "config.json"]);
-	assert.deepEqual(impact.coverage.supportedImpactLanguages, ["go", "typescript", "tsx", "javascript", "rust", "python", "cpp"]);
+	assert.deepEqual(impact.coverage.docFiles, ["README.md"]);
+	assert.deepEqual(impact.coverage.nonSourceFiles, ["config.json"]);
+	assert.deepEqual(impact.coverage.supportedImpactLanguages, ["go", "typescript", "tsx", "javascript", "rust", "python", "cpp", "csharp", "bash", "zsh"]);
 });
 
 test("impact map optionally confirms Go references with gopls", async () => {

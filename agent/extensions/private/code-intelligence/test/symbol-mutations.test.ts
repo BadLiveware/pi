@@ -131,3 +131,78 @@ test("insert relative normalizes inserted text to CRLF files", async () => {
 		fs.rmSync(repo, { recursive: true, force: true });
 	}
 });
+
+test("replace and insert support C#, Python, shell, and Markdown targets", async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-new-targets-"));
+	try {
+		execFileSync("git", ["init", "-q"], { cwd: repo });
+		fs.writeFileSync(path.join(repo, "Service.cs"), `public class Service
+{
+    public bool Enabled { get; init; }
+    public bool Authenticate(string token)
+    {
+        return token.Length > 0;
+    }
+}
+`);
+		fs.writeFileSync(path.join(repo, "jobs.py"), `@decorator
+async def run_task(name: str):
+    return name
+`);
+		fs.writeFileSync(path.join(repo, "deploy.sh"), `deploy() {
+  echo old
+}
+`);
+		fs.writeFileSync(path.join(repo, "README.md"), `# Guide
+
+## Install
+
+old install
+
+## Usage
+
+old usage
+`);
+		const tools = loadTools();
+		const ctx = mockContext(repo);
+
+		const readCs = parseToolResult(await tools.get("code_intel_read_symbol")!.execute("read-cs", { path: "Service.cs", symbol: "Authenticate" }, undefined, undefined, ctx));
+		assert.equal(parseToolResult(await tools.get("code_intel_replace_symbol")!.execute("replace-cs", { target: readCs.target, oldHash: readCs.targetSegment.oldHash, newText: `    public bool Authenticate(string token)
+    {
+        return token == "ok";
+    }` }, undefined, undefined, ctx)).ok, true);
+		const outlineCs = parseToolResult(await tools.get("code_intel_file_outline")!.execute("outline-cs", { path: "Service.cs", maxSymbols: 20 }, undefined, undefined, ctx));
+		const property = outlineCs.declarations.find((row: any) => row.name === "Enabled").symbolTarget;
+		assert.equal(parseToolResult(await tools.get("code_intel_insert_relative")!.execute("insert-cs", { anchor: property, position: "after", text: "    public int Count { get; init; }" }, undefined, undefined, ctx)).ok, true);
+
+		const readPy = parseToolResult(await tools.get("code_intel_read_symbol")!.execute("read-py", { path: "jobs.py", symbol: "run_task" }, undefined, undefined, ctx));
+		assert.match(readPy.targetSegment.source, /@decorator/);
+		assert.equal(parseToolResult(await tools.get("code_intel_replace_symbol")!.execute("replace-py", { target: readPy.target, oldHash: readPy.targetSegment.oldHash, newText: `@decorator
+async def run_task(name: str):
+    return name.upper()` }, undefined, undefined, ctx)).ok, true);
+
+		const readShell = parseToolResult(await tools.get("code_intel_read_symbol")!.execute("read-sh", { path: "deploy.sh", symbol: "deploy" }, undefined, undefined, ctx));
+		assert.equal(parseToolResult(await tools.get("code_intel_replace_symbol")!.execute("replace-sh", { target: readShell.target, oldHash: readShell.targetSegment.oldHash, newText: `deploy() {
+  echo new
+}` }, undefined, undefined, ctx)).ok, true);
+
+		const outlineMd = parseToolResult(await tools.get("code_intel_file_outline")!.execute("outline-md", { path: "README.md", maxSymbols: 20 }, undefined, undefined, ctx));
+		const install = outlineMd.declarations.find((row: any) => row.kind === "markdown_section" && row.name === "Install").symbolTarget;
+		const readMd = parseToolResult(await tools.get("code_intel_read_symbol")!.execute("read-md", { target: install }, undefined, undefined, ctx));
+		assert.equal(parseToolResult(await tools.get("code_intel_replace_symbol")!.execute("replace-md", { target: install, oldHash: readMd.targetSegment.oldHash, newText: `## Install
+
+new install` }, undefined, undefined, ctx)).ok, true);
+		const usage = parseToolResult(await tools.get("code_intel_file_outline")!.execute("outline-md2", { path: "README.md", maxSymbols: 20 }, undefined, undefined, ctx)).declarations.find((row: any) => row.kind === "markdown_section" && row.name === "Usage").symbolTarget;
+		assert.equal(parseToolResult(await tools.get("code_intel_insert_relative")!.execute("insert-md", { anchor: usage, position: "before", text: "## Examples\n\nnew example" }, undefined, undefined, ctx)).ok, true);
+
+		assert.match(fs.readFileSync(path.join(repo, "Service.cs"), "utf-8"), /return token == "ok"/);
+		assert.match(fs.readFileSync(path.join(repo, "Service.cs"), "utf-8"), /public int Count/);
+		assert.match(fs.readFileSync(path.join(repo, "jobs.py"), "utf-8"), /name\.upper/);
+		assert.match(fs.readFileSync(path.join(repo, "deploy.sh"), "utf-8"), /echo new/);
+		const markdown = fs.readFileSync(path.join(repo, "README.md"), "utf-8");
+		assert.match(markdown, /new install/);
+		assert.match(markdown, /## Examples[\s\S]*## Usage/);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});

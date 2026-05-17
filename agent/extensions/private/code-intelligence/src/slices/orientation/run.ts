@@ -7,6 +7,7 @@ import { ensureInsideRoot } from "../../repo.ts";
 import { runReferenceConfirmation } from "../../lsp/confirmation.ts";
 import { rowWithTarget } from "../../source-range.ts";
 import { extractFileRecords, parseFiles, readSourceFileAsParsed, type SymbolRecord } from "../../tree-sitter.ts";
+import { candidateScore, defaultTestPaths, shouldConsiderTestCandidate, testMapTerms, testSearchPaths } from "../test-map/language-heuristics.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 
 const DEFAULT_EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "out", "target", ".cache", "build", "build_debug", "build_release", "cmake-build-debug", "cmake-build-release"]);
@@ -361,76 +362,6 @@ export async function runRepoOverview(params: CodeIntelRepoOverviewParams, repoR
 	};
 }
 
-function defaultTestPaths(scan: ScanResult): string[] {
-	const dirs = new Set<string>();
-	function visit(dir: ScanDirectory): void {
-		const base = path.posix.basename(dir.path).toLowerCase();
-		if (["test", "tests", "__tests__", "spec", "integration", "queries", "gtest"].includes(base)) dirs.add(dir.path);
-		for (const child of dir.children) visit(child);
-	}
-	for (const dir of scan.directories) visit(dir);
-	return [...dirs].sort();
-}
-
-const LOW_SIGNAL_PATH_TERMS = new Set(["apply", "function", "functions", "range", "over", "time", "timeseries", "test", "tests", "query", "queries"]);
-
-function tokensForPath(file: string): string[] {
-	const stem = path.posix.basename(file).replace(/\.[^.]+$/, "");
-	return [...new Set(stem.split(/[^A-Za-z0-9]+|(?=[A-Z])/).map((part) => part.toLowerCase()).filter((part) => part.length >= 3 && !LOW_SIGNAL_PATH_TERMS.has(part)))];
-}
-
-function isNoisyTestArtifact(file: string): boolean {
-	return /(^|\/)__pycache__(\/|$)/.test(file) || /\.(pyc|pyo|log|tmp|out|err)$/i.test(file) || /(^|\/)node\/logs\//.test(file);
-}
-
-function candidateScore(file: string, targetPath: string | undefined, terms: string[]): { score: number; evidence: Record<string, unknown>[] } {
-	let score = 0;
-	const evidence: Record<string, unknown>[] = [];
-	const seenEvidence = new Set<string>();
-	const addEvidence = (kind: string, term: string, points: number): void => {
-		const key = `${kind}\0${term}`;
-		if (seenEvidence.has(key)) return;
-		seenEvidence.add(key);
-		score += points;
-		evidence.push({ kind, term });
-	};
-	const fileLower = file.toLowerCase();
-	if (targetPath) {
-		const targetStem = path.posix.basename(targetPath).replace(/\.[^.]+$/, "").toLowerCase();
-		if (fileLower.includes(targetStem)) addEvidence("path_basename", targetStem, 6);
-		for (const token of tokensForPath(targetPath)) {
-			if (fileLower.includes(token)) addEvidence("path_term", token, 2);
-		}
-	}
-	for (const term of terms) {
-		if (LOW_SIGNAL_PATH_TERMS.has(term.toLowerCase())) continue;
-		if (fileLower.includes(term.toLowerCase())) addEvidence("path_term", term, 3);
-	}
-	return { score, evidence };
-}
-
-function literalMatches(file: ScanFile, terms: string[], maxMatches: number): Record<string, unknown>[] {
-	const evidence: Record<string, unknown>[] = [];
-	let source: string;
-	try {
-		source = fs.readFileSync(file.absolutePath, "utf-8");
-	} catch {
-		return evidence;
-	}
-	const lines = source.split(/\r?\n/);
-	for (const term of terms) {
-		if (evidence.length >= maxMatches) break;
-		const needle = term.toLowerCase();
-		for (let index = 0; index < lines.length; index++) {
-			if (lines[index].toLowerCase().includes(needle)) {
-				evidence.push({ kind: "literal_match", term, line: index + 1 });
-				break;
-			}
-		}
-	}
-	return evidence;
-}
-
 export async function runTestMap(params: CodeIntelTestMapParams, repoRoot: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<Record<string, unknown>> {
 	const started = Date.now();
 	const maxResults = normalizePositiveInteger(params.maxResults, Math.min(config.maxResults, 50), 1, 500);
@@ -445,21 +376,20 @@ export async function runTestMap(params: CodeIntelTestMapParams, repoRoot: strin
 			diagnostics.push(`${params.path}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
+	const sourceLanguage = safePath ? fileLanguage(safePath) : undefined;
 	const explicitTerms = [...new Set([...normalizeStringArray(params.symbols), ...normalizeStringArray(params.names)].filter((term) => term.length >= 2))];
-	const terms = [...new Set([...explicitTerms, ...(safePath ? tokensForPath(safePath) : [])].filter((term) => term.length >= 2))];
+	const terms = testMapTerms(safePath, explicitTerms);
 	const shapeScan = scanRepo(repoRoot, { paths: ["."], maxDepth: 4, maxDirs: 500, maxFilesPerDir: 0, includeVendor: false, includeGenerated: false, timeoutMs }, signal);
-	const testRoots = normalizeStringArray(params.testPaths).length > 0 ? normalizeStringArray(params.testPaths) : defaultTestPaths(shapeScan);
-	const scan = scanRepo(repoRoot, { paths: testRoots.length > 0 ? testRoots : ["tests", "test"], maxDepth: 12, maxDirs: 1_000, maxFilesPerDir: 1_000, includeVendor: false, includeGenerated: false, timeoutMs }, signal);
+	const explicitTestPaths = normalizeStringArray(params.testPaths);
+	const testRoots = explicitTestPaths.length > 0 ? explicitTestPaths : defaultTestPaths(shapeScan);
+	const searchPaths = explicitTestPaths.length > 0 ? explicitTestPaths : testSearchPaths(testRoots, safePath, sourceLanguage);
+	const scan = scanRepo(repoRoot, { paths: searchPaths, maxDepth: 12, maxDirs: 1_000, maxFilesPerDir: 1_000, includeVendor: false, includeGenerated: false, timeoutMs }, signal);
 	const candidates: Array<Record<string, unknown> & { score: number; evidence: Record<string, unknown>[] }> = [];
 	for (const file of scan.files) {
-		if (isNoisyTestArtifact(file.path)) continue;
-		if (file.category !== "test" && !TEST_DIR_PATTERN.test(file.path)) continue;
-		const pathEvidence = candidateScore(file.path, safePath, terms);
-		const literalEvidence = literalMatches(file, explicitTerms, maxLiteralMatches);
-		const evidence = [...pathEvidence.evidence, ...literalEvidence];
-		const score = pathEvidence.score + literalEvidence.length * 5;
-		if (score <= 0 || evidence.length === 0) continue;
-		candidates.push({ file: file.path, language: file.language, category: file.category, score, evidence });
+		if (!shouldConsiderTestCandidate(file, sourceLanguage)) continue;
+		const scored = candidateScore(file, { targetPath: safePath, terms, explicitTerms, sourceLanguage, maxLiteralMatches });
+		if (scored.score <= 0 || scored.evidence.length === 0) continue;
+		candidates.push({ file: file.path, language: file.language, category: file.category, score: scored.score, evidence: scored.evidence });
 	}
 	candidates.sort((left, right) => right.score - left.score || String(left.file).localeCompare(String(right.file)));
 	const outputCandidates = candidates.slice(0, maxResults);

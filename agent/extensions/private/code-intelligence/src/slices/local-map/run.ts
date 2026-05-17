@@ -1,6 +1,8 @@
 import type { CodeIntelConfig, CodeIntelLocalMapParams, CommandResult, ResultDetail } from "../../types.ts";
 import { runTreeSitterImpact, runTreeSitterSelectorBatchSearch } from "../../tree-sitter.ts";
+import { languageCapability, normalizeLanguageId } from "../../languages.ts";
 import { findExecutable, runCommand, summarizeCommandBrief } from "../../exec.ts";
+import { runMarkdownLocalMaps } from "./markdown.ts";
 import { pathArgsForRepo } from "../../repo.ts";
 import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 
@@ -178,8 +180,12 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 	const explicitNames = unique(normalizeStringArray(params.names));
 	const names = unique([...anchors, ...explicitNames]).slice(0, LOCAL_MAP_MAX_NAMES);
 	const paths = normalizeStringArray(params.paths);
-	const language = params.language?.trim() || undefined;
-	const includeSyntax = params.includeSyntax !== false && Boolean(language);
+	const requestedLanguage = params.language?.trim() || undefined;
+	const normalizedLanguage = requestedLanguage ? normalizeLanguageId(requestedLanguage) ?? requestedLanguage : undefined;
+	const capability = normalizedLanguage ? languageCapability(normalizedLanguage) : undefined;
+	const language = normalizedLanguage;
+	const isMarkdown = capability?.id === "markdown";
+	const includeSyntax = params.includeSyntax !== false && Boolean(language) && capability?.features.syntaxSearch !== false && capability?.parser.kind !== "scanner";
 
 	if (names.length === 0) {
 		return {
@@ -209,13 +215,15 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 		}
 	}
 
+	const markdownMatches = isMarkdown ? runMarkdownLocalMaps({ names, paths, repoRoot, timeoutMs, maxPerName: Math.min(maxPerName, 12), detail, signal }) : [];
+
 	const literalMatches: Record<string, unknown>[] = [];
 	for (const name of names) {
 		const literal = await safely({ kind: "literal", name }, () => runLiteralSearch(name, paths, repoRoot, timeoutMs, Math.min(maxPerName, 12), detail, signal));
 		literalMatches.push(literal);
 	}
 
-	const primarySections = [...treeSitterMaps, ...syntaxMatches];
+	const primarySections = [...treeSitterMaps, ...syntaxMatches, ...markdownMatches];
 	const sections = [...primarySections, ...literalMatches];
 	const suggestedFiles = suggestedFilesFromSections(sections).slice(0, maxResults);
 	const primarySuggestedFiles = suggestedFilesFromSections(primarySections).slice(0, maxResults);
@@ -238,6 +246,7 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 			symbolContexts,
 			references,
 			syntaxMatches,
+			markdownMatches,
 			literalMatches,
 		},
 		summary: {
@@ -253,7 +262,9 @@ export async function runLocalMap(params: CodeIntelLocalMapParams, repoRoot: str
 			maxPerName,
 			maxResults,
 			includeSyntax,
+			languageResolvedFrom: requestedLanguage && requestedLanguage !== language ? requestedLanguage : undefined,
 			syntaxSearches: syntaxMatches.length,
+			markdownSearches: markdownMatches.length,
 			syntaxParsePasses: includeSyntax && selectorNames.length > 0 ? 1 : 0,
 			truncated,
 		},

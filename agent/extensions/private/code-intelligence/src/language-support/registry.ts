@@ -105,8 +105,8 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "csharp",
 		category: "source",
 		supportLevel: "parser",
-		features: features({ impact: "none", exactReferences: ["csharp-ls"], diagnostics: ["csharp-ls"] }),
-		limitations: ["C# impact routing, exact references, and diagnostics are planned; current support is parser/outline oriented."],
+		features: features({ impact: "code", exactReferences: ["csharp-ls"], diagnostics: ["csharp-ls"] }),
+		limitations: ["C# routing is current-source syntax evidence; exact references and diagnostics are planned provider features."],
 	},
 	{
 		id: "bash",
@@ -117,8 +117,8 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "shell",
 		category: "source",
 		supportLevel: "parser",
-		features: features({ impact: "none", diagnostics: ["shellcheck"] }),
-		limitations: ["Shell impact routing and shell-specific extraction are planned; current support is parser/outline oriented."],
+		features: features({ impact: "code", diagnostics: ["shellcheck"] }),
+		limitations: ["Shell routing matches command names syntactically and cannot distinguish external commands from local functions without source inspection."],
 	},
 	{
 		id: "zsh",
@@ -129,7 +129,7 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "shell",
 		category: "source",
 		supportLevel: "parser",
-		features: features({ impact: "none", diagnostics: ["zsh"] }),
+		features: features({ impact: "code", diagnostics: ["zsh"] }),
 		limitations: ["zsh currently uses the Bash Tree-sitter grammar, so zsh-specific syntax can parse imperfectly."],
 	},
 	{

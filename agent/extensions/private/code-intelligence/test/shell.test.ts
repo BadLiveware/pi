@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { extractFileRecords, parseFiles } from "../src/tree-sitter.ts";
 import { loadTools, mockContext, parseToolResult } from "./test-harness.ts";
 
 function shellRepo(): string {
@@ -53,14 +52,21 @@ test("Shell outline reports functions, aliases, variables, traps, and sources", 
 	}
 });
 
-test("Shell extractor emits command and source candidates", async () => {
+test("Shell impact emits function roots, command calls, and source candidates", async () => {
 	const repo = shellRepo();
 	try {
-		const parsed = await parseFiles(repo, ["bash"], ["deploy.sh"]);
-		const records = extractFileRecords(parsed.parsedFiles[0], "snippets");
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_call" && row.name === "prepare" && row.text === 'prepare "$target"'), true);
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_call" && row.name === "cleanup" && row.inFunction === "deploy"), true);
-		assert.equal(records.candidates.some((row: any) => row.kind === "syntax_keyed_field" && row.name === "./lib.sh"), true);
+		const tools = loadTools();
+		const ctx = mockContext(repo).ctx;
+		const changed = parseToolResult(await tools.get("code_intel_impact_map")!.execute("impact", { changedFiles: ["deploy.sh"], maxRootSymbols: 4, maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+		assert.equal(changed.ok, true);
+		assert.equal(changed.coverage.supportedImpactFiles.some((row: any) => row.file === "deploy.sh" && row.languages.includes("bash")), true);
+		assert.equal(changed.rootSymbols.includes("deploy"), true);
+		assert.equal(changed.rootSymbols.includes("cleanup"), true);
+		assert.equal(changed.rootSymbols.includes("echo"), false);
+
+		const cleanup = parseToolResult(await tools.get("code_intel_impact_map")!.execute("impact", { symbols: ["cleanup", "./lib.sh"], maxResults: 20, detail: "snippets" }, undefined, undefined, ctx));
+		assert.equal(cleanup.related.some((row: any) => row.kind === "syntax_call" && row.name === "cleanup" && row.inFunction === "deploy"), true);
+		assert.equal(cleanup.related.some((row: any) => row.kind === "syntax_keyed_field" && row.name === "./lib.sh"), true);
 	} finally {
 		fs.rmSync(repo, { recursive: true, force: true });
 	}
