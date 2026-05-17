@@ -1,12 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CodeIntelConfig, CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelTestMapParams, ResultDetail } from "../../types.ts";
-import { LANGUAGE_CAPABILITIES, LANGUAGE_SPECS, languageSpec } from "../../languages.ts";
+import { LANGUAGE_CAPABILITIES, LANGUAGE_SPECS, languageCapability, languageSpec } from "../../languages.ts";
 import { importsFor } from "../../language-support/imports.ts";
 import { ensureInsideRoot } from "../../repo.ts";
 import { runReferenceConfirmation } from "../../lsp/confirmation.ts";
 import { rowWithTarget } from "../../source-range.ts";
-import { extractFileRecords, parseFiles, type SymbolRecord } from "../../tree-sitter.ts";
+import { extractFileRecords, parseFiles, readSourceFileAsParsed, type SymbolRecord } from "../../tree-sitter.ts";
 import { normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 
 const DEFAULT_EXCLUDED_DIRS = new Set([".git", ".hg", ".svn", "node_modules", "vendor", "dist", "out", "target", ".cache", "build", "build_debug", "build_release", "cmake-build-debug", "cmake-build-release"]);
@@ -274,11 +274,12 @@ export async function runFileOutline(params: CodeIntelFileOutlineParams, repoRoo
 		return { ok: false, repoRoot, diagnostics: [error instanceof Error ? error.message : String(error)], elapsedMs: Date.now() - started };
 	}
 	const language = fileLanguage(safeFile);
-	if (!language || !languageSpec(language)) return { ok: false, repoRoot, file: safeFile, diagnostics: [`No Tree-sitter language configured for ${safeFile}`], elapsedMs: Date.now() - started };
+	const capability = language ? languageCapability(language) : undefined;
+	if (!language || !capability || (!languageSpec(language) && capability.parser.kind !== "scanner")) return { ok: false, repoRoot, file: safeFile, diagnostics: [`No Tree-sitter language configured for ${safeFile}`], elapsedMs: Date.now() - started };
 	const timeoutMs = normalizePositiveInteger(params.timeoutMs, config.queryTimeoutMs, 1_000, 600_000);
 	const maxSymbols = normalizePositiveInteger(params.maxSymbols, 250, 1, 1_000);
 	const detail: ResultDetail = params.detail === "snippets" ? "snippets" : "locations";
-	const parsed = await parseFiles(repoRoot, [language], [safeFile], [], [], timeoutMs, signal);
+	const parsed = capability.parser.kind === "scanner" ? { parsedFiles: [readSourceFileAsParsed(repoRoot, safeFile, language)], diagnostics: [], filesByLanguage: { [language]: 1 }, parsedByLanguage: { [language]: 1 } } : await parseFiles(repoRoot, [language], [safeFile], [], [], timeoutMs, signal);
 	const parsedFile = parsed.parsedFiles.find((file) => file.file === safeFile);
 	if (!parsedFile) return { ok: false, repoRoot, file: safeFile, language, diagnostics: parsed.diagnostics.length ? parsed.diagnostics : [`${safeFile}: file could not be parsed`], elapsedMs: Date.now() - started };
 	let records: SymbolRecord[] = [];

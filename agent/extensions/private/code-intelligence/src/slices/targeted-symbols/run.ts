@@ -1,12 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { CodeIntelConfig, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, ResultDetail } from "../../types.ts";
-import { LANGUAGE_SPECS, languageSpec } from "../../languages.ts";
+import { LANGUAGE_CAPABILITIES, languageCapability, languageSpec } from "../../languages.ts";
 import { changedFilesFromBase, ensureInsideRoot } from "../../repo.ts";
 import { runImpactMap } from "../impact-map/run.ts";
 import { runTestMap } from "../orientation/run.ts";
 import { buildSymbolTarget, exactLineSlice, expandedRange, locatorMetadata, rangeFromRecord, readHintForTarget, rangeLineCount, shortHash, sliceLines, sourceHash, targetFromUnknown, type SourceRange, type SourceSegment, type SymbolRelocationHints, type SymbolTarget } from "../../source-range.ts";
-import { extractFileRecords, parseFiles, type ParsedFile, type SymbolRecord } from "../../tree-sitter.ts";
+import { extractFileRecords, parseFiles, readSourceFileAsParsed, type ParsedFile, type SymbolRecord } from "../../tree-sitter.ts";
 import { isRecord, normalizePositiveInteger, normalizeStringArray, summarizeFileDistribution } from "../../util.ts";
 import { collectTouchedDiagnostics, mergeDiagnostics, normalizePostEditDiagnostics } from "../post-edit-map/diagnostics.ts";
 
@@ -28,7 +28,7 @@ export type ResolvedSelection = {
 
 function languageForFile(file: string): string | undefined {
 	const ext = path.extname(file);
-	return LANGUAGE_SPECS.find((spec) => spec.extensions.includes(ext))?.id;
+	return LANGUAGE_CAPABILITIES.find((capability) => capability.extensions.includes(ext))?.id;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -131,9 +131,10 @@ async function parseTargetFile(params: CodeIntelReadSymbolParams, repoRoot: stri
 		return { parsed: undefined as never, records: [], alternatives: [], diagnostics: [error instanceof Error ? error.message : String(error)] };
 	}
 	const language = targetInput(params)?.language || languageForFile(safeFile);
-	if (!language || !languageSpec(language)) return { parsed: undefined as never, records: [], alternatives: [], diagnostics: [`No Tree-sitter language configured for ${safeFile}`] };
+	const capability = language ? languageCapability(language) : undefined;
+	if (!language || !capability || (!languageSpec(language) && capability.parser.kind !== "scanner")) return { parsed: undefined as never, records: [], alternatives: [], diagnostics: [`No Tree-sitter language configured for ${safeFile}`] };
 	const timeoutMs = normalizePositiveInteger(params.timeoutMs, config.queryTimeoutMs, 1_000, 600_000);
-	const parsed = await parseFiles(repoRoot, [language], [safeFile], [], [], timeoutMs, signal);
+	const parsed = capability.parser.kind === "scanner" ? { parsedFiles: [readSourceFileAsParsed(repoRoot, safeFile, language)], diagnostics: [], filesByLanguage: { [language]: 1 }, parsedByLanguage: { [language]: 1 } } : await parseFiles(repoRoot, [language], [safeFile], [], [], timeoutMs, signal);
 	const parsedFile = parsed.parsedFiles.find((file) => file.file === safeFile);
 	if (!parsedFile) return { parsed: undefined as never, records: [], alternatives: [], diagnostics: parsed.diagnostics.length ? parsed.diagnostics : [`${safeFile}: file could not be parsed`] };
 	let records: SymbolRecord[] = [];
@@ -330,8 +331,9 @@ export async function runReadSymbol(params: CodeIntelReadSymbolParams, repoRoot:
 
 async function symbolsForFile(repoRoot: string, file: string, config: CodeIntelConfig, signal?: AbortSignal): Promise<{ file: string; language?: string; rows: Array<Record<string, unknown>>; records: SymbolRecord[]; diagnostics: string[]; parsed?: ParsedFile }> {
 	const language = languageForFile(file);
-	if (!language || !languageSpec(language)) return { file, language, rows: [], records: [], diagnostics: [`No Tree-sitter language configured for ${file}`] };
-	const parsed = await parseFiles(repoRoot, [language], [file], [], [], config.queryTimeoutMs, signal);
+	const capability = language ? languageCapability(language) : undefined;
+	if (!language || !capability || (!languageSpec(language) && capability.parser.kind !== "scanner")) return { file, language, rows: [], records: [], diagnostics: [`No Tree-sitter language configured for ${file}`] };
+	const parsed = capability.parser.kind === "scanner" ? { parsedFiles: [readSourceFileAsParsed(repoRoot, file, language)], diagnostics: [], filesByLanguage: { [language]: 1 }, parsedByLanguage: { [language]: 1 } } : await parseFiles(repoRoot, [language], [file], [], [], config.queryTimeoutMs, signal);
 	const parsedFile = parsed.parsedFiles.find((item) => item.file === file);
 	if (!parsedFile) return { file, language, rows: [], records: [], diagnostics: parsed.diagnostics };
 	try {

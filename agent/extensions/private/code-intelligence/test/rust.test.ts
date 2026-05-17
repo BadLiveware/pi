@@ -129,6 +129,34 @@ test("Rust syntax search supports scoped calls, fields, and struct initializers"
 	}
 });
 
+test("Rust extractor records trait impl owners and inline test functions", async () => {
+	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-rust-impl-"));
+	try {
+		execFileSync("git", ["init", "-q"], { cwd: repo });
+		fs.writeFileSync(path.join(repo, "lib.rs"), `use std::fmt::{self, Display};
+
+pub struct Widget { pub name: String }
+
+impl Display for Widget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{}", self.name) }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn widget_display_smoke() { assert_eq!(format!("{}", Widget { name: "x".into() }), "x"); }
+}
+`);
+		const tools = loadTools();
+		const outline = parseToolResult(await tools.get("code_intel_file_outline")!.execute("test", { path: "lib.rs", maxSymbols: 50, detail: "snippets" }, undefined, undefined, mockContext(repo)));
+		assert.equal(outline.ok, true);
+		assert.equal(outline.declarations.some((row: any) => row.kind === "function_item" && row.name === "fmt" && row.owner === "Widget"), true);
+		assert.equal(outline.declarations.some((row: any) => row.kind === "function_item" && row.name === "widget_display_smoke"), true);
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
+});
+
 test("Rust test map finds integration tests by literal evidence", async () => {
 	const repo = rustRepo();
 	try {

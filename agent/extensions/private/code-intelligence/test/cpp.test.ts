@@ -23,11 +23,20 @@ function mockContext(cwd: string) {
 function cppRepo(): string {
 	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-cpp-"));
 	execFileSync("git", ["init", "-q"], { cwd: repo });
-	fs.writeFileSync(path.join(repo, "storage.cpp"), `namespace DB {
+	fs.writeFileSync(path.join(repo, "storage.cpp"), `#include <vector>
+#define STORAGE_LIMIT 5
+namespace DB {
+template <typename T> T identity(T value) { return value; }
 class StorageSystemTables {
 public:
+    int count;
+    StorageSystemTables();
+    ~StorageSystemTables();
     void fillData();
 };
+
+StorageSystemTables::StorageSystemTables() {}
+StorageSystemTables::~StorageSystemTables() {}
 
 void helper() {
     fillDataFree();
@@ -45,6 +54,21 @@ void fillDataFree() {
 `);
 	return repo;
 }
+
+test("C++ file outline reports namespace, class members, templates, and macros", async () => {
+	const repo = cppRepo();
+	const tools = loadTools();
+	const outline = parseToolResult(await tools.get("code_intel_file_outline")!.execute("outline", { path: "storage.cpp", maxSymbols: 80, detail: "snippets" }, undefined, undefined, mockContext(repo)));
+	assert.equal(outline.ok, true);
+	assert.deepEqual(outline.imports, ["vector"]);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "namespace_definition" && row.name === "DB"), true);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "class_specifier" && row.name === "StorageSystemTables"), true);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "field_declaration" && row.name === "count" && row.owner === "StorageSystemTables"), true);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "method_declaration" && row.name === "StorageSystemTables" && row.owner === "StorageSystemTables"), true);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "method_definition" && row.name === "fillData" && row.owner === "StorageSystemTables"), true);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "template_declaration" && row.name === "identity"), true);
+	assert.equal(outline.declarations.some((row: any) => row.kind === "macro_definition" && row.name === "STORAGE_LIMIT"), true);
+});
 
 test("state reports clangd and impact map supports C++ changed-file routing as syntax evidence", async () => {
 	const repo = cppRepo();

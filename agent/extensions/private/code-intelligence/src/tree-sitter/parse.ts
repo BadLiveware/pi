@@ -153,6 +153,23 @@ export async function parseFiles(repoRoot: string, languages: string[], paths: s
 	return { parsedFiles, diagnostics, filesByLanguage, parsedByLanguage };
 }
 
+export function readSourceFileAsParsed(repoRoot: string, file: string, language: string): ParsedFile {
+	const absoluteFile = path.resolve(repoRoot, file);
+	const source = fs.readFileSync(absoluteFile, "utf8");
+	const lines = source.split(/\r?\n/);
+	const root: TreeSitterNode = {
+		type: "source_file",
+		startIndex: 0,
+		endIndex: source.length,
+		startPosition: { row: 0, column: 0 },
+		endPosition: { row: Math.max(0, lines.length - 1), column: lines.at(-1)?.length ?? 0 },
+		namedChildCount: 0,
+		namedChild: () => null,
+		childForFieldName: () => null,
+	};
+	return { file, absoluteFile, source, language, root, bundle: { parser: undefined, language: undefined, spec: { id: language, wasm: "", extensions: [] } } };
+}
+
 export function languagesForSyntaxSearch(language: string | undefined, paths: string[]): string[] {
 	if (language?.trim()) return [language.trim()];
 	const pathExtensions = paths.map((item) => path.extname(item)).filter(Boolean);
