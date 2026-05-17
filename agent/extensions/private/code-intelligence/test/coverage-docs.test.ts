@@ -30,6 +30,8 @@ test("language registry coverage stays aligned with provider metadata", () => {
 	assert.equal(capabilities.get("rust")?.features.diagnostics.includes("rust-analyzer"), true);
 	assert.deepEqual(capabilities.get("python")?.features.diagnostics, ["pyrefly", "ty", "basedpyright", "pyright"]);
 	assert.equal(capabilities.get("cpp")?.features.diagnostics.includes("clangd"), true);
+	assert.equal(capabilities.get("csharp")?.features.exactReferences.includes("csharp-ls"), true);
+	assert.equal(capabilities.get("csharp")?.features.diagnostics.includes("csharp-ls"), true);
 	assert.equal(capabilities.get("markdown")?.features.impact, "doc");
 	assert.equal(capabilities.get("markdown")?.features.mutateSymbol, true);
 	assert.equal(capabilities.get("markdown")?.features.syntaxSearch, false);
@@ -54,7 +56,7 @@ test("README language coverage table names requested language behavior", () => {
 
 test("code-intelligence skill guidance avoids stale diagnostic and Markdown claims", () => {
 	const skill = readExtensionFile("skills/code-intelligence/SKILL.md");
-	assert.match(skill, /includeDiagnostics:true[\s\S]*gopls check[\s\S]*Rust Analyzer[\s\S]*Pyrefly[\s\S]*ty[\s\S]*basedpyright\/pyright[\s\S]*clangd[\s\S]*ShellCheck[\s\S]*zsh -n[\s\S]*markdownlint-cli2/);
+	assert.match(skill, /includeDiagnostics:true[\s\S]*gopls check[\s\S]*Rust Analyzer[\s\S]*Pyrefly[\s\S]*ty[\s\S]*basedpyright\/pyright[\s\S]*clangd[\s\S]*csharp-ls[\s\S]*ShellCheck[\s\S]*zsh -n[\s\S]*markdownlint-cli2/);
 	assert.match(skill, /Markdown rows as document-structure routing, not code semantics/);
 	assert.match(skill, /zsh[\s\S]*Bash grammar/);
 	assert.doesNotMatch(skill, /current TypeScript\/JavaScript touched-file diagnostics/);

@@ -33,7 +33,7 @@ export interface CodeIntelTestMapParams {
 	testPaths?: string[];
 	maxResults?: number;
 	maxLiteralMatches?: number;
-	confirmReferences?: "gopls" | "typescript" | "clangd" | "rust-analyzer";
+	confirmReferences?: "gopls" | "typescript" | "clangd" | "rust-analyzer" | "csharp-ls";
 	maxReferenceRoots?: number;
 	maxReferenceResults?: number;
 	timeoutMs?: number;

@@ -142,7 +142,7 @@ export function registerTargetedContextTools(pi: ExtensionAPI): void {
 			includeChangedSymbols: Type.Optional(Type.Boolean({ description: "Include changed declaration ranges/read hints. Default true." })),
 			includeCallers: Type.Optional(Type.Boolean({ description: "Include likely caller/consumer rows via impact map. Default true." })),
 			includeTests: Type.Optional(Type.Boolean({ description: "Include likely test candidates. Default true." })),
-			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Collect current touched-file diagnostics from applicable providers such as TypeScript, gopls, Rust Analyzer, Python providers, clangd, ShellCheck, zsh -n, or markdownlint-cli2, and use supplied diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
+			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Collect current touched-file diagnostics from applicable providers such as TypeScript, gopls, Rust Analyzer, Python providers, clangd, csharp-ls, ShellCheck, zsh -n, or markdownlint-cli2, and use supplied diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
 			diagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), Type.Unknown()), { description: "Optional LSP/compiler diagnostics with path, line, column, endLine/endColumn, severity, source, code, and message." })),
 			avoidReReadingCompleteReturnedSegments: Type.Optional(Type.Boolean({ description: "Avoid re-suggesting exact complete source segments unless freshness or diagnostics make them relevant. Default true." })),
 			maxResults: Type.Optional(Type.Number({ description: "Maximum related/test rows returned. Defaults to config maxResults." })),

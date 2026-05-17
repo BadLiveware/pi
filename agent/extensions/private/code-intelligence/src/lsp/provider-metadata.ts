@@ -148,11 +148,16 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		supportedLanguages: ["csharp"],
 		command: "csharp-ls",
 		versionArgs: ["--version"],
-		capabilities: capabilities("planned", "planned"),
+		capabilities: capabilities("implemented", "implemented"),
 		evidence: { references: "csharp-ls:textDocument/references", diagnostics: "csharp-ls:publishDiagnostics" },
 		missingDiagnostic: "csharp-ls not found on PATH",
+		noRootsDiagnostic: "No C# roots with current-source definition locations were available for csharp-ls confirmation.",
 		workspacePrerequisites: [".sln or .csproj workspace discovery"],
-		limitations: ["C# provider selection is pending fixture validation; impact maps work without this provider."],
+		limitations: [
+			"csharp-ls confirmation is opt-in and only runs for C# roots with current-source definition locations.",
+			"csharp-ls diagnostics are current touched-file diagnostics unless a future baseline marks rows as new.",
+			"The default C# routing map remains Tree-sitter syntax evidence and does not require csharp-ls.",
+		],
 	},
 	{
 		name: "shellcheck",
