@@ -71,6 +71,20 @@ function latestBreakoutPackageIds(state: LoopState): string[] {
 	return state.breakoutPackages.slice(-3).map((breakout) => breakout.id);
 }
 
+function passedAuditorCoversReport(state: LoopState, reportId: string): boolean {
+	return state.auditorReviews.some((review) => review.status === "passed" && review.finalReportIds.includes(reportId) && review.requiredFollowups.length === 0);
+}
+
+function passedAuditorCoversCriterion(state: LoopState, criterionId: string): boolean {
+	return state.auditorReviews.some((review) => review.status === "passed" && review.criterionIds.includes(criterionId) && review.requiredFollowups.length === 0);
+}
+
+function reportNeedsAuditorReview(state: LoopState, report: LoopState["finalVerificationReports"][number]): boolean {
+	if (!report.unresolvedGaps.length && !report.validation.some((record) => record.result !== "passed")) return false;
+	if (report.validation.some((record) => record.result === "failed")) return true;
+	return !passedAuditorCoversReport(state, report.id);
+}
+
 function finding(input: Omit<PolicyFinding, "criterionIds" | "artifactIds" | "finalReportIds" | "auditorReviewIds" | "breakoutPackageIds" | "workerReportIds" | "advisoryHandoffIds" | "attemptIds" | "outsideRequestIds"> & Partial<Pick<PolicyFinding, "criterionIds" | "artifactIds" | "finalReportIds" | "auditorReviewIds" | "breakoutPackageIds" | "workerReportIds" | "advisoryHandoffIds" | "attemptIds" | "outsideRequestIds">>): PolicyFinding {
 	return {
 		criterionIds: [],
@@ -92,9 +106,9 @@ function failedOrBlockedAttempts(state: LoopState) {
 
 export function evaluateAuditorPolicy(state: LoopState): AuditorPolicyResult {
 	const findings: PolicyFinding[] = [];
-	const failedOrBlocked = criteriaByStatus(state, new Set(["failed", "blocked"]));
-	const skipped = criteriaByStatus(state, new Set(["skipped"]));
-	const reportsWithGaps = state.finalVerificationReports.filter((report) => report.unresolvedGaps.length > 0 || report.validation.some((record) => record.result !== "passed"));
+	const failedOrBlocked = criteriaByStatus(state, new Set(["failed", "blocked"])).filter((criterion) => !passedAuditorCoversCriterion(state, criterion.id));
+	const skipped = criteriaByStatus(state, new Set(["skipped"])).filter((criterion) => !passedAuditorCoversCriterion(state, criterion.id));
+	const reportsWithGaps = state.finalVerificationReports.filter((report) => reportNeedsAuditorReview(state, report));
 	const riskyWorkerReports = state.workerReports.filter((report) => report.status === "needs_review" || report.risks.length > 0 || report.openQuestions.length > 0 || report.reviewHints.length > 0 || report.validation.some((record) => record.result !== "passed"));
 	const implementerHandoffs = state.advisoryHandoffs.filter((handoff) => handoff.role === "implementer" && (handoff.status === "answered" || handoff.status === "requested"));
 	const openBreakouts = state.breakoutPackages.filter((breakout) => breakout.status === "open" || breakout.status === "draft");

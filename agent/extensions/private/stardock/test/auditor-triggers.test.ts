@@ -33,6 +33,38 @@ test("completion marker creates auditor request when auditor gate is active", as
 	}
 });
 
+test("completion marker does not create repeat auditor requests for accepted final-report gaps", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-auditor-trigger-test-"));
+	try {
+		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const ledger = tools.get("stardock_ledger");
+		const report = tools.get("stardock_final_report");
+		const auditor = tools.get("stardock_auditor");
+		assert.ok(start);
+		assert.ok(ledger);
+		assert.ok(report);
+		assert.ok(auditor);
+
+		await start.execute("tool-accepted-gap-start", { name: "Accepted Gap Loop", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await ledger.execute("tool-accepted-gap-criterion", { action: "upsertCriterion", loopName: "Accepted_Gap_Loop", id: "c-pass", description: "Passed criterion", passCondition: "Evidence exists.", status: "passed" }, undefined, undefined, ctx);
+		await report.execute("tool-accepted-gap-report", { action: "record", loopName: "Accepted_Gap_Loop", id: "fr-gap", status: "passed", summary: "Passed with a disclosed gap.", criterionIds: ["c-pass"], validation: [{ result: "passed", summary: "Bounded checks passed." }], unresolvedGaps: ["External provider smoke test intentionally skipped."] }, undefined, undefined, ctx);
+		await auditor.execute("tool-accepted-gap-auditor", { action: "record", loopName: "Accepted_Gap_Loop", id: "ar-gap", status: "passed", summary: "Auditor accepts the disclosed final-report gap.", finalReportIds: ["fr-gap"] }, undefined, undefined, ctx);
+
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+		const beforeMessages = messages.length;
+		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "<promise>COMPLETE</promise>" }] }] }, ctx);
+
+		assert.equal(messages.length, beforeMessages, "completion should not enqueue another auditor request");
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Accepted_Gap_Loop"), "utf-8"));
+		assert.equal(state.status, "completed");
+		assert.equal(state.outsideRequests.filter((request: any) => request.kind === "auditor_review" && request.status === "requested").length, 0);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("recording an auditor review answers pending auditor requests", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-auditor-trigger-test-"));
 	try {

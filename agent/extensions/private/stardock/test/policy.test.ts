@@ -83,6 +83,31 @@ test("stardock_policy recommends auditor review for skipped evidence and report 
 	}
 });
 
+test("stardock_policy stops recommending final-report gap audits after a passed review covers the report", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Auditor Accepted Gap");
+	try {
+		const ledger = tools.get("stardock_ledger");
+		const finalReport = tools.get("stardock_final_report");
+		const auditor = tools.get("stardock_auditor");
+		const policy = tools.get("stardock_policy");
+		assert.ok(ledger);
+		assert.ok(finalReport);
+		assert.ok(auditor);
+		assert.ok(policy);
+		await ledger.execute("criteria", { action: "upsertCriterion", loopName: "Policy_Auditor_Accepted_Gap", id: "c-pass", description: "Passing check", passCondition: "Passed.", status: "passed" }, undefined, undefined, ctx);
+		await finalReport.execute("report", { action: "record", loopName: "Policy_Auditor_Accepted_Gap", id: "fr-gap", status: "passed", summary: "Passed with an explicit accepted gap.", criterionIds: ["c-pass"], validation: [{ result: "passed", summary: "Bounded checks passed." }], unresolvedGaps: ["External provider smoke test intentionally skipped."] }, undefined, undefined, ctx);
+		await auditor.execute("audit", { action: "record", loopName: "Policy_Auditor_Accepted_Gap", id: "ar-gap", status: "passed", summary: "Auditor accepts the disclosed final-report gap.", finalReportIds: ["fr-gap"] }, undefined, undefined, ctx);
+
+		const result = await policy.execute("policy", { action: "auditor", loopName: "Policy_Auditor_Accepted_Gap" }, undefined, undefined, ctx);
+		assert.equal(result.details.policy.recommended, false);
+		assert.equal(result.details.policy.status, "no_review_needed");
+		assert.match(result.content[0].text, /no-auditor-trigger/);
+		assert.doesNotMatch(result.content[0].text, /final-report-gap-review/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
 test("stardock_policy reports ready when criteria and evidence are complete", async () => {
 	const { cwd, tools, ctx } = await startLoop("Policy Ready");
 	try {
