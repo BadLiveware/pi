@@ -4,7 +4,11 @@ import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import { commandDiagnostic, findExecutable, runCommand } from "../../exec.ts";
 import { ensureInsideRoot } from "../../repo.ts";
+import { referenceProviderMetadata } from "../provider-metadata.ts";
 import type { ReferenceConfirmationContext, ReferenceConfirmationLimits, ReferenceConfirmationOptions, ReferenceConfirmationProvider, ReferenceRoot } from "../types.ts";
+
+const clangdMetadata = referenceProviderMetadata("clangd");
+const clangdReferenceEvidence = clangdMetadata.evidence.references ?? "clangd:textDocument/references";
 
 interface JsonRpcMessage {
 	id?: number | string;
@@ -74,7 +78,7 @@ function uriToLocation(repoRoot: string, location: any, root: ReferenceRoot): Re
 		endLine: range.end ? Number(range.end.line) + 1 : undefined,
 		endColumn: range.end ? Number(range.end.character) + 1 : undefined,
 		rootSymbol: root.name,
-		evidence: clangdReferenceProvider.evidence,
+		evidence: clangdReferenceEvidence,
 	};
 }
 
@@ -86,9 +90,9 @@ async function clangdVersion(executable: string, cwd: string, timeoutMs: number)
 
 async function confirmClangdRoots(roots: ReferenceRoot[], context: ReferenceConfirmationContext, options: ReferenceConfirmationOptions, limits: ReferenceConfirmationLimits) {
 	const executable = findExecutable("clangd");
-	if (!executable) return { roots: [], references: [], diagnostics: [clangdReferenceProvider.missingDiagnostic], limitations: clangdReferenceProvider.limitations };
+	if (!executable) return { roots: [], references: [], diagnostics: [clangdMetadata.missingDiagnostic], limitations: clangdMetadata.limitations };
 	const compileCommandsDir = findCompileCommandsDir(context.repoRoot);
-	if (!compileCommandsDir) return { executable, roots: [], references: [], diagnostics: ["compile_commands.json not found in repo root or common build directories"], limitations: clangdReferenceProvider.limitations };
+	if (!compileCommandsDir) return { executable, roots: [], references: [], diagnostics: ["compile_commands.json not found in repo root or common build directories"], limitations: clangdMetadata.limitations };
 
 	const child = spawn(executable, [`--compile-commands-dir=${compileCommandsDir}`], { cwd: context.repoRoot, stdio: ["pipe", "pipe", "pipe"] });
 	let nextId = 1;
@@ -173,19 +177,15 @@ async function confirmClangdRoots(roots: ReferenceRoot[], context: ReferenceConf
 	const stderr = Buffer.concat(stderrChunks).toString("utf-8").split(/\r?\n/).find((line) => line.trim());
 	if (stderr && diagnostics.length > 0) diagnostics.push(stderr.trim());
 	const version = await clangdVersion(executable, context.repoRoot, limits.timeoutMs);
-	return { executable, roots: confirmedRoots, references, diagnostics, limitations: clangdReferenceProvider.limitations, version, compileCommandsDir };
+	return { executable, roots: confirmedRoots, references, diagnostics, limitations: clangdMetadata.limitations, version, compileCommandsDir };
 }
 
 export const clangdReferenceProvider: ReferenceConfirmationProvider = {
 	name: "clangd",
-	evidence: "clangd:textDocument/references",
-	supportedLanguages: ["cpp"],
-	missingDiagnostic: "clangd not found on PATH",
-	noRootsDiagnostic: "No C/C++ roots with current-source definition locations were available for clangd confirmation.",
-	limitations: [
-		"clangd confirmation is opt-in and only runs for C/C++ roots with current-source definition locations.",
-		"clangd requires a usable compile_commands.json; missing or stale compile databases make reference confirmation unavailable or incomplete.",
-		"The default routing map remains Tree-sitter syntax evidence; read the returned files before making compatibility or defect claims.",
-	],
+	evidence: clangdReferenceEvidence,
+	supportedLanguages: clangdMetadata.supportedLanguages,
+	missingDiagnostic: clangdMetadata.missingDiagnostic,
+	noRootsDiagnostic: clangdMetadata.noRootsDiagnostic ?? "No C/C++ roots with current-source definition locations were available for clangd confirmation.",
+	limitations: clangdMetadata.limitations,
 	confirmRoots: confirmClangdRoots,
 };

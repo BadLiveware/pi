@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { commandDiagnostic, findExecutable, runCommand } from "../../exec.ts";
 import { ensureInsideRoot } from "../../repo.ts";
+import { referenceProviderMetadata } from "../provider-metadata.ts";
 import type { ReferenceConfirmationContext, ReferenceConfirmationLimits, ReferenceConfirmationOptions, ReferenceConfirmationProvider, ReferenceRoot } from "../types.ts";
+
+const goplsMetadata = referenceProviderMetadata("gopls");
+const goplsReferenceEvidence = goplsMetadata.evidence.references ?? "gopls:references";
 
 function symbolColumn(repoRoot: string, root: ReferenceRoot): number {
 	try {
@@ -38,7 +42,7 @@ function parseGoplsReferenceLine(repoRoot: string, line: string): Record<string,
 async function confirmGoplsRoots(roots: ReferenceRoot[], context: ReferenceConfirmationContext, options: ReferenceConfirmationOptions, limits: ReferenceConfirmationLimits) {
 	const executable = findExecutable("gopls");
 	if (!executable) {
-		return { roots: [], references: [], diagnostics: [goplsReferenceProvider.missingDiagnostic], limitations: goplsReferenceProvider.limitations };
+		return { roots: [], references: [], diagnostics: [goplsMetadata.missingDiagnostic], limitations: goplsMetadata.limitations };
 	}
 
 	const confirmedRoots: Record<string, unknown>[] = [];
@@ -67,22 +71,19 @@ async function confirmGoplsRoots(roots: ReferenceRoot[], context: ReferenceConfi
 			if (references.length >= limits.maxResults) break;
 			const reference = parseGoplsReferenceLine(context.repoRoot, outputLine);
 			if (!reference) continue;
-			references.push({ ...reference, rootSymbol: root.name, evidence: goplsReferenceProvider.evidence });
+			references.push({ ...reference, rootSymbol: root.name, evidence: goplsReferenceEvidence });
 		}
 	}
 
-	return { executable, roots: confirmedRoots, references, diagnostics, limitations: goplsReferenceProvider.limitations };
+	return { executable, roots: confirmedRoots, references, diagnostics, limitations: goplsMetadata.limitations };
 }
 
 export const goplsReferenceProvider: ReferenceConfirmationProvider = {
 	name: "gopls",
-	evidence: "gopls:references",
-	supportedLanguages: ["go"],
-	missingDiagnostic: "gopls not found on PATH",
-	noRootsDiagnostic: "No Go roots with current-source definition locations were available for gopls confirmation.",
-	limitations: [
-		"gopls confirmation is opt-in and only runs for Go roots with current-source definition locations.",
-		"The default routing map remains Tree-sitter syntax evidence; read the returned files before making compatibility or defect claims.",
-	],
+	evidence: goplsReferenceEvidence,
+	supportedLanguages: goplsMetadata.supportedLanguages,
+	missingDiagnostic: goplsMetadata.missingDiagnostic,
+	noRootsDiagnostic: goplsMetadata.noRootsDiagnostic ?? "No Go roots with current-source definition locations were available for gopls confirmation.",
+	limitations: goplsMetadata.limitations,
 	confirmRoots: confirmGoplsRoots,
 };

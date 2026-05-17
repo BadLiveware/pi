@@ -31,6 +31,13 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal(state.languageServers.typescript.server, "typescript");
 	assert.equal(state.languageServers.typescript.available, "available");
 	assert.equal(["tsserver", "typescript-language-server", "typescript-language-service"].includes(state.languageServers.typescript.details.command), true);
+	assert.equal(state.semanticProviders.gopls.details.supportedLanguages.includes("go"), true);
+	assert.equal(state.semanticProviders.gopls.details.capabilities.references, "implemented");
+	assert.equal(state.semanticProviders.gopls.details.capabilities.diagnostics, "planned");
+	assert.equal(state.semanticProviders.typescript.details.capabilities.diagnostics, "implemented");
+	assert.equal(state.semanticProviders["csharp-ls"].details.supportedLanguages.includes("csharp"), true);
+	assert.equal(state.semanticProviders.shellcheck.details.capabilities.references, "none");
+	assert.equal(state.semanticProviders["markdownlint-cli2"].details.supportedLanguages.includes("markdown"), true);
 	assert.match(state.limitations.join("\n"), /availability-only/);
 	assert.deepEqual(state.config, { maxResults: 125, queryTimeoutMs: 30000, maxOutputBytes: 5000000 });
 	assert.equal(statuses.at(-1)?.key, "code-intel");

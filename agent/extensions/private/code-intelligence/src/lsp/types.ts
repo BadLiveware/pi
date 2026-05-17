@@ -1,6 +1,52 @@
-import type { CodeIntelConfig } from "../types.ts";
+import type { Availability, CodeIntelConfig, LanguageServerName } from "../types.ts";
 
 export type ReferenceConfirmationProviderName = "gopls" | "typescript" | "clangd";
+export type SemanticProviderName = ReferenceConfirmationProviderName | "rust-analyzer" | "pyright" | "basedpyright" | "jedi" | "csharp-ls" | "shellcheck" | "zsh" | "markdownlint-cli2";
+export type SemanticProviderCapabilityState = "implemented" | "planned" | "none";
+
+export interface SemanticProviderMetadata {
+	name: SemanticProviderName;
+	label: string;
+	supportedLanguages: string[];
+	command?: string;
+	commands?: string[];
+	packageName?: string;
+	versionArgs?: string[];
+	capabilities: {
+		references: SemanticProviderCapabilityState;
+		diagnostics: SemanticProviderCapabilityState;
+	};
+	evidence: {
+		references?: string;
+		diagnostics?: string;
+	};
+	missingDiagnostic: string;
+	noRootsDiagnostic?: string;
+	workspacePrerequisites?: string[];
+	limitations: string[];
+	legacyLanguageServer?: LanguageServerName;
+	statusKind?: "typescript";
+}
+
+export interface SemanticProviderStatus {
+	provider: SemanticProviderName;
+	label: string;
+	available: Availability;
+	executable?: string;
+	version?: string;
+	diagnostics: string[];
+	details: {
+		supportedLanguages: string[];
+		capabilities: SemanticProviderMetadata["capabilities"];
+		evidence: SemanticProviderMetadata["evidence"];
+		commands?: string[];
+		command?: string;
+		packageName?: string;
+		workspacePrerequisites?: string[];
+		limitations: string[];
+		[key: string]: unknown;
+	};
+}
 
 export interface ReferenceRoot {
 	name: string;

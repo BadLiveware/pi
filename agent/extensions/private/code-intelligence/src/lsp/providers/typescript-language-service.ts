@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
 import { ensureInsideRoot } from "../../repo.ts";
+import { referenceProviderMetadata } from "../provider-metadata.ts";
 import type { ReferenceConfirmationContext, ReferenceConfirmationLimits, ReferenceConfirmationOptions, ReferenceConfirmationProvider, ReferenceRoot } from "../types.ts";
+
+const typescriptMetadata = referenceProviderMetadata("typescript");
+const typescriptReferenceEvidence = typescriptMetadata.evidence.references ?? "typescript:references";
 
 const TS_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 const EXCLUDED_DIRS = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".turbo", ".cache"]);
@@ -152,9 +156,9 @@ async function confirmTypeScriptRoots(roots: ReferenceRoot[], context: Reference
 	try {
 		({ service, files } = createLanguageService(context.repoRoot, roots));
 	} catch (error) {
-		return { roots: [], references: [], diagnostics: [`TypeScript language service setup failed: ${error instanceof Error ? error.message : String(error)}`], limitations: typescriptReferenceProvider.limitations };
+		return { roots: [], references: [], diagnostics: [`TypeScript language service setup failed: ${error instanceof Error ? error.message : String(error)}`], limitations: typescriptMetadata.limitations };
 	}
-	if (files.length === 0) return { roots: [], references: [], diagnostics: ["No TypeScript/JavaScript files were available for TypeScript reference confirmation."], limitations: typescriptReferenceProvider.limitations };
+	if (files.length === 0) return { roots: [], references: [], diagnostics: ["No TypeScript/JavaScript files were available for TypeScript reference confirmation."], limitations: typescriptMetadata.limitations };
 
 	const confirmedRoots: Record<string, unknown>[] = [];
 	const references: Record<string, unknown>[] = [];
@@ -175,23 +179,20 @@ async function confirmTypeScriptRoots(roots: ReferenceRoot[], context: Reference
 			const isRootDefinition = reference.file === ensureInsideRoot(context.repoRoot, root.file) && reference.line === root.line && reference.column === position.column;
 			const definitionFlag = (entry as ts.ReferenceEntry & { isDefinition?: boolean }).isDefinition === true || isRootDefinition;
 			if (definitionFlag && options.includeDeclarations !== true) continue;
-			references.push({ ...reference, rootSymbol: root.name, evidence: typescriptReferenceProvider.evidence, isDefinition: definitionFlag });
+			references.push({ ...reference, rootSymbol: root.name, evidence: typescriptReferenceEvidence, isDefinition: definitionFlag });
 		}
 	}
 	service.dispose();
 
-	return { roots: confirmedRoots, references, diagnostics, limitations: typescriptReferenceProvider.limitations };
+	return { roots: confirmedRoots, references, diagnostics, limitations: typescriptMetadata.limitations };
 }
 
 export const typescriptReferenceProvider: ReferenceConfirmationProvider = {
 	name: "typescript",
-	evidence: "typescript:references",
-	supportedLanguages: ["typescript", "tsx", "javascript"],
-	missingDiagnostic: "typescript package not available to code-intelligence extension",
-	noRootsDiagnostic: "No TypeScript/JavaScript roots with current-source definition locations were available for TypeScript reference confirmation.",
-	limitations: [
-		"TypeScript confirmation is opt-in and uses the local TypeScript language service for current workspace files.",
-		"The default routing map remains Tree-sitter syntax evidence; read the returned files before making compatibility or defect claims.",
-	],
+	evidence: typescriptReferenceEvidence,
+	supportedLanguages: typescriptMetadata.supportedLanguages,
+	missingDiagnostic: typescriptMetadata.missingDiagnostic,
+	noRootsDiagnostic: typescriptMetadata.noRootsDiagnostic ?? "No TypeScript/JavaScript roots with current-source definition locations were available for TypeScript reference confirmation.",
+	limitations: typescriptMetadata.limitations,
 	confirmRoots: confirmTypeScriptRoots,
 };

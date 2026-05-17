@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import type { BackendName, BackendStatus, CodeIntelConfig, LanguageServerName, LanguageServerStatus, LoadedConfig, RepoRoots } from "../../types.ts";
 import { commandDiagnostic, findExecutable, firstLine, runCommand } from "../../exec.ts";
 import { IMPACT_LANGUAGE_IDS, LANGUAGE_SPECS, languageCapabilitySummary } from "../../languages.ts";
+import { languageServerStatusesFromProviders, legacyLanguageServerSemanticProviderStatuses, semanticProviderStatuses } from "../../lsp/provider-status.ts";
 
 function treeSitterStatus(): BackendStatus {
 	try {
@@ -48,57 +49,9 @@ async function rgStatus(repoRoot: string, config: CodeIntelConfig): Promise<Back
 	};
 }
 
-async function commandStatus(server: LanguageServerName, command: string, args: string[], repoRoot: string, config: CodeIntelConfig, missingDiagnostic?: string): Promise<LanguageServerStatus> {
-	const executable = findExecutable(command);
-	if (!executable) return { server, available: "missing", diagnostics: [missingDiagnostic ?? `${command} not found on PATH`] };
-	const result = await runCommand(executable, args, { cwd: repoRoot, timeoutMs: Math.min(config.queryTimeoutMs, 10_000), maxOutputBytes: Math.min(config.maxOutputBytes, 200_000) });
-	const diagnostic = commandDiagnostic(result);
-	return {
-		server,
-		available: diagnostic ? "error" : "available",
-		executable,
-		version: firstLine(result.stdout || result.stderr),
-		diagnostics: diagnostic ? [diagnostic] : [],
-	};
-}
-
-async function typescriptStatus(repoRoot: string, config: CodeIntelConfig): Promise<LanguageServerStatus> {
-	let library: { path?: string; version?: string; diagnostic?: string } = {};
-	try {
-		const require = createRequire(import.meta.url);
-		const packageJsonPath = require.resolve("typescript/package.json");
-		const packageJson = require(packageJsonPath) as { version?: string };
-		library = { path: packageJsonPath, version: packageJson.version };
-	} catch (error) {
-		library = { diagnostic: `typescript package not available: ${error instanceof Error ? error.message : String(error)}` };
-	}
-	const tsserver = findExecutable("tsserver");
-	if (tsserver) return { server: "typescript", available: "available", executable: tsserver, version: library.version, diagnostics: [], details: { command: "tsserver", libraryPath: library.path, versionProbe: "not-run" } };
-	const tsls = findExecutable("typescript-language-server");
-	if (!tsls) {
-		if (library.path) return { server: "typescript", available: "available", version: library.version, diagnostics: [], details: { command: "typescript-language-service", libraryPath: library.path } };
-		return { server: "typescript", available: "missing", diagnostics: ["tsserver or typescript-language-server not found on PATH", ...(library.diagnostic ? [library.diagnostic] : [])] };
-	}
-	const result = await runCommand(tsls, ["--version"], { cwd: repoRoot, timeoutMs: Math.min(config.queryTimeoutMs, 10_000), maxOutputBytes: Math.min(config.maxOutputBytes, 200_000) });
-	const diagnostic = commandDiagnostic(result);
-	return {
-		server: "typescript",
-		available: diagnostic ? "error" : "available",
-		executable: tsls,
-		version: firstLine(result.stdout || result.stderr) ?? library.version,
-		diagnostics: diagnostic ? [diagnostic] : [],
-		details: { command: "typescript-language-server", libraryPath: library.path },
-	};
-}
-
 export async function languageServerStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<LanguageServerName, LanguageServerStatus>> {
-	const [gopls, rustAnalyzer, typescript, clangd] = await Promise.all([
-		commandStatus("gopls", "gopls", ["version"], repoRoot, config),
-		commandStatus("rust-analyzer", "rust-analyzer", ["--version"], repoRoot, config),
-		typescriptStatus(repoRoot, config),
-		commandStatus("clangd", "clangd", ["--version"], repoRoot, config),
-	]);
-	return { gopls, "rust-analyzer": rustAnalyzer, typescript, clangd };
+	const providers = await legacyLanguageServerSemanticProviderStatuses(repoRoot, config);
+	return languageServerStatusesFromProviders(providers);
 }
 
 export async function backendStatuses(repoRoot: string, config: CodeIntelConfig): Promise<Record<BackendName, BackendStatus>> {
@@ -106,7 +59,7 @@ export async function backendStatuses(repoRoot: string, config: CodeIntelConfig)
 	return { "tree-sitter": treeSitterStatus(), rg };
 }
 
-export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statuses: Record<BackendName, BackendStatus>, includeDiagnostics: boolean, languageServers?: Record<LanguageServerName, LanguageServerStatus>): Record<string, unknown> {
+export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statuses: Record<BackendName, BackendStatus>, includeDiagnostics: boolean, languageServers?: Record<LanguageServerName, LanguageServerStatus>, semanticProviders?: Awaited<ReturnType<typeof semanticProviderStatuses>>): Record<string, unknown> {
 	const payload: Record<string, unknown> = {
 		repoRoot: roots.repoRoot,
 		requestedRoot: roots.requestedRoot,
@@ -123,12 +76,13 @@ export function statePayload(roots: RepoRoots, loadedConfig: LoadedConfig, statu
 		],
 	};
 	if (languageServers) payload.languageServers = languageServers;
+	if (semanticProviders) payload.semanticProviders = semanticProviders;
 	if (includeDiagnostics) {
 		payload.diagnostics = [
 			...roots.diagnostics,
 			...loadedConfig.diagnostics,
 			...Object.values(statuses).flatMap((status) => status.diagnostics),
-			...Object.values(languageServers ?? {}).flatMap((status) => status.diagnostics),
+			...(semanticProviders ? Object.values(semanticProviders).flatMap((status) => status.diagnostics) : Object.values(languageServers ?? {}).flatMap((status) => status.diagnostics)),
 		];
 	}
 	return payload;

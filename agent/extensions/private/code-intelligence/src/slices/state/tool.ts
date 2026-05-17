@@ -7,7 +7,8 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { loadConfig } from "../../config.ts";
 import { setCodeIntelStatusSummary } from "./footer-status.ts";
 import { resolveRepoRoots } from "../../repo.ts";
-import { backendStatuses, languageServerStatuses, statePayload } from "./run.ts";
+import { backendStatuses, statePayload } from "./run.ts";
+import { languageServerStatusesFromProviders, legacyLanguageServerSemanticProviderStatuses, semanticProviderStatuses } from "../../lsp/provider-status.ts";
 import { appendExpandHint, asRecord, backendAvailable, compactPath, renderBold, renderColor, renderLines, renderStatus, renderToolCall, type StatusStyle } from "../../core/tool-render.ts";
 import type { CodeIntelStateParams } from "../../types.ts";
 
@@ -139,9 +140,10 @@ export async function refreshFooterStatus(ctx: ExtensionContext): Promise<void> 
 	try {
 		const loadedConfig = loadConfig(ctx);
 		const roots = await resolveRepoRoots(ctx);
-		const [statuses, languageServers] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), languageServerStatuses(roots.repoRoot, loadedConfig.config)]);
+		const [statuses, semanticProviders] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), legacyLanguageServerSemanticProviderStatuses(roots.repoRoot, loadedConfig.config)]);
+		const languageServers = languageServerStatusesFromProviders(semanticProviders);
 		setCodeIntelStatusSummary(ctx, statuses, languageServers, roots.repoRoot);
-		recordRuntimeOperation({ operation: "session_start", repoRoot: roots.repoRoot, ok: statuses["tree-sitter"].available === "available", results: { backends: statuses, languageServers } });
+		recordRuntimeOperation({ operation: "session_start", repoRoot: roots.repoRoot, ok: statuses["tree-sitter"].available === "available", results: { backends: statuses, languageServers, semanticProviders } });
 	} catch (error) {
 		recordRuntimeOperation({ operation: "session_start", ok: false, error: errorMessage(error) });
 		setCodeIntelStatus(ctx, "ci:error", "error");
@@ -169,9 +171,10 @@ export function registerStateTool(pi: ExtensionAPI): void {
 		async execute(_toolCallId: string, params: CodeIntelStateParams, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const loadedConfig = loadConfig(ctx);
 			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const [statuses, languageServers] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), languageServerStatuses(roots.repoRoot, loadedConfig.config)]);
+			const [statuses, semanticProviders] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), semanticProviderStatuses(roots.repoRoot, loadedConfig.config)]);
+			const languageServers = languageServerStatusesFromProviders(semanticProviders);
 			setCodeIntelStatusSummary(ctx, statuses, languageServers, roots.repoRoot);
-			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true, languageServers) as Record<string, unknown>;
+			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true, languageServers, semanticProviders) as Record<string, unknown>;
 			if (params.includeDiagnostics === true) payload.runtimeDiagnostics = runtimeDiagnostics(roots.repoRoot);
 			return { content: [{ type: "text", text: compactCodeIntelOutput("state", payload) }], details: payload };
 		},
