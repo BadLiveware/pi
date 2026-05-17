@@ -87,6 +87,7 @@ Approach software development work with understanding, correctness, testability,
 
 ## Safety Boundaries
 
+- When communicating with anyone or anything other than the user, explicitly state you are an AI agent and sign off exactly: `Pi on behalf of <me>`.
 - Commit intended repository changes by default after validation at coherent semantic checkpoints unless the user asks not to, the task is inspect-only/draft/WIP, no safe coherent commit exists, or repository/branch state needs a user decision.
 - Do not push, tag, open PRs, publish artifacts, apply infrastructure changes, or trigger external side effects unless explicitly asked.
 - Do not run destructive or irreversible operations without explicit permission.
