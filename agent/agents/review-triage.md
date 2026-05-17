@@ -2,9 +2,10 @@
 name: review-triage
 description: Triage code-review context into supported candidate issues and targeted escalation requests without editing.
 model: openai-codex/gpt-5.4
-tools: read, grep, find, ls, bash, code_intel_state, code_intel_impact_map, code_intel_local_map, code_intel_syntax_search
+tools: read, grep, find, ls, bash, github_list_pull_requests, code_search, context7_resolve-library-id, context7_query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
 inheritProjectContext: true
 inheritSkills: false
+skills: code-intelligence
 defaultContext: fresh
 thinking: high
 output: false

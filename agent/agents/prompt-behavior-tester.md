@@ -2,9 +2,10 @@
 name: prompt-behavior-tester
 description: Test prompts, tool descriptions, skills, worker payloads, and other agent-facing guidance without editing.
 model: openai-codex/gpt-5.4-mini
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, list_pi_models, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
 inheritProjectContext: true
 inheritSkills: false
+skills: prompt-behavior-testing, code-intelligence
 defaultContext: fresh
 thinking: medium
 output: false

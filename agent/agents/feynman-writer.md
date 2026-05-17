@@ -2,7 +2,9 @@
 name: feynman-writer
 description: Turn research notes into clear, structured briefs and drafts.
 thinking: medium
-tools: read, bash, write, edit
+tools: read, bash, write, edit, document_parse
+inheritSkills: false
+skills: paper-writing, documentation-writing, parse-document
 output: draft.md
 defaultProgress: true
 ---

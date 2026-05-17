@@ -2,9 +2,10 @@
 name: plan-reviewer
 description: Review implementation plans for executable order, topology, acceptance criteria, validation, safety gates, and Stardock handoff readiness.
 model: openai-codex/gpt-5.4
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, excession_excession_model_guide
 inheritProjectContext: true
 inheritSkills: false
+skills: code-intelligence
 defaultContext: fresh
 thinking: high
 output: false
@@ -26,6 +27,7 @@ Check only issues that would materially affect execution or reviewability:
 - Task granularity: each leaf task is coherent, independently testable/reviewable, and a plausible commit/PR boundary.
 - Acceptance criteria: tasks have concrete pass/fail conditions.
 - Validation: commands or inspections are exact where knowable, include expected signals, and name explicit gaps.
+- Behavior modeling: cost/bounds, resource lifecycle, state/protocol, concurrency, progress, data-shape, or idempotency risks are assigned a concrete test/model/review lane instead of vague caution.
 - File specificity: affected paths or subsystems are exact enough for the next worker.
 - Safety gates: destructive, irreversible, credentialed, external, migration, data-loss, public-contract, or compatibility actions are called out for approval.
 - Artifact hygiene: produced code/docs/generated outputs will not mention plan/stage/checklist metadata unless the product domain requires it.

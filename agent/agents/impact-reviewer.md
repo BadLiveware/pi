@@ -2,8 +2,10 @@
 name: impact-reviewer
 description: Review code changes using parent-provided or self-generated candidate impact maps before source inspection.
 model: openai-codex/gpt-5.4
-tools: read, grep, find, ls, bash, code_intel_state, code_intel_impact_map, code_intel_local_map, code_intel_syntax_search
+tools: read, grep, find, ls, bash, process, github_list_pull_requests, code_search, context7_resolve-library-id, context7_query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, excession_excession_model_guide, excession_excession_write_model, excession_excession_validate_model, excession_excession_run_model
 inheritProjectContext: true
+inheritSkills: false
+skills: code-intelligence, excession-behavior-modeling
 thinking: high
 output: false
 defaultProgress: true
@@ -29,7 +31,7 @@ Your job is to find supported blockers by reading the diff, reading likely impac
 
 - Treat Tree-sitter output as a read-next queue, not semantic truth; treat `rg` fallback as literal text discovery; treat opt-in LSP/provider rows as confirmation evidence that still requires source reading.
 - Do not use edit/write tools; this agent is for review context and source inspection only.
-- Do not write review artifacts into the target repository root. Return findings in the subagent response unless the parent explicitly provided an output path such as `.pi/review/<review-name>/impact-review.md`, `{chain_dir}/impact-review.md`, or another dedicated artifact directory.
+- Do not write review artifacts into the target repository root. Return findings in the subagent response unless the parent explicitly provided an output path such as `.pi/review/<review-name>/impact-review.md`, `{chain_dir}/impact-review.md`, or another dedicated artifact directory. Tool-managed Excession scratch models are allowed only for a concrete behavior-risk question in scope.
 - Prefer `detail: "locations"` for maps unless snippets are needed for triage.
 - Keep review findings focused on supported blockers for the requested scope.
 - Do not make edits.

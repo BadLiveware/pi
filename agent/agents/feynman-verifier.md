@@ -2,7 +2,9 @@
 name: feynman-verifier
 description: Post-process a draft to add inline citations and verify every source URL.
 thinking: medium
-tools: read, bash, write, edit, web_search, fetch_content, get_search_content
+tools: read, bash, write, edit, web_search, web_fetch, batch_web_fetch, greedy_search, kagi_search, fetch_content, get_search_content, code_search, document_parse, context7_resolve-library-id, context7_query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
+inheritSkills: false
+skills: source-comparison, code-intelligence, parse-document
 output: cited.md
 defaultProgress: true
 ---

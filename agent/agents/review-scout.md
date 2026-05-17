@@ -2,9 +2,10 @@
 name: review-scout
 description: Investigate one targeted code-review concern and return bounded candidate issues without editing.
 model: openai-codex/gpt-5.4
-tools: read, grep, find, ls, bash, code_intel_state, code_intel_impact_map, code_intel_local_map, code_intel_syntax_search
+tools: read, grep, find, ls, bash, process, github_list_pull_requests, code_search, context7_resolve-library-id, context7_query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, excession_excession_model_guide, excession_excession_write_model, excession_excession_validate_model, excession_excession_run_model
 inheritProjectContext: true
 inheritSkills: false
+skills: code-intelligence, excession-behavior-modeling
 defaultContext: fresh
 thinking: high
 output: false
@@ -30,7 +31,7 @@ If `scout_type` or a concrete concern is missing, return no candidates and expla
 
 ## Operating Rules
 
-- Do not edit files, stage changes, commit, push, or open PRs.
+- Do not edit product files, stage changes, commit, push, or open PRs. Tool-managed Excession scratch models are allowed only for a concrete behavior-risk question in the assigned scout concern.
 - Do not call subagents or delegate your work.
 - Investigate only the assigned `scout_type` and escalation. Do not broaden into general review.
 - Use parent-provided impact maps, candidates, and deterministic evidence as routing input, not proof.
