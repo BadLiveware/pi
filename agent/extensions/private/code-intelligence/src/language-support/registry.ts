@@ -82,8 +82,8 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "python",
 		category: "source",
 		supportLevel: "partial",
-		features: features({ impact: "code", exactReferences: ["pyright", "jedi"], diagnostics: ["pyright"] }),
-		limitations: ["Python routing is current-source syntax evidence; Pyright/Jedi references and diagnostics are planned provider features."],
+		features: features({ impact: "code", exactReferences: ["pyrefly", "ty", "pyright", "jedi"], diagnostics: ["pyrefly", "ty", "basedpyright", "pyright"] }),
+		limitations: ["Python routing is current-source syntax evidence; Python exact references are planned provider features."],
 	},
 	{
 		id: "cpp",

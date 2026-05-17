@@ -24,8 +24,8 @@ export type ParserSource =
 
 export type ImpactMode = "code" | "doc" | "none";
 export type LanguageSupportLevel = "strong" | "good" | "partial" | "parser" | "doc";
-export type DiagnosticProviderId = "typescript" | "gopls" | "rust-analyzer" | "pyright" | "clangd" | "csharp-ls" | "shellcheck" | "zsh" | "markdownlint";
-export type ReferenceProviderId = "typescript" | "gopls" | "rust-analyzer" | "pyright" | "jedi" | "clangd" | "csharp-ls" | "marksman";
+export type DiagnosticProviderId = "typescript" | "gopls" | "rust-analyzer" | "pyrefly" | "ty" | "basedpyright" | "pyright" | "clangd" | "csharp-ls" | "shellcheck" | "zsh" | "markdownlint";
+export type ReferenceProviderId = "typescript" | "gopls" | "rust-analyzer" | "pyrefly" | "ty" | "pyright" | "jedi" | "clangd" | "csharp-ls" | "marksman";
 
 export interface LanguageFeatureSupport {
 	overview: boolean;

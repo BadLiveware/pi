@@ -1,7 +1,7 @@
 import type { Availability, CodeIntelConfig, LanguageServerName } from "../types.ts";
 
 export type ReferenceConfirmationProviderName = "gopls" | "typescript" | "clangd" | "rust-analyzer";
-export type SemanticProviderName = ReferenceConfirmationProviderName | "pyright" | "basedpyright" | "jedi" | "csharp-ls" | "shellcheck" | "zsh" | "markdownlint-cli2";
+export type SemanticProviderName = ReferenceConfirmationProviderName | "pyrefly" | "ty" | "pyright" | "basedpyright" | "jedi" | "csharp-ls" | "shellcheck" | "zsh" | "markdownlint-cli2";
 export type SemanticProviderCapabilityState = "implemented" | "planned" | "none";
 
 export interface SemanticProviderMetadata {

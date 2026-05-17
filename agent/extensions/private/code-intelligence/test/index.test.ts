@@ -37,6 +37,10 @@ test("state reports Tree-sitter and rg without legacy artifact policy", async ()
 	assert.equal(state.semanticProviders.gopls.details.capabilities.references, "implemented");
 	assert.equal(state.semanticProviders.gopls.details.capabilities.diagnostics, "implemented");
 	assert.equal(state.semanticProviders.typescript.details.capabilities.diagnostics, "implemented");
+	assert.equal(state.semanticProviders.pyrefly.details.capabilities.diagnostics, "implemented");
+	assert.equal(state.semanticProviders.ty.details.capabilities.diagnostics, "implemented");
+	assert.equal(state.semanticProviders.basedpyright.details.capabilities.diagnostics, "implemented");
+	assert.equal(state.semanticProviders.pyright.details.capabilities.diagnostics, "implemented");
 	assert.equal(state.semanticProviders["csharp-ls"].details.supportedLanguages.includes("csharp"), true);
 	assert.equal(state.semanticProviders.shellcheck.details.capabilities.references, "none");
 	assert.equal(state.semanticProviders["markdownlint-cli2"].details.supportedLanguages.includes("markdown"), true);

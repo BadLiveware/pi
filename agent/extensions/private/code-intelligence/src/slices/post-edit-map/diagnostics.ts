@@ -5,6 +5,7 @@ import { ensureInsideRoot } from "../../repo.ts";
 import { isRecord } from "../../util.ts";
 import { collectGoplsDiagnostics } from "./providers/gopls.ts";
 import { collectMarkdownlintDiagnostics } from "./providers/markdownlint.ts";
+import { collectPythonDiagnostics } from "./providers/python.ts";
 import { collectRustAnalyzerDiagnostics } from "./providers/rust-analyzer.ts";
 import { collectShellCheckDiagnostics } from "./providers/shellcheck.ts";
 import { collectZshDiagnostics } from "./providers/zsh.ts";
@@ -233,19 +234,20 @@ async function collectTypeScriptDiagnostics(repoRoot: string, changedFiles: stri
 }
 
 export async function collectTouchedDiagnostics(repoRoot: string, changedFiles: string[], config: CodeIntelConfig, signal?: AbortSignal): Promise<DiagnosticCollectionResult> {
-	const [typescript, gopls, rustAnalyzer, shellcheck, zsh, markdownlint] = await Promise.all([
+	const [typescript, gopls, rustAnalyzer, python, shellcheck, zsh, markdownlint] = await Promise.all([
 		collectTypeScriptDiagnostics(repoRoot, changedFiles, config, signal),
 		collectGoplsDiagnostics(repoRoot, changedFiles, config, signal),
 		collectRustAnalyzerDiagnostics(repoRoot, changedFiles, config, signal),
+		collectPythonDiagnostics(repoRoot, changedFiles, config, signal),
 		collectShellCheckDiagnostics(repoRoot, changedFiles, config, signal),
 		collectZshDiagnostics(repoRoot, changedFiles, config, signal),
 		collectMarkdownlintDiagnostics(repoRoot, changedFiles, config, signal),
 	]);
 	return {
-		diagnostics: mergeDiagnostics(typescript.diagnostics, gopls.diagnostics, rustAnalyzer.diagnostics, shellcheck.diagnostics, zsh.diagnostics, markdownlint.diagnostics),
-		providerStatuses: [...typescript.providerStatuses, gopls.providerStatus, rustAnalyzer.providerStatus, shellcheck.providerStatus, zsh.providerStatus, markdownlint.providerStatus],
-		toolDiagnostics: [...typescript.toolDiagnostics, ...gopls.toolDiagnostics, ...rustAnalyzer.toolDiagnostics, ...shellcheck.toolDiagnostics, ...zsh.toolDiagnostics, ...markdownlint.toolDiagnostics],
-		limitations: [...new Set([...typescript.limitations, ...gopls.limitations, ...rustAnalyzer.limitations, ...shellcheck.limitations, ...zsh.limitations, ...markdownlint.limitations])],
+		diagnostics: mergeDiagnostics(typescript.diagnostics, gopls.diagnostics, rustAnalyzer.diagnostics, python.diagnostics, shellcheck.diagnostics, zsh.diagnostics, markdownlint.diagnostics),
+		providerStatuses: [...typescript.providerStatuses, gopls.providerStatus, rustAnalyzer.providerStatus, ...python.providerStatuses, shellcheck.providerStatus, zsh.providerStatus, markdownlint.providerStatus],
+		toolDiagnostics: [...typescript.toolDiagnostics, ...gopls.toolDiagnostics, ...rustAnalyzer.toolDiagnostics, ...python.toolDiagnostics, ...shellcheck.toolDiagnostics, ...zsh.toolDiagnostics, ...markdownlint.toolDiagnostics],
+		limitations: [...new Set([...typescript.limitations, ...gopls.limitations, ...rustAnalyzer.limitations, ...python.limitations, ...shellcheck.limitations, ...zsh.limitations, ...markdownlint.limitations])],
 	};
 }
 

@@ -109,20 +109,22 @@ Acceptance criteria:
 
 Add diagnostics provider:
 
-- Preferred: `pyright --outputjson <files>` or `basedpyright --outputjson <files>` when installed.
-- Parse JSON diagnostics into normalized rows.
-- Respect config files discovered by Pyright itself; do not implement custom type environment logic.
+- Preferred order: `pyrefly check --output-format json --summary=none <files>`, then `ty check --output-format gitlab --no-progress <files>`, then `basedpyright --outputjson <files>`, then `pyright --outputjson <files>` when installed.
+- Parse each tool's structured diagnostics into normalized rows.
+- Respect each tool's own config discovery; do not implement custom type environment logic.
 
 Add reference provider after diagnostics:
 
-- Candidate commands: `pyright-langserver --stdio` or `jedi-language-server`.
+- Candidate commands: `pyrefly` LSP, `ty server`, `pyright-langserver --stdio`, or `jedi-language-server`.
 - Use shared LSP session for `textDocument/references`.
-- Provider should be opt-in through `confirmReferences: "pyright"` or `"jedi"` after tool schemas are extended.
+- Provider should be opt-in only after tool schemas are extended and fake LSP tests cover the selected provider.
 
 Acceptance criteria:
 
-- Fake Pyright JSON test covers errors and warnings.
-- Missing Pyright/basedpyright returns unavailable status.
+- Fake Pyrefly JSON test covers errors and filters non-touched files.
+- Fake ty GitLab JSON test covers fallback diagnostics.
+- Fake basedpyright/pyright JSON test covers legacy fallback rows.
+- Missing Python providers return unavailable status.
 - Python post-edit diagnostics do not run project-wide by default.
 
 ### C++
