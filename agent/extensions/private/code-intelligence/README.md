@@ -40,7 +40,7 @@ For mapping and search tools, output means: "these are useful places to inspect 
 | Test selection | Ranked test candidates for a source file, symbol, or domain term. |
 | Pattern investigation | Explicit Tree-sitter syntax search for calls, selectors, keyed fields, object properties, or raw queries. |
 | Targeted symbol work | Complete declaration reads plus safe replace/insert operations around resolved symbol anchors. |
-| Post-edit follow-up | Changed symbols, likely callers/tests, and optional touched-file diagnostics after edits. |
+| Post-edit follow-up | Changed symbols, likely callers/tests, optional touched-file diagnostics, and automatic idle surfacing for current TypeScript/JavaScript diagnostics after edits. |
 | Extension troubleshooting | Parser, `rg`, optional LSP, config, footer, and runtime diagnostic state. |
 
 ## Tool Surface
@@ -87,6 +87,7 @@ The expected Pi workflow keeps these boundaries:
 - Empty or failed impact maps require checking coverage and limitation fields before falling back.
 - Standalone search remains useful for comments/docs/generated text, literal fallback beyond caps, and unsupported-language gaps.
 - Review subagents receive code-intel context from the parent when they do not have the tools themselves.
+- At agent quiescence, recent touched TypeScript/JavaScript files can surface current diagnostics as a safety net.
 
 ## Engines and Coverage
 
@@ -179,6 +180,8 @@ Builds a read-only follow-up map after edits or writes.
 It returns locator-mode changed symbols, likely caller/consumer rows, likely test candidates, and optional diagnostic-focused declaration targets. When changed files are omitted, it can use session-tracked files from recent edit/write/code-intel mutation calls. It does not run tests, apply fixes, or mutate files.
 
 With diagnostics enabled, it can merge supplied diagnostics with current TypeScript/JavaScript touched-file diagnostics. These diagnostics are not baseline-compared.
+
+If recent edits touched TypeScript/JavaScript files, the extension can automatically surface current touched-file diagnostics when the agent becomes idle. That automatic message is a safety net, not a replacement for project-native validation.
 
 ### `code_intel_state`
 

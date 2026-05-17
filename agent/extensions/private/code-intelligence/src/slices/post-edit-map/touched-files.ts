@@ -11,6 +11,8 @@ type TouchedFileRecord = {
 };
 
 const touchedFiles: TouchedFileRecord[] = [];
+const lastPostEditMapBySession = new Map<string, number>();
+const lastDiagnosticSurfaceBySession = new Map<string, number>();
 const maxTouchedFiles = 120;
 const maxAgeMs = 2 * 60 * 60 * 1000;
 
@@ -32,6 +34,8 @@ export function sessionIdFromContext(ctx: ExtensionContext): string {
 function compactOldRecords(now = Date.now()): void {
 	while (touchedFiles.length > 0 && now - touchedFiles[0].timestampMs > maxAgeMs) touchedFiles.shift();
 	while (touchedFiles.length > maxTouchedFiles) touchedFiles.shift();
+	for (const [sessionId, timestamp] of lastPostEditMapBySession) if (now - timestamp > maxAgeMs) lastPostEditMapBySession.delete(sessionId);
+	for (const [sessionId, timestamp] of lastDiagnosticSurfaceBySession) if (now - timestamp > maxAgeMs) lastDiagnosticSurfaceBySession.delete(sessionId);
 }
 
 function pathFromToolResult(event: Record<string, unknown>): string | undefined {
@@ -72,11 +76,11 @@ export function recordTouchedFileFromToolResult(event: unknown, ctx: ExtensionCo
 	compactOldRecords(now);
 }
 
-export function recentTouchedFilesForContext(ctx: ExtensionContext, repoRoot: string, max = 50): string[] {
+function recentTouchedFilesSince(ctx: ExtensionContext, repoRoot: string, max: number, sinceMs: number): string[] {
 	compactOldRecords();
 	const sessionId = sessionIdFromContext(ctx);
 	const rows = touchedFiles
-		.filter((record) => record.sessionId === sessionId)
+		.filter((record) => record.sessionId === sessionId && record.timestampMs > sinceMs)
 		.sort((left, right) => right.timestampMs - left.timestampMs);
 	const output: string[] = [];
 	const seen = new Set<string>();
@@ -95,9 +99,32 @@ export function recentTouchedFilesForContext(ctx: ExtensionContext, repoRoot: st
 	return output;
 }
 
+export function recentTouchedFilesForContext(ctx: ExtensionContext, repoRoot: string, max = 50): string[] {
+	return recentTouchedFilesSince(ctx, repoRoot, max, 0);
+}
+
+export function markPostEditMapForContext(ctx: ExtensionContext, now = Date.now()): void {
+	compactOldRecords(now);
+	lastPostEditMapBySession.set(sessionIdFromContext(ctx), now);
+}
+
+export function recentTouchedFilesNeedingDiagnosticsForContext(ctx: ExtensionContext, repoRoot: string, max = 50): string[] {
+	compactOldRecords();
+	const sessionId = sessionIdFromContext(ctx);
+	const sinceMs = Math.max(lastPostEditMapBySession.get(sessionId) ?? 0, lastDiagnosticSurfaceBySession.get(sessionId) ?? 0);
+	return recentTouchedFilesSince(ctx, repoRoot, max, sinceMs);
+}
+
+export function markDiagnosticsSurfacedForContext(ctx: ExtensionContext, now = Date.now()): void {
+	compactOldRecords(now);
+	lastDiagnosticSurfaceBySession.set(sessionIdFromContext(ctx), now);
+}
+
 export function clearTouchedFilesForContext(ctx: ExtensionContext): void {
 	const sessionId = sessionIdFromContext(ctx);
 	for (let index = touchedFiles.length - 1; index >= 0; index -= 1) {
 		if (touchedFiles[index].sessionId === sessionId) touchedFiles.splice(index, 1);
 	}
+	lastPostEditMapBySession.delete(sessionId);
+	lastDiagnosticSurfaceBySession.delete(sessionId);
 }

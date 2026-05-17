@@ -7,7 +7,8 @@ import { registerOrientationTools } from "./src/slices/orientation/tools.ts";
 import { registerStateTool, refreshFooterStatus } from "./src/slices/state/tool.ts";
 import { registerSyntaxSearchTool } from "./src/slices/syntax-search/tool.ts";
 import { registerTargetedContextTools } from "./src/slices/targeted-symbols/tools.ts";
-import { clearTouchedFilesForContext, recordTouchedFileFromToolResult } from "./src/slices/post-edit-map/touched-files.ts";
+import { registerDiagnosticSurfaceHooks } from "./src/slices/diagnostic-surface/hook.ts";
+import { clearTouchedFilesForContext, markPostEditMapForContext, recordTouchedFileFromToolResult } from "./src/slices/post-edit-map/touched-files.ts";
 import { recordUsageToolCall, recordUsageToolResult } from "./src/slices/usage/usage.ts";
 
 const extensionDir = path.dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,7 @@ export default function codeIntelligence(pi: ExtensionAPI): void {
 	pi.on("tool_result", (event, ctx) => {
 		recordUsageToolResult(event, ctx);
 		recordTouchedFileFromToolResult(event, ctx);
+		if (event.toolName === "code_intel_post_edit_map" && event.isError !== true) markPostEditMapForContext(ctx);
 	});
 	pi.on("session_shutdown", (_event, ctx) => clearTouchedFilesForContext(ctx));
 	pi.on("session_start", (_event, ctx) => {
@@ -25,6 +27,7 @@ export default function codeIntelligence(pi: ExtensionAPI): void {
 			void refreshFooterStatus(ctx);
 		}, 0);
 	});
+	registerDiagnosticSurfaceHooks(pi);
 	registerStateTool(pi);
 	registerOrientationTools(pi);
 	registerLocalMapTool(pi);
