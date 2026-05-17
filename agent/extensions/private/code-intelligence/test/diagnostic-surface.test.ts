@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import codeIntelligence from "./index.ts";
+import codeIntelligence from "../index.ts";
 
 function loadExtension(): { tools: Map<string, any>; handlers: Map<string, Array<(...args: any[]) => any>>; sentMessages: Array<{ message: any; options: any }> } {
 	const tools = new Map<string, any>();

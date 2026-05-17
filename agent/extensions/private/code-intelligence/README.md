@@ -301,7 +301,7 @@ Focused extension tests use small temp repos for determinism:
 ```bash
 cd agent/extensions
 npm run typecheck
-node --experimental-strip-types --test private/code-intelligence/index.test.ts
+node --experimental-strip-types --test private/code-intelligence/test/index.test.ts
 ```
 
 A small read-next quality fixture is available as a dogfood eval:

@@ -4,8 +4,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import codeIntelligence from "./index.ts";
-import { rangeLineCount, sliceLines, type SourceRange } from "./src/source-range.ts";
+import codeIntelligence from "../index.ts";
+import { rangeLineCount, sliceLines, type SourceRange } from "../src/source-range.ts";
 
 function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }> {
 	const tools = new Map<string, any>();

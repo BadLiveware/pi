@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import codeIntelligence from "./index.ts";
+import codeIntelligence from "../index.ts";
 
 function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }> {
 	const tools = new Map<string, any>();

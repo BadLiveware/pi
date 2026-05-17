@@ -3,8 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { codeIntelStatusSummary } from "./src/slices/state/footer-status.ts";
-import type { BackendName, BackendStatus, LanguageServerName, LanguageServerStatus } from "./src/types.ts";
+import { codeIntelStatusSummary } from "../src/slices/state/footer-status.ts";
+import type { BackendName, BackendStatus, LanguageServerName, LanguageServerStatus } from "../src/types.ts";
 
 function mockContext(cwd: string) {
 	return { cwd, ui: { theme: { fg: (_style: string, text: string) => text } } } as any;
