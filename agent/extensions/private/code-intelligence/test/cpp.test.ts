@@ -55,6 +55,55 @@ void fillDataFree() {
 	return repo;
 }
 
+async function withPath(pathValue: string, run: () => Promise<void>): Promise<void> {
+	const originalPath = process.env.PATH;
+	process.env.PATH = pathValue;
+	try {
+		await run();
+	} finally {
+		process.env.PATH = originalPath;
+	}
+}
+
+function writeFakeClangd(file: string): void {
+	fs.writeFileSync(file, `#!/usr/bin/env node
+if (process.argv.includes("--version")) {
+  console.log("fake clangd 1.0");
+  process.exit(0);
+}
+let buffer = Buffer.alloc(0);
+function write(message) {
+  const body = JSON.stringify(message);
+  process.stdout.write("Content-Length: " + Buffer.byteLength(body, "utf-8") + "\\r\\n\\r\\n" + body);
+}
+function parse() {
+  while (true) {
+    const headerEnd = buffer.indexOf("\\r\\n\\r\\n");
+    if (headerEnd < 0) return;
+    const header = buffer.subarray(0, headerEnd).toString("utf-8");
+    const match = /Content-Length:\\s*(\\d+)/i.exec(header);
+    if (!match) { buffer = buffer.subarray(headerEnd + 4); continue; }
+    const bodyStart = headerEnd + 4;
+    const bodyEnd = bodyStart + Number(match[1]);
+    if (buffer.length < bodyEnd) return;
+    const message = JSON.parse(buffer.subarray(bodyStart, bodyEnd).toString("utf-8"));
+    buffer = buffer.subarray(bodyEnd);
+    handle(message);
+  }
+}
+function handle(message) {
+  if (message.method === "initialize") write({ jsonrpc: "2.0", id: message.id, result: { capabilities: {} } });
+  else if (message.method === "textDocument/references") {
+    const uri = message.params?.textDocument?.uri;
+    write({ jsonrpc: "2.0", id: message.id, result: [{ uri, range: { start: { line: 20, character: 12 }, end: { line: 20, character: 20 } } }] });
+  } else if (message.method === "shutdown") write({ jsonrpc: "2.0", id: message.id, result: null });
+  else if (message.method === "exit") process.exit(0);
+}
+process.stdin.on("data", (chunk) => { buffer = Buffer.concat([buffer, chunk]); parse(); });
+`);
+	fs.chmodSync(file, 0o755);
+}
+
 test("C++ file outline reports namespace, class members, templates, and macros", async () => {
 	const repo = cppRepo();
 	const tools = loadTools();
@@ -82,6 +131,26 @@ test("state reports clangd and impact map supports C++ changed-file routing as s
 	assert.equal(impact.rootSymbols.includes("fillData"), true);
 	assert.equal(impact.related.some((row: any) => row.kind === "syntax_call" && row.text === "storage.fillData()"), true);
 	assert.match(impact.limitations.join("\n"), /not type-resolved semantic references/);
+});
+
+test("impact map confirms C++ references through fake clangd LSP", async () => {
+	const repo = cppRepo();
+	try {
+		fs.writeFileSync(path.join(repo, "compile_commands.json"), "[]\n");
+		const binDir = path.join(repo, "bin");
+		fs.mkdirSync(binDir);
+		writeFakeClangd(path.join(binDir, "clangd"));
+		await withPath(`${binDir}${path.delimiter}${process.env.PATH ?? ""}`, async () => {
+			const tools = loadTools();
+			const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { symbols: ["fillData"], confirmReferences: "clangd", maxReferenceRoots: 1, maxReferenceResults: 5, detail: "locations" }, undefined, undefined, mockContext(repo)));
+			assert.equal(impact.referenceConfirmation.backend, "clangd");
+			assert.equal(impact.referenceConfirmation.ok, true);
+			assert.equal(impact.referenceConfirmation.references.some((row: any) => row.file === "storage.cpp" && row.rootSymbol === "fillData" && row.evidence === "clangd:textDocument/references"), true);
+			assert.equal(impact.referenceConfirmation.summary.referenceCount, 1);
+		});
+	} finally {
+		fs.rmSync(repo, { recursive: true, force: true });
+	}
 });
 
 test("impact map reports clangd confirmation unavailable without compile commands", async () => {
