@@ -1,6 +1,7 @@
 /** Stardock session and agent lifecycle hooks. */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { matchesKey } from "@earendil-works/pi-tui";
 import { maybeCreateAutomaticAuditorRequest } from "../outside-requests.ts";
 import { COMPLETE_MARKER } from "../state/core.ts";
 import { existingStatePath, safeMtimeMs } from "../state/paths.ts";
@@ -10,6 +11,8 @@ import { getModeHandler } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
 
 export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntime): void {
+	let unsubscribeInterruptInput: (() => void) | undefined;
+
 	pi.on("before_agent_start", async (event, ctx) => {
 		if (!runtime.ref.currentLoop) return;
 		const state = loadState(ctx, runtime.ref.currentLoop);
@@ -53,6 +56,17 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		unsubscribeInterruptInput?.();
+		unsubscribeInterruptInput = ctx.hasUI
+			? ctx.ui.onTerminalInput((data) => {
+				if (!matchesKey(data, "escape") || ctx.isIdle() || !runtime.ref.currentLoop) return undefined;
+				const state = loadState(ctx, runtime.ref.currentLoop);
+				if (!state || state.status !== "active") return undefined;
+				ctx.abort();
+				return { consume: true };
+			})
+			: undefined;
+
 		const active = listLoops(ctx).filter((l) => l.status === "active");
 		if (!runtime.ref.currentLoop && active.length > 0) {
 			const mostRecent = active.reduce((best, candidate) => {
@@ -71,6 +85,8 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
+		unsubscribeInterruptInput?.();
+		unsubscribeInterruptInput = undefined;
 		if (runtime.ref.currentLoop) {
 			const state = loadState(ctx, runtime.ref.currentLoop);
 			if (state) saveState(ctx, state);

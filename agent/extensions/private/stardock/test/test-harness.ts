@@ -10,6 +10,9 @@ export function makeHarness(cwd: string) {
 	const notifications: string[] = [];
 	const statuses = new Map<string, string | undefined>();
 	const widgets = new Map<string, string[] | undefined>();
+	const terminalInputHandlers = new Set<(data: string) => { consume?: boolean; data?: string } | undefined>();
+	const aborts: string[] = [];
+	let idle = true;
 	const eventHandlers = new Map<string, Array<(data: unknown) => void>>();
 	const events = {
 		on(event: string, handler: (data: unknown) => void) {
@@ -47,10 +50,17 @@ export function makeHarness(cwd: string) {
 		cwd,
 		hasUI: true,
 		hasPendingMessages: () => false,
-		isIdle: () => true,
+		isIdle: () => idle,
+		abort: () => {
+			aborts.push("abort");
+		},
 		ui: {
 			notify(message: string) {
 				notifications.push(message);
+			},
+			onTerminalInput(handler: (data: string) => { consume?: boolean; data?: string } | undefined) {
+				terminalInputHandlers.add(handler);
+				return () => terminalInputHandlers.delete(handler);
 			},
 			setStatus(key: string, value: string | undefined) {
 				statuses.set(key, value);
@@ -70,7 +80,19 @@ export function makeHarness(cwd: string) {
 	} as any;
 
 	stardockLoop(pi);
-	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, eventHandlers, events, ctx };
+	const setIdle = (value: boolean) => {
+		idle = value;
+	};
+	const dispatchTerminalInput = (data: string) => {
+		let current = data;
+		for (const handler of [...terminalInputHandlers]) {
+			const result = handler(current);
+			if (result?.consume) return { consumed: true, data: current };
+			if (result?.data !== undefined) current = result.data;
+		}
+		return { consumed: false, data: current };
+	};
+	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, eventHandlers, events, ctx, setIdle, dispatchTerminalInput, aborts };
 }
 
 export function runDir(cwd: string, name: string, archived = false): string {
