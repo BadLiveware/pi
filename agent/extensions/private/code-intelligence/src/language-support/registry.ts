@@ -71,7 +71,7 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		category: "source",
 		supportLevel: "good",
 		features: features({ impact: "code", exactReferences: ["rust-analyzer"], diagnostics: ["rust-analyzer"] }),
-		limitations: ["Rust Analyzer references and diagnostics are planned provider features; current default routing is syntax evidence."],
+		limitations: ["Rust Analyzer references and diagnostics are optional provider features; current default routing is syntax evidence."],
 	},
 	{
 		id: "python",
@@ -82,8 +82,8 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		extractor: "python",
 		category: "source",
 		supportLevel: "partial",
-		features: features({ impact: "code", exactReferences: ["pyrefly", "ty", "pyright", "jedi"], diagnostics: ["pyrefly", "ty", "basedpyright", "pyright"] }),
-		limitations: ["Python routing is current-source syntax evidence; Python exact references are planned provider features."],
+		features: features({ impact: "code", exactReferences: ["pyrefly"], diagnostics: ["pyrefly", "ty", "basedpyright", "pyright"] }),
+		limitations: ["Python routing is current-source syntax evidence; Pyrefly is the default planned Python LSP for exact references."],
 	},
 	{
 		id: "cpp",
@@ -106,7 +106,7 @@ export const LANGUAGE_CAPABILITIES: LanguageCapability[] = [
 		category: "source",
 		supportLevel: "parser",
 		features: features({ impact: "code", exactReferences: ["csharp-ls"], diagnostics: ["csharp-ls"] }),
-		limitations: ["C# routing is current-source syntax evidence; exact references and diagnostics are planned provider features."],
+		limitations: ["C# routing is current-source syntax evidence by default; csharp-ls references and diagnostics are optional provider features."],
 	},
 	{
 		id: "bash",

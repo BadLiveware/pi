@@ -31,9 +31,9 @@ The extension should provide the most reasonable feature set per language withou
 - Impact support is hard-coded in `src/impact-support.ts` as Go, TypeScript, TSX, JavaScript, Rust, Python, and C++.
 - `src/tree-sitter.ts` currently owns parser loading, parsing, generic extraction, syntax search patterns, and impact-map logic. It is already large and should not receive more language behavior directly.
 - Rust has a dedicated extractor in `src/rust-records.ts`.
-- Optional exact-reference providers exist for Go (`gopls` command), TypeScript/JavaScript (TypeScript language service), and C++ (`clangd` LSP with `compile_commands.json`).
-- Touched-file diagnostics currently collect TypeScript/JavaScript diagnostics only.
-- State output reports availability for `gopls`, Rust Analyzer, TypeScript, and clangd. Rust Analyzer is availability-only today.
+- Optional exact-reference providers exist for Go (`gopls` command), TypeScript/JavaScript (TypeScript language service), Rust (`rust-analyzer`), C++ (`clangd` LSP with `compile_commands.json`), and C# (`csharp-ls`). Python reference support remains planned with Pyrefly as the default Python LSP once fixture tests prove reliable locations.
+- Touched-file diagnostics collect TypeScript/JavaScript, Go, Rust, Python, C/C++, C#, shell/zsh, and Markdown diagnostics through optional bounded providers where applicable.
+- State output reports availability for semantic providers from the provider metadata registry.
 - Tests are under `agent/extensions/private/code-intelligence/test/` and extension-wide validation is run from `agent/extensions`.
 
 ## Scope
@@ -102,7 +102,7 @@ The first slice is mandatory before adding substantial language behavior. Slices
 ### Milestone D: Provider Coverage
 
 - New optional providers are added with clear availability/status output and graceful failures.
-- Rust Analyzer, Pyright/basedpyright, clangd diagnostics, ShellCheck, Markdown lint/link checks, and C# Roslyn/csharp-ls are implemented only where bounded behavior is reliable.
+- Rust Analyzer, Python diagnostics (Pyrefly/ty/basedpyright/pyright), clangd diagnostics, ShellCheck, zsh syntax checks, Markdown lint, and csharp-ls are implemented only where bounded behavior is reliable.
 - Validation: provider unit tests with fake commands/LSP fixtures; provider absence tests prove default tools still work.
 
 ### Milestone E: Documentation and Agent Guidance
@@ -117,7 +117,7 @@ The first slice is mandatory before adding substantial language behavior. Slices
 - `code_intel_file_outline` succeeds on representative fixtures for each requested language, including Markdown headings and zsh files.
 - `code_intel_read_symbol` returns complete bounded source segments for representative declarations or sections in each requested language where mutation/read-symbol is supported.
 - `code_intel_impact_map` supports Go, Rust, TypeScript/JS, Python, C++, C#, Bash, and zsh with language-appropriate limitations; Markdown changed files are handled as doc routing rather than silently appearing unsupported.
-- Optional exact-reference providers remain opt-in and are available for Go, TypeScript/JS, C++, Rust, Python, and C# when local tooling is available.
+- Optional exact-reference providers remain opt-in and are available for Go, TypeScript/JS, C++, Rust, and C# when local tooling is available; Python exact references remain planned with Pyrefly as the default LSP provider after tests land.
 - Optional diagnostics are available for TypeScript/JS, Go, Rust, Python, C++, C#, Bash/zsh, and Markdown when local tooling is available.
 - Missing optional providers produce actionable diagnostics and do not fail default Tree-sitter routing.
 - Extension structure, typecheck, and tests pass from `agent/extensions`.

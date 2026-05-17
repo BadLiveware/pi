@@ -43,7 +43,7 @@ These are not npm package dependencies unless explicitly noted. They are local c
 | C# | OmniSharp | References and diagnostics fallback | Use only if command-line startup and protocol behavior are reliable in tests. |
 | C# | Roslyn LSP / `Microsoft.CodeAnalysis.LanguageServer` | References and diagnostics | Candidate for modern .NET workspaces; select after spike because install path varies. |
 | C# | `dotnet` | Status/project discovery | Report SDK availability and solution/project files. Do not run `dotnet build` by default. |
-| Go | `gopls` | Existing exact references; planned diagnostics | Existing provider uses `gopls references`. Diagnostics can use `gopls check` for touched files or shared LSP diagnostics. |
+| Go | `gopls` | Exact references and touched-file diagnostics | Provider uses `gopls references`; diagnostics use `gopls check` for touched files. |
 | Go | `go` | Project status/test hints | Status can report availability. Do not run `go test` automatically from code-intel tools. |
 | Rust | `rust-analyzer` | References and diagnostics | Use shared LSP client. Requires bounded Cargo workspace initialization and timeout. |
 | Rust | `cargo` | Workspace status and test-map hints | Report availability and detect `Cargo.toml`. Do not run builds/tests by default. |
@@ -54,13 +54,16 @@ These are not npm package dependencies unless explicitly noted. They are local c
 | Bash | `shfmt` | Formatting/status only | Not part of code-intel behavior unless a future formatting tool is created. |
 | zsh | `zsh` | Syntax diagnostics | Use `zsh -n <file>` for touched-file syntax diagnostics. |
 | zsh | `shellcheck` | Compatible-shell diagnostics | Use only when script dialect is sh/bash/ksh-compatible or the file opts in. Do not label ShellCheck output as full zsh validation. |
-| Python | `pyright` or `basedpyright` | Diagnostics | Prefer CLI `--outputjson` for touched-file diagnostics because it is easier to bound than a long-lived server. |
-| Python | `pyright-langserver` or `jedi-language-server` | Exact references | Use shared LSP client after provider tests prove reliable locations. |
+| Python | `pyrefly` | Preferred diagnostics | Prefer `pyrefly check --output-format json --summary=none` for touched-file diagnostics when available. |
+| Python | `ty` | Fallback diagnostics | Use `ty check --output-format gitlab --no-progress` as the next structured diagnostics fallback. |
+| Python | `basedpyright` or `pyright` | Legacy fallback diagnostics | Use CLI `--outputjson` for touched-file diagnostics after Pyrefly/ty are unavailable. |
+| Python | Pyrefly LSP | Default exact-reference candidate | Use shared LSP client only after provider tests prove reliable locations; no Python reference provider is exposed yet. |
+| Python | `ty server`, `pyright-langserver`, or `jedi-language-server` | Non-default exact-reference alternatives | Evaluate only if Pyrefly cannot provide reliable bounded locations in fixture tests. |
 | Python | `ruff` | Syntax/lint diagnostics | Optional supplemental diagnostics. Keep separate from type diagnostics. |
 | Markdown | `markdownlint-cli2` | Markdown diagnostics | Run on touched Markdown files with JSON output. |
 | Markdown | `marksman` or `markdown-oxide` | Links/references/diagnostics | Optional LSP provider after spike. |
 | Markdown | `lychee` or `markdown-link-check` | Link diagnostics | Optional explicit link-check provider, not default because network checks can be slow or flaky. |
-| C++ | `clangd` | Existing refs; planned diagnostics | Existing LSP reference provider. Refactor to shared LSP client and add diagnostics collection. |
+| C++ | `clangd` | Exact refs and touched-file diagnostics | Shared LSP provider supports references and publishDiagnostics with compile database detection. |
 | C++ | `compile_commands.json` | clangd prerequisite | Detect common locations and report the chosen compile DB directory. |
 
 ## `package.json` Changes by Phase

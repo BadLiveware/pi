@@ -89,7 +89,7 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		missingDiagnostic: "pyrefly not found on PATH",
 		limitations: [
 			"Pyrefly diagnostics are preferred for Python touched-file diagnostics when available.",
-			"Pyrefly reference confirmation is planned and is not exposed in confirmReferences yet.",
+			"Pyrefly is the default planned Python LSP for reference confirmation and is not exposed in confirmReferences yet.",
 		],
 	},
 	{
@@ -103,7 +103,7 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		missingDiagnostic: "ty not found on PATH",
 		limitations: [
 			"ty diagnostics are used as the second-choice Python provider because its documented CLI JSON surface is the GitLab code-quality output format.",
-			"ty reference confirmation is planned and is not exposed in confirmReferences yet.",
+			"ty server is a non-default Python reference alternative and is not exposed in confirmReferences yet.",
 		],
 	},
 	{
@@ -128,7 +128,7 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		missingDiagnostic: "pyright not found on PATH",
 		limitations: [
 			"Pyright diagnostics remain a Python fallback provider after Pyrefly, ty, and basedpyright.",
-			"Pyright reference confirmation is planned and is not exposed in confirmReferences yet.",
+			"Pyright reference confirmation is a non-default Python alternative and is not exposed in confirmReferences yet.",
 		],
 	},
 	{
@@ -140,7 +140,7 @@ export const SEMANTIC_PROVIDER_METADATA: SemanticProviderMetadata[] = [
 		capabilities: capabilities("planned", "none"),
 		evidence: { references: "jedi:textDocument/references" },
 		missingDiagnostic: "jedi-language-server not found on PATH",
-		limitations: ["Jedi reference confirmation is planned only after Python diagnostics land."],
+		limitations: ["Jedi reference confirmation is a non-default Python alternative and is not exposed in confirmReferences yet."],
 	},
 	{
 		name: "csharp-ls",

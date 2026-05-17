@@ -115,9 +115,10 @@ Add diagnostics provider:
 
 Add reference provider after diagnostics:
 
-- Candidate commands: `pyrefly` LSP, `ty server`, `pyright-langserver --stdio`, or `jedi-language-server`.
-- Use shared LSP session for `textDocument/references`.
-- Provider should be opt-in only after tool schemas are extended and fake LSP tests cover the selected provider.
+- Default Python LSP: Pyrefly.
+- Use shared LSP session for Pyrefly `textDocument/references`.
+- Treat `ty server`, `pyright-langserver --stdio`, and `jedi-language-server` as non-default alternatives only if Pyrefly cannot provide reliable locations in bounded fixture tests.
+- Provider should be opt-in only after tool schemas are extended and fake LSP tests cover Pyrefly.
 
 Acceptance criteria:
 
@@ -223,7 +224,7 @@ Acceptance criteria:
 Extend `confirmReferences` enums only when a provider is implemented and tested:
 
 - Existing: `gopls`, `typescript`, `clangd`.
-- Add after implementation: `rust-analyzer`, `pyright`, `jedi`, `csharp-ls`, `marksman` if applicable.
+- Add after implementation: `rust-analyzer`, `csharp-ls`, `pyrefly`, `marksman` if applicable. Do not expose `ty`, `pyright`, or `jedi` for Python exact references unless Pyrefly is rejected by fixture evidence and the replacement provider is implemented and tested.
 
 For diagnostics, avoid adding a new user-facing enum unless needed. `code_intel_post_edit_map({ includeDiagnostics: true })` should collect all applicable touched-file providers with bounded caps and provider status details.
 
