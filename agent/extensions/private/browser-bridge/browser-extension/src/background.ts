@@ -182,6 +182,10 @@ function handleSocketMessage(text: string): void {
 	}
 	if (envelope.direction === "pi-to-browser" && envelope.type === "open-preview") {
 		void handleOpenPreviewRequest(envelope);
+		return;
+	}
+	if (envelope.direction === "pi-to-browser" && envelope.type === "interact") {
+		void handleInteractRequest(envelope);
 	}
 }
 
@@ -216,6 +220,24 @@ async function handleOverlayRequest(envelope: BridgeEnvelope): Promise<void> {
 			requestId: envelope.id,
 			type: "error",
 			payload: { code: "overlay_failed", message: error instanceof Error ? error.message : String(error) },
+		}));
+	}
+}
+
+async function handleInteractRequest(envelope: BridgeEnvelope): Promise<void> {
+	try {
+		const tabId = resolveTargetTabId(envelope);
+		if (!tabId) throw new Error("No activated browser tab is available for interaction.");
+		await chrome.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
+		const payload = isRecord(envelope.payload) ? envelope.payload : {};
+		const response = await chrome.tabs.sendMessage(tabId, { type: "pi-bridge:interact", request: payload });
+		sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: "interact:result", payload: response }));
+	} catch (error) {
+		sendToBridge(makeEnvelope({
+			direction: "browser-to-pi",
+			requestId: envelope.id,
+			type: "error",
+			payload: { code: "interact_failed", message: error instanceof Error ? error.message : String(error) },
 		}));
 	}
 }

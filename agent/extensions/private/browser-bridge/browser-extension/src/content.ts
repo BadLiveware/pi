@@ -1,3 +1,4 @@
+import { runInteractions, type InteractionRequest } from "./content/interact.js";
 import { applyOverlayCommands, type OverlayCommand } from "./content/overlay.js";
 import { startElementSelection, type SelectElementsOptions } from "./content/selection.js";
 
@@ -13,6 +14,11 @@ interface SelectElementsMessage {
 interface OverlayMessage {
 	type: "pi-bridge:overlay";
 	commands: OverlayCommand[];
+}
+
+interface InteractMessage {
+	type: "pi-bridge:interact";
+	request: InteractionRequest;
 }
 
 interface ActivationResponse {
@@ -54,6 +60,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 		} catch (error) {
 			sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
 		}
+		return;
+	}
+
+	if (isInteractMessage(message)) {
+		void runInteractions(message.request).then(sendResponse, (error) => sendResponse({ ok: false, results: [{ index: 0, type: "error", ok: false, summary: error instanceof Error ? error.message : String(error) }] }));
+		return true;
 	}
 });
 
@@ -67,6 +79,10 @@ function isSelectElementsMessage(value: unknown): value is SelectElementsMessage
 
 function isOverlayMessage(value: unknown): value is OverlayMessage {
 	return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:overlay" && Array.isArray((value as { commands?: unknown }).commands);
+}
+
+function isInteractMessage(value: unknown): value is InteractMessage {
+	return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:interact" && typeof (value as { request?: unknown }).request === "object";
 }
 
 function showActivationMarker(): void {

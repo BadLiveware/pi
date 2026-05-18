@@ -3,6 +3,7 @@ import { BrowserBridgeServer } from "./src/bridge-server/lifecycle.ts";
 import { createBrowserBridgeRuntime } from "./src/core/state.ts";
 import { PreviewServer } from "./src/preview/server.ts";
 import { registerBrowserBridgeCommands } from "./src/slices/commands/commands.ts";
+import { registerInteractTool } from "./src/slices/interact/tool.ts";
 import { registerOpenPreviewTool } from "./src/slices/open-preview/tool.ts";
 import { registerOverlayTool } from "./src/slices/overlay/tool.ts";
 import { registerSelectElementsTool } from "./src/slices/select-elements/tool.ts";
@@ -23,4 +24,5 @@ export default function browserBridge(pi: ExtensionAPI): void {
 	registerSelectElementsTool(pi, runtime, server);
 	registerOverlayTool(pi, runtime, server);
 	registerOpenPreviewTool(pi, runtime, server, previewServer);
+	registerInteractTool(pi, runtime, server);
 }
