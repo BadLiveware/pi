@@ -23,6 +23,7 @@ export type SelectElementsResponse =
 	| { status: "cancelled"; elements: ElementDescriptor[]; reason: "escape" | "timeout" | "replaced" };
 
 const elementIds = new WeakMap<Element, string>();
+const elementsById = new Map<string, Element>();
 let nextElementId = 1;
 let activeCleanup: (() => void) | undefined;
 
@@ -96,6 +97,10 @@ export function startElementSelection(options: SelectElementsOptions): Promise<S
 	});
 }
 
+export function resolveSelectedElement(elementId: string): Element | undefined {
+	return elementsById.get(elementId);
+}
+
 export function describeElement(element: Element, options: SelectElementsOptions = { mode: "single" }): ElementDescriptor {
 	const rect = element.getBoundingClientRect();
 	const attributes = selectedAttributes(element);
@@ -126,6 +131,7 @@ function getElementId(element: Element): string {
 	if (existing) return existing;
 	const id = `el-${nextElementId++}`;
 	elementIds.set(element, id);
+	elementsById.set(id, element);
 	return id;
 }
 

@@ -173,6 +173,10 @@ function handleSocketMessage(text: string): void {
 
 	if (envelope.direction === "pi-to-browser" && envelope.type === "select-elements") {
 		void handleSelectElementsRequest(envelope);
+		return;
+	}
+	if (envelope.direction === "pi-to-browser" && envelope.type === "overlay") {
+		void handleOverlayRequest(envelope);
 	}
 }
 
@@ -189,6 +193,24 @@ async function handleSelectElementsRequest(envelope: BridgeEnvelope): Promise<vo
 			requestId: envelope.id,
 			type: "error",
 			payload: { code: "selection_failed", message: error instanceof Error ? error.message : String(error) },
+		}));
+	}
+}
+
+async function handleOverlayRequest(envelope: BridgeEnvelope): Promise<void> {
+	try {
+		const tabId = resolveTargetTabId(envelope);
+		if (!tabId) throw new Error("No activated browser tab is available for overlay commands.");
+		await chrome.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
+		const payload = isRecord(envelope.payload) && Array.isArray(envelope.payload.commands) ? envelope.payload : { commands: [] };
+		const response = await chrome.tabs.sendMessage(tabId, { type: "pi-bridge:overlay", commands: payload.commands });
+		sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: "overlay:result", payload: response }));
+	} catch (error) {
+		sendToBridge(makeEnvelope({
+			direction: "browser-to-pi",
+			requestId: envelope.id,
+			type: "error",
+			payload: { code: "overlay_failed", message: error instanceof Error ? error.message : String(error) },
 		}));
 	}
 }
