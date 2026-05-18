@@ -2,12 +2,18 @@ export const BROWSER_BRIDGE_HOST = "127.0.0.1" as const;
 
 export type BridgeListenerStatus = "stopped" | "running";
 
+export interface BrowserBridgePairingState {
+	active: boolean;
+	expiresAt?: number;
+}
+
 export interface BrowserBridgeServerState {
 	enabled: boolean;
 	host: typeof BROWSER_BRIDGE_HOST;
 	port?: number;
 	listener: BridgeListenerStatus;
 	pairedClientCount: number;
+	pairing?: BrowserBridgePairingState;
 	diagnostics: string[];
 }
 
@@ -17,6 +23,7 @@ export interface BrowserClientSummary {
 	extensionVersion?: string;
 	connectedAt: number;
 	activeTabId?: number;
+	capabilities: string[];
 }
 
 export interface BrowserTabSummary {
@@ -31,6 +38,7 @@ export interface BrowserTabSummary {
 
 export interface PendingBridgeRequestSummary {
 	requestId: string;
+	clientId?: string;
 	type: string;
 	startedAt: number;
 	timeoutMs: number;
@@ -83,13 +91,13 @@ export function createInitialBrowserBridgeState(now = Date.now()): BrowserBridge
 			pairedClientCount: 0,
 			diagnostics: [
 				"Bridge server is disabled and no browser clients are connected.",
-				"This build currently exposes state inspection only; pairing and browser control commands are not registered yet.",
+				"Run `/browser-bridge pair` to start the local bridge and create a short-lived pairing token.",
 			],
 		},
 		clients: [],
 		tabs: [],
 		pendingRequests: [],
-		capabilities: ["state"],
+		capabilities: ["state", "bridge-server", "pairing"],
 		diagnostics: [],
 		createdAt: now,
 	};
@@ -99,11 +107,12 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 	const server: BrowserBridgeServerState = {
 		...state.server,
 		pairedClientCount: state.clients.length,
+		pairing: state.server.pairing ? { ...state.server.pairing } : undefined,
 		diagnostics: [...state.server.diagnostics],
 	};
 	return {
 		server,
-		clients: state.clients.map((client) => ({ ...client })),
+		clients: state.clients.map((client) => ({ ...client, capabilities: [...client.capabilities] })),
 		tabs: state.tabs.map((tab) => ({ ...tab, capabilities: [...tab.capabilities] })),
 		pendingRequests: state.pendingRequests.map((request) => ({ ...request, target: request.target ? { ...request.target } : undefined })),
 		previewServer: state.previewServer ? { ...state.previewServer } : undefined,
@@ -125,6 +134,11 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 		`pending requests: ${snapshot.pendingRequests.length}`,
 		`capabilities: ${snapshot.capabilities.join(", ") || "none"}`,
 	];
+
+	if (snapshot.server.pairing?.active) {
+		const expires = snapshot.server.pairing.expiresAt === undefined ? "unknown" : new Date(snapshot.server.pairing.expiresAt).toISOString();
+		lines.push(`pairing: active until ${expires}`);
+	}
 
 	if (snapshot.previewServer) {
 		const previewPort = snapshot.previewServer.port === undefined ? "none" : String(snapshot.previewServer.port);

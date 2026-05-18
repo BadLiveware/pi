@@ -2,20 +2,24 @@
 
 Private local Pi extension for bridging Pi to a companion browser extension.
 
-The first build is intentionally inert: it registers a status command and a read-only state tool, but it does not start a network listener, pair browser clients, inject content scripts, or control pages. Future slices will add the loopback bridge server and browser extension.
+The current build registers bridge state tooling and an explicit local WebSocket listener lifecycle. It does not start a network listener on load, install a browser extension, inject content scripts, or control pages.
 
 ## Current capabilities
 
 - `/browser-bridge status` shows local bridge state and diagnostics.
+- `/browser-bridge start` starts a listener bound to `127.0.0.1`.
+- `/browser-bridge stop` stops the listener and disconnects clients.
+- `/browser-bridge pair` starts the listener if needed and creates a short-lived pairing token.
 - `browser_bridge_state` returns structured state for the agent.
 - The extension loads without opening ports or requiring a browser extension to be installed.
 
 ## Safety posture
 
 - The bridge listener is disabled by default.
-- No browser clients can connect in the current build.
+- Browser clients must pair with a short-lived token before registration.
+- The listener binds only to `127.0.0.1`.
 - No page content, screenshots, cookies, storage, or form data are collected.
-- Browser control and pairing commands are not registered yet.
+- Browser page control commands are not registered yet.
 
 ## Development validation
 

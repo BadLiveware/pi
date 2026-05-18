@@ -1,0 +1,151 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { once } from "node:events";
+import { WebSocket } from "ws";
+import { BrowserBridgeServer } from "../src/bridge-server/lifecycle.ts";
+import { createBrowserBridgeRuntime } from "../src/core/state.ts";
+import { makeBridgeEnvelope, parseBridgeEnvelopeJson, type BridgeEnvelope } from "../src/core/protocol.ts";
+
+async function openClient(url: string): Promise<WebSocket> {
+	const socket = new WebSocket(url);
+	await once(socket, "open");
+	return socket;
+}
+
+async function nextEnvelope(socket: WebSocket): Promise<BridgeEnvelope> {
+	const [data] = await once(socket, "message") as [WebSocket.RawData];
+	const parsed = parseBridgeEnvelopeJson(rawDataToText(data), "pi-to-browser");
+	if (!parsed.ok) throw new Error("Failed to parse bridge envelope from test client.");
+	return parsed.envelope;
+}
+
+function rawDataToText(data: WebSocket.RawData): string {
+	if (typeof data === "string") return data;
+	if (Buffer.isBuffer(data)) return data.toString("utf8");
+	if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
+	return Buffer.from(data).toString("utf8");
+}
+
+function pairMessage(token: string, clientId = "client-a"): string {
+	return JSON.stringify(makeBridgeEnvelope({
+		id: "pair-1",
+		direction: "browser-to-pi",
+		type: "pair",
+		payload: {
+			token,
+			client: {
+				clientId,
+				browser: "chromium",
+				extensionVersion: "0.1.0",
+				capabilities: ["tabs", "selection"],
+			},
+		},
+	}));
+}
+
+test("server starts inertly, pairs a client, and exposes state", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	assert.equal(runtime.state.server.listener, "stopped");
+
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		const response = await nextEnvelope(socket);
+		assert.equal(response.type, "pair:accepted");
+		assert.equal(response.requestId, "pair-1");
+		assert.equal(runtime.state.clients.length, 1);
+		assert.equal(runtime.state.clients[0]?.clientId, "client-a");
+		assert.deepEqual(runtime.state.clients[0]?.capabilities, ["tabs", "selection"]);
+		assert.equal(runtime.state.server.pairing, undefined);
+	} finally {
+		socket.close();
+		await server.stop("test cleanup");
+	}
+});
+
+test("server rejects bad pairing tokens without registering clients", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const started = await server.start();
+	server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage("bad-token", "bad-client"));
+		const response = await nextEnvelope(socket);
+		assert.equal(response.type, "error");
+		assert.equal((response.payload as { code?: string }).code, "pairing_failed");
+		assert.equal(runtime.state.clients.length, 0);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
+test("client requests time out and clear pending state", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		await assert.rejects(
+			server.sendRequestToClient("client-a", "ping", {}, { timeoutMs: 5 }),
+			/timed out/,
+		);
+		assert.equal(runtime.state.pendingRequests.length, 0);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
+test("client responses resolve pending requests", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	let now = 1000;
+	const server = new BrowserBridgeServer(runtime.state, { now: () => now });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		const pending = server.sendRequestToClient("client-a", "ping", { n: 1 }, { timeoutMs: 1000 });
+		const request = await nextEnvelope(socket);
+		assert.equal(request.type, "ping");
+		now = 1001;
+		socket.send(JSON.stringify(makeBridgeEnvelope({ id: "resp-1", requestId: request.id, direction: "browser-to-pi", type: "pong", payload: { ok: true } })));
+		const response = await pending;
+		assert.equal(response.type, "pong");
+		assert.equal(runtime.state.pendingRequests.length, 0);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
+test("stop and disconnect cleanup clear clients and pending requests", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		const pending = server.sendRequestToClient("client-a", "ping", {}, { timeoutMs: 1000 });
+		assert.equal(runtime.state.pendingRequests.length, 1);
+		await server.stop("cleanup test stop");
+		await assert.rejects(pending, /cleanup test stop/);
+		assert.equal(runtime.state.clients.length, 0);
+		assert.equal(runtime.state.pendingRequests.length, 0);
+		assert.equal(runtime.state.server.listener, "stopped");
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});

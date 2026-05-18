@@ -14,7 +14,7 @@ test("initial browser bridge state is inert and diagnostic", () => {
 	assert.equal(snapshot.clients.length, 0);
 	assert.equal(snapshot.tabs.length, 0);
 	assert.equal(snapshot.pendingRequests.length, 0);
-	assert.deepEqual(snapshot.capabilities, ["state"]);
+	assert.deepEqual(snapshot.capabilities, ["state", "bridge-server", "pairing"]);
 	assert.match(snapshot.diagnostics.join("\n"), /disabled/);
 });
 
@@ -38,6 +38,6 @@ test("state payload is a defensive copy", () => {
 	snapshot.server.diagnostics.push("mutated");
 
 	const fresh = browserBridgeStatePayload(runtime.state);
-	assert.deepEqual(fresh.capabilities, ["state"]);
+	assert.deepEqual(fresh.capabilities, ["state", "bridge-server", "pairing"]);
 	assert.doesNotMatch(fresh.diagnostics.join("\n"), /mutated/);
 });
