@@ -1,0 +1,44 @@
+{
+  "name": "@badliveware/pi-browser-bridge",
+  "version": "0.1.0",
+  "description": "Private local bridge between Pi and a companion browser extension.",
+  "private": true,
+  "type": "module",
+  "types": "./index.ts",
+  "keywords": [
+    "pi-extension",
+    "browser-bridge",
+    "browser-extension",
+    "automation"
+  ],
+  "license": "MIT",
+  "author": "BadLiveware",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BadLiveware/pi.git",
+    "directory": "agent/extensions/private/browser-bridge"
+  },
+  "bugs": {
+    "url": "https://github.com/BadLiveware/pi/issues"
+  },
+  "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/private/browser-bridge#readme",
+  "files": [
+    "README.md",
+    "index.ts",
+    "src",
+    "test",
+    "package.json"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

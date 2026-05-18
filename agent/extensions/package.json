@@ -21,6 +21,7 @@
       "./public/tool-feedback/index.ts",
       "./public/rich-output/index.ts",
       "./public/multi-harness-compatibility/index.ts",
+      "./private/browser-bridge/index.ts",
       "./private/stardock/index.ts",
       "./private/code-intelligence/index.ts"
     ],
