@@ -2,7 +2,7 @@
 
 Private local Pi extension for bridging Pi to a companion browser extension.
 
-The current build registers bridge state tooling, an explicit local WebSocket listener lifecycle, a loadable companion browser extension shell, user-driven element selection, and visible page overlays. It does not start a network listener on load and does not provide preview pages or page control yet.
+The current build registers bridge state tooling, an explicit local WebSocket listener lifecycle, a loadable companion browser extension shell, user-driven element selection, visible page overlays, and local preview pages. It does not start a network listener on load and does not provide page control yet.
 
 ## Current capabilities
 
@@ -15,6 +15,7 @@ The current build registers bridge state tooling, an explicit local WebSocket li
 - Activated tabs report title, origin, viewport, and capabilities back to Pi.
 - `browser_bridge_select_elements` asks the browser extension to let the user select one or more visible elements and returns compact descriptors.
 - `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible annotations on activated tabs.
+- `browser_bridge_open_preview` serves inline/workspace HTML through localhost or opens existing HTTP(S) URLs.
 - The Pi extension loads without opening ports or requiring a browser extension to be installed.
 
 ## Safety posture
@@ -45,5 +46,4 @@ To load the browser extension manually, run the build command and load `agent/ex
 - Browser extension popup for pairing and explicit active-tab activation.
 - Element selection with safe descriptors.
 - Page overlay highlighting and drawing.
-- Local preview pages for agent-created options.
 - Bounded click/type/scroll interactions with confirmation policy.

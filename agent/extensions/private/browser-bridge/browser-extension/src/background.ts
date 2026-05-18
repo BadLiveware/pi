@@ -31,6 +31,7 @@ let bridgeUrl: string | undefined;
 let clientId: string | undefined;
 let lastError: string | undefined;
 let pendingPair: PendingPair | undefined;
+let previewTabId: number | undefined;
 const activatedTabs = new Map<number, ActivatedTab>();
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -177,6 +178,10 @@ function handleSocketMessage(text: string): void {
 	}
 	if (envelope.direction === "pi-to-browser" && envelope.type === "overlay") {
 		void handleOverlayRequest(envelope);
+		return;
+	}
+	if (envelope.direction === "pi-to-browser" && envelope.type === "open-preview") {
+		void handleOpenPreviewRequest(envelope);
 	}
 }
 
@@ -211,6 +216,25 @@ async function handleOverlayRequest(envelope: BridgeEnvelope): Promise<void> {
 			requestId: envelope.id,
 			type: "error",
 			payload: { code: "overlay_failed", message: error instanceof Error ? error.message : String(error) },
+		}));
+	}
+}
+
+async function handleOpenPreviewRequest(envelope: BridgeEnvelope): Promise<void> {
+	try {
+		if (!isRecord(envelope.payload) || typeof envelope.payload.url !== "string") throw new Error("Preview URL is required.");
+		const mode = envelope.payload.mode === "reuse-preview-tab" ? "reuse-preview-tab" : "new-tab";
+		const tab = mode === "reuse-preview-tab" && previewTabId !== undefined
+			? await chrome.tabs.update(previewTabId, { url: envelope.payload.url, active: true })
+			: await chrome.tabs.create({ url: envelope.payload.url, active: true });
+		previewTabId = tab.id;
+		sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: "open-preview:result", payload: { ok: true, tabId: tab.id } }));
+	} catch (error) {
+		sendToBridge(makeEnvelope({
+			direction: "browser-to-pi",
+			requestId: envelope.id,
+			type: "error",
+			payload: { code: "open_preview_failed", message: error instanceof Error ? error.message : String(error) },
 		}));
 	}
 }

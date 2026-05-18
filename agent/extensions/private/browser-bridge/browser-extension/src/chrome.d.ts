@@ -33,6 +33,8 @@ declare namespace chrome {
 		}
 
 		function query(queryInfo: { active?: boolean; currentWindow?: boolean }): Promise<Tab[]>;
+		function create(createProperties: { url: string; active?: boolean }): Promise<Tab>;
+		function update(tabId: number, updateProperties: { url?: string; active?: boolean }): Promise<Tab>;
 		function sendMessage<TResponse = unknown>(tabId: number, message: unknown): Promise<TResponse>;
 	}
 
