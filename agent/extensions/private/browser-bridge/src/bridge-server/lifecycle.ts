@@ -204,6 +204,12 @@ export class BrowserBridgeServer {
 			return;
 		}
 
+		if (envelope.type === "tab:activated") {
+			this.updateActivatedTab(record.clientId, envelope.payload);
+			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));
+			return;
+		}
+
 		this.sendError(record.socket, envelope.id, "unknown_request", `Unknown browser bridge message type "${envelope.type}".`);
 	}
 
@@ -261,6 +267,26 @@ export class BrowserBridgeServer {
 		if (!isRecord(payload) || !Array.isArray(payload.capabilities)) return;
 		const capabilities = payload.capabilities.filter((capability): capability is string => typeof capability === "string");
 		this.state.clients = this.state.clients.map((client) => client.clientId === clientId ? { ...client, capabilities } : client);
+	}
+
+	private updateActivatedTab(clientId: string, payload: unknown): void {
+		if (!isRecord(payload) || typeof payload.tabId !== "number" || !Number.isSafeInteger(payload.tabId) || payload.tabId < 0) return;
+		const capabilities = Array.isArray(payload.capabilities) ? payload.capabilities.filter((capability): capability is string => typeof capability === "string") : [];
+		const tab = {
+			tabId: payload.tabId,
+			clientId,
+			title: typeof payload.title === "string" ? payload.title : undefined,
+			url: typeof payload.url === "string" ? payload.url : undefined,
+			origin: typeof payload.origin === "string" ? payload.origin : undefined,
+			active: payload.active !== false,
+			capabilities,
+		};
+		this.state.tabs = [
+			...this.state.tabs.filter((existing) => !(existing.clientId === clientId && existing.tabId === tab.tabId)),
+			tab,
+		];
+		const client = this.state.clients.find((candidate) => candidate.clientId === clientId);
+		if (client) client.activeTabId = tab.tabId;
 	}
 
 	private rejectPending(pending: PendingRequest, error: Error): void {

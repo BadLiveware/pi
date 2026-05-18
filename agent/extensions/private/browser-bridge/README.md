@@ -2,7 +2,7 @@
 
 Private local Pi extension for bridging Pi to a companion browser extension.
 
-The current build registers bridge state tooling and an explicit local WebSocket listener lifecycle. It does not start a network listener on load, install a browser extension, inject content scripts, or control pages.
+The current build registers bridge state tooling, an explicit local WebSocket listener lifecycle, and a loadable companion browser extension shell. It does not start a network listener on load and does not provide element selection, overlays, previews, or page control yet.
 
 ## Current capabilities
 
@@ -11,7 +11,9 @@ The current build registers bridge state tooling and an explicit local WebSocket
 - `/browser-bridge stop` stops the listener and disconnects clients.
 - `/browser-bridge pair` starts the listener if needed and creates a short-lived pairing token.
 - `browser_bridge_state` returns structured state for the agent.
-- The extension loads without opening ports or requiring a browser extension to be installed.
+- Browser extension popup can connect with the URL/token and explicitly activate the current tab.
+- Activated tabs report title, origin, viewport, and capabilities back to Pi.
+- The Pi extension loads without opening ports or requiring a browser extension to be installed.
 
 ## Safety posture
 
@@ -30,7 +32,10 @@ cd agent/extensions
 npm run check:structure
 npm run typecheck
 npm test
+npm run build:browser --workspace @badliveware/pi-browser-bridge
 ```
+
+To load the browser extension manually, run the build command and load `agent/extensions/private/browser-bridge/browser-extension/` as an unpacked extension.
 
 ## Planned capabilities
 

@@ -22,8 +22,12 @@
     "url": "https://github.com/BadLiveware/pi/issues"
   },
   "homepage": "https://github.com/BadLiveware/pi/tree/main/agent/extensions/private/browser-bridge#readme",
+  "scripts": {
+    "build:browser": "tsc -p browser-extension/tsconfig.json"
+  },
   "files": [
     "README.md",
+    "browser-extension",
     "index.ts",
     "src",
     "test",

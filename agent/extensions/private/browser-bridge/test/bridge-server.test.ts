@@ -84,6 +84,33 @@ test("server rejects bad pairing tokens without registering clients", async () =
 	}
 });
 
+test("tab activation messages update bridge state", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		socket.send(JSON.stringify(makeBridgeEnvelope({
+			id: "tab-1",
+			direction: "browser-to-pi",
+			type: "tab:activated",
+			payload: { tabId: 42, title: "Fixture", origin: "https://example.test", active: true, capabilities: ["activation"] },
+		})));
+		const ack = await nextEnvelope(socket);
+		assert.equal(ack.type, "ack");
+		assert.equal(runtime.state.tabs.length, 1);
+		assert.equal(runtime.state.tabs[0]?.tabId, 42);
+		assert.equal(runtime.state.tabs[0]?.origin, "https://example.test");
+		assert.equal(runtime.state.clients[0]?.activeTabId, 42);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
 test("client requests time out and clear pending state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Pi Browser Bridge",
+  "version": "0.1.0",
+  "description": "Companion extension for the private Pi browser bridge.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "action": {
+    "default_title": "Pi Browser Bridge",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*"
+  }
+}
