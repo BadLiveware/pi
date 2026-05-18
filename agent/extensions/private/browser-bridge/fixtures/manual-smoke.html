@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pi Browser Bridge Manual Smoke Fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; max-width: 820px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+    header, section { margin-bottom: 28px; }
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .card { border: 1px solid #dadce0; border-radius: 12px; padding: 16px; background: #f8fafd; }
+    button, input, textarea { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid #bdc1c6; }
+    button { background: #1a73e8; color: white; border: 0; cursor: pointer; }
+    #log { min-height: 48px; padding: 12px; border-radius: 8px; background: #f1f3f4; white-space: pre-line; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 data-testid="fixture-title">Pi Browser Bridge Manual Smoke Fixture</h1>
+    <p>Select cards, highlight them, type into the form, and click the action button when manually validating the browser bridge.</p>
+  </header>
+
+  <section class="cards" aria-label="option cards">
+    <article class="card" data-testid="option-alpha">
+      <h2>Option Alpha</h2>
+      <p>Use this card to test element selection and overlay highlighting.</p>
+      <button data-testid="alpha-button">Alpha action</button>
+    </article>
+    <article class="card" data-testid="option-beta">
+      <h2>Option Beta</h2>
+      <p>Use this card to test multi-selection and arrow annotations.</p>
+      <button data-testid="beta-button">Beta action</button>
+    </article>
+  </section>
+
+  <section aria-label="interaction form">
+    <label for="fixture-input">Interaction input</label>
+    <input id="fixture-input" name="fixture-input" data-testid="fixture-input" placeholder="Type through browser_bridge_interact">
+    <button id="fixture-button" data-testid="fixture-button">Record input</button>
+  </section>
+
+  <section>
+    <h2>Action log</h2>
+    <div id="log" data-testid="fixture-log">No actions yet.</div>
+  </section>
+
+  <script>
+    document.getElementById('fixture-button').addEventListener('click', () => {
+      const value = document.getElementById('fixture-input').value || '(empty)';
+      document.getElementById('log').textContent = `Recorded: ${value}`;
+    });
+    document.querySelectorAll('[data-testid$="-button"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.getElementById('log').textContent = `Clicked: ${button.dataset.testid}`;
+      });
+    });
+  </script>
+</body>
+</html>

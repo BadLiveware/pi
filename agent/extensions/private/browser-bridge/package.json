@@ -28,6 +28,7 @@
   "files": [
     "README.md",
     "browser-extension",
+    "fixtures",
     "index.ts",
     "src",
     "test",
