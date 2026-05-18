@@ -1,5 +1,12 @@
+import { startElementSelection, type SelectElementsOptions } from "./content/selection.js";
+
 interface ActivateMessage {
 	type: "pi-bridge:activate";
+}
+
+interface SelectElementsMessage {
+	type: "pi-bridge:select-elements";
+	options: SelectElementsOptions;
 }
 
 interface ActivationResponse {
@@ -13,24 +20,35 @@ interface ActivationResponse {
 const ACTIVATION_MARKER_ID = "pi-browser-bridge-activation-marker";
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-	if (!isActivateMessage(message)) return;
-	showActivationMarker();
-	const response: ActivationResponse = {
-		ok: true,
-		title: document.title,
-		origin: location.origin,
-		viewport: {
-			width: window.innerWidth,
-			height: window.innerHeight,
-			devicePixelRatio: window.devicePixelRatio || 1,
-		},
-		capabilities: ["activation"],
-	};
-	sendResponse(response);
+	if (isActivateMessage(message)) {
+		showActivationMarker();
+		const response: ActivationResponse = {
+			ok: true,
+			title: document.title,
+			origin: location.origin,
+			viewport: {
+				width: window.innerWidth,
+				height: window.innerHeight,
+				devicePixelRatio: window.devicePixelRatio || 1,
+			},
+			capabilities: ["activation", "element-selection"],
+		};
+		sendResponse(response);
+		return;
+	}
+
+	if (isSelectElementsMessage(message)) {
+		void startElementSelection(message.options).then(sendResponse, (error) => sendResponse({ status: "cancelled", elements: [], reason: error instanceof Error ? error.message : "error" }));
+		return true;
+	}
 });
 
 function isActivateMessage(value: unknown): value is ActivateMessage {
 	return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:activate";
+}
+
+function isSelectElementsMessage(value: unknown): value is SelectElementsMessage {
+	return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:select-elements" && typeof (value as { options?: unknown }).options === "object";
 }
 
 function showActivationMarker(): void {

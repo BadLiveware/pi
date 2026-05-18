@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { BrowserBridgeServer } from "./src/bridge-server/lifecycle.ts";
 import { createBrowserBridgeRuntime } from "./src/core/state.ts";
 import { registerBrowserBridgeCommands } from "./src/slices/commands/commands.ts";
+import { registerSelectElementsTool } from "./src/slices/select-elements/tool.ts";
 import { registerBrowserBridgeStateTool } from "./src/slices/state-tool/tool.ts";
 
 export default function browserBridge(pi: ExtensionAPI): void {
@@ -14,4 +15,5 @@ export default function browserBridge(pi: ExtensionAPI): void {
 
 	registerBrowserBridgeCommands(pi, runtime, server);
 	registerBrowserBridgeStateTool(pi, runtime);
+	registerSelectElementsTool(pi, runtime, server);
 }

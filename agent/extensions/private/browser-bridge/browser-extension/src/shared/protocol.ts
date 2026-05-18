@@ -12,7 +12,7 @@ export interface BridgeEnvelope<TPayload = unknown> {
 	payload: TPayload;
 }
 
-export function makeEnvelope<TPayload>(input: { id?: string; requestId?: string; direction: BridgeDirection; type: string; payload: TPayload }): BridgeEnvelope<TPayload> {
+export function makeEnvelope<TPayload>(input: { id?: string; requestId?: string; direction: BridgeDirection; type: string; payload: TPayload; target?: { tabId?: number; frameId?: number } }): BridgeEnvelope<TPayload> {
 	return {
 		version: BRIDGE_PROTOCOL_VERSION,
 		id: input.id ?? makeId("msg"),
@@ -20,6 +20,7 @@ export function makeEnvelope<TPayload>(input: { id?: string; requestId?: string;
 		direction: input.direction,
 		type: input.type,
 		payload: input.payload,
+		...(input.target ? { target: input.target } : {}),
 	};
 }
 
@@ -41,6 +42,10 @@ export function parseEnvelope(text: string): BridgeEnvelope | undefined {
 		requestId: typeof value.requestId === "string" ? value.requestId : undefined,
 		direction: value.direction,
 		type: value.type,
+		target: isRecord(value.target) ? {
+			tabId: typeof value.target.tabId === "number" ? value.target.tabId : undefined,
+			frameId: typeof value.target.frameId === "number" ? value.target.frameId : undefined,
+		} : undefined,
 		payload: value.payload,
 	};
 }

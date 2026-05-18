@@ -170,11 +170,49 @@ function handleSocketMessage(text: string): void {
 		pending.reject(new Error(`Unexpected pairing response ${envelope.type}.`));
 		return;
 	}
+
+	if (envelope.direction === "pi-to-browser" && envelope.type === "select-elements") {
+		void handleSelectElementsRequest(envelope);
+	}
+}
+
+async function handleSelectElementsRequest(envelope: BridgeEnvelope): Promise<void> {
+	try {
+		const tabId = resolveTargetTabId(envelope);
+		if (!tabId) throw new Error("No activated browser tab is available for element selection.");
+		await chrome.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
+		const response = await chrome.tabs.sendMessage(tabId, { type: "pi-bridge:select-elements", options: selectionOptions(envelope.payload) });
+		sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: "select-elements:result", payload: response }));
+	} catch (error) {
+		sendToBridge(makeEnvelope({
+			direction: "browser-to-pi",
+			requestId: envelope.id,
+			type: "error",
+			payload: { code: "selection_failed", message: error instanceof Error ? error.message : String(error) },
+		}));
+	}
 }
 
 function sendToBridge(envelope: BridgeEnvelope): void {
 	if (!socket || socket.readyState !== WebSocket.OPEN) return;
 	socket.send(JSON.stringify(envelope));
+}
+
+function resolveTargetTabId(envelope: BridgeEnvelope): number | undefined {
+	if (typeof envelope.target?.tabId === "number") return envelope.target.tabId;
+	const latest = [...activatedTabs.values()].sort((a, b) => b.activatedAt - a.activatedAt)[0];
+	return latest?.tabId;
+}
+
+function selectionOptions(payload: unknown): Record<string, unknown> {
+	if (!isRecord(payload)) return { mode: "single" };
+	return {
+		mode: payload.mode === "multiple" ? "multiple" : "single",
+		includeHtml: payload.includeHtml === true,
+		includeText: payload.includeText !== false,
+		maxHtmlChars: typeof payload.maxHtmlChars === "number" ? payload.maxHtmlChars : undefined,
+		timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+	};
 }
 
 function disconnect(reason: string): void {
