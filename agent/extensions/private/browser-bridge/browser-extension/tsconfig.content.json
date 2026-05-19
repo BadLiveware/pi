@@ -13,6 +13,7 @@
     "src/content/selection.ts",
     "src/content/overlay.ts",
     "src/content/interact.ts",
+    "src/content/clipboard.ts",
     "src/content.ts"
   ]
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserBridgeStatePayload, createBrowserBridgeRuntime, formatBrowserBridgeStatus } from "../src/core/state.ts";
+import { BROWSER_BRIDGE_CAPABILITIES, browserBridgeStatePayload, createBrowserBridgeRuntime, formatBrowserBridgeStatus } from "../src/core/state.ts";
 
 test("initial browser bridge state is inert and diagnostic", () => {
 	const runtime = createBrowserBridgeRuntime(1234);
@@ -14,7 +14,7 @@ test("initial browser bridge state is inert and diagnostic", () => {
 	assert.equal(snapshot.clients.length, 0);
 	assert.equal(snapshot.tabs.length, 0);
 	assert.equal(snapshot.pendingRequests.length, 0);
-	assert.deepEqual(snapshot.capabilities, ["state", "bridge-server", "pairing"]);
+	assert.deepEqual(snapshot.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
 	assert.match(snapshot.diagnostics.join("\n"), /disabled/);
 });
 
@@ -38,6 +38,6 @@ test("state payload is a defensive copy", () => {
 	snapshot.server.diagnostics.push("mutated");
 
 	const fresh = browserBridgeStatePayload(runtime.state);
-	assert.deepEqual(fresh.capabilities, ["state", "bridge-server", "pairing"]);
+	assert.deepEqual(fresh.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
 	assert.doesNotMatch(fresh.diagnostics.join("\n"), /mutated/);
 });

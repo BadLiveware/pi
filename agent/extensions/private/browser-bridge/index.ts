@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { BrowserBridgeServer } from "./src/bridge-server/lifecycle.ts";
 import { createBrowserBridgeRuntime } from "./src/core/state.ts";
 import { PreviewServer } from "./src/preview/server.ts";
+import { registerClipboardTool } from "./src/slices/clipboard/tool.ts";
 import { registerBrowserBridgeCommands } from "./src/slices/commands/commands.ts";
 import { registerInteractTool } from "./src/slices/interact/tool.ts";
 import { registerOpenPreviewTool } from "./src/slices/open-preview/tool.ts";
@@ -25,4 +26,5 @@ export default function browserBridge(pi: ExtensionAPI): void {
 	registerOverlayTool(pi, runtime, server);
 	registerOpenPreviewTool(pi, runtime, server, previewServer);
 	registerInteractTool(pi, runtime, server);
+	registerClipboardTool(pi, runtime, server);
 }

@@ -30,14 +30,20 @@ test("injected content script is built as a classic single-file bundle", () => {
 	const tsconfig = JSON.parse(readBrowserExtensionFile("tsconfig.content.json"));
 	assert.equal(tsconfig.compilerOptions.module, "None");
 	assert.equal(tsconfig.compilerOptions.outFile, "dist/content.js");
-	assert.deepEqual(tsconfig.files.slice(-4), [
+	assert.deepEqual(tsconfig.files.slice(-5), [
 		"src/content/selection.ts",
 		"src/content/overlay.ts",
 		"src/content/interact.ts",
+		"src/content/clipboard.ts",
 		"src/content.ts",
 	]);
 	for (const sourcePath of tsconfig.files.filter((path: string) => path.endsWith(".ts"))) {
 		const source = readBrowserExtensionFile(sourcePath);
 		assert.doesNotMatch(source, /^\s*import\s/m, `${sourcePath} must not emit module imports into injected content.js.`);
 	}
+});
+
+test("manifest declares clipboard write permission", () => {
+	const manifest = JSON.parse(readBrowserExtensionFile("manifest.json"));
+	assert.ok(manifest.permissions.includes("clipboardWrite"));
 });

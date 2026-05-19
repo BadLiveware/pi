@@ -18,6 +18,11 @@ namespace PiBrowserBridgeContent {
 		request: InteractionRequest;
 	}
 
+	interface ClipboardMessage {
+		type: "pi-bridge:clipboard";
+		request: ClipboardRequest;
+	}
+
 	interface ActivationResponse {
 		ok: true;
 		title: string;
@@ -46,7 +51,7 @@ namespace PiBrowserBridgeContent {
 						height: window.innerHeight,
 						devicePixelRatio: window.devicePixelRatio || 1,
 					},
-					capabilities: ["activation", "element-selection", "overlay", "interaction"],
+					capabilities: ["activation", "element-selection", "overlay", "interaction", "clipboard"],
 				};
 				sendResponse(response);
 				return;
@@ -70,6 +75,11 @@ namespace PiBrowserBridgeContent {
 				void PiBrowserBridgeContent.runInteractions(message.request).then(sendResponse, (error) => sendResponse({ ok: false, results: [{ index: 0, type: "error", ok: false, summary: error instanceof Error ? error.message : String(error) }] }));
 				return true;
 			}
+
+			if (isClipboardMessage(message)) {
+				void PiBrowserBridgeContent.runClipboardRequest(message.request).then(sendResponse, (error) => sendResponse({ ok: false, action: "write", chars: 0, summary: error instanceof Error ? error.message : String(error) }));
+				return true;
+			}
 		});
 		contentGlobal.__piBrowserBridgeContentInstalled = true;
 	}
@@ -88,6 +98,10 @@ namespace PiBrowserBridgeContent {
 
 	function isInteractMessage(value: unknown): value is InteractMessage {
 		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:interact" && typeof (value as { request?: unknown }).request === "object";
+	}
+
+	function isClipboardMessage(value: unknown): value is ClipboardMessage {
+		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:clipboard" && typeof (value as { request?: unknown }).request === "object";
 	}
 
 	function showActivationMarker(): void {

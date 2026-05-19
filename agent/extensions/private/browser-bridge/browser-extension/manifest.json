@@ -3,7 +3,7 @@
   "name": "Pi Browser Bridge",
   "version": "0.1.0",
   "description": "Companion extension for the private Pi browser bridge.",
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "clipboardWrite", "scripting", "storage", "tabs"],
   "host_permissions": ["http://127.0.0.1/*"],
   "action": {
     "default_title": "Pi Browser Bridge",

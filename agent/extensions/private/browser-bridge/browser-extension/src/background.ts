@@ -95,7 +95,7 @@ async function connectToBridge(url: string, token: string): Promise<void> {
 						clientId,
 						browser: detectBrowser(),
 						extensionVersion: chrome.runtime.getManifest().version,
-						capabilities: ["tabs", "activation"],
+						capabilities: ["tabs", "activation", "element-selection", "overlay", "preview", "interaction", "clipboard"],
 					},
 				},
 			})));
@@ -186,6 +186,10 @@ function handleSocketMessage(text: string): void {
 	}
 	if (envelope.direction === "pi-to-browser" && envelope.type === "interact") {
 		void handleInteractRequest(envelope);
+		return;
+	}
+	if (envelope.direction === "pi-to-browser" && envelope.type === "clipboard") {
+		void handleClipboardRequest(envelope);
 	}
 }
 
@@ -238,6 +242,24 @@ async function handleInteractRequest(envelope: BridgeEnvelope): Promise<void> {
 			requestId: envelope.id,
 			type: "error",
 			payload: { code: "interact_failed", message: error instanceof Error ? error.message : String(error) },
+		}));
+	}
+}
+
+async function handleClipboardRequest(envelope: BridgeEnvelope): Promise<void> {
+	try {
+		const tabId = resolveTargetTabId(envelope);
+		if (!tabId) throw new Error("No activated browser tab is available for clipboard access.");
+		await chrome.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
+		const payload = isRecord(envelope.payload) ? envelope.payload : {};
+		const response = await chrome.tabs.sendMessage(tabId, { type: "pi-bridge:clipboard", request: payload });
+		sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: "clipboard:result", payload: response }));
+	} catch (error) {
+		sendToBridge(makeEnvelope({
+			direction: "browser-to-pi",
+			requestId: envelope.id,
+			type: "error",
+			payload: { code: "clipboard_failed", message: error instanceof Error ? error.message : String(error) },
 		}));
 	}
 }

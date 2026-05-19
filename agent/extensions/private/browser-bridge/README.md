@@ -2,7 +2,7 @@
 
 Private local Pi extension for bridging Pi to a companion browser extension.
 
-The current build registers bridge state tooling, an explicit local WebSocket listener lifecycle, a loadable companion browser extension shell, user-driven element selection, visible page overlays, local preview pages, and bounded page interactions. It does not start a network listener on load.
+The current build registers bridge state tooling, an explicit local WebSocket listener lifecycle, a loadable companion browser extension shell, user-driven element selection, visible page overlays, local preview pages, bounded page interactions, and gated clipboard writes. It does not start a network listener on load.
 
 ## Current capabilities
 
@@ -17,6 +17,7 @@ The current build registers bridge state tooling, an explicit local WebSocket li
 - `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible annotations on activated tabs.
 - `browser_bridge_open_preview` serves inline/workspace HTML through localhost or opens existing HTTP(S) URLs.
 - `browser_bridge_interact` runs bounded click/type/scroll/key actions with confirmation defaults and no arbitrary JavaScript eval.
+- `browser_bridge_clipboard` writes text to the clipboard through the activated browser tab, with confirmation enabled by default and no clipboard read support.
 - The Pi extension loads without opening ports or requiring a browser extension to be installed.
 
 ## Safety posture
@@ -27,7 +28,8 @@ The current build registers bridge state tooling, an explicit local WebSocket li
 - Browser activation is explicit from the extension popup; content scripts are not injected into every page.
 - Selection returns compact, capped descriptors; full HTML previews are opt-in and capped.
 - Page interactions are limited to click, type, scroll, and key actions. There is no arbitrary JavaScript evaluation tool.
-- No cookies, local storage, session storage, credentials, or screenshots are collected by the MVP tools.
+- Clipboard support is a separate write-only capability and asks for confirmation by default.
+- No cookies, local storage, session storage, credentials, clipboard reads, or screenshots are collected by the MVP tools.
 
 ## Setup and pairing
 
@@ -57,6 +59,7 @@ Suggested smoke flow:
 5. Use `browser_bridge_overlay` to highlight the selected descriptor and draw an arrow or rectangle.
 6. Use `browser_bridge_open_preview` with inline HTML and verify a new preview tab opens.
 7. Use `browser_bridge_interact` to type into `#fixture-input` and click `#fixture-button`; confirm the in-page prompt when shown.
+8. Use `browser_bridge_clipboard` with a harmless test value and confirm the clipboard-write prompt.
 
 ## Development validation
 

@@ -1,4 +1,5 @@
 export const BROWSER_BRIDGE_HOST = "127.0.0.1" as const;
+export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "overlay", "preview-pages", "interaction", "clipboard"] as const;
 
 export type BridgeListenerStatus = "stopped" | "running";
 
@@ -97,7 +98,7 @@ export function createInitialBrowserBridgeState(now = Date.now()): BrowserBridge
 		clients: [],
 		tabs: [],
 		pendingRequests: [],
-		capabilities: ["state", "bridge-server", "pairing"],
+		capabilities: [...BROWSER_BRIDGE_CAPABILITIES],
 		diagnostics: [],
 		createdAt: now,
 	};
