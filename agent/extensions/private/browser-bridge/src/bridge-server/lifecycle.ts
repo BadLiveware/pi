@@ -271,7 +271,10 @@ export class BrowserBridgeServer {
 			return;
 		}
 		const payload = isRecord(envelope.payload) ? envelope.payload : {};
-		const clientDetails = parseClientAuthDetails(payload.client);
+		this.acceptPairingWindowClient(record, envelope, parseClientAuthDetails(payload.client));
+	}
+
+	private acceptPairingWindowClient(record: SocketRecord, envelope: BridgeEnvelope, clientDetails: BrowserClientAuthDetails | undefined): void {
 		const clientId = this.uniqueClientId(clientDetails?.clientId);
 		const resumeSecret = makePairingToken();
 		this.authorizedClients.set(clientId, { clientId, resumeSecret, client: clientDetails });
@@ -295,6 +298,10 @@ export class BrowserBridgeServer {
 		}
 		const authorized = this.authorizedClients.get(payload.clientId);
 		if (!authorized || authorized.resumeSecret !== payload.resumeSecret) {
+			if (this.pairing && this.pairing.expiresAt > this.now()) {
+				this.acceptPairingWindowClient(record, envelope, payload.client ? { ...payload.client, clientId: payload.clientId } : { clientId: payload.clientId });
+				return;
+			}
 			this.sendError(record.socket, envelope.id, "pairing_failed", "Resume secret is missing, invalid, or expired for this Pi session.");
 			record.socket.close(4005, "resume failed");
 			return;

@@ -122,6 +122,28 @@ test("server accepts no-copy pair requests during the pairing window", async () 
 	}
 });
 
+test("server treats stale resume as no-copy pair during the pairing window", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
+	const started = await server.start();
+	server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(resumeMessage("client-a", "stale-resume-secret"));
+		const response = await nextEnvelope(socket);
+		assert.equal(response.type, "pair:accepted");
+		assert.equal(response.requestId, "resume-1");
+		assert.equal(typeof (response.payload as { resumeSecret?: unknown }).resumeSecret, "string");
+		assert.notEqual((response.payload as { resumeSecret?: string }).resumeSecret, "stale-resume-secret");
+		assert.equal(runtime.state.clients.length, 1);
+		assert.equal(runtime.state.clients[0]?.clientId, "client-a");
+		assert.equal(runtime.state.server.pairing, undefined);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
 test("server resumes a previously paired browser client without a new pairing token", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
