@@ -9,5 +9,9 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["public/**/*.ts", "private/**/*.ts"]
+  "include": ["public/**/*.ts", "private/**/*.ts"],
+  "exclude": [
+    "private/browser-bridge/browser-extension/src/content.ts",
+    "private/browser-bridge/browser-extension/src/content/**/*.ts"
+  ]
 }

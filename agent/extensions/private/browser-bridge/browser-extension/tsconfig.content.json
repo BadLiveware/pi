@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "None",
+    "strict": true,
+    "lib": ["ES2022", "DOM"],
+    "outFile": "dist/content.js",
+    "skipLibCheck": true,
+    "noEmitOnError": true
+  },
+  "files": [
+    "src/chrome.d.ts",
+    "src/content/selection.ts",
+    "src/content/overlay.ts",
+    "src/content/interact.ts",
+    "src/content.ts"
+  ]
+}

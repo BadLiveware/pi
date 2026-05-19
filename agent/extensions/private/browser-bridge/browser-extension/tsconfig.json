@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "noEmitOnError": true
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+  "include": ["src/background.ts", "src/popup.ts", "src/shared/**/*.ts", "src/**/*.d.ts"]
 }
