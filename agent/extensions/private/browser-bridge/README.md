@@ -2,6 +2,8 @@
 
 Private local Pi extension for bridging Pi to a companion browser extension.
 
+The bridge is meant to be a consent-driven shared browser surface: you can show Pi what you see through explicit tab activation, element selection, and compact descriptors; Pi can show you things through inspectable DOM/SVG/CSS annotations, local previews, bounded interactions, and gated clipboard writes. User-to-agent drawing/pointing is a separate interaction mode from Pi-to-user annotations.
+
 The current build registers bridge state tooling, an explicit fixed-port local gateway lifecycle, a loadable companion browser extension shell, user-driven element selection, visible page overlays, local preview pages, bounded page interactions, and gated clipboard writes. It does not start a network listener on load.
 
 ## Current capabilities
@@ -14,7 +16,7 @@ The current build registers bridge state tooling, an explicit fixed-port local g
 - Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, shows recent browser-side debug log entries, and explicitly activates the current tab.
 - Activated tabs report title, origin, viewport, and capabilities back to Pi.
 - `browser_bridge_select_elements` asks the browser extension to let the user select one or more visible elements and returns compact descriptors.
-- `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible annotations on activated tabs.
+- `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible DOM/SVG annotations on activated tabs.
 - `browser_bridge_open_preview` serves inline/workspace HTML through localhost or opens existing HTTP(S) URLs.
 - `browser_bridge_interact` runs bounded click/type/scroll/key actions with confirmation defaults and no arbitrary JavaScript eval.
 - `browser_bridge_clipboard` writes text to the clipboard through the activated browser tab, with confirmation enabled by default and no clipboard read support.
@@ -57,7 +59,7 @@ Suggested smoke flow:
 2. Pair it with `/browser-bridge pair`.
 3. Open `fixtures/manual-smoke.html` in the browser and activate the tab from the popup.
 4. Use `browser_bridge_select_elements` in `single` mode and select the Alpha card or input.
-5. Use `browser_bridge_overlay` to highlight the selected descriptor and draw an arrow or rectangle.
+5. Use `browser_bridge_overlay` to highlight the selected descriptor and draw an inspectable SVG arrow or rectangle.
 6. Use `browser_bridge_open_preview` with inline HTML and verify a new preview tab opens.
 7. Use `browser_bridge_interact` to type into `#fixture-input` and click `#fixture-button`; confirm the in-page prompt when shown.
 8. Use `browser_bridge_clipboard` with a harmless test value and confirm the clipboard-write prompt.

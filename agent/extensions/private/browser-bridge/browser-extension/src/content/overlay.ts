@@ -16,8 +16,7 @@ namespace PiBrowserBridgeContent {
 
 	interface OverlayState {
 		root: HTMLDivElement;
-		canvas: HTMLCanvasElement;
-		ctx: CanvasRenderingContext2D;
+		drawingLayer: SVGSVGElement;
 		highlightLayer: HTMLDivElement;
 		visible: boolean;
 	}
@@ -28,6 +27,7 @@ namespace PiBrowserBridgeContent {
 	};
 
 	const overlayGlobal = globalThis as OverlayGlobal;
+	const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 	export function applyOverlayCommands(commands: OverlayCommand[]): { ok: true; applied: number } {
 		const state = ensureOverlay();
@@ -56,21 +56,20 @@ namespace PiBrowserBridgeContent {
 			pointerEvents: "none",
 			display: "block",
 		});
-		const canvas = document.createElement("canvas");
-		Object.assign(canvas.style, { width: "100%", height: "100%" });
+		const drawingLayer = document.createElementNS(SVG_NAMESPACE, "svg");
+		setSvgAttributes(drawingLayer, { id: "pi-browser-bridge-drawing-layer", role: "presentation" });
+		Object.assign(drawingLayer.style, { position: "fixed", inset: "0", width: "100%", height: "100%", overflow: "visible", pointerEvents: "none" });
 		const highlightLayer = document.createElement("div");
 		Object.assign(highlightLayer.style, { position: "fixed", inset: "0", pointerEvents: "none" });
-		root.append(canvas, highlightLayer);
+		root.append(drawingLayer, highlightLayer);
 		document.documentElement.appendChild(root);
-		const ctx = canvas.getContext("2d");
-		if (!ctx) throw new Error("Could not create overlay canvas context.");
-		const state = { root, canvas, ctx, highlightLayer, visible: true };
+		const state = { root, drawingLayer, highlightLayer, visible: true };
 		overlayGlobal.__piBrowserBridgeOverlayState = state;
-		resizeCanvas(state);
+		resizeDrawingLayer(state);
 		if (!overlayGlobal.__piBrowserBridgeOverlayResizeInstalled) {
 			window.addEventListener("resize", () => {
 				const currentState = overlayGlobal.__piBrowserBridgeOverlayState;
-				if (currentState && document.documentElement.contains(currentState.root)) resizeCanvas(currentState);
+				if (currentState && document.documentElement.contains(currentState.root)) resizeDrawingLayer(currentState);
 			});
 			overlayGlobal.__piBrowserBridgeOverlayResizeInstalled = true;
 		}
@@ -80,7 +79,7 @@ namespace PiBrowserBridgeContent {
 	function show(state: OverlayState): void {
 		state.visible = true;
 		state.root.style.display = "block";
-		resizeCanvas(state);
+		resizeDrawingLayer(state);
 	}
 
 	function hide(state: OverlayState): void {
@@ -89,8 +88,7 @@ namespace PiBrowserBridgeContent {
 	}
 
 	function clear(state: OverlayState): void {
-		resizeCanvas(state);
-		state.ctx.clearRect(0, 0, state.canvas.width, state.canvas.height);
+		state.drawingLayer.replaceChildren();
 		state.highlightLayer.replaceChildren();
 	}
 
@@ -132,48 +130,72 @@ namespace PiBrowserBridgeContent {
 
 	function draw(state: OverlayState, strokes: OverlayStroke[]): void {
 		show(state);
-		for (const stroke of strokes) renderStroke(state.ctx, stroke);
+		for (const stroke of strokes) renderStroke(state.drawingLayer, stroke);
 	}
 
-	function renderStroke(ctx: CanvasRenderingContext2D, stroke: OverlayStroke): void {
-		ctx.save();
-		ctx.strokeStyle = stroke.color ?? "#fa1e0e";
-		ctx.fillStyle = stroke.color ?? "#fa1e0e";
-		ctx.lineWidth = stroke.size ?? 4;
-		ctx.lineCap = "round";
-		ctx.lineJoin = "round";
+	function renderStroke(layer: SVGSVGElement, stroke: OverlayStroke): void {
 		if (stroke.type === "freehand") {
-			if (stroke.points.length < 1) {
-				ctx.restore();
-				return;
-			}
-			ctx.beginPath();
-			ctx.moveTo(stroke.points[0]!.x, stroke.points[0]!.y);
-			for (const point of stroke.points.slice(1)) ctx.lineTo(point.x, point.y);
-			ctx.stroke();
+			if (stroke.points.length < 1) return;
+			const polyline = document.createElementNS(SVG_NAMESPACE, "polyline");
+			setSvgAttributes(polyline, {
+				points: stroke.points.map((point) => `${point.x},${point.y}`).join(" "),
+				fill: "none",
+				stroke: stroke.color ?? "#fa1e0e",
+				"stroke-width": stroke.size ?? 4,
+				"stroke-linecap": "round",
+				"stroke-linejoin": "round",
+			});
+			layer.appendChild(polyline);
 		} else if (stroke.type === "rect") {
-			ctx.strokeRect(stroke.start.x, stroke.start.y, stroke.end.x - stroke.start.x, stroke.end.y - stroke.start.y);
+			const x = Math.min(stroke.start.x, stroke.end.x);
+			const y = Math.min(stroke.start.y, stroke.end.y);
+			const rect = document.createElementNS(SVG_NAMESPACE, "rect");
+			setSvgAttributes(rect, {
+				x,
+				y,
+				width: Math.abs(stroke.end.x - stroke.start.x),
+				height: Math.abs(stroke.end.y - stroke.start.y),
+				fill: "rgba(26, 115, 232, 0.06)",
+				stroke: stroke.color ?? "#fa1e0e",
+				"stroke-width": stroke.size ?? 4,
+				"stroke-linejoin": "round",
+			});
+			layer.appendChild(rect);
 		} else if (stroke.type === "arrow") {
-			const angle = Math.atan2(stroke.end.y - stroke.start.y, stroke.end.x - stroke.start.x);
-			const headLen = Math.max(18, (stroke.size ?? 4) * 6);
-			ctx.beginPath();
-			ctx.moveTo(stroke.start.x, stroke.start.y);
-			ctx.lineTo(stroke.end.x, stroke.end.y);
-			ctx.stroke();
-			ctx.beginPath();
-			ctx.moveTo(stroke.end.x, stroke.end.y);
-			ctx.lineTo(stroke.end.x - headLen * Math.cos(angle - 0.45), stroke.end.y - headLen * Math.sin(angle - 0.45));
-			ctx.lineTo(stroke.end.x - headLen * Math.cos(angle + 0.45), stroke.end.y - headLen * Math.sin(angle + 0.45));
-			ctx.closePath();
-			ctx.fill();
+			const color = stroke.color ?? "#fa1e0e";
+			const size = stroke.size ?? 4;
+			const line = document.createElementNS(SVG_NAMESPACE, "line");
+			setSvgAttributes(line, {
+				x1: stroke.start.x,
+				y1: stroke.start.y,
+				x2: stroke.end.x,
+				y2: stroke.end.y,
+				stroke: color,
+				"stroke-width": size,
+				"stroke-linecap": "round",
+			});
+			layer.appendChild(line);
+			const arrowHead = document.createElementNS(SVG_NAMESPACE, "polygon");
+			setSvgAttributes(arrowHead, { points: arrowHeadPoints(stroke.start, stroke.end, size), fill: color });
+			layer.appendChild(arrowHead);
 		}
-		ctx.restore();
 	}
 
-	function resizeCanvas(state: OverlayState): void {
-		const ratio = window.devicePixelRatio || 1;
-		state.canvas.width = Math.floor(window.innerWidth * ratio);
-		state.canvas.height = Math.floor(window.innerHeight * ratio);
-		state.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+	function arrowHeadPoints(start: Point, end: Point, size: number): string {
+		const angle = Math.atan2(end.y - start.y, end.x - start.x);
+		const headLen = Math.max(18, size * 6);
+		const left = { x: end.x - headLen * Math.cos(angle - 0.45), y: end.y - headLen * Math.sin(angle - 0.45) };
+		const right = { x: end.x - headLen * Math.cos(angle + 0.45), y: end.y - headLen * Math.sin(angle + 0.45) };
+		return `${end.x},${end.y} ${left.x},${left.y} ${right.x},${right.y}`;
+	}
+
+	function resizeDrawingLayer(state: OverlayState): void {
+		const width = Math.max(1, window.innerWidth);
+		const height = Math.max(1, window.innerHeight);
+		setSvgAttributes(state.drawingLayer, { width, height, viewBox: `0 0 ${width} ${height}` });
+	}
+
+	function setSvgAttributes(element: SVGElement, attributes: Record<string, string | number>): void {
+		for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
 	}
 }
