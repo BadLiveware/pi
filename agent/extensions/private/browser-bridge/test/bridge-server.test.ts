@@ -138,6 +138,7 @@ test("server treats stale resume as no-copy pair during the pairing window", asy
 		assert.equal(runtime.state.clients.length, 1);
 		assert.equal(runtime.state.clients[0]?.clientId, "client-a");
 		assert.equal(runtime.state.server.pairing, undefined);
+		assert.match(runtime.state.debugLog.map((entry) => entry.event).join("\n"), /resume-stale-accepted-by-pair-window/);
 	} finally {
 		socket.terminate();
 		await server.stop("test cleanup");

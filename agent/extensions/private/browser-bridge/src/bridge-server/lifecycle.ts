@@ -1,5 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
-import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, type BrowserBridgeState, type BrowserClientSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
+import { isRecord, parseClientAuthDetails, parsePairPayload, parseResumePayload, rawDataToText, type BrowserClientAuthDetails } from "./auth-payloads.ts";
+import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, appendBrowserBridgeDebugLog, type BrowserBridgeState, type BrowserClientSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
 import { makeBridgeId, makePairingToken } from "../core/ids.ts";
 import {
 	BRIDGE_PROTOCOL_VERSION,
@@ -37,25 +38,6 @@ interface PendingRequest {
 	timer: NodeJS.Timeout;
 }
 
-interface BrowserClientAuthDetails {
-	clientId?: string;
-	browser?: BrowserClientSummary["browser"];
-	extensionVersion?: string;
-	capabilities?: string[];
-	activeTabId?: number;
-}
-
-interface PairPayload {
-	token: string;
-	client?: BrowserClientAuthDetails;
-}
-
-interface ResumePayload {
-	clientId: string;
-	resumeSecret: string;
-	client?: BrowserClientAuthDetails;
-}
-
 interface AuthorizedClient {
 	clientId: string;
 	resumeSecret: string;
@@ -86,6 +68,7 @@ export class BrowserBridgeServer {
 	async start(): Promise<{ url: string; port: number }> {
 		if (this.wss) return { url: this.url(), port: this.currentPort() };
 
+		this.debug("info", "server-starting", { port: this.options.port ?? BROWSER_BRIDGE_PORT });
 		const wss = new WebSocketServer({ host: BROWSER_BRIDGE_HOST, port: this.options.port ?? BROWSER_BRIDGE_PORT });
 		this.wss = wss;
 		wss.on("connection", (socket) => this.onConnection(socket));
@@ -109,6 +92,7 @@ export class BrowserBridgeServer {
 			});
 		} catch (error) {
 			this.wss = undefined;
+			this.debug("error", "server-start-failed", { message: error instanceof Error ? error.message : String(error) });
 			this.setStoppedDiagnostics(`Failed to start bridge server: ${error instanceof Error ? error.message : String(error)}`);
 			throw error;
 		}
@@ -118,10 +102,12 @@ export class BrowserBridgeServer {
 		this.state.server.host = BROWSER_BRIDGE_HOST;
 		this.state.server.port = this.currentPort();
 		this.state.server.diagnostics = ["Bridge gateway is running. Run `/browser-bridge pair` to open a short-lived pairing window."];
+		this.debug("info", "server-started", { url: this.url(), port: this.currentPort() });
 		return { url: this.url(), port: this.currentPort() };
 	}
 
 	async stop(reason = "Bridge stopped"): Promise<void> {
+		this.debug("info", "server-stopping", { reason });
 		this.clearPairing();
 		for (const pending of [...this.pending.values()]) this.rejectPending(pending, new Error(reason));
 		for (const record of [...this.sockets.values()]) record.socket.terminate();
@@ -153,12 +139,16 @@ export class BrowserBridgeServer {
 		this.pairing = { token, expiresAt, timer };
 		this.state.server.pairing = { active: true, expiresAt };
 		this.state.server.diagnostics = ["Pairing window is active. Click Connect in the browser extension, or paste the fallback pairing token before it expires."];
+		this.debug("info", "pairing-window-open", { expiresAt, url: this.url() });
 		return { token, expiresAt, url: this.url() };
 	}
 
 	async sendRequestToClient(clientId: string, type: string, payload: unknown, options: { timeoutMs?: number; target?: { tabId?: number; frameId?: number } } = {}): Promise<BridgeEnvelope> {
 		const record = this.clients.get(clientId);
-		if (!record || record.socket.readyState !== WebSocket.OPEN) throw new Error(`Browser client ${clientId} is not connected.`);
+		if (!record || record.socket.readyState !== WebSocket.OPEN) {
+			this.debug("warn", "client-request-not-connected", { clientId, type });
+			throw new Error(`Browser client ${clientId} is not connected.`);
+		}
 		const requestId = makeBridgeId("req");
 		const timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 		const envelope = makeBridgeEnvelope({
@@ -170,6 +160,7 @@ export class BrowserBridgeServer {
 		});
 		return await new Promise<BridgeEnvelope>((resolve, reject) => {
 			const request: PendingBridgeRequestSummary = { requestId, clientId, type, startedAt: this.now(), timeoutMs, target: options.target };
+			this.debug("debug", "client-request-sent", { requestId, clientId, type, timeoutMs });
 			const timer = setTimeout(() => {
 				const pending = this.pending.get(requestId);
 				if (!pending) return;
@@ -184,19 +175,25 @@ export class BrowserBridgeServer {
 	private onConnection(socket: WebSocket): void {
 		const record: SocketRecord = { socket };
 		this.sockets.set(socket, record);
+		this.debug("info", "socket-connected", { sockets: this.sockets.size });
 		socket.on("message", (data) => this.onMessage(record, data));
-		socket.on("close", () => this.onClose(record));
-		socket.on("error", () => this.onClose(record));
+		socket.on("close", (code, reason) => this.onClose(record, code, reason.toString("utf8")));
+		socket.on("error", (error) => {
+			this.debug("warn", "socket-error", { message: error instanceof Error ? error.message : String(error), clientId: record.clientId });
+			this.onClose(record);
+		});
 	}
 
 	private onMessage(record: SocketRecord, data: WebSocket.RawData): void {
 		const parsed = parseBridgeEnvelopeJson(rawDataToText(data), "browser-to-pi");
 		if (!parsed.ok) {
+			this.debug("warn", "message-parse-failed", { code: parsed.code, message: parsed.message });
 			this.sendError(record.socket, undefined, parsed.code, parsed.message);
 			return;
 		}
 
 		const envelope = parsed.envelope;
+		this.debug("debug", "message-received", { type: envelope.type, requestId: envelope.requestId, clientId: record.clientId });
 		if (!record.clientId) {
 			if (envelope.type === "pair") {
 				this.handlePair(record, envelope);
@@ -240,11 +237,13 @@ export class BrowserBridgeServer {
 	private handlePair(record: SocketRecord, envelope: BridgeEnvelope): void {
 		const payload = parsePairPayload(envelope.payload);
 		if (!payload) {
+			this.debug("warn", "pair-invalid-payload", { requestId: envelope.id });
 			this.sendError(record.socket, envelope.id, "invalid_envelope", "Pair message payload is invalid.");
 			record.socket.close(4002, "invalid pair payload");
 			return;
 		}
 		if (!this.pairing || this.pairing.token !== payload.token || this.pairing.expiresAt <= this.now()) {
+			this.debug("warn", "pair-rejected", { requestId: envelope.id, hasPairingWindow: Boolean(this.pairing), clientId: payload.client?.clientId });
 			this.sendError(record.socket, envelope.id, "pairing_failed", "Pairing token is missing, invalid, or expired.");
 			record.socket.close(4003, "pairing failed");
 			return;
@@ -255,6 +254,7 @@ export class BrowserBridgeServer {
 		this.authorizedClients.set(clientId, { clientId, resumeSecret, client: payload.client });
 		this.attachClient(record, clientId, payload.client);
 		this.clearPairing();
+		this.debug("info", "pair-accepted", { requestId: envelope.id, clientId });
 		this.send(record.socket, makeBridgeEnvelope({
 			id: makeBridgeId("pair"),
 			requestId: envelope.id,
@@ -266,6 +266,7 @@ export class BrowserBridgeServer {
 
 	private handlePairRequest(record: SocketRecord, envelope: BridgeEnvelope): void {
 		if (!this.pairing || this.pairing.expiresAt <= this.now()) {
+			this.debug("warn", "pair-request-rejected", { requestId: envelope.id, hasPairingWindow: Boolean(this.pairing) });
 			this.sendError(record.socket, envelope.id, "pairing_failed", "No active browser bridge pairing window. Run `/browser-bridge pair` in Pi first.");
 			record.socket.close(4003, "no active pairing window");
 			return;
@@ -280,6 +281,7 @@ export class BrowserBridgeServer {
 		this.authorizedClients.set(clientId, { clientId, resumeSecret, client: clientDetails });
 		this.attachClient(record, clientId, clientDetails);
 		this.clearPairing();
+		this.debug("info", "pair-window-client-accepted", { requestId: envelope.id, clientId });
 		this.send(record.socket, makeBridgeEnvelope({
 			id: makeBridgeId("pair"),
 			requestId: envelope.id,
@@ -292,6 +294,7 @@ export class BrowserBridgeServer {
 	private handleResume(record: SocketRecord, envelope: BridgeEnvelope): void {
 		const payload = parseResumePayload(envelope.payload);
 		if (!payload) {
+			this.debug("warn", "resume-invalid-payload", { requestId: envelope.id });
 			this.sendError(record.socket, envelope.id, "invalid_envelope", "Resume message payload is invalid.");
 			record.socket.close(4004, "invalid resume payload");
 			return;
@@ -299,9 +302,11 @@ export class BrowserBridgeServer {
 		const authorized = this.authorizedClients.get(payload.clientId);
 		if (!authorized || authorized.resumeSecret !== payload.resumeSecret) {
 			if (this.pairing && this.pairing.expiresAt > this.now()) {
+				this.debug("warn", "resume-stale-accepted-by-pair-window", { requestId: envelope.id, clientId: payload.clientId });
 				this.acceptPairingWindowClient(record, envelope, payload.client ? { ...payload.client, clientId: payload.clientId } : { clientId: payload.clientId });
 				return;
 			}
+			this.debug("warn", "resume-rejected", { requestId: envelope.id, clientId: payload.clientId, knownClient: Boolean(authorized) });
 			this.sendError(record.socket, envelope.id, "pairing_failed", "Resume secret is missing, invalid, or expired for this Pi session.");
 			record.socket.close(4005, "resume failed");
 			return;
@@ -309,6 +314,7 @@ export class BrowserBridgeServer {
 		const client = payload.client ? { ...authorized.client, ...payload.client, clientId: payload.clientId } : authorized.client;
 		this.authorizedClients.set(payload.clientId, { ...authorized, client });
 		this.attachClient(record, payload.clientId, client);
+		this.debug("info", "resume-accepted", { requestId: envelope.id, clientId: payload.clientId });
 		this.send(record.socket, makeBridgeEnvelope({
 			id: makeBridgeId("resume"),
 			requestId: envelope.id,
@@ -334,10 +340,12 @@ export class BrowserBridgeServer {
 		this.state.clients = [...this.state.clients.filter((existingClient) => existingClient.clientId !== clientId), client];
 		this.state.server.pairedClientCount = this.state.clients.length;
 		this.state.server.diagnostics = this.state.clients.length === 0 ? [] : [`${this.state.clients.length} browser client(s) connected.`];
+		this.debug("info", "client-attached", { clientId, browser: client.browser, activeTabId: client.activeTabId });
 	}
 
-	private onClose(record: SocketRecord): void {
+	private onClose(record: SocketRecord, code?: number, reason?: string): void {
 		this.sockets.delete(record.socket);
+		this.debug("info", "socket-closed", { clientId: record.clientId, code, reason: reason || undefined, sockets: this.sockets.size });
 		if (!record.clientId || this.clients.get(record.clientId) !== record) return;
 		this.clients.delete(record.clientId);
 		this.state.clients = this.state.clients.filter((client) => client.clientId !== record.clientId);
@@ -373,9 +381,11 @@ export class BrowserBridgeServer {
 		];
 		const client = this.state.clients.find((candidate) => candidate.clientId === clientId);
 		if (client) client.activeTabId = tab.tabId;
+		this.debug("info", "tab-activated", { clientId, tabId: tab.tabId, origin: tab.origin });
 	}
 
 	private rejectPending(pending: PendingRequest, error: Error): void {
+		this.debug("warn", "client-request-rejected", { requestId: pending.request.requestId, clientId: pending.clientId, type: pending.request.type, message: error.message });
 		clearTimeout(pending.timer);
 		this.pending.delete(pending.request.requestId);
 		this.state.pendingRequests = this.state.pendingRequests.filter((request) => request.requestId !== pending.request.requestId);
@@ -383,6 +393,7 @@ export class BrowserBridgeServer {
 	}
 
 	private resolvePending(pending: PendingRequest, envelope: BridgeEnvelope): void {
+		this.debug("debug", "client-request-resolved", { requestId: pending.request.requestId, clientId: pending.clientId, type: pending.request.type, responseType: envelope.type });
 		clearTimeout(pending.timer);
 		this.pending.delete(pending.request.requestId);
 		this.state.pendingRequests = this.state.pendingRequests.filter((request) => request.requestId !== pending.request.requestId);
@@ -390,6 +401,7 @@ export class BrowserBridgeServer {
 	}
 
 	private sendError(socket: WebSocket, requestId: string | undefined, code: BridgeErrorCode, message: string): void {
+		this.debug("warn", "error-sent", { requestId, code, message });
 		this.send(socket, makeBridgeErrorEnvelope({ id: makeBridgeId("err"), requestId, code, message }));
 	}
 
@@ -413,6 +425,10 @@ export class BrowserBridgeServer {
 		return `ws://${BROWSER_BRIDGE_HOST}:${this.currentPort()}`;
 	}
 
+	private debug(level: "debug" | "info" | "warn" | "error", event: string, data?: Record<string, string | number | boolean | undefined>): void {
+		appendBrowserBridgeDebugLog(this.state, { at: this.now(), source: "server", level, event, data });
+	}
+
 	private setStoppedDiagnostics(reason: string): void {
 		this.state.server.enabled = false;
 		this.state.server.listener = "stopped";
@@ -426,44 +442,4 @@ export class BrowserBridgeServer {
 		const candidate = preferred && preferred.length > 0 ? preferred : makeBridgeId("client");
 		return this.clients.has(candidate) ? makeBridgeId("client") : candidate;
 	}
-}
-
-function rawDataToText(data: WebSocket.RawData): string {
-	if (typeof data === "string") return data;
-	if (Buffer.isBuffer(data)) return data.toString("utf8");
-	if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
-	return Buffer.from(data).toString("utf8");
-}
-
-function parsePairPayload(payload: unknown): PairPayload | undefined {
-	if (!isRecord(payload) || typeof payload.token !== "string") return undefined;
-	return { token: payload.token, client: parseClientAuthDetails(payload.client) };
-}
-
-function parseResumePayload(payload: unknown): ResumePayload | undefined {
-	if (!isRecord(payload) || typeof payload.clientId !== "string" || typeof payload.resumeSecret !== "string") return undefined;
-	return { clientId: payload.clientId, resumeSecret: payload.resumeSecret, client: parseClientAuthDetails(payload.client) };
-}
-
-function parseClientAuthDetails(value: unknown): BrowserClientAuthDetails | undefined {
-	const client = isRecord(value) ? value : undefined;
-	if (!client) return undefined;
-	const browser = parseBrowser(client.browser);
-	const capabilities = Array.isArray(client.capabilities) ? client.capabilities.filter((capability): capability is string => typeof capability === "string") : undefined;
-	const activeTabId = typeof client.activeTabId === "number" && Number.isSafeInteger(client.activeTabId) && client.activeTabId >= 0 ? client.activeTabId : undefined;
-	return {
-		clientId: typeof client.clientId === "string" ? client.clientId : undefined,
-		browser,
-		extensionVersion: typeof client.extensionVersion === "string" ? client.extensionVersion : undefined,
-		capabilities,
-		activeTabId,
-	};
-}
-
-function parseBrowser(value: unknown): BrowserClientSummary["browser"] | undefined {
-	return value === "chrome" || value === "edge" || value === "chromium" || value === "unknown" ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

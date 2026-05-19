@@ -1,6 +1,7 @@
 /// <reference path="./chrome.d.ts" />
 
 import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
+import { formatExtensionDebugLog, type ExtensionDebugLogEntry } from "./shared/debug-log.js";
 import { parsePairingDetails } from "./shared/pairing-details.js";
 
 const BRIDGE_URL_DRAFT_KEY = "bridgeUrlDraft";
@@ -20,6 +21,7 @@ interface RuntimeState {
 	clientId?: string;
 	lastError?: string;
 	activatedTabs: ActivatedTab[];
+	debugLog: ExtensionDebugLogEntry[];
 }
 
 interface ActivatedTab {
@@ -35,6 +37,7 @@ const detailsInput = requireInput("pairing-details");
 const urlInput = requireInput("bridge-url");
 const tokenInput = requireInput("pairing-token");
 const messageEl = requireElement("message");
+const debugLogEl = requireElement("debug-log");
 const connectButton = requireButton("connect");
 const disconnectButton = requireButton("disconnect");
 const activateButton = requireButton("activate");
@@ -73,14 +76,8 @@ async function init(): Promise<void> {
 }
 
 async function loadPairingDrafts(): Promise<void> {
-	const stored = await chrome.storage.local.get([BRIDGE_URL_DRAFT_KEY, PAIRING_TOKEN_DRAFT_KEY, PAIRING_DETAILS_DRAFT_KEY]);
-	const details = stringValue(stored[PAIRING_DETAILS_DRAFT_KEY]);
-	const url = stringValue(stored[BRIDGE_URL_DRAFT_KEY]) ?? DEFAULT_BRIDGE_URL;
-	const token = stringValue(stored[PAIRING_TOKEN_DRAFT_KEY]);
-	if (details) detailsInput.value = details;
-	urlInput.value = url;
-	if (token) tokenInput.value = token;
-	if (details) applyPairingDetails(details, false);
+	urlInput.value = DEFAULT_BRIDGE_URL;
+	await chrome.storage.local.remove([BRIDGE_URL_DRAFT_KEY, PAIRING_TOKEN_DRAFT_KEY, PAIRING_DETAILS_DRAFT_KEY]);
 }
 
 function handlePairingInput(value: string): void {
@@ -153,6 +150,7 @@ function renderState(state: RuntimeState): void {
 		`Activated tabs: ${state.activatedTabs.length}`,
 	];
 	if (state.lastError) lines.push(`Last error: ${state.lastError}`);
+	debugLogEl.textContent = state.debugLog.length > 0 ? formatExtensionDebugLog(state.debugLog, 30) : "No debug events yet.";
 	if (state.activatedTabs.length > 0) {
 		for (const tab of state.activatedTabs.slice(-3)) {
 			lines.push(`- ${tab.title ?? "Untitled"} (${tab.origin ?? "unknown origin"})`);
@@ -174,10 +172,6 @@ function setBusy(busy: boolean): void {
 function setMessage(message: string, isError: boolean): void {
 	messageEl.textContent = message;
 	messageEl.classList.toggle("error", isError);
-}
-
-function stringValue(value: unknown): string | undefined {
-	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 async function send<T>(message: unknown): Promise<T> {

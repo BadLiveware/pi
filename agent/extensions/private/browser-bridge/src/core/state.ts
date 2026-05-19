@@ -4,6 +4,16 @@ export const BROWSER_BRIDGE_DEFAULT_URL = `ws://${BROWSER_BRIDGE_HOST}:${BROWSER
 export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "overlay", "preview-pages", "interaction", "clipboard"] as const;
 
 export type BridgeListenerStatus = "stopped" | "running";
+export type BrowserBridgeDebugLevel = "debug" | "info" | "warn" | "error";
+
+export interface BrowserBridgeDebugLogEntry {
+	at: number;
+	source: "server" | "tool" | "command";
+	level: BrowserBridgeDebugLevel;
+	event: string;
+	message?: string;
+	data?: Record<string, string | number | boolean | undefined>;
+}
 
 export interface BrowserBridgePairingState {
 	active: boolean;
@@ -63,6 +73,7 @@ export interface BrowserBridgeState {
 	previewServer?: PreviewServerState;
 	capabilities: string[];
 	diagnostics: string[];
+	debugLog: BrowserBridgeDebugLogEntry[];
 	createdAt: number;
 }
 
@@ -78,6 +89,7 @@ export interface BrowserBridgeSnapshot {
 	previewServer?: PreviewServerState;
 	capabilities: string[];
 	diagnostics: string[];
+	debugLog: BrowserBridgeDebugLogEntry[];
 	createdAt: number;
 }
 
@@ -102,6 +114,7 @@ export function createInitialBrowserBridgeState(now = Date.now()): BrowserBridge
 		pendingRequests: [],
 		capabilities: [...BROWSER_BRIDGE_CAPABILITIES],
 		diagnostics: [],
+		debugLog: [],
 		createdAt: now,
 	};
 }
@@ -121,11 +134,31 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 		previewServer: state.previewServer ? { ...state.previewServer } : undefined,
 		capabilities: [...state.capabilities],
 		diagnostics: [...state.diagnostics, ...server.diagnostics],
+		debugLog: state.debugLog.map((entry) => ({ ...entry, data: entry.data ? { ...entry.data } : undefined })),
 		createdAt: state.createdAt,
 	};
 }
 
-export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, options: { includeDiagnostics?: boolean } = {}): string {
+export function appendBrowserBridgeDebugLog(state: BrowserBridgeState, entry: Omit<BrowserBridgeDebugLogEntry, "at"> & { at?: number }, limit = 100): void {
+	state.debugLog = [
+		...state.debugLog,
+		{
+			...entry,
+			at: entry.at ?? Date.now(),
+			data: entry.data ? { ...entry.data } : undefined,
+		},
+	].slice(-limit);
+}
+
+export function formatBrowserBridgeDebugLog(entries: BrowserBridgeDebugLogEntry[], limit = 12): string[] {
+	return entries.slice(-limit).map((entry) => {
+		const data = entry.data && Object.keys(entry.data).length > 0 ? ` ${JSON.stringify(entry.data)}` : "";
+		const message = entry.message ? ` ${entry.message}` : "";
+		return `${new Date(entry.at).toISOString()} [${entry.level}] ${entry.source}:${entry.event}${message}${data}`;
+	});
+}
+
+export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, options: { includeDiagnostics?: boolean; includeDebugLog?: boolean; debugLogLimit?: number } = {}): string {
 	const status = snapshot.server.enabled ? "enabled" : "disabled";
 	const listener = snapshot.server.listener;
 	const port = snapshot.server.port === undefined ? "none" : String(snapshot.server.port);
@@ -151,6 +184,11 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 	if (options.includeDiagnostics !== false && snapshot.diagnostics.length > 0) {
 		lines.push("diagnostics:");
 		for (const diagnostic of snapshot.diagnostics) lines.push(`- ${diagnostic}`);
+	}
+
+	if (options.includeDebugLog && snapshot.debugLog.length > 0) {
+		lines.push("debug log:");
+		for (const entry of formatBrowserBridgeDebugLog(snapshot.debugLog, options.debugLogLimit)) lines.push(`- ${entry}`);
 	}
 
 	return lines.join("\n");

@@ -6,12 +6,12 @@ The current build registers bridge state tooling, an explicit fixed-port local g
 
 ## Current capabilities
 
-- `/browser-bridge status` shows local bridge state and diagnostics.
+- `/browser-bridge status` shows local bridge state and diagnostics; `/browser-bridge status debug` or `/browser-bridge debug` includes recent Pi-side debug log entries.
 - `/browser-bridge start` starts a fixed-port gateway bound to `127.0.0.1:43871`.
 - `/browser-bridge stop` stops the listener and disconnects clients.
 - `/browser-bridge pair` starts the gateway if needed and opens a short-lived no-copy pairing window with a token fallback.
 - `browser_bridge_state` returns structured state for the agent.
-- Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, and explicitly activates the current tab.
+- Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, shows recent browser-side debug log entries, and explicitly activates the current tab.
 - Activated tabs report title, origin, viewport, and capabilities back to Pi.
 - `browser_bridge_select_elements` asks the browser extension to let the user select one or more visible elements and returns compact descriptors.
 - `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible annotations on activated tabs.
@@ -76,8 +76,8 @@ npm run build:browser --workspace @badliveware/pi-browser-bridge
 
 ## Troubleshooting
 
-- If `browser_bridge_state` shows no clients, run `/browser-bridge pair` and click **Connect / Pair** in the popup before the pairing window expires.
-- If the popup closes while copying pairing values, reopen it; the URL/token draft fields are restored from extension-local storage.
+- If `browser_bridge_state` shows no clients, run `/browser-bridge pair` and click **Connect / Pair** in the popup before the pairing window expires. Use `browser_bridge_state` with `includeDebugLog: true`, `/browser-bridge debug`, and the popup **Debug log** section to compare Pi-side and browser-side connection events.
+- If the popup shows a stale non-default bridge URL, reload the unpacked extension; the popup should default back to `ws://127.0.0.1:43871`. Pasted fallback pairing details still override the URL for that attempt.
 - If the extension disconnects after it was paired, reopen the popup and click **Connect** with the saved URL; a new token is not needed for the same Pi session. The background worker also attempts to reconnect automatically.
 - If a tab does not appear in state, activate it from the popup after the page finishes loading.
 - Restricted browser pages such as `chrome://` pages cannot be activated.

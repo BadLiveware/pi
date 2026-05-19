@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { bridgeCloseBeforeAcceptMessage, shouldFallbackResumeToPairRequest } from "../browser-extension/src/shared/connection-plan.ts";
+import { bridgeCloseBeforeAcceptMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "../browser-extension/src/shared/connection-plan.ts";
+import { appendExtensionDebugLog, formatExtensionDebugLog, parseStoredDebugLog } from "../browser-extension/src/shared/debug-log.ts";
 import { parsePairingDetails } from "../browser-extension/src/shared/pairing-details.ts";
 
 function readBrowserExtensionFile(path: string): string {
@@ -32,6 +33,18 @@ test("connection helpers retry only stale resume failures through no-copy pairin
 	assert.equal(shouldFallbackResumeToPairRequest(new Error("Resume secret is missing, invalid, or expired for this Pi session.")), true);
 	assert.equal(shouldFallbackResumeToPairRequest(new Error("No active browser bridge pairing window. Run `/browser-bridge pair` in Pi first.")), false);
 	assert.equal(shouldFallbackResumeToPairRequest(new Error("Could not connect to the Pi bridge.")), false);
+});
+
+test("connection helpers retry stale bridge URLs through the default gateway", () => {
+	assert.equal(shouldFallbackBridgeUrlToDefault(new Error("Could not connect to the Pi bridge.")), true);
+	assert.equal(shouldFallbackBridgeUrlToDefault(new Error("Pi bridge socket closed before connection completed.")), true);
+	assert.equal(shouldFallbackBridgeUrlToDefault(new Error("No active browser bridge pairing window.")), false);
+});
+
+test("extension debug log helpers format and reject malformed rows", () => {
+	const entries = appendExtensionDebugLog([], { at: 1234, source: "background", level: "info", event: "connect-start", data: { url: "ws://127.0.0.1:43871", hasToken: false } });
+	assert.match(formatExtensionDebugLog(entries), /background:connect-start/);
+	assert.equal(parseStoredDebugLog([...entries, { event: "bad" }]).length, 1);
 });
 
 test("connection close helper preserves server close reasons", () => {
