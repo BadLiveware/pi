@@ -1,3 +1,9 @@
+/// <reference path="./chrome.d.ts" />
+/// <reference path="./content/selection.ts" />
+/// <reference path="./content/overlay.ts" />
+/// <reference path="./content/interact.ts" />
+/// <reference path="./content/clipboard.ts" />
+
 namespace PiBrowserBridgeContent {
 	interface ActivateMessage {
 		type: "pi-bridge:activate";

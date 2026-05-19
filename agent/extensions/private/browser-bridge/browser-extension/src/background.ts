@@ -1,3 +1,5 @@
+/// <reference path="./chrome.d.ts" />
+
 import { BRIDGE_PROTOCOL_VERSION, makeEnvelope, makeId, parseEnvelope, type BridgeEnvelope } from "./shared/protocol.js";
 
 type BrowserKind = "chrome" | "edge" | "chromium" | "unknown";

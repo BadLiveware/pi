@@ -1,3 +1,5 @@
+/// <reference path="./chrome.d.ts" />
+
 import { parsePairingDetails } from "./shared/pairing-details.js";
 
 const BRIDGE_URL_DRAFT_KEY = "bridgeUrlDraft";
