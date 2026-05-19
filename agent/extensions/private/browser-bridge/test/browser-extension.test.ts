@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { bridgeCloseBeforeAcceptMessage, shouldFallbackResumeToPairRequest } from "../browser-extension/src/shared/connection-plan.ts";
 import { parsePairingDetails } from "../browser-extension/src/shared/pairing-details.ts";
 
 function readBrowserExtensionFile(path: string): string {
@@ -24,6 +25,28 @@ test("pairing details parser accepts one-line and labeled command output", () =>
 		url: "ws://127.0.0.1:43210",
 		token: "a_b-cdefghijklmnopqrstuv",
 	});
+});
+
+test("connection helpers retry only stale resume failures through no-copy pairing", () => {
+	assert.equal(shouldFallbackResumeToPairRequest(new Error("Pi bridge rejected the connection before it accepted the browser: resume failed.")), true);
+	assert.equal(shouldFallbackResumeToPairRequest(new Error("Resume secret is missing, invalid, or expired for this Pi session.")), true);
+	assert.equal(shouldFallbackResumeToPairRequest(new Error("No active browser bridge pairing window. Run `/browser-bridge pair` in Pi first.")), false);
+	assert.equal(shouldFallbackResumeToPairRequest(new Error("Could not connect to the Pi bridge.")), false);
+});
+
+test("connection close helper preserves server close reasons", () => {
+	assert.equal(
+		bridgeCloseBeforeAcceptMessage({ code: 4005, reason: "resume failed" }),
+		"Pi bridge rejected the connection before it accepted the browser: resume failed.",
+	);
+	assert.equal(
+		bridgeCloseBeforeAcceptMessage({ code: 1006 }, "Could not connect to the Pi bridge."),
+		"Could not connect to the Pi bridge.",
+	);
+	assert.equal(
+		bridgeCloseBeforeAcceptMessage({ code: 4003 }),
+		"Pi bridge socket closed before connection completed with close code 4003.",
+	);
 });
 
 test("injected content script is built as a classic single-file bundle", () => {

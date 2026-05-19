@@ -267,7 +267,7 @@ export class BrowserBridgeServer {
 	private handlePairRequest(record: SocketRecord, envelope: BridgeEnvelope): void {
 		if (!this.pairing || this.pairing.expiresAt <= this.now()) {
 			this.sendError(record.socket, envelope.id, "pairing_failed", "No active browser bridge pairing window. Run `/browser-bridge pair` in Pi first.");
-			record.socket.close(4003, "pairing failed");
+			record.socket.close(4003, "no active pairing window");
 			return;
 		}
 		const payload = isRecord(envelope.payload) ? envelope.payload : {};

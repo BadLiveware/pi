@@ -1,5 +1,6 @@
 /// <reference path="./chrome.d.ts" />
 
+import { bridgeCloseBeforeAcceptMessage, shouldFallbackResumeToPairRequest } from "./shared/connection-plan.js";
 import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
 import { BRIDGE_PROTOCOL_VERSION, makeEnvelope, makeId, parseEnvelope, type BridgeEnvelope } from "./shared/protocol.js";
 
@@ -78,7 +79,18 @@ async function connectToBridge(url: string, token: string): Promise<void> {
 		await openBridgeSocket({ type: "pair", token: trimmedToken });
 		return;
 	}
-	await openBridgeSocket(resumeSecret ? { type: "resume", resumeSecret } : { type: "pair-request" });
+	if (resumeSecret) {
+		try {
+			await openBridgeSocket({ type: "resume", resumeSecret });
+			return;
+		} catch (error) {
+			if (!shouldFallbackResumeToPairRequest(error)) throw error;
+			resumeSecret = undefined;
+			lastError = undefined;
+			await chrome.storage.local.remove(["resumeSecret"]);
+		}
+	}
+	await openBridgeSocket({ type: "pair-request" });
 }
 
 async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: "pair-request" } | { type: "resume"; resumeSecret: string }): Promise<void> {
@@ -113,14 +125,14 @@ async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: 
 			})));
 		});
 		ws.addEventListener("message", (event) => handleSocketMessage(String(event.data)));
-		ws.addEventListener("close", () => handleSocketClose(ws));
+		ws.addEventListener("close", (event) => handleSocketClose(ws, event));
 		ws.addEventListener("error", () => {
 			lastError = "Could not connect to the Pi bridge.";
 		});
 	});
 }
 
-function handleSocketClose(ws: WebSocket): void {
+function handleSocketClose(ws: WebSocket, event?: CloseEvent): void {
 	const wasConnected = connected;
 	connected = false;
 	if (socket === ws) socket = undefined;
@@ -128,7 +140,7 @@ function handleSocketClose(ws: WebSocket): void {
 		const pending = pendingPair;
 		pendingPair = undefined;
 		globalThis.clearTimeout(pending.timer);
-		pending.reject(new Error("Pi bridge socket closed before connection completed."));
+		pending.reject(new Error(bridgeCloseBeforeAcceptMessage(event, lastError)));
 	}
 	if (wasConnected && !intentionalDisconnect) scheduleReconnect();
 	intentionalDisconnect = false;
