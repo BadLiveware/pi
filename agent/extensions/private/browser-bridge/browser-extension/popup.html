@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <title>Pi Browser Bridge</title>
   <style>
-    body { box-sizing: border-box; min-width: 320px; margin: 0; padding: 14px; font: 13px system-ui, sans-serif; color: #202124; }
+    body { box-sizing: border-box; min-width: 340px; margin: 0; padding: 14px; font: 13px system-ui, sans-serif; color: #202124; }
     h1 { font-size: 16px; margin: 0 0 10px; }
     label { display: block; margin: 8px 0 4px; font-weight: 600; }
     input { box-sizing: border-box; width: 100%; padding: 7px; border: 1px solid #c7c7c7; border-radius: 6px; font: inherit; }
@@ -20,6 +20,9 @@
 <body>
   <h1>Pi Browser Bridge</h1>
   <div id="status" class="status">Loading…</div>
+
+  <label for="pairing-details">One-line pairing details</label>
+  <input id="pairing-details" placeholder="Paste the Pairing details line from /browser-bridge pair">
 
   <label for="bridge-url">Bridge URL</label>
   <input id="bridge-url" placeholder="ws://127.0.0.1:12345">

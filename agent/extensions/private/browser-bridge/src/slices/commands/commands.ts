@@ -9,7 +9,7 @@ const HELP = [
 	"  status   Show local browser bridge state and diagnostics.",
 	"  start    Start the local 127.0.0.1 bridge listener.",
 	"  stop     Stop the bridge listener and disconnect clients.",
-	"  pair     Start the listener and create a short-lived pairing token.",
+	"  pair     Start the listener and create a short-lived one-line pairing value.",
 ].join("\n");
 
 export function registerBrowserBridgeCommands(pi: ExtensionAPI, runtime: BrowserBridgeRuntime, server: BrowserBridgeServer): void {
@@ -36,10 +36,11 @@ export function registerBrowserBridgeCommands(pi: ExtensionAPI, runtime: Browser
 				await server.start();
 				const pairing = server.createPairingToken();
 				ctx.ui.notify([
+					`Pairing details: ${pairing.url} ${pairing.token}`,
 					`Browser bridge URL: ${pairing.url}`,
 					`Pairing token: ${pairing.token}`,
 					`Expires: ${new Date(pairing.expiresAt).toISOString()}`,
-					"Enter this URL and token in the browser extension popup.",
+					"Copy the Pairing details line into the browser extension popup, or fill the URL and token separately.",
 				].join("\n"), "info");
 				return;
 			}

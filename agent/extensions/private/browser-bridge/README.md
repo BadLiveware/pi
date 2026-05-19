@@ -40,7 +40,7 @@ The current build registers bridge state tooling, an explicit local WebSocket li
 
 2. Load `agent/extensions/private/browser-bridge/browser-extension/` as an unpacked Chromium extension.
 3. In Pi, run `/browser-bridge pair`.
-4. Copy the displayed bridge URL and pairing token into the extension popup and click **Connect**.
+4. Copy the displayed **Pairing details** line into the extension popup and click **Connect**. You can also fill the bridge URL and pairing token separately; the popup persists draft fields if it closes while you copy the other value.
 5. Open a normal `http:`, `https:`, or allowed `file:` page, then click **Activate current tab** in the popup.
 6. In Pi, call `browser_bridge_state` to confirm the client and activated tab are visible.
 
@@ -73,6 +73,7 @@ npm run build:browser --workspace @badliveware/pi-browser-bridge
 ## Troubleshooting
 
 - If `browser_bridge_state` shows no clients, run `/browser-bridge pair` and reconnect from the popup before the token expires.
+- If the popup closes while copying pairing values, reopen it; the URL/token draft fields are restored from extension-local storage.
 - If a tab does not appear in state, activate it from the popup after the page finishes loading.
 - Restricted browser pages such as `chrome://` pages cannot be activated.
 - If preview tabs do not open, copy the URL returned by `browser_bridge_open_preview` and open it manually.

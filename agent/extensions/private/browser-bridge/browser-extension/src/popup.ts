@@ -1,3 +1,9 @@
+import { parsePairingDetails } from "./shared/pairing-details.js";
+
+const BRIDGE_URL_DRAFT_KEY = "bridgeUrlDraft";
+const PAIRING_TOKEN_DRAFT_KEY = "pairingTokenDraft";
+const PAIRING_DETAILS_DRAFT_KEY = "pairingDetailsDraft";
+
 interface PopupResponse<T = unknown> {
 	ok: boolean;
 	state?: RuntimeState;
@@ -22,6 +28,7 @@ interface ActivatedTab {
 }
 
 const statusEl = requireElement("status");
+const detailsInput = requireInput("pairing-details");
 const urlInput = requireInput("bridge-url");
 const tokenInput = requireInput("pairing-token");
 const messageEl = requireElement("message");
@@ -29,9 +36,14 @@ const connectButton = requireButton("connect");
 const disconnectButton = requireButton("disconnect");
 const activateButton = requireButton("activate");
 
+for (const input of [detailsInput, urlInput, tokenInput]) {
+	input.addEventListener("input", () => handlePairingInput(input.value));
+}
+
 connectButton.addEventListener("click", () => {
 	void runAction(async () => {
 		const response = await send<PopupResponse<RuntimeState>>({ type: "bridge:connect", url: urlInput.value, token: tokenInput.value });
+		if (response.ok) await clearSensitivePairingDrafts();
 		handleResponse(response, "Connected to Pi bridge.");
 	});
 });
@@ -50,7 +62,54 @@ activateButton.addEventListener("click", () => {
 	});
 });
 
-void refresh();
+void init();
+
+async function init(): Promise<void> {
+	await loadPairingDrafts();
+	await refresh();
+}
+
+async function loadPairingDrafts(): Promise<void> {
+	const stored = await chrome.storage.local.get([BRIDGE_URL_DRAFT_KEY, PAIRING_TOKEN_DRAFT_KEY, PAIRING_DETAILS_DRAFT_KEY]);
+	const details = stringValue(stored[PAIRING_DETAILS_DRAFT_KEY]);
+	const url = stringValue(stored[BRIDGE_URL_DRAFT_KEY]);
+	const token = stringValue(stored[PAIRING_TOKEN_DRAFT_KEY]);
+	if (details) detailsInput.value = details;
+	if (url) urlInput.value = url;
+	if (token) tokenInput.value = token;
+	if (details) applyPairingDetails(details, false);
+}
+
+function handlePairingInput(value: string): void {
+	if (applyPairingDetails(value, true)) return;
+	void persistPairingDrafts();
+}
+
+function applyPairingDetails(value: string, showMessage: boolean): boolean {
+	const details = parsePairingDetails(value);
+	if (!details) return false;
+	urlInput.value = details.url;
+	tokenInput.value = details.token;
+	detailsInput.value = value.trim();
+	void persistPairingDrafts();
+	if (showMessage) setMessage("Filled URL and token from one pairing value.", false);
+	return true;
+}
+
+async function persistPairingDrafts(): Promise<void> {
+	await chrome.storage.local.set({
+		[BRIDGE_URL_DRAFT_KEY]: urlInput.value,
+		[PAIRING_TOKEN_DRAFT_KEY]: tokenInput.value,
+		[PAIRING_DETAILS_DRAFT_KEY]: detailsInput.value,
+	});
+}
+
+async function clearSensitivePairingDrafts(): Promise<void> {
+	detailsInput.value = "";
+	tokenInput.value = "";
+	await chrome.storage.local.remove([PAIRING_TOKEN_DRAFT_KEY, PAIRING_DETAILS_DRAFT_KEY]);
+	await chrome.storage.local.set({ [BRIDGE_URL_DRAFT_KEY]: urlInput.value });
+}
 
 async function refresh(): Promise<void> {
 	const response = await send<PopupResponse<RuntimeState>>({ type: "bridge:getState" });
@@ -112,6 +171,10 @@ function setBusy(busy: boolean): void {
 function setMessage(message: string, isError: boolean): void {
 	messageEl.textContent = message;
 	messageEl.classList.toggle("error", isError);
+}
+
+function stringValue(value: unknown): string | undefined {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 async function send<T>(message: unknown): Promise<T> {
