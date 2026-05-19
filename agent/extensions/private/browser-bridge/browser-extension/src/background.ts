@@ -22,7 +22,7 @@ interface PendingPair {
 	requestId: string;
 	resolve: () => void;
 	reject: (error: Error) => void;
-	timer: number;
+	timer: ReturnType<typeof globalThis.setTimeout>;
 }
 
 let socket: WebSocket | undefined;
@@ -78,7 +78,7 @@ async function connectToBridge(url: string, token: string): Promise<void> {
 				resolve();
 			},
 			reject,
-			timer: window.setTimeout(() => {
+			timer: globalThis.setTimeout(() => {
 				pendingPair = undefined;
 				ws.close();
 				reject(new Error("Timed out waiting for Pi bridge pairing response."));
@@ -106,7 +106,7 @@ async function connectToBridge(url: string, token: string): Promise<void> {
 			if (pendingPair) {
 				const pending = pendingPair;
 				pendingPair = undefined;
-				window.clearTimeout(pending.timer);
+				globalThis.clearTimeout(pending.timer);
 				pending.reject(new Error("Pi bridge socket closed before pairing completed."));
 			}
 		});
@@ -155,7 +155,7 @@ function handleSocketMessage(text: string): void {
 	if (pendingPair && envelope.requestId === pendingPair.requestId) {
 		const pending = pendingPair;
 		pendingPair = undefined;
-		window.clearTimeout(pending.timer);
+		globalThis.clearTimeout(pending.timer);
 		if (envelope.type === "pair:accepted") {
 			const accepted = isRecord(envelope.payload) && typeof envelope.payload.clientId === "string" ? envelope.payload.clientId : clientId;
 			clientId = accepted;
@@ -285,7 +285,7 @@ function selectionOptions(payload: unknown): Record<string, unknown> {
 
 function disconnect(reason: string): void {
 	if (pendingPair) {
-		window.clearTimeout(pendingPair.timer);
+		globalThis.clearTimeout(pendingPair.timer);
 		pendingPair = undefined;
 	}
 	if (socket && socket.readyState === WebSocket.OPEN) socket.close(1000, reason);
