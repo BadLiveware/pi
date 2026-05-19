@@ -232,10 +232,15 @@ test("browser-initiated element selections are stored in state", async () => {
 			direction: "browser-to-pi",
 			type: "elements:selected",
 			payload: {
+				source: "context-menu",
 				tabId: 42,
 				title: "Fixture",
+				url: "https://example.test/page",
+				pageUrl: "https://example.test/page",
+				frameUrl: "https://example.test/frame",
 				origin: "https://example.test",
 				selectedAt: 1234,
+				context: { source: "context-menu", frameId: 7, clientX: 11, clientY: 12, selectedAt: 1234 },
 				selection: { status: "selected", elements: [{ elementId: "el-1", tagName: "button", selectorCandidates: ["button"], textPreview: "Click me" }] },
 			},
 		})));
@@ -243,6 +248,10 @@ test("browser-initiated element selections are stored in state", async () => {
 		assert.equal(ack.type, "ack");
 		assert.equal(runtime.state.sharedSelections.length, 1);
 		assert.equal(runtime.state.sharedSelections[0]?.tabId, 42);
+		assert.equal(runtime.state.sharedSelections[0]?.source, "context-menu");
+		assert.equal(runtime.state.sharedSelections[0]?.url, "https://example.test/page");
+		assert.equal(runtime.state.sharedSelections[0]?.frameUrl, "https://example.test/frame");
+		assert.equal(runtime.state.sharedSelections[0]?.context?.frameId, 7);
 		assert.equal(runtime.state.sharedSelections[0]?.elements[0]?.textPreview, "Click me");
 	} finally {
 		socket.terminate();

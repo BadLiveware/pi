@@ -1,7 +1,8 @@
 /// <reference path="./chrome.d.ts" />
 
+import type { ActivatedTab, RuntimeState } from "./background/types.js";
 import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
-import { formatExtensionDebugLog, type ExtensionDebugLogEntry } from "./shared/debug-log.js";
+import { formatExtensionDebugLog } from "./shared/debug-log.js";
 import { parsePairingDetails } from "./shared/pairing-details.js";
 
 const BRIDGE_URL_DRAFT_KEY = "bridgeUrlDraft";
@@ -13,23 +14,6 @@ interface PopupResponse<T = unknown> {
 	state?: RuntimeState;
 	tab?: ActivatedTab;
 	error?: string;
-}
-
-interface RuntimeState {
-	connected: boolean;
-	url?: string;
-	clientId?: string;
-	lastError?: string;
-	activatedTabs: ActivatedTab[];
-	debugLog: ExtensionDebugLogEntry[];
-}
-
-interface ActivatedTab {
-	tabId: number;
-	title?: string;
-	origin?: string;
-	capabilities: string[];
-	activatedAt: number;
 }
 
 const statusEl = requireElement("status");

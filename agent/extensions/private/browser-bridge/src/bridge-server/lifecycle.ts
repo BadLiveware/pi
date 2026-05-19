@@ -400,7 +400,7 @@ export class BrowserBridgeServer {
 	private recordSharedSelection(clientId: string, payload: unknown): void {
 		const selection = parseSharedSelection(clientId, payload, this.now());
 		this.state.sharedSelections = [...this.state.sharedSelections, selection].slice(-20);
-		this.debug("info", "elements-selected", { clientId, tabId: selection.tabId, status: selection.status, elementCount: selection.elements.length });
+		this.debug("info", "elements-selected", { clientId, tabId: selection.tabId, source: selection.source, status: selection.status, elementCount: selection.elements.length });
 	}
 
 	private rejectPending(pending: PendingRequest, error: Error): void {

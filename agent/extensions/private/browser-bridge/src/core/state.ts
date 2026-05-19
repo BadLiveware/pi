@@ -1,7 +1,7 @@
 export const BROWSER_BRIDGE_HOST = "127.0.0.1" as const;
 export const BROWSER_BRIDGE_PORT = 43871 as const;
 export const BROWSER_BRIDGE_DEFAULT_URL = `ws://${BROWSER_BRIDGE_HOST}:${BROWSER_BRIDGE_PORT}` as const;
-export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "overlay", "preview-pages", "interaction", "clipboard"] as const;
+export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "context-menu-selection", "overlay", "preview-pages", "interaction", "clipboard"] as const;
 
 export type BridgeListenerStatus = "stopped" | "running";
 export type BrowserBridgeDebugLevel = "debug" | "info" | "warn" | "error";
@@ -61,15 +61,24 @@ export interface BrowserElementDescriptorSummary {
 	htmlPreview?: string;
 }
 
+export interface BrowserSelectionContextSummary {
+	[key: string]: string | number | boolean | undefined;
+}
+
 export interface BrowserSharedSelectionSummary {
 	selectionId: string;
 	clientId: string;
 	tabId?: number;
+	source?: string;
 	title?: string;
+	url?: string;
+	pageUrl?: string;
+	frameUrl?: string;
 	origin?: string;
 	status: "selected" | "cancelled" | "unknown";
 	reason?: string;
 	selectedAt: number;
+	context?: BrowserSelectionContextSummary;
 	elements: BrowserElementDescriptorSummary[];
 }
 
@@ -159,6 +168,7 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 		tabs: state.tabs.map((tab) => ({ ...tab, capabilities: [...tab.capabilities] })),
 		sharedSelections: state.sharedSelections.map((selection) => ({
 			...selection,
+			context: selection.context ? { ...selection.context } : undefined,
 			elements: selection.elements.map((element) => ({ ...element, selectorCandidates: element.selectorCandidates ? [...element.selectorCandidates] : undefined, attributes: element.attributes ? { ...element.attributes } : undefined, boundingBox: element.boundingBox ? { ...element.boundingBox } : undefined })),
 		})),
 		pendingRequests: state.pendingRequests.map((request) => ({ ...request, target: request.target ? { ...request.target } : undefined })),
@@ -214,7 +224,7 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 	}
 
 	const latestSelection = snapshot.sharedSelections.at(-1);
-	if (latestSelection) lines.push(`latest shared selection: ${latestSelection.status}, ${latestSelection.elements.length} element(s), ${latestSelection.origin ?? "unknown origin"}`);
+	if (latestSelection) lines.push(`latest shared selection: ${latestSelection.source ?? "unknown source"}, ${latestSelection.status}, ${latestSelection.elements.length} element(s), ${latestSelection.url ?? latestSelection.origin ?? "unknown origin"}`);
 
 	if (options.includeDiagnostics !== false && snapshot.diagnostics.length > 0) {
 		lines.push("diagnostics:");

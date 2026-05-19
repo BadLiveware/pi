@@ -66,8 +66,9 @@ test("injected content script is built as a classic single-file bundle", () => {
 	const tsconfig = JSON.parse(readBrowserExtensionFile("tsconfig.content.json"));
 	assert.equal(tsconfig.compilerOptions.module, "None");
 	assert.equal(tsconfig.compilerOptions.outFile, "dist/content.js");
-	assert.deepEqual(tsconfig.files.slice(-5), [
+	assert.deepEqual(tsconfig.files.slice(-6), [
 		"src/content/selection.ts",
+		"src/content/context-menu.ts",
 		"src/content/overlay.ts",
 		"src/content/interact.ts",
 		"src/content/clipboard.ts",
@@ -85,7 +86,18 @@ test("popup exposes user-initiated selection sharing", () => {
 	assert.match(popup, /Select element for Pi/);
 });
 
-test("manifest declares clipboard write permission", () => {
+test("manifest declares clipboard and context menu permissions", () => {
 	const manifest = JSON.parse(readBrowserExtensionFile("manifest.json"));
 	assert.ok(manifest.permissions.includes("clipboardWrite"));
+	assert.ok(manifest.permissions.includes("contextMenus"));
+});
+
+test("context menu sharing tracks and describes the right-clicked element", () => {
+	const content = readBrowserExtensionFile("src/content/context-menu.ts");
+	const background = readBrowserExtensionFile("src/background/context-menu.ts");
+	assert.match(content, /addEventListener\("contextmenu"/);
+	assert.match(content, /describeLastContextMenuTarget/);
+	assert.match(background, /Share element with Pi/);
+	assert.match(background, /pi-bridge:describe-context-menu-target/);
+	assert.match(background, /elements:selected/);
 });

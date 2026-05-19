@@ -37,11 +37,12 @@ test("status summary includes compact counts and can omit diagnostics", () => {
 test("state payload is a defensive copy", () => {
 	const runtime = createBrowserBridgeRuntime(1234);
 	appendBrowserBridgeDebugLog(runtime.state, { at: 1235, source: "server", level: "info", event: "test", data: { clientId: "client-a" } });
-	runtime.state.sharedSelections.push({ selectionId: "selection-1", clientId: "client-a", status: "selected", selectedAt: 1236, elements: [{ selectorCandidates: ["button"], attributes: { "data-testid": "button" }, boundingBox: { x: 1, y: 2, width: 3, height: 4 } }] });
+	runtime.state.sharedSelections.push({ selectionId: "selection-1", clientId: "client-a", source: "picker", url: "https://example.test/page", status: "selected", selectedAt: 1236, context: { source: "picker", clientX: 10 }, elements: [{ selectorCandidates: ["button"], attributes: { "data-testid": "button" }, boundingBox: { x: 1, y: 2, width: 3, height: 4 } }] });
 	const snapshot = browserBridgeStatePayload(runtime.state);
 	snapshot.capabilities.push("mutated");
 	snapshot.server.diagnostics.push("mutated");
 	snapshot.debugLog[0]!.data!.clientId = "mutated";
+	snapshot.sharedSelections[0]!.context!.source = "mutated";
 	snapshot.sharedSelections[0]!.elements[0]!.selectorCandidates![0] = "mutated";
 	snapshot.sharedSelections[0]!.elements[0]!.attributes!["data-testid"] = "mutated";
 	snapshot.sharedSelections[0]!.elements[0]!.boundingBox!.x = 99;
@@ -50,6 +51,7 @@ test("state payload is a defensive copy", () => {
 	assert.deepEqual(fresh.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
 	assert.doesNotMatch(fresh.diagnostics.join("\n"), /mutated/);
 	assert.equal(fresh.debugLog[0]?.data?.clientId, "client-a");
+	assert.equal(fresh.sharedSelections[0]?.context?.source, "picker");
 	assert.equal(fresh.sharedSelections[0]?.elements[0]?.selectorCandidates?.[0], "button");
 	assert.equal(fresh.sharedSelections[0]?.elements[0]?.attributes?.["data-testid"], "button");
 	assert.equal(fresh.sharedSelections[0]?.elements[0]?.boundingBox?.x, 1);

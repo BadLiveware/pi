@@ -6,6 +6,7 @@ export function selectionOptions(payload: unknown): Record<string, unknown> {
 		includeText: payload.includeText !== false,
 		maxHtmlChars: typeof payload.maxHtmlChars === "number" ? payload.maxHtmlChars : undefined,
 		timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+		source: payload.source === "picker" || payload.source === "context-menu" ? payload.source : "tool",
 	};
 }
 

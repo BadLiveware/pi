@@ -1,10 +1,29 @@
 namespace PiBrowserBridgeContent {
+	export type SelectionSource = "tool" | "picker" | "context-menu";
+
 	export interface SelectElementsOptions {
 		mode: "single" | "multiple";
 		includeHtml?: boolean;
 		includeText?: boolean;
 		maxHtmlChars?: number;
 		timeoutMs?: number;
+		source?: SelectionSource;
+	}
+
+	export interface ElementSelectionContext {
+		source: SelectionSource;
+		title: string;
+		url: string;
+		frameUrl: string;
+		origin: string;
+		selectedAt: number;
+		viewportWidth: number;
+		viewportHeight: number;
+		devicePixelRatio: number;
+		clientX?: number;
+		clientY?: number;
+		pageX?: number;
+		pageY?: number;
 	}
 
 	export interface ElementDescriptor {
@@ -20,8 +39,8 @@ namespace PiBrowserBridgeContent {
 	}
 
 	export type SelectElementsResponse =
-		| { status: "selected"; elements: ElementDescriptor[] }
-		| { status: "cancelled"; elements: ElementDescriptor[]; reason: "escape" | "timeout" | "replaced" };
+		| { status: "selected"; elements: ElementDescriptor[]; context: ElementSelectionContext }
+		| { status: "cancelled"; elements: ElementDescriptor[]; reason: string; context: ElementSelectionContext };
 
 	interface SelectionState {
 		elementIds: WeakMap<Element, string>;
@@ -44,6 +63,7 @@ namespace PiBrowserBridgeContent {
 	export function startElementSelection(options: SelectElementsOptions): Promise<SelectElementsResponse> {
 		selectionState.activeCleanup?.();
 		return new Promise((resolve) => {
+			const source = options.source ?? "tool";
 			const selected: Element[] = [];
 			const hoverBox = makeBox("pi-browser-bridge-hover-box", "rgba(26, 115, 232, 0.95)");
 			const selectedLayer = document.createElement("div");
@@ -71,7 +91,8 @@ namespace PiBrowserBridgeContent {
 				finished = true;
 				cleanup();
 				const elements = selected.map((element) => describeElement(element, options));
-				resolve(status === "selected" ? { status, elements } : { status, elements, reason: reason ?? "escape" });
+				const context = currentSelectionContext(source);
+				resolve(status === "selected" ? { status, elements, context } : { status, elements, reason: reason ?? "escape", context });
 			}
 
 			selectionState.activeCleanup = () => finish("cancelled", "replaced");
@@ -133,7 +154,22 @@ namespace PiBrowserBridgeContent {
 		};
 	}
 
-	function selectableElement(target: EventTarget | null): Element | undefined {
+	export function currentSelectionContext(source: SelectionSource, extra: Partial<ElementSelectionContext> = {}): ElementSelectionContext {
+		return {
+			source,
+			title: document.title,
+			url: location.href,
+			frameUrl: location.href,
+			origin: location.origin,
+			selectedAt: Date.now(),
+			viewportWidth: window.innerWidth,
+			viewportHeight: window.innerHeight,
+			devicePixelRatio: window.devicePixelRatio || 1,
+			...extra,
+		};
+	}
+
+	export function selectableElement(target: EventTarget | null): Element | undefined {
 		if (!(target instanceof Element)) return undefined;
 		const blocked = target.closest("#pi-browser-bridge-banner, #pi-browser-bridge-hover-box, #pi-browser-bridge-selected-layer");
 		if (blocked) return undefined;

@@ -1,5 +1,6 @@
 /// <reference path="./chrome.d.ts" />
 /// <reference path="./content/selection.ts" />
+/// <reference path="./content/context-menu.ts" />
 /// <reference path="./content/overlay.ts" />
 /// <reference path="./content/interact.ts" />
 /// <reference path="./content/clipboard.ts" />
@@ -12,6 +13,11 @@ namespace PiBrowserBridgeContent {
 	interface SelectElementsMessage {
 		type: "pi-bridge:select-elements";
 		options: SelectElementsOptions;
+	}
+
+	interface DescribeContextMenuTargetMessage {
+		type: "pi-bridge:describe-context-menu-target";
+		options?: SelectElementsOptions;
 	}
 
 	interface OverlayMessage {
@@ -57,15 +63,20 @@ namespace PiBrowserBridgeContent {
 						height: window.innerHeight,
 						devicePixelRatio: window.devicePixelRatio || 1,
 					},
-					capabilities: ["activation", "element-selection", "overlay", "interaction", "clipboard"],
+					capabilities: ["activation", "element-selection", "context-menu-selection", "overlay", "interaction", "clipboard"],
 				};
 				sendResponse(response);
 				return;
 			}
 
 			if (isSelectElementsMessage(message)) {
-				void PiBrowserBridgeContent.startElementSelection(message.options).then(sendResponse, (error) => sendResponse({ status: "cancelled", elements: [], reason: error instanceof Error ? error.message : "error" }));
+				void PiBrowserBridgeContent.startElementSelection(message.options).then(sendResponse, (error) => sendResponse({ status: "cancelled", elements: [], reason: error instanceof Error ? error.message : "error", context: PiBrowserBridgeContent.currentSelectionContext(message.options.source ?? "tool") }));
 				return true;
+			}
+
+			if (isDescribeContextMenuTargetMessage(message)) {
+				sendResponse(PiBrowserBridgeContent.describeLastContextMenuTarget(message.options));
+				return;
 			}
 
 			if (isOverlayMessage(message)) {
@@ -96,6 +107,10 @@ namespace PiBrowserBridgeContent {
 
 	function isSelectElementsMessage(value: unknown): value is SelectElementsMessage {
 		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:select-elements" && typeof (value as { options?: unknown }).options === "object";
+	}
+
+	function isDescribeContextMenuTargetMessage(value: unknown): value is DescribeContextMenuTargetMessage {
+		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:describe-context-menu-target";
 	}
 
 	function isOverlayMessage(value: unknown): value is OverlayMessage {

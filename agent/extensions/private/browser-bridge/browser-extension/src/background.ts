@@ -1,29 +1,14 @@
 /// <reference path="./chrome.d.ts" />
 
 import { bridgeCloseBeforeAcceptMessage, errorMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "./shared/connection-plan.js";
+import { installElementContextMenu } from "./background/context-menu.js";
 import { createKeepAliveController } from "./background/keepalive.js";
 import { detectBrowser, isSupportedTabUrl, selectionOptions, type BrowserKind } from "./background/request-helpers.js";
 import { shareSelectionFromCurrentTab } from "./background/share-selection.js";
+import type { ActivatedTab, RuntimeState } from "./background/types.js";
 import { appendExtensionDebugLog, parseStoredDebugLog, type ExtensionDebugLogEntry } from "./shared/debug-log.js";
 import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
 import { BRIDGE_PROTOCOL_VERSION, makeEnvelope, makeId, parseEnvelope, type BridgeEnvelope } from "./shared/protocol.js";
-
-interface RuntimeState {
-	connected: boolean;
-	url?: string;
-	clientId?: string;
-	lastError?: string;
-	activatedTabs: ActivatedTab[];
-	debugLog: ExtensionDebugLogEntry[];
-}
-
-interface ActivatedTab {
-	tabId: number;
-	title?: string;
-	origin?: string;
-	capabilities: string[];
-	activatedAt: number;
-}
 
 interface PendingPair {
 	requestId: string;
@@ -46,6 +31,7 @@ let debugLog: ExtensionDebugLogEntry[] = [];
 const DEBUG_LOG_KEY = "debugLog";
 const activatedTabs = new Map<number, ActivatedTab>();
 const keepAlive = createKeepAliveController(sendToBridge, recordDebug);
+installElementContextMenu({ isConnected: () => connected, sendToBridge, recordDebug });
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
 	void handleRuntimeMessage(message)
@@ -222,7 +208,7 @@ function clientInfo(): Record<string, unknown> {
 		clientId,
 		browser: detectBrowser(),
 		extensionVersion: chrome.runtime.getManifest().version,
-		capabilities: ["tabs", "activation", "element-selection", "overlay", "preview", "interaction", "clipboard"],
+		capabilities: ["tabs", "activation", "element-selection", "context-menu-selection", "overlay", "preview", "interaction", "clipboard"],
 		activeTabId: [...activatedTabs.values()].sort((a, b) => b.activatedAt - a.activatedAt)[0]?.tabId,
 	};
 }
@@ -237,13 +223,14 @@ async function activateCurrentTab(): Promise<ActivatedTab> {
 	if (!tab?.id) throw new Error("No active tab is available.");
 	if (!isSupportedTabUrl(tab.url)) throw new Error("This page cannot be activated by the browser bridge.");
 
-	await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["dist/content.js"] });
+	await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ["dist/content.js"] });
 	const response = await chrome.tabs.sendMessage<ActivationResponse>(tab.id, { type: "pi-bridge:activate" });
 	if (!response?.ok) throw new Error("Content script did not acknowledge activation.");
 
 	const activated: ActivatedTab = {
 		tabId: tab.id,
 		title: tab.title ?? response.title,
+		url: tab.url,
 		origin: response.origin,
 		capabilities: response.capabilities,
 		activatedAt: Date.now(),
@@ -262,6 +249,7 @@ function sendActivatedTab(activated: ActivatedTab, viewport?: ActivationResponse
 			tabId: activated.tabId,
 			title: activated.title,
 			origin: activated.origin,
+			url: activated.url,
 			active: true,
 			capabilities: activated.capabilities,
 			viewport,
