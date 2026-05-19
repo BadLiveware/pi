@@ -24,6 +24,7 @@ namespace PiBrowserBridgeContent {
 	type OverlayGlobal = typeof globalThis & {
 		__piBrowserBridgeOverlayState?: OverlayState;
 		__piBrowserBridgeOverlayResizeInstalled?: boolean;
+		__piBrowserBridgeSelectionState?: { elementsById: Map<string, Element> };
 	};
 
 	const overlayGlobal = globalThis as OverlayGlobal;
@@ -94,7 +95,7 @@ namespace PiBrowserBridgeContent {
 
 	function highlight(state: OverlayState, command: Extract<OverlayCommand, { action: "highlight" }>): void {
 		show(state);
-		const element = command.elementId ? PiBrowserBridgeContent.resolveSelectedElement(command.elementId) : command.selector ? document.querySelector(command.selector) ?? undefined : undefined;
+		const element = resolveHighlightElement(command);
 		if (!element) throw new Error("Could not resolve element to highlight.");
 		const rect = element.getBoundingClientRect();
 		const box = document.createElement("div");
@@ -126,6 +127,11 @@ namespace PiBrowserBridgeContent {
 			});
 			state.highlightLayer.appendChild(label);
 		}
+	}
+
+	function resolveHighlightElement(command: Extract<OverlayCommand, { action: "highlight" }>): Element | undefined {
+		if (command.elementId) return overlayGlobal.__piBrowserBridgeSelectionState?.elementsById.get(command.elementId);
+		return command.selector ? document.querySelector(command.selector) ?? undefined : undefined;
 	}
 
 	function draw(state: OverlayState, strokes: OverlayStroke[]): void {
