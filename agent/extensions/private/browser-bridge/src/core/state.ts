@@ -49,6 +49,30 @@ export interface BrowserTabSummary {
 	capabilities: string[];
 }
 
+export interface BrowserElementDescriptorSummary {
+	elementId?: string;
+	selectorCandidates?: string[];
+	tagName?: string;
+	role?: string;
+	accessibleName?: string;
+	textPreview?: string;
+	attributes?: Record<string, string>;
+	boundingBox?: { x: number; y: number; width: number; height: number; coordinateSpace?: string };
+	htmlPreview?: string;
+}
+
+export interface BrowserSharedSelectionSummary {
+	selectionId: string;
+	clientId: string;
+	tabId?: number;
+	title?: string;
+	origin?: string;
+	status: "selected" | "cancelled" | "unknown";
+	reason?: string;
+	selectedAt: number;
+	elements: BrowserElementDescriptorSummary[];
+}
+
 export interface PendingBridgeRequestSummary {
 	requestId: string;
 	clientId?: string;
@@ -69,6 +93,7 @@ export interface BrowserBridgeState {
 	server: BrowserBridgeServerState;
 	clients: BrowserClientSummary[];
 	tabs: BrowserTabSummary[];
+	sharedSelections: BrowserSharedSelectionSummary[];
 	pendingRequests: PendingBridgeRequestSummary[];
 	previewServer?: PreviewServerState;
 	capabilities: string[];
@@ -85,6 +110,7 @@ export interface BrowserBridgeSnapshot {
 	server: BrowserBridgeServerState;
 	clients: BrowserClientSummary[];
 	tabs: BrowserTabSummary[];
+	sharedSelections: BrowserSharedSelectionSummary[];
 	pendingRequests: PendingBridgeRequestSummary[];
 	previewServer?: PreviewServerState;
 	capabilities: string[];
@@ -111,6 +137,7 @@ export function createInitialBrowserBridgeState(now = Date.now()): BrowserBridge
 		},
 		clients: [],
 		tabs: [],
+		sharedSelections: [],
 		pendingRequests: [],
 		capabilities: [...BROWSER_BRIDGE_CAPABILITIES],
 		diagnostics: [],
@@ -130,6 +157,10 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 		server,
 		clients: state.clients.map((client) => ({ ...client, capabilities: [...client.capabilities] })),
 		tabs: state.tabs.map((tab) => ({ ...tab, capabilities: [...tab.capabilities] })),
+		sharedSelections: state.sharedSelections.map((selection) => ({
+			...selection,
+			elements: selection.elements.map((element) => ({ ...element, selectorCandidates: element.selectorCandidates ? [...element.selectorCandidates] : undefined, attributes: element.attributes ? { ...element.attributes } : undefined, boundingBox: element.boundingBox ? { ...element.boundingBox } : undefined })),
+		})),
 		pendingRequests: state.pendingRequests.map((request) => ({ ...request, target: request.target ? { ...request.target } : undefined })),
 		previewServer: state.previewServer ? { ...state.previewServer } : undefined,
 		capabilities: [...state.capabilities],
@@ -167,6 +198,7 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 		`listener: ${listener} (${snapshot.server.host}, port ${port})`,
 		`clients: ${snapshot.clients.length}`,
 		`tabs: ${snapshot.tabs.length}`,
+		`shared selections: ${snapshot.sharedSelections.length}`,
 		`pending requests: ${snapshot.pendingRequests.length}`,
 		`capabilities: ${snapshot.capabilities.join(", ") || "none"}`,
 	];
@@ -180,6 +212,9 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 		const previewPort = snapshot.previewServer.port === undefined ? "none" : String(snapshot.previewServer.port);
 		lines.push(`preview server: ${snapshot.previewServer.enabled ? "enabled" : "disabled"} (${snapshot.previewServer.host}, port ${previewPort})`);
 	}
+
+	const latestSelection = snapshot.sharedSelections.at(-1);
+	if (latestSelection) lines.push(`latest shared selection: ${latestSelection.status}, ${latestSelection.elements.length} element(s), ${latestSelection.origin ?? "unknown origin"}`);
 
 	if (options.includeDiagnostics !== false && snapshot.diagnostics.length > 0) {
 		lines.push("diagnostics:");

@@ -1,5 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { isRecord, parseClientAuthDetails, parsePairPayload, parseResumePayload, rawDataToText, type BrowserClientAuthDetails } from "./auth-payloads.ts";
+import { parseSharedSelection } from "./shared-selection.ts";
 import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, appendBrowserBridgeDebugLog, type BrowserBridgeState, type BrowserClientSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
 import { makeBridgeId, makePairingToken } from "../core/ids.ts";
 import {
@@ -237,6 +238,12 @@ export class BrowserBridgeServer {
 			return;
 		}
 
+		if (envelope.type === "elements:selected") {
+			this.recordSharedSelection(record.clientId, envelope.payload);
+			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));
+			return;
+		}
+
 		this.sendError(record.socket, envelope.id, "unknown_request", `Unknown browser bridge message type "${envelope.type}".`);
 	}
 
@@ -388,6 +395,12 @@ export class BrowserBridgeServer {
 		const client = this.state.clients.find((candidate) => candidate.clientId === clientId);
 		if (client) client.activeTabId = tab.tabId;
 		this.debug("info", "tab-activated", { clientId, tabId: tab.tabId, origin: tab.origin });
+	}
+
+	private recordSharedSelection(clientId: string, payload: unknown): void {
+		const selection = parseSharedSelection(clientId, payload, this.now());
+		this.state.sharedSelections = [...this.state.sharedSelections, selection].slice(-20);
+		this.debug("info", "elements-selected", { clientId, tabId: selection.tabId, status: selection.status, elementCount: selection.elements.length });
 	}
 
 	private rejectPending(pending: PendingRequest, error: Error): void {

@@ -218,6 +218,38 @@ test("client keepalive messages are acknowledged", async () => {
 	}
 });
 
+test("browser-initiated element selections are stored in state", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		socket.send(JSON.stringify(makeBridgeEnvelope({
+			id: "selection-1",
+			direction: "browser-to-pi",
+			type: "elements:selected",
+			payload: {
+				tabId: 42,
+				title: "Fixture",
+				origin: "https://example.test",
+				selectedAt: 1234,
+				selection: { status: "selected", elements: [{ elementId: "el-1", tagName: "button", selectorCandidates: ["button"], textPreview: "Click me" }] },
+			},
+		})));
+		const ack = await nextEnvelope(socket);
+		assert.equal(ack.type, "ack");
+		assert.equal(runtime.state.sharedSelections.length, 1);
+		assert.equal(runtime.state.sharedSelections[0]?.tabId, 42);
+		assert.equal(runtime.state.sharedSelections[0]?.elements[0]?.textPreview, "Click me");
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
 test("tab activation messages update bridge state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });

@@ -9,8 +9,18 @@ export function selectionOptions(payload: unknown): Record<string, unknown> {
 	};
 }
 
+export type BrowserKind = "chrome" | "edge" | "chromium" | "unknown";
+
 export function isSupportedTabUrl(url: string | undefined): boolean {
 	return typeof url === "string" && /^(https?:|file:)/.test(url);
+}
+
+export function detectBrowser(userAgent = navigator.userAgent): BrowserKind {
+	const normalized = userAgent.toLowerCase();
+	if (normalized.includes("edg/")) return "edge";
+	if (normalized.includes("chrome/")) return "chrome";
+	if (normalized.includes("chromium/")) return "chromium";
+	return "unknown";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

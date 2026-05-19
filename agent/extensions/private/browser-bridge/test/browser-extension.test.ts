@@ -79,6 +79,12 @@ test("injected content script is built as a classic single-file bundle", () => {
 	}
 });
 
+test("popup exposes user-initiated selection sharing", () => {
+	const popup = readBrowserExtensionFile("popup.html");
+	assert.match(popup, /id="share-selection"/);
+	assert.match(popup, /Select element for Pi/);
+});
+
 test("manifest declares clipboard write permission", () => {
 	const manifest = JSON.parse(readBrowserExtensionFile("manifest.json"));
 	assert.ok(manifest.permissions.includes("clipboardWrite"));

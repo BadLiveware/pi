@@ -41,6 +41,7 @@ const debugLogEl = requireElement("debug-log");
 const connectButton = requireButton("connect");
 const disconnectButton = requireButton("disconnect");
 const activateButton = requireButton("activate");
+const shareSelectionButton = requireButton("share-selection");
 
 for (const input of [detailsInput, urlInput, tokenInput]) {
 	input.addEventListener("input", () => handlePairingInput(input.value));
@@ -65,6 +66,13 @@ activateButton.addEventListener("click", () => {
 	void runAction(async () => {
 		const response = await send<PopupResponse<ActivatedTab>>({ type: "tabs:activateCurrent" });
 		handleResponse(response, response.tab ? `Activated tab ${response.tab.tabId}.` : "Activated current tab.");
+	});
+});
+
+shareSelectionButton.addEventListener("click", () => {
+	void runAction(async () => {
+		const response = await send<PopupResponse>({ type: "tabs:shareSelection" });
+		handleResponse(response, "Selection shared with Pi.");
 	});
 });
 
@@ -160,6 +168,7 @@ function renderState(state: RuntimeState): void {
 	connectButton.disabled = state.connected;
 	disconnectButton.disabled = !state.connected;
 	activateButton.disabled = !state.connected;
+	shareSelectionButton.disabled = !state.connected;
 }
 
 function setBusy(busy: boolean): void {
@@ -167,6 +176,7 @@ function setBusy(busy: boolean): void {
 	connectButton.disabled = true;
 	disconnectButton.disabled = true;
 	activateButton.disabled = true;
+	shareSelectionButton.disabled = true;
 }
 
 function setMessage(message: string, isError: boolean): void {

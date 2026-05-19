@@ -13,6 +13,7 @@ test("initial browser bridge state is inert and diagnostic", () => {
 	assert.equal(snapshot.server.port, undefined);
 	assert.equal(snapshot.clients.length, 0);
 	assert.equal(snapshot.tabs.length, 0);
+	assert.equal(snapshot.sharedSelections.length, 0);
 	assert.equal(snapshot.pendingRequests.length, 0);
 	assert.equal(snapshot.debugLog.length, 0);
 	assert.deepEqual(snapshot.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
@@ -28,6 +29,7 @@ test("status summary includes compact counts and can omit diagnostics", () => {
 	assert.match(full, /browser-bridge: disabled/);
 	assert.match(full, /listener: stopped/);
 	assert.match(full, /clients: 0/);
+	assert.match(full, /shared selections: 0/);
 	assert.match(full, /diagnostics:/);
 	assert.doesNotMatch(compact, /diagnostics:/);
 });
@@ -35,15 +37,22 @@ test("status summary includes compact counts and can omit diagnostics", () => {
 test("state payload is a defensive copy", () => {
 	const runtime = createBrowserBridgeRuntime(1234);
 	appendBrowserBridgeDebugLog(runtime.state, { at: 1235, source: "server", level: "info", event: "test", data: { clientId: "client-a" } });
+	runtime.state.sharedSelections.push({ selectionId: "selection-1", clientId: "client-a", status: "selected", selectedAt: 1236, elements: [{ selectorCandidates: ["button"], attributes: { "data-testid": "button" }, boundingBox: { x: 1, y: 2, width: 3, height: 4 } }] });
 	const snapshot = browserBridgeStatePayload(runtime.state);
 	snapshot.capabilities.push("mutated");
 	snapshot.server.diagnostics.push("mutated");
 	snapshot.debugLog[0]!.data!.clientId = "mutated";
+	snapshot.sharedSelections[0]!.elements[0]!.selectorCandidates![0] = "mutated";
+	snapshot.sharedSelections[0]!.elements[0]!.attributes!["data-testid"] = "mutated";
+	snapshot.sharedSelections[0]!.elements[0]!.boundingBox!.x = 99;
 
 	const fresh = browserBridgeStatePayload(runtime.state);
 	assert.deepEqual(fresh.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
 	assert.doesNotMatch(fresh.diagnostics.join("\n"), /mutated/);
 	assert.equal(fresh.debugLog[0]?.data?.clientId, "client-a");
+	assert.equal(fresh.sharedSelections[0]?.elements[0]?.selectorCandidates?.[0], "button");
+	assert.equal(fresh.sharedSelections[0]?.elements[0]?.attributes?.["data-testid"], "button");
+	assert.equal(fresh.sharedSelections[0]?.elements[0]?.boundingBox?.x, 1);
 });
 
 test("status summary can include recent debug log entries", () => {

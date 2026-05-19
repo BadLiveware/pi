@@ -2,12 +2,11 @@
 
 import { bridgeCloseBeforeAcceptMessage, errorMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "./shared/connection-plan.js";
 import { createKeepAliveController } from "./background/keepalive.js";
-import { isSupportedTabUrl, selectionOptions } from "./background/request-helpers.js";
+import { detectBrowser, isSupportedTabUrl, selectionOptions, type BrowserKind } from "./background/request-helpers.js";
+import { shareSelectionFromCurrentTab } from "./background/share-selection.js";
 import { appendExtensionDebugLog, parseStoredDebugLog, type ExtensionDebugLogEntry } from "./shared/debug-log.js";
 import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
 import { BRIDGE_PROTOCOL_VERSION, makeEnvelope, makeId, parseEnvelope, type BridgeEnvelope } from "./shared/protocol.js";
-
-type BrowserKind = "chrome" | "edge" | "chromium" | "unknown";
 
 interface RuntimeState {
 	connected: boolean;
@@ -74,6 +73,11 @@ async function handleRuntimeMessage(message: unknown): Promise<unknown> {
 		recordDebug({ level: "info", event: "popup-activate-current-tab" });
 		const tab = await activateCurrentTab();
 		return { ok: true, tab, state: await getRuntimeState() };
+	}
+	if (message.type === "tabs:shareSelection") {
+		recordDebug({ level: "info", event: "popup-share-selection" });
+		const selection = await shareSelectionFromCurrentTab({ activateCurrentTab, sendToBridge, recordDebug });
+		return { ok: true, selection, state: await getRuntimeState() };
 	}
 	throw new Error(`Unknown browser bridge popup message ${message.type}.`);
 }
@@ -476,14 +480,6 @@ function recordDebug(entry: Omit<ExtensionDebugLogEntry, "at" | "source"> & { at
 	const latest = debugLog[debugLog.length - 1];
 	if (latest) console.debug("[pi-browser-bridge]", latest.event, latest.message ?? "", latest.data ?? "");
 	void chrome.storage.local.set({ [DEBUG_LOG_KEY]: debugLog });
-}
-
-function detectBrowser(): BrowserKind {
-	const userAgent = navigator.userAgent.toLowerCase();
-	if (userAgent.includes("edg/")) return "edge";
-	if (userAgent.includes("chrome/")) return "chrome";
-	if (userAgent.includes("chromium/")) return "chromium";
-	return "unknown";
 }
 
 interface ActivationResponse {

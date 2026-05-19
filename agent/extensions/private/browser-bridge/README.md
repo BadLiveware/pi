@@ -13,8 +13,8 @@ The current build registers bridge state tooling, an explicit fixed-port local g
 - `/browser-bridge stop` stops the listener and disconnects clients.
 - `/browser-bridge pair` starts the gateway if needed and opens a short-lived no-copy pairing window with a token fallback.
 - `browser_bridge_state` returns structured state for the agent.
-- Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, shows recent browser-side debug log entries, and explicitly activates the current tab.
-- Activated tabs report title, origin, viewport, and capabilities back to Pi.
+- Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, shows recent browser-side debug log entries, explicitly activates the current tab, and lets the user select an element to share with Pi.
+- Activated tabs report title, origin, viewport, and capabilities back to Pi; user-shared selections are stored in Pi bridge state for the agent to inspect.
 - `browser_bridge_select_elements` asks the browser extension to let the user select one or more visible elements and returns compact descriptors.
 - `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible DOM/SVG annotations on activated tabs.
 - `browser_bridge_open_preview` serves inline/workspace HTML through localhost or opens existing HTTP(S) URLs.
@@ -47,7 +47,8 @@ The current build registers bridge state tooling, an explicit fixed-port local g
 4. In the browser extension popup, leave the default gateway URL and click **Connect / Pair**. Copying the displayed fallback pairing details is only needed if no-copy pairing fails.
 5. After the first successful pair, the extension stores a session-scoped resume secret and can reconnect to the same Pi session without a new pairing token.
 6. Open a normal `http:`, `https:`, or allowed `file:` page, then click **Activate current tab** in the popup.
-7. In Pi, call `browser_bridge_state` to confirm the client and activated tab are visible.
+7. To show Pi a page element without waiting for an agent-initiated tool call, click **Select element for Pi** in the popup and choose the element in the page.
+8. In Pi, call `browser_bridge_state` to confirm the client, activated tab, and any shared selections are visible.
 
 ## Manual smoke validation
 
@@ -58,7 +59,7 @@ Suggested smoke flow:
 1. Build and load the browser extension.
 2. Pair it with `/browser-bridge pair`.
 3. Open `fixtures/manual-smoke.html` in the browser and activate the tab from the popup.
-4. Use `browser_bridge_select_elements` in `single` mode and select the Alpha card or input.
+4. Use the popup **Select element for Pi** action, or use `browser_bridge_select_elements` in `single` mode and select the Alpha card or input.
 5. Use `browser_bridge_overlay` to highlight the selected descriptor and draw an inspectable SVG arrow or rectangle.
 6. Use `browser_bridge_open_preview` with inline HTML and verify a new preview tab opens.
 7. Use `browser_bridge_interact` to type into `#fixture-input` and click `#fixture-button`; confirm the in-page prompt when shown.
