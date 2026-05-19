@@ -1,5 +1,5 @@
 import { WebSocket, WebSocketServer } from "ws";
-import { BROWSER_BRIDGE_HOST, type BrowserBridgeState, type BrowserClientSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
+import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, type BrowserBridgeState, type BrowserClientSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
 import { makeBridgeId, makePairingToken } from "../core/ids.ts";
 import {
 	BRIDGE_PROTOCOL_VERSION,
@@ -86,7 +86,7 @@ export class BrowserBridgeServer {
 	async start(): Promise<{ url: string; port: number }> {
 		if (this.wss) return { url: this.url(), port: this.currentPort() };
 
-		const wss = new WebSocketServer({ host: BROWSER_BRIDGE_HOST, port: this.options.port ?? 0 });
+		const wss = new WebSocketServer({ host: BROWSER_BRIDGE_HOST, port: this.options.port ?? BROWSER_BRIDGE_PORT });
 		this.wss = wss;
 		wss.on("connection", (socket) => this.onConnection(socket));
 
@@ -117,7 +117,7 @@ export class BrowserBridgeServer {
 		this.state.server.listener = "running";
 		this.state.server.host = BROWSER_BRIDGE_HOST;
 		this.state.server.port = this.currentPort();
-		this.state.server.diagnostics = ["Bridge server is running. Run `/browser-bridge pair` to create a short-lived pairing token."];
+		this.state.server.diagnostics = ["Bridge gateway is running. Run `/browser-bridge pair` to open a short-lived pairing window."];
 		return { url: this.url(), port: this.currentPort() };
 	}
 
@@ -152,7 +152,7 @@ export class BrowserBridgeServer {
 		}, ttlMs);
 		this.pairing = { token, expiresAt, timer };
 		this.state.server.pairing = { active: true, expiresAt };
-		this.state.server.diagnostics = ["Pairing token is active. Enter it in the browser extension before it expires."];
+		this.state.server.diagnostics = ["Pairing window is active. Click Connect in the browser extension, or paste the fallback pairing token before it expires."];
 		return { token, expiresAt, url: this.url() };
 	}
 
@@ -200,6 +200,10 @@ export class BrowserBridgeServer {
 		if (!record.clientId) {
 			if (envelope.type === "pair") {
 				this.handlePair(record, envelope);
+				return;
+			}
+			if (envelope.type === "pair-request") {
+				this.handlePairRequest(record, envelope);
 				return;
 			}
 			if (envelope.type === "resume") {
@@ -250,6 +254,28 @@ export class BrowserBridgeServer {
 		const resumeSecret = makePairingToken();
 		this.authorizedClients.set(clientId, { clientId, resumeSecret, client: payload.client });
 		this.attachClient(record, clientId, payload.client);
+		this.clearPairing();
+		this.send(record.socket, makeBridgeEnvelope({
+			id: makeBridgeId("pair"),
+			requestId: envelope.id,
+			direction: "pi-to-browser",
+			type: "pair:accepted",
+			payload: { ok: true, clientId, resumeSecret, version: BRIDGE_PROTOCOL_VERSION, serverTime: this.now() },
+		}));
+	}
+
+	private handlePairRequest(record: SocketRecord, envelope: BridgeEnvelope): void {
+		if (!this.pairing || this.pairing.expiresAt <= this.now()) {
+			this.sendError(record.socket, envelope.id, "pairing_failed", "No active browser bridge pairing window. Run `/browser-bridge pair` in Pi first.");
+			record.socket.close(4003, "pairing failed");
+			return;
+		}
+		const payload = isRecord(envelope.payload) ? envelope.payload : {};
+		const clientDetails = parseClientAuthDetails(payload.client);
+		const clientId = this.uniqueClientId(clientDetails?.clientId);
+		const resumeSecret = makePairingToken();
+		this.authorizedClients.set(clientId, { clientId, resumeSecret, client: clientDetails });
+		this.attachClient(record, clientId, clientDetails);
 		this.clearPairing();
 		this.send(record.socket, makeBridgeEnvelope({
 			id: makeBridgeId("pair"),

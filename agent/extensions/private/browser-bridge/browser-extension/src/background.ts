@@ -1,5 +1,6 @@
 /// <reference path="./chrome.d.ts" />
 
+import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
 import { BRIDGE_PROTOCOL_VERSION, makeEnvelope, makeId, parseEnvelope, type BridgeEnvelope } from "./shared/protocol.js";
 
 type BrowserKind = "chrome" | "edge" | "chromium" | "unknown";
@@ -77,16 +78,15 @@ async function connectToBridge(url: string, token: string): Promise<void> {
 		await openBridgeSocket({ type: "pair", token: trimmedToken });
 		return;
 	}
-	if (!resumeSecret) throw new Error("Pairing token is required for the first connection to this Pi session.");
-	await openBridgeSocket({ type: "resume", resumeSecret });
+	await openBridgeSocket(resumeSecret ? { type: "resume", resumeSecret } : { type: "pair-request" });
 }
 
-async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: "resume"; resumeSecret: string }): Promise<void> {
+async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: "pair-request" } | { type: "resume"; resumeSecret: string }): Promise<void> {
 	if (!bridgeUrl || !clientId) throw new Error("Bridge URL and client id are required before connecting.");
 	clearReconnectTimer();
 	intentionalDisconnect = false;
 	await new Promise<void>((resolve, reject) => {
-		const requestId = makeId(auth.type);
+		const requestId = makeId(auth.type === "pair-request" ? "pair" : auth.type);
 		const ws = new WebSocket(bridgeUrl!);
 		socket = ws;
 		pendingPair = {
@@ -109,9 +109,7 @@ async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: 
 				id: requestId,
 				direction: "browser-to-pi",
 				type: auth.type,
-				payload: auth.type === "pair"
-					? { token: auth.token, client: clientInfo() }
-					: { clientId, resumeSecret: auth.resumeSecret, client: clientInfo() },
+				payload: authPayload(auth),
 			})));
 		});
 		ws.addEventListener("message", (event) => handleSocketMessage(String(event.data)));
@@ -151,6 +149,12 @@ function clearReconnectTimer(): void {
 	if (!reconnectTimer) return;
 	globalThis.clearTimeout(reconnectTimer);
 	reconnectTimer = undefined;
+}
+
+function authPayload(auth: { type: "pair"; token: string } | { type: "pair-request" } | { type: "resume"; resumeSecret: string }): Record<string, unknown> {
+	if (auth.type === "pair") return { token: auth.token, client: clientInfo() };
+	if (auth.type === "resume") return { clientId, resumeSecret: auth.resumeSecret, client: clientInfo() };
+	return { client: clientInfo() };
 }
 
 function clientInfo(): Record<string, unknown> {
@@ -375,7 +379,7 @@ function disconnect(reason: string): void {
 
 async function getRuntimeState(): Promise<RuntimeState> {
 	const stored = await chrome.storage.local.get(["bridgeUrl", "clientId", "resumeSecret"]);
-	bridgeUrl = bridgeUrl ?? (typeof stored.bridgeUrl === "string" ? stored.bridgeUrl : undefined);
+	bridgeUrl = bridgeUrl ?? (typeof stored.bridgeUrl === "string" ? stored.bridgeUrl : DEFAULT_BRIDGE_URL);
 	clientId = clientId ?? (typeof stored.clientId === "string" ? stored.clientId : undefined);
 	resumeSecret = resumeSecret ?? (typeof stored.resumeSecret === "string" ? stored.resumeSecret : undefined);
 	return {

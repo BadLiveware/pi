@@ -1,4 +1,6 @@
 export const BROWSER_BRIDGE_HOST = "127.0.0.1" as const;
+export const BROWSER_BRIDGE_PORT = 43871 as const;
+export const BROWSER_BRIDGE_DEFAULT_URL = `ws://${BROWSER_BRIDGE_HOST}:${BROWSER_BRIDGE_PORT}` as const;
 export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "overlay", "preview-pages", "interaction", "clipboard"] as const;
 
 export type BridgeListenerStatus = "stopped" | "running";

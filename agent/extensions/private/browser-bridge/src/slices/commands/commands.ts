@@ -7,14 +7,14 @@ const HELP = [
 	"",
 	"Available commands:",
 	"  status   Show local browser bridge state and diagnostics.",
-	"  start    Start the local 127.0.0.1 bridge listener.",
+	"  start    Start the fixed-port local gateway listener.",
 	"  stop     Stop the bridge listener and disconnect clients.",
-	"  pair     Start the listener and create a short-lived one-line pairing value.",
+	"  pair     Start the gateway and open a short-lived no-copy pairing window.",
 ].join("\n");
 
 export function registerBrowserBridgeCommands(pi: ExtensionAPI, runtime: BrowserBridgeRuntime, server: BrowserBridgeServer): void {
 	pi.registerCommand("browser-bridge", {
-		description: "Show or control the local browser bridge: status, start, stop, pair.",
+		description: "Show or control the local browser bridge gateway: status, start, stop, pair.",
 		handler: async (args: string, ctx: ExtensionContext) => {
 			const command = args.trim() || "status";
 			if (command === "status") {
@@ -24,7 +24,7 @@ export function registerBrowserBridgeCommands(pi: ExtensionAPI, runtime: Browser
 			}
 			if (command === "start") {
 				const started = await server.start();
-				ctx.ui.notify(`Browser bridge listening on ${started.url}. Run /browser-bridge pair to create a pairing token.`, "info");
+				ctx.ui.notify(`Browser bridge gateway listening on ${started.url}. Run /browser-bridge pair to open a no-copy pairing window.`, "info");
 				return;
 			}
 			if (command === "stop") {
@@ -36,11 +36,11 @@ export function registerBrowserBridgeCommands(pi: ExtensionAPI, runtime: Browser
 				await server.start();
 				const pairing = server.createPairingToken();
 				ctx.ui.notify([
-					`Pairing details: ${pairing.url} ${pairing.token}`,
-					`Browser bridge URL: ${pairing.url}`,
-					`Pairing token: ${pairing.token}`,
+					"Pairing window open. In the browser extension popup, click Connect with the default gateway URL.",
+					`Fallback pairing details: ${pairing.url} ${pairing.token}`,
+					`Gateway URL: ${pairing.url}`,
+					`Fallback pairing token: ${pairing.token}`,
 					`Expires: ${new Date(pairing.expiresAt).toISOString()}`,
-					"Copy the Pairing details line into the browser extension popup, or fill the URL and token separately.",
 				].join("\n"), "info");
 				return;
 			}

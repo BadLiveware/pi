@@ -2,16 +2,16 @@
 
 Private local Pi extension for bridging Pi to a companion browser extension.
 
-The current build registers bridge state tooling, an explicit local WebSocket listener lifecycle, a loadable companion browser extension shell, user-driven element selection, visible page overlays, local preview pages, bounded page interactions, and gated clipboard writes. It does not start a network listener on load.
+The current build registers bridge state tooling, an explicit fixed-port local gateway lifecycle, a loadable companion browser extension shell, user-driven element selection, visible page overlays, local preview pages, bounded page interactions, and gated clipboard writes. It does not start a network listener on load.
 
 ## Current capabilities
 
 - `/browser-bridge status` shows local bridge state and diagnostics.
-- `/browser-bridge start` starts a listener bound to `127.0.0.1`.
+- `/browser-bridge start` starts a fixed-port gateway bound to `127.0.0.1:43871`.
 - `/browser-bridge stop` stops the listener and disconnects clients.
-- `/browser-bridge pair` starts the listener if needed and creates a short-lived pairing token.
+- `/browser-bridge pair` starts the gateway if needed and opens a short-lived no-copy pairing window with a token fallback.
 - `browser_bridge_state` returns structured state for the agent.
-- Browser extension popup can connect with the URL/token and explicitly activate the current tab.
+- Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, and explicitly activates the current tab.
 - Activated tabs report title, origin, viewport, and capabilities back to Pi.
 - `browser_bridge_select_elements` asks the browser extension to let the user select one or more visible elements and returns compact descriptors.
 - `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible annotations on activated tabs.
@@ -23,7 +23,7 @@ The current build registers bridge state tooling, an explicit local WebSocket li
 ## Safety posture
 
 - The bridge listener is disabled by default.
-- Browser clients must pair with a short-lived token before registration.
+- Browser clients must pair during a short-lived Pi pairing window or use the fallback token before registration.
 - The listener binds only to `127.0.0.1`.
 - Browser activation is explicit from the extension popup; content scripts are not injected into every page.
 - Selection returns compact, capped descriptors; full HTML previews are opt-in and capped.
@@ -42,10 +42,10 @@ The current build registers bridge state tooling, an explicit local WebSocket li
 
 2. Load `agent/extensions/private/browser-bridge/browser-extension/` as an unpacked Chromium extension.
 3. In Pi, run `/browser-bridge pair`.
-4. Copy the displayed **Pairing details** line into the extension popup and click **Connect**. You can also fill the bridge URL and pairing token separately; the popup persists draft fields if it closes while you copy the other value.
+4. In the browser extension popup, leave the default gateway URL and click **Connect / Pair**. Copying the displayed fallback pairing details is only needed if no-copy pairing fails.
 5. After the first successful pair, the extension stores a session-scoped resume secret and can reconnect to the same Pi session without a new pairing token.
 6. Open a normal `http:`, `https:`, or allowed `file:` page, then click **Activate current tab** in the popup.
-6. In Pi, call `browser_bridge_state` to confirm the client and activated tab are visible.
+7. In Pi, call `browser_bridge_state` to confirm the client and activated tab are visible.
 
 ## Manual smoke validation
 
@@ -76,7 +76,7 @@ npm run build:browser --workspace @badliveware/pi-browser-bridge
 
 ## Troubleshooting
 
-- If `browser_bridge_state` shows no clients, run `/browser-bridge pair` and reconnect from the popup before the token expires.
+- If `browser_bridge_state` shows no clients, run `/browser-bridge pair` and click **Connect / Pair** in the popup before the pairing window expires.
 - If the popup closes while copying pairing values, reopen it; the URL/token draft fields are restored from extension-local storage.
 - If the extension disconnects after it was paired, reopen the popup and click **Connect** with the saved URL; a new token is not needed for the same Pi session. The background worker also attempts to reconnect automatically.
 - If a tab does not appear in state, activate it from the popup after the page finishes loading.

@@ -1,0 +1,1 @@
+export const DEFAULT_BRIDGE_URL = "ws://127.0.0.1:43871";

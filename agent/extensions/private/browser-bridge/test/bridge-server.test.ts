@@ -43,6 +43,22 @@ function pairMessage(token: string, clientId = "client-a"): string {
 	}));
 }
 
+function pairRequestMessage(clientId = "client-a"): string {
+	return JSON.stringify(makeBridgeEnvelope({
+		id: "pair-request-1",
+		direction: "browser-to-pi",
+		type: "pair-request",
+		payload: {
+			client: {
+				clientId,
+				browser: "chromium",
+				extensionVersion: "0.1.0",
+				capabilities: ["tabs", "selection"],
+			},
+		},
+	}));
+}
+
 function resumeMessage(clientId: string, resumeSecret: string): string {
 	return JSON.stringify(makeBridgeEnvelope({
 		id: "resume-1",
@@ -63,7 +79,7 @@ function resumeMessage(clientId: string, resumeSecret: string): string {
 
 test("server starts inertly, pairs a client, and exposes state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
-	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
 	assert.equal(runtime.state.server.listener, "stopped");
 
 	const started = await server.start();
@@ -85,9 +101,30 @@ test("server starts inertly, pairs a client, and exposes state", async () => {
 	}
 });
 
+test("server accepts no-copy pair requests during the pairing window", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
+	const started = await server.start();
+	server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairRequestMessage());
+		const response = await nextEnvelope(socket);
+		assert.equal(response.type, "pair:accepted");
+		assert.equal(response.requestId, "pair-request-1");
+		assert.equal(typeof (response.payload as { resumeSecret?: unknown }).resumeSecret, "string");
+		assert.equal(runtime.state.clients.length, 1);
+		assert.equal(runtime.state.clients[0]?.clientId, "client-a");
+		assert.equal(runtime.state.server.pairing, undefined);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
 test("server resumes a previously paired browser client without a new pairing token", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
-	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
 	const started = await server.start();
 	const pairing = server.createPairingToken(30_000);
 	const socket = await openClient(started.url);
@@ -117,7 +154,7 @@ test("server resumes a previously paired browser client without a new pairing to
 
 test("server rejects bad pairing tokens without registering clients", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
-	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
 	const started = await server.start();
 	server.createPairingToken(30_000);
 	const socket = await openClient(started.url);
@@ -135,7 +172,7 @@ test("server rejects bad pairing tokens without registering clients", async () =
 
 test("tab activation messages update bridge state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
-	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
 	const started = await server.start();
 	const pairing = server.createPairingToken(30_000);
 	const socket = await openClient(started.url);
@@ -162,7 +199,7 @@ test("tab activation messages update bridge state", async () => {
 
 test("client requests time out and clear pending state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
-	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
 	const started = await server.start();
 	const pairing = server.createPairingToken(30_000);
 	const socket = await openClient(started.url);
@@ -183,7 +220,7 @@ test("client requests time out and clear pending state", async () => {
 test("client responses resolve pending requests", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	let now = 1000;
-	const server = new BrowserBridgeServer(runtime.state, { now: () => now });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => now });
 	const started = await server.start();
 	const pairing = server.createPairingToken(30_000);
 	const socket = await openClient(started.url);
@@ -206,7 +243,7 @@ test("client responses resolve pending requests", async () => {
 
 test("stop and disconnect cleanup clear clients and pending requests", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
-	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
 	const started = await server.start();
 	const pairing = server.createPairingToken(30_000);
 	const socket = await openClient(started.url);

@@ -1,5 +1,6 @@
 /// <reference path="./chrome.d.ts" />
 
+import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
 import { parsePairingDetails } from "./shared/pairing-details.js";
 
 const BRIDGE_URL_DRAFT_KEY = "bridgeUrlDraft";
@@ -74,10 +75,10 @@ async function init(): Promise<void> {
 async function loadPairingDrafts(): Promise<void> {
 	const stored = await chrome.storage.local.get([BRIDGE_URL_DRAFT_KEY, PAIRING_TOKEN_DRAFT_KEY, PAIRING_DETAILS_DRAFT_KEY]);
 	const details = stringValue(stored[PAIRING_DETAILS_DRAFT_KEY]);
-	const url = stringValue(stored[BRIDGE_URL_DRAFT_KEY]);
+	const url = stringValue(stored[BRIDGE_URL_DRAFT_KEY]) ?? DEFAULT_BRIDGE_URL;
 	const token = stringValue(stored[PAIRING_TOKEN_DRAFT_KEY]);
 	if (details) detailsInput.value = details;
-	if (url) urlInput.value = url;
+	urlInput.value = url;
 	if (token) tokenInput.value = token;
 	if (details) applyPairingDetails(details, false);
 }
@@ -145,7 +146,7 @@ function handleResponse(response: PopupResponse, successMessage: string): void {
 }
 
 function renderState(state: RuntimeState): void {
-	if (state.url && !urlInput.value) urlInput.value = state.url;
+	if (state.url && (!urlInput.value || urlInput.value === DEFAULT_BRIDGE_URL)) urlInput.value = state.url;
 	const lines = [
 		`Connection: ${state.connected ? "connected" : "disconnected"}`,
 		`Client: ${state.clientId ?? "not paired"}`,
