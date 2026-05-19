@@ -193,6 +193,31 @@ test("server rejects bad pairing tokens without registering clients", async () =
 	}
 });
 
+test("client keepalive messages are acknowledged", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		socket.send(JSON.stringify(makeBridgeEnvelope({
+			id: "keepalive-1",
+			direction: "browser-to-pi",
+			type: "client:keepalive",
+			payload: { sentAt: 1000 },
+		})));
+		const ack = await nextEnvelope(socket);
+		assert.equal(ack.type, "ack");
+		assert.equal(ack.requestId, "keepalive-1");
+		assert.match(runtime.state.debugLog.map((entry) => entry.event).join("\n"), /client-keepalive/);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
 test("tab activation messages update bridge state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });

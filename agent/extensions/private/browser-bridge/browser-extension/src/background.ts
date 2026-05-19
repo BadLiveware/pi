@@ -1,6 +1,7 @@
 /// <reference path="./chrome.d.ts" />
 
-import { bridgeCloseBeforeAcceptMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "./shared/connection-plan.js";
+import { bridgeCloseBeforeAcceptMessage, errorMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "./shared/connection-plan.js";
+import { createKeepAliveController } from "./background/keepalive.js";
 import { isSupportedTabUrl, selectionOptions } from "./background/request-helpers.js";
 import { appendExtensionDebugLog, parseStoredDebugLog, type ExtensionDebugLogEntry } from "./shared/debug-log.js";
 import { DEFAULT_BRIDGE_URL } from "./shared/defaults.js";
@@ -45,6 +46,7 @@ let previewTabId: number | undefined;
 let debugLog: ExtensionDebugLogEntry[] = [];
 const DEBUG_LOG_KEY = "debugLog";
 const activatedTabs = new Map<number, ActivatedTab>();
+const keepAlive = createKeepAliveController(sendToBridge, recordDebug);
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
 	void handleRuntimeMessage(message)
@@ -137,6 +139,7 @@ async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: 
 			resolve: () => {
 				connected = true;
 				recordDebug({ level: "info", event: "connection-accepted", data: { url: bridgeUrl, clientId } });
+				keepAlive.start();
 				void chrome.storage.local.set({ bridgeUrl, clientId, resumeSecret });
 				void restoreActivatedTabsToBridge();
 				resolve();
@@ -170,6 +173,7 @@ async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: 
 function handleSocketClose(ws: WebSocket, event?: CloseEvent): void {
 	const wasConnected = connected;
 	connected = false;
+	keepAlive.stop();
 	recordDebug({ level: wasConnected ? "warn" : "debug", event: "ws-close", data: { code: event?.code, wasClean: event?.wasClean, reason: event?.reason || undefined, wasConnected } });
 	if (socket === ws) socket = undefined;
 	if (pendingPair) {
@@ -420,6 +424,7 @@ function resolveTargetTabId(envelope: BridgeEnvelope): number | undefined {
 function disconnect(reason: string): void {
 	recordDebug({ level: "info", event: "disconnect", message: reason, data: { hadSocket: Boolean(socket), connected } });
 	clearReconnectTimer();
+	keepAlive.stop();
 	intentionalDisconnect = true;
 	if (pendingPair) {
 		globalThis.clearTimeout(pendingPair.timer);
@@ -471,10 +476,6 @@ function recordDebug(entry: Omit<ExtensionDebugLogEntry, "at" | "source"> & { at
 	const latest = debugLog[debugLog.length - 1];
 	if (latest) console.debug("[pi-browser-bridge]", latest.event, latest.message ?? "", latest.data ?? "");
 	void chrome.storage.local.set({ [DEBUG_LOG_KEY]: debugLog });
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 function detectBrowser(): BrowserKind {

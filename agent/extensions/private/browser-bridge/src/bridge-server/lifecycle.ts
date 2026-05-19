@@ -219,6 +219,12 @@ export class BrowserBridgeServer {
 			return;
 		}
 
+		if (envelope.type === "client:keepalive") {
+			this.debug("debug", "client-keepalive", { clientId: record.clientId, requestId: envelope.id });
+			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));
+			return;
+		}
+
 		if (envelope.type === "client:capabilities") {
 			this.updateClientCapabilities(record.clientId, envelope.payload);
 			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));

@@ -16,6 +16,6 @@ export function bridgeCloseBeforeAcceptMessage(event?: { code?: number; reason?:
 	return "Pi bridge socket closed before connection completed.";
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
