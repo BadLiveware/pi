@@ -34,6 +34,25 @@ test("status summary includes compact counts and can omit diagnostics", () => {
 	assert.doesNotMatch(compact, /diagnostics:/);
 });
 
+test("status summary includes latest shared selection descriptors", () => {
+	const runtime = createBrowserBridgeRuntime(1234);
+	runtime.state.sharedSelections.push({
+		selectionId: "selection-1",
+		clientId: "client-a",
+		source: "context-menu",
+		url: "https://example.test/page",
+		status: "selected",
+		selectedAt: 1236,
+		elements: [
+			{ tagName: "button", selectorCandidates: ["#save"], accessibleName: "Save", textPreview: "Save changes" },
+		],
+	});
+	const status = formatBrowserBridgeStatus(browserBridgeStatePayload(runtime.state), { includeDiagnostics: false });
+
+	assert.match(status, /latest shared selection: context-menu, selected, 1 element/);
+	assert.match(status, /#save \(Save\) — Save changes/);
+});
+
 test("state payload is a defensive copy", () => {
 	const runtime = createBrowserBridgeRuntime(1234);
 	appendBrowserBridgeDebugLog(runtime.state, { at: 1235, source: "server", level: "info", event: "test", data: { clientId: "client-a" } });

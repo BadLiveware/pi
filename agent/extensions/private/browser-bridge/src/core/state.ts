@@ -199,6 +199,23 @@ export function formatBrowserBridgeDebugLog(entries: BrowserBridgeDebugLogEntry[
 	});
 }
 
+function formatLatestSelectionElements(elements: BrowserElementDescriptorSummary[], limit = 3): string[] {
+	const lines = elements.slice(0, limit).map((element, index) => `  ${index + 1}. ${formatElementDescriptor(element)}`);
+	if (elements.length > limit) lines.push(`  … ${elements.length - limit} more element(s)`);
+	return lines;
+}
+
+function formatElementDescriptor(element: BrowserElementDescriptorSummary): string {
+	const selector = element.selectorCandidates?.[0] ?? element.tagName ?? element.elementId ?? "element";
+	const accessible = element.accessibleName ? ` (${clipText(element.accessibleName, 80)})` : "";
+	const text = element.textPreview ? ` — ${clipText(element.textPreview, 140)}` : "";
+	return `${selector}${accessible}${text}`;
+}
+
+function clipText(value: string, maxChars: number): string {
+	return value.length <= maxChars ? value : `${value.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
 export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, options: { includeDiagnostics?: boolean; includeDebugLog?: boolean; debugLogLimit?: number } = {}): string {
 	const status = snapshot.server.enabled ? "enabled" : "disabled";
 	const listener = snapshot.server.listener;
@@ -224,7 +241,10 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 	}
 
 	const latestSelection = snapshot.sharedSelections.at(-1);
-	if (latestSelection) lines.push(`latest shared selection: ${latestSelection.source ?? "unknown source"}, ${latestSelection.status}, ${latestSelection.elements.length} element(s), ${latestSelection.url ?? latestSelection.origin ?? "unknown origin"}`);
+	if (latestSelection) {
+		lines.push(`latest shared selection: ${latestSelection.source ?? "unknown source"}, ${latestSelection.status}, ${latestSelection.elements.length} element(s), ${latestSelection.url ?? latestSelection.origin ?? "unknown origin"}`);
+		for (const line of formatLatestSelectionElements(latestSelection.elements)) lines.push(line);
+	}
 
 	if (options.includeDiagnostics !== false && snapshot.diagnostics.length > 0) {
 		lines.push("diagnostics:");
