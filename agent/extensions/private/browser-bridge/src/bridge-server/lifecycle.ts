@@ -37,21 +37,36 @@ interface PendingRequest {
 	timer: NodeJS.Timeout;
 }
 
+interface BrowserClientAuthDetails {
+	clientId?: string;
+	browser?: BrowserClientSummary["browser"];
+	extensionVersion?: string;
+	capabilities?: string[];
+	activeTabId?: number;
+}
+
 interface PairPayload {
 	token: string;
-	client?: {
-		clientId?: string;
-		browser?: BrowserClientSummary["browser"];
-		extensionVersion?: string;
-		capabilities?: string[];
-		activeTabId?: number;
-	};
+	client?: BrowserClientAuthDetails;
+}
+
+interface ResumePayload {
+	clientId: string;
+	resumeSecret: string;
+	client?: BrowserClientAuthDetails;
+}
+
+interface AuthorizedClient {
+	clientId: string;
+	resumeSecret: string;
+	client?: BrowserClientAuthDetails;
 }
 
 export class BrowserBridgeServer {
 	private wss: WebSocketServer | undefined;
 	private readonly sockets = new Map<WebSocket, SocketRecord>();
 	private readonly clients = new Map<string, SocketRecord>();
+	private readonly authorizedClients = new Map<string, AuthorizedClient>();
 	private readonly pending = new Map<string, PendingRequest>();
 	private pairing: { token: string; expiresAt: number; timer: NodeJS.Timeout } | undefined;
 	private readonly now: () => number;
@@ -112,6 +127,7 @@ export class BrowserBridgeServer {
 		for (const record of [...this.sockets.values()]) record.socket.terminate();
 		this.sockets.clear();
 		this.clients.clear();
+		this.authorizedClients.clear();
 		this.state.clients = [];
 		this.state.tabs = [];
 		this.state.pendingRequests = [];
@@ -182,12 +198,16 @@ export class BrowserBridgeServer {
 
 		const envelope = parsed.envelope;
 		if (!record.clientId) {
-			if (envelope.type !== "pair") {
-				this.sendError(record.socket, envelope.id, "pairing_required", "Pairing is required before sending browser bridge messages.");
-				record.socket.close(4001, "pairing required");
+			if (envelope.type === "pair") {
+				this.handlePair(record, envelope);
 				return;
 			}
-			this.handlePair(record, envelope);
+			if (envelope.type === "resume") {
+				this.handleResume(record, envelope);
+				return;
+			}
+			this.sendError(record.socket, envelope.id, "pairing_required", "Pairing or resume is required before sending browser bridge messages.");
+			record.socket.close(4001, "pairing required");
 			return;
 		}
 
@@ -227,32 +247,65 @@ export class BrowserBridgeServer {
 		}
 
 		const clientId = this.uniqueClientId(payload.client?.clientId);
-		record.clientId = clientId;
-		this.clients.set(clientId, record);
-		const client: BrowserClientSummary = {
-			clientId,
-			browser: payload.client?.browser ?? "unknown",
-			extensionVersion: payload.client?.extensionVersion,
-			connectedAt: this.now(),
-			activeTabId: payload.client?.activeTabId,
-			capabilities: payload.client?.capabilities ?? [],
-		};
-		this.state.clients = [...this.state.clients.filter((existing) => existing.clientId !== clientId), client];
-		this.state.server.pairedClientCount = this.state.clients.length;
+		const resumeSecret = makePairingToken();
+		this.authorizedClients.set(clientId, { clientId, resumeSecret, client: payload.client });
+		this.attachClient(record, clientId, payload.client);
 		this.clearPairing();
-		this.state.server.diagnostics = this.state.clients.length === 0 ? [] : [`${this.state.clients.length} browser client(s) connected.`];
 		this.send(record.socket, makeBridgeEnvelope({
 			id: makeBridgeId("pair"),
 			requestId: envelope.id,
 			direction: "pi-to-browser",
 			type: "pair:accepted",
-			payload: { ok: true, clientId, version: BRIDGE_PROTOCOL_VERSION, serverTime: this.now() },
+			payload: { ok: true, clientId, resumeSecret, version: BRIDGE_PROTOCOL_VERSION, serverTime: this.now() },
 		}));
+	}
+
+	private handleResume(record: SocketRecord, envelope: BridgeEnvelope): void {
+		const payload = parseResumePayload(envelope.payload);
+		if (!payload) {
+			this.sendError(record.socket, envelope.id, "invalid_envelope", "Resume message payload is invalid.");
+			record.socket.close(4004, "invalid resume payload");
+			return;
+		}
+		const authorized = this.authorizedClients.get(payload.clientId);
+		if (!authorized || authorized.resumeSecret !== payload.resumeSecret) {
+			this.sendError(record.socket, envelope.id, "pairing_failed", "Resume secret is missing, invalid, or expired for this Pi session.");
+			record.socket.close(4005, "resume failed");
+			return;
+		}
+		const client = payload.client ? { ...authorized.client, ...payload.client, clientId: payload.clientId } : authorized.client;
+		this.authorizedClients.set(payload.clientId, { ...authorized, client });
+		this.attachClient(record, payload.clientId, client);
+		this.send(record.socket, makeBridgeEnvelope({
+			id: makeBridgeId("resume"),
+			requestId: envelope.id,
+			direction: "pi-to-browser",
+			type: "resume:accepted",
+			payload: { ok: true, clientId: payload.clientId, resumeSecret: authorized.resumeSecret, version: BRIDGE_PROTOCOL_VERSION, serverTime: this.now() },
+		}));
+	}
+
+	private attachClient(record: SocketRecord, clientId: string, clientDetails: BrowserClientAuthDetails | undefined): void {
+		const existing = this.clients.get(clientId);
+		if (existing && existing !== record) existing.socket.terminate();
+		record.clientId = clientId;
+		this.clients.set(clientId, record);
+		const client: BrowserClientSummary = {
+			clientId,
+			browser: clientDetails?.browser ?? "unknown",
+			extensionVersion: clientDetails?.extensionVersion,
+			connectedAt: this.now(),
+			activeTabId: clientDetails?.activeTabId,
+			capabilities: clientDetails?.capabilities ?? [],
+		};
+		this.state.clients = [...this.state.clients.filter((existingClient) => existingClient.clientId !== clientId), client];
+		this.state.server.pairedClientCount = this.state.clients.length;
+		this.state.server.diagnostics = this.state.clients.length === 0 ? [] : [`${this.state.clients.length} browser client(s) connected.`];
 	}
 
 	private onClose(record: SocketRecord): void {
 		this.sockets.delete(record.socket);
-		if (!record.clientId) return;
+		if (!record.clientId || this.clients.get(record.clientId) !== record) return;
 		this.clients.delete(record.clientId);
 		this.state.clients = this.state.clients.filter((client) => client.clientId !== record.clientId);
 		this.state.tabs = this.state.tabs.filter((tab) => tab.clientId !== record.clientId);
@@ -351,19 +404,26 @@ function rawDataToText(data: WebSocket.RawData): string {
 
 function parsePairPayload(payload: unknown): PairPayload | undefined {
 	if (!isRecord(payload) || typeof payload.token !== "string") return undefined;
-	const client = isRecord(payload.client) ? payload.client : undefined;
-	const browser = parseBrowser(client?.browser);
-	const capabilities = Array.isArray(client?.capabilities) ? client.capabilities.filter((capability): capability is string => typeof capability === "string") : undefined;
-	const activeTabId = typeof client?.activeTabId === "number" && Number.isSafeInteger(client.activeTabId) && client.activeTabId >= 0 ? client.activeTabId : undefined;
+	return { token: payload.token, client: parseClientAuthDetails(payload.client) };
+}
+
+function parseResumePayload(payload: unknown): ResumePayload | undefined {
+	if (!isRecord(payload) || typeof payload.clientId !== "string" || typeof payload.resumeSecret !== "string") return undefined;
+	return { clientId: payload.clientId, resumeSecret: payload.resumeSecret, client: parseClientAuthDetails(payload.client) };
+}
+
+function parseClientAuthDetails(value: unknown): BrowserClientAuthDetails | undefined {
+	const client = isRecord(value) ? value : undefined;
+	if (!client) return undefined;
+	const browser = parseBrowser(client.browser);
+	const capabilities = Array.isArray(client.capabilities) ? client.capabilities.filter((capability): capability is string => typeof capability === "string") : undefined;
+	const activeTabId = typeof client.activeTabId === "number" && Number.isSafeInteger(client.activeTabId) && client.activeTabId >= 0 ? client.activeTabId : undefined;
 	return {
-		token: payload.token,
-		client: client ? {
-			clientId: typeof client.clientId === "string" ? client.clientId : undefined,
-			browser,
-			extensionVersion: typeof client.extensionVersion === "string" ? client.extensionVersion : undefined,
-			capabilities,
-			activeTabId,
-		} : undefined,
+		clientId: typeof client.clientId === "string" ? client.clientId : undefined,
+		browser,
+		extensionVersion: typeof client.extensionVersion === "string" ? client.extensionVersion : undefined,
+		capabilities,
+		activeTabId,
 	};
 }
 

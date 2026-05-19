@@ -31,8 +31,11 @@ let socket: WebSocket | undefined;
 let connected = false;
 let bridgeUrl: string | undefined;
 let clientId: string | undefined;
+let resumeSecret: string | undefined;
 let lastError: string | undefined;
 let pendingPair: PendingPair | undefined;
+let reconnectTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+let intentionalDisconnect = false;
 let previewTabId: number | undefined;
 const activatedTabs = new Map<number, ActivatedTab>();
 
@@ -47,8 +50,9 @@ async function handleRuntimeMessage(message: unknown): Promise<unknown> {
 	if (!isRecord(message) || typeof message.type !== "string") throw new Error("Invalid browser bridge popup message.");
 	if (message.type === "bridge:getState") return { ok: true, state: await getRuntimeState() };
 	if (message.type === "bridge:connect") {
-		if (typeof message.url !== "string" || typeof message.token !== "string") throw new Error("Bridge URL and token are required.");
-		await connectToBridge(message.url, message.token);
+		if (typeof message.url !== "string") throw new Error("Bridge URL is required.");
+		if (message.token !== undefined && typeof message.token !== "string") throw new Error("Pairing token must be text when provided.");
+		await connectToBridge(message.url, message.token ?? "");
 		return { ok: true, state: await getRuntimeState() };
 	}
 	if (message.type === "bridge:disconnect") {
@@ -66,56 +70,101 @@ async function connectToBridge(url: string, token: string): Promise<void> {
 	disconnect("Replacing bridge connection.");
 	bridgeUrl = normalizeBridgeUrl(url);
 	clientId = await getOrCreateClientId();
+	resumeSecret = resumeSecret ?? await getStoredResumeSecret();
 	lastError = undefined;
+	const trimmedToken = token.trim();
+	if (trimmedToken) {
+		await openBridgeSocket({ type: "pair", token: trimmedToken });
+		return;
+	}
+	if (!resumeSecret) throw new Error("Pairing token is required for the first connection to this Pi session.");
+	await openBridgeSocket({ type: "resume", resumeSecret });
+}
 
+async function openBridgeSocket(auth: { type: "pair"; token: string } | { type: "resume"; resumeSecret: string }): Promise<void> {
+	if (!bridgeUrl || !clientId) throw new Error("Bridge URL and client id are required before connecting.");
+	clearReconnectTimer();
+	intentionalDisconnect = false;
 	await new Promise<void>((resolve, reject) => {
-		const requestId = makeId("pair");
+		const requestId = makeId(auth.type);
 		const ws = new WebSocket(bridgeUrl!);
 		socket = ws;
 		pendingPair = {
 			requestId,
 			resolve: () => {
 				connected = true;
-				void chrome.storage.local.set({ bridgeUrl, clientId });
+				void chrome.storage.local.set({ bridgeUrl, clientId, resumeSecret });
+				void restoreActivatedTabsToBridge();
 				resolve();
 			},
 			reject,
 			timer: globalThis.setTimeout(() => {
 				pendingPair = undefined;
 				ws.close();
-				reject(new Error("Timed out waiting for Pi bridge pairing response."));
+				reject(new Error("Timed out waiting for Pi bridge connection response."));
 			}, 10_000),
 		};
 		ws.addEventListener("open", () => {
 			ws.send(JSON.stringify(makeEnvelope({
 				id: requestId,
 				direction: "browser-to-pi",
-				type: "pair",
-				payload: {
-					token,
-					client: {
-						clientId,
-						browser: detectBrowser(),
-						extensionVersion: chrome.runtime.getManifest().version,
-						capabilities: ["tabs", "activation", "element-selection", "overlay", "preview", "interaction", "clipboard"],
-					},
-				},
+				type: auth.type,
+				payload: auth.type === "pair"
+					? { token: auth.token, client: clientInfo() }
+					: { clientId, resumeSecret: auth.resumeSecret, client: clientInfo() },
 			})));
 		});
 		ws.addEventListener("message", (event) => handleSocketMessage(String(event.data)));
-		ws.addEventListener("close", () => {
-			connected = false;
-			if (pendingPair) {
-				const pending = pendingPair;
-				pendingPair = undefined;
-				globalThis.clearTimeout(pending.timer);
-				pending.reject(new Error("Pi bridge socket closed before pairing completed."));
-			}
-		});
+		ws.addEventListener("close", () => handleSocketClose(ws));
 		ws.addEventListener("error", () => {
 			lastError = "Could not connect to the Pi bridge.";
 		});
 	});
+}
+
+function handleSocketClose(ws: WebSocket): void {
+	const wasConnected = connected;
+	connected = false;
+	if (socket === ws) socket = undefined;
+	if (pendingPair) {
+		const pending = pendingPair;
+		pendingPair = undefined;
+		globalThis.clearTimeout(pending.timer);
+		pending.reject(new Error("Pi bridge socket closed before connection completed."));
+	}
+	if (wasConnected && !intentionalDisconnect) scheduleReconnect();
+	intentionalDisconnect = false;
+}
+
+function scheduleReconnect(): void {
+	if (!bridgeUrl || !clientId || !resumeSecret || reconnectTimer) return;
+	reconnectTimer = globalThis.setTimeout(() => {
+		reconnectTimer = undefined;
+		void openBridgeSocket({ type: "resume", resumeSecret: resumeSecret! }).catch((error) => {
+			lastError = error instanceof Error ? error.message : String(error);
+			scheduleReconnect();
+		});
+	}, 1000);
+}
+
+function clearReconnectTimer(): void {
+	if (!reconnectTimer) return;
+	globalThis.clearTimeout(reconnectTimer);
+	reconnectTimer = undefined;
+}
+
+function clientInfo(): Record<string, unknown> {
+	return {
+		clientId,
+		browser: detectBrowser(),
+		extensionVersion: chrome.runtime.getManifest().version,
+		capabilities: ["tabs", "activation", "element-selection", "overlay", "preview", "interaction", "clipboard"],
+		activeTabId: [...activatedTabs.values()].sort((a, b) => b.activatedAt - a.activatedAt)[0]?.tabId,
+	};
+}
+
+async function restoreActivatedTabsToBridge(): Promise<void> {
+	for (const tab of activatedTabs.values()) sendActivatedTab(tab);
 }
 
 async function activateCurrentTab(): Promise<ActivatedTab> {
@@ -136,6 +185,11 @@ async function activateCurrentTab(): Promise<ActivatedTab> {
 		activatedAt: Date.now(),
 	};
 	activatedTabs.set(tab.id, activated);
+	sendActivatedTab(activated, response.viewport);
+	return activated;
+}
+
+function sendActivatedTab(activated: ActivatedTab, viewport?: ActivationResponse["viewport"]): void {
 	sendToBridge(makeEnvelope({
 		direction: "browser-to-pi",
 		type: "tab:activated",
@@ -145,10 +199,9 @@ async function activateCurrentTab(): Promise<ActivatedTab> {
 			origin: activated.origin,
 			active: true,
 			capabilities: activated.capabilities,
-			viewport: response.viewport,
+			viewport,
 		},
 	}));
-	return activated;
 }
 
 function handleSocketMessage(text: string): void {
@@ -158,9 +211,10 @@ function handleSocketMessage(text: string): void {
 		const pending = pendingPair;
 		pendingPair = undefined;
 		globalThis.clearTimeout(pending.timer);
-		if (envelope.type === "pair:accepted") {
+		if (envelope.type === "pair:accepted" || envelope.type === "resume:accepted") {
 			const accepted = isRecord(envelope.payload) && typeof envelope.payload.clientId === "string" ? envelope.payload.clientId : clientId;
 			clientId = accepted;
+			if (isRecord(envelope.payload) && typeof envelope.payload.resumeSecret === "string") resumeSecret = envelope.payload.resumeSecret;
 			pending.resolve();
 			return;
 		}
@@ -170,7 +224,7 @@ function handleSocketMessage(text: string): void {
 			pending.reject(new Error(message));
 			return;
 		}
-		pending.reject(new Error(`Unexpected pairing response ${envelope.type}.`));
+		pending.reject(new Error(`Unexpected bridge connection response ${envelope.type}.`));
 		return;
 	}
 
@@ -308,6 +362,8 @@ function selectionOptions(payload: unknown): Record<string, unknown> {
 }
 
 function disconnect(reason: string): void {
+	clearReconnectTimer();
+	intentionalDisconnect = true;
 	if (pendingPair) {
 		globalThis.clearTimeout(pendingPair.timer);
 		pendingPair = undefined;
@@ -318,9 +374,10 @@ function disconnect(reason: string): void {
 }
 
 async function getRuntimeState(): Promise<RuntimeState> {
-	const stored = await chrome.storage.local.get(["bridgeUrl", "clientId"]);
+	const stored = await chrome.storage.local.get(["bridgeUrl", "clientId", "resumeSecret"]);
 	bridgeUrl = bridgeUrl ?? (typeof stored.bridgeUrl === "string" ? stored.bridgeUrl : undefined);
 	clientId = clientId ?? (typeof stored.clientId === "string" ? stored.clientId : undefined);
+	resumeSecret = resumeSecret ?? (typeof stored.resumeSecret === "string" ? stored.resumeSecret : undefined);
 	return {
 		connected,
 		url: bridgeUrl,
@@ -328,6 +385,11 @@ async function getRuntimeState(): Promise<RuntimeState> {
 		lastError,
 		activatedTabs: [...activatedTabs.values()],
 	};
+}
+
+async function getStoredResumeSecret(): Promise<string | undefined> {
+	const stored = await chrome.storage.local.get(["resumeSecret"]);
+	return typeof stored.resumeSecret === "string" && stored.resumeSecret.length > 0 ? stored.resumeSecret : undefined;
 }
 
 async function getOrCreateClientId(): Promise<string> {

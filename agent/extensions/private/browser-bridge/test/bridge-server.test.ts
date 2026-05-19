@@ -43,6 +43,24 @@ function pairMessage(token: string, clientId = "client-a"): string {
 	}));
 }
 
+function resumeMessage(clientId: string, resumeSecret: string): string {
+	return JSON.stringify(makeBridgeEnvelope({
+		id: "resume-1",
+		direction: "browser-to-pi",
+		type: "resume",
+		payload: {
+			clientId,
+			resumeSecret,
+			client: {
+				clientId,
+				browser: "chromium",
+				extensionVersion: "0.1.0",
+				capabilities: ["tabs", "selection"],
+			},
+		},
+	}));
+}
+
 test("server starts inertly, pairs a client, and exposes state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
@@ -56,12 +74,43 @@ test("server starts inertly, pairs a client, and exposes state", async () => {
 		const response = await nextEnvelope(socket);
 		assert.equal(response.type, "pair:accepted");
 		assert.equal(response.requestId, "pair-1");
+		assert.equal(typeof (response.payload as { resumeSecret?: unknown }).resumeSecret, "string");
 		assert.equal(runtime.state.clients.length, 1);
 		assert.equal(runtime.state.clients[0]?.clientId, "client-a");
 		assert.deepEqual(runtime.state.clients[0]?.capabilities, ["tabs", "selection"]);
 		assert.equal(runtime.state.server.pairing, undefined);
 	} finally {
 		socket.close();
+		await server.stop("test cleanup");
+	}
+});
+
+test("server resumes a previously paired browser client without a new pairing token", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	let resumed: WebSocket | undefined;
+	try {
+		socket.send(pairMessage(pairing.token));
+		const paired = await nextEnvelope(socket);
+		const resumeSecret = (paired.payload as { resumeSecret?: string }).resumeSecret;
+		assert.equal(typeof resumeSecret, "string");
+		socket.close();
+		await once(socket, "close");
+		assert.equal(runtime.state.clients.length, 0);
+
+		resumed = await openClient(started.url);
+		resumed.send(resumeMessage("client-a", resumeSecret!));
+		const response = await nextEnvelope(resumed);
+		assert.equal(response.type, "resume:accepted");
+		assert.equal(response.requestId, "resume-1");
+		assert.equal(runtime.state.clients.length, 1);
+		assert.equal(runtime.state.clients[0]?.clientId, "client-a");
+	} finally {
+		socket.terminate();
+		resumed?.terminate();
 		await server.stop("test cleanup");
 	}
 });
