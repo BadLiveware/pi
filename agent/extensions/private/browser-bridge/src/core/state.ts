@@ -1,7 +1,7 @@
 export const BROWSER_BRIDGE_HOST = "127.0.0.1" as const;
 export const BROWSER_BRIDGE_PORT = 43871 as const;
 export const BROWSER_BRIDGE_DEFAULT_URL = `ws://${BROWSER_BRIDGE_HOST}:${BROWSER_BRIDGE_PORT}` as const;
-export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "context-menu-selection", "overlay", "preview-pages", "interaction", "clipboard"] as const;
+export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "context-menu-selection", "drawing", "overlay", "preview-pages", "interaction", "clipboard"] as const;
 
 export type BridgeListenerStatus = "stopped" | "running";
 export type BrowserBridgeDebugLevel = "debug" | "info" | "warn" | "error";
@@ -77,9 +77,44 @@ export interface BrowserSharedSelectionSummary {
 	origin?: string;
 	status: "selected" | "cancelled" | "unknown";
 	reason?: string;
+	userNote?: string;
 	selectedAt: number;
 	context?: BrowserSelectionContextSummary;
 	elements: BrowserElementDescriptorSummary[];
+}
+
+export interface BrowserDrawingPointSummary {
+	x: number;
+	y: number;
+	t?: number;
+	pressure?: number;
+}
+
+export interface BrowserDrawingStrokeSummary {
+	color?: string;
+	width?: number;
+	points: BrowserDrawingPointSummary[];
+}
+
+export interface BrowserSharedDrawingSummary {
+	drawingId: string;
+	clientId: string;
+	tabId?: number;
+	source?: string;
+	title?: string;
+	url?: string;
+	pageUrl?: string;
+	frameUrl?: string;
+	origin?: string;
+	status: "drawn" | "cancelled" | "unknown";
+	reason?: string;
+	userNote?: string;
+	sharedAt: number;
+	context?: BrowserSelectionContextSummary;
+	boundingBox?: { x: number; y: number; width: number; height: number; coordinateSpace?: string };
+	pointCount: number;
+	strokes: BrowserDrawingStrokeSummary[];
+	nearbyElements: BrowserElementDescriptorSummary[];
 }
 
 export interface PendingBridgeRequestSummary {
@@ -103,6 +138,7 @@ export interface BrowserBridgeState {
 	clients: BrowserClientSummary[];
 	tabs: BrowserTabSummary[];
 	sharedSelections: BrowserSharedSelectionSummary[];
+	sharedDrawings: BrowserSharedDrawingSummary[];
 	pendingRequests: PendingBridgeRequestSummary[];
 	previewServer?: PreviewServerState;
 	capabilities: string[];
@@ -120,6 +156,7 @@ export interface BrowserBridgeSnapshot {
 	clients: BrowserClientSummary[];
 	tabs: BrowserTabSummary[];
 	sharedSelections: BrowserSharedSelectionSummary[];
+	sharedDrawings: BrowserSharedDrawingSummary[];
 	pendingRequests: PendingBridgeRequestSummary[];
 	previewServer?: PreviewServerState;
 	capabilities: string[];
@@ -147,6 +184,7 @@ export function createInitialBrowserBridgeState(now = Date.now()): BrowserBridge
 		clients: [],
 		tabs: [],
 		sharedSelections: [],
+		sharedDrawings: [],
 		pendingRequests: [],
 		capabilities: [...BROWSER_BRIDGE_CAPABILITIES],
 		diagnostics: [],
@@ -169,7 +207,14 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 		sharedSelections: state.sharedSelections.map((selection) => ({
 			...selection,
 			context: selection.context ? { ...selection.context } : undefined,
-			elements: selection.elements.map((element) => ({ ...element, selectorCandidates: element.selectorCandidates ? [...element.selectorCandidates] : undefined, attributes: element.attributes ? { ...element.attributes } : undefined, boundingBox: element.boundingBox ? { ...element.boundingBox } : undefined })),
+			elements: selection.elements.map((element) => cloneElementDescriptor(element)),
+		})),
+		sharedDrawings: state.sharedDrawings.map((drawing) => ({
+			...drawing,
+			context: drawing.context ? { ...drawing.context } : undefined,
+			boundingBox: drawing.boundingBox ? { ...drawing.boundingBox } : undefined,
+			strokes: drawing.strokes.map((stroke) => ({ ...stroke, points: stroke.points.map((point) => ({ ...point })) })),
+			nearbyElements: drawing.nearbyElements.map((element) => cloneElementDescriptor(element)),
 		})),
 		pendingRequests: state.pendingRequests.map((request) => ({ ...request, target: request.target ? { ...request.target } : undefined })),
 		previewServer: state.previewServer ? { ...state.previewServer } : undefined,
@@ -178,6 +223,10 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 		debugLog: state.debugLog.map((entry) => ({ ...entry, data: entry.data ? { ...entry.data } : undefined })),
 		createdAt: state.createdAt,
 	};
+}
+
+function cloneElementDescriptor(element: BrowserElementDescriptorSummary): BrowserElementDescriptorSummary {
+	return { ...element, selectorCandidates: element.selectorCandidates ? [...element.selectorCandidates] : undefined, attributes: element.attributes ? { ...element.attributes } : undefined, boundingBox: element.boundingBox ? { ...element.boundingBox } : undefined };
 }
 
 export function appendBrowserBridgeDebugLog(state: BrowserBridgeState, entry: Omit<BrowserBridgeDebugLogEntry, "at"> & { at?: number }, limit = 100): void {
@@ -199,7 +248,25 @@ export function formatBrowserBridgeDebugLog(entries: BrowserBridgeDebugLogEntry[
 	});
 }
 
-function formatLatestSelectionElements(elements: BrowserElementDescriptorSummary[], limit = 3): string[] {
+export function formatSharedSelectionSummary(selection: BrowserSharedSelectionSummary, limit = 3): string[] {
+	const lines = [`shared selection: ${selection.source ?? "unknown source"}, ${selection.status}, ${selection.elements.length} element(s), ${selection.url ?? selection.origin ?? "unknown origin"}`];
+	if (selection.userNote) lines.push(`  note: ${clipText(selection.userNote, 240)}`);
+	lines.push(...formatElementList(selection.elements, limit));
+	return lines;
+}
+
+export function formatSharedDrawingSummary(drawing: BrowserSharedDrawingSummary, limit = 3): string[] {
+	const box = drawing.boundingBox ? ` bbox ${Math.round(drawing.boundingBox.width)}x${Math.round(drawing.boundingBox.height)} at ${Math.round(drawing.boundingBox.x)},${Math.round(drawing.boundingBox.y)}` : "";
+	const lines = [`shared drawing: ${drawing.source ?? "unknown source"}, ${drawing.status}, ${drawing.strokes.length} stroke(s), ${drawing.pointCount} point(s), ${drawing.url ?? drawing.origin ?? "unknown origin"}${box}`];
+	if (drawing.userNote) lines.push(`  note: ${clipText(drawing.userNote, 240)}`);
+	if (drawing.nearbyElements.length > 0) {
+		lines.push("  nearby:");
+		lines.push(...formatElementList(drawing.nearbyElements, limit).map((line) => `  ${line.trimStart()}`));
+	}
+	return lines;
+}
+
+function formatElementList(elements: BrowserElementDescriptorSummary[], limit = 3): string[] {
 	const lines = elements.slice(0, limit).map((element, index) => `  ${index + 1}. ${formatElementDescriptor(element)}`);
 	if (elements.length > limit) lines.push(`  … ${elements.length - limit} more element(s)`);
 	return lines;
@@ -226,6 +293,7 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 		`clients: ${snapshot.clients.length}`,
 		`tabs: ${snapshot.tabs.length}`,
 		`shared selections: ${snapshot.sharedSelections.length}`,
+		`shared drawings: ${snapshot.sharedDrawings.length}`,
 		`pending requests: ${snapshot.pendingRequests.length}`,
 		`capabilities: ${snapshot.capabilities.join(", ") || "none"}`,
 	];
@@ -242,8 +310,16 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 
 	const latestSelection = snapshot.sharedSelections.at(-1);
 	if (latestSelection) {
-		lines.push(`latest shared selection: ${latestSelection.source ?? "unknown source"}, ${latestSelection.status}, ${latestSelection.elements.length} element(s), ${latestSelection.url ?? latestSelection.origin ?? "unknown origin"}`);
-		for (const line of formatLatestSelectionElements(latestSelection.elements)) lines.push(line);
+		const [summary, ...details] = formatSharedSelectionSummary(latestSelection);
+		lines.push(`latest ${summary}`);
+		lines.push(...details);
+	}
+
+	const latestDrawing = snapshot.sharedDrawings.at(-1);
+	if (latestDrawing) {
+		const [summary, ...details] = formatSharedDrawingSummary(latestDrawing);
+		lines.push(`latest ${summary}`);
+		lines.push(...details);
 	}
 
 	if (options.includeDiagnostics !== false && snapshot.diagnostics.length > 0) {

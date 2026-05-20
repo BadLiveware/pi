@@ -233,6 +233,7 @@ test("browser-initiated element selections are stored in state", async () => {
 			type: "elements:selected",
 			payload: {
 				source: "context-menu",
+				userNote: "look here",
 				tabId: 42,
 				title: "Fixture",
 				url: "https://example.test/page",
@@ -249,10 +250,48 @@ test("browser-initiated element selections are stored in state", async () => {
 		assert.equal(runtime.state.sharedSelections.length, 1);
 		assert.equal(runtime.state.sharedSelections[0]?.tabId, 42);
 		assert.equal(runtime.state.sharedSelections[0]?.source, "context-menu");
+		assert.equal(runtime.state.sharedSelections[0]?.userNote, "look here");
 		assert.equal(runtime.state.sharedSelections[0]?.url, "https://example.test/page");
 		assert.equal(runtime.state.sharedSelections[0]?.frameUrl, "https://example.test/frame");
 		assert.equal(runtime.state.sharedSelections[0]?.context?.frameId, 7);
 		assert.equal(runtime.state.sharedSelections[0]?.elements[0]?.textPreview, "Click me");
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
+test("browser-initiated drawings are stored in state", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	let notified = false;
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000, onSharedDrawing: (drawing) => { notified = drawing.userNote === "circle this"; } });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		socket.send(JSON.stringify(makeBridgeEnvelope({
+			id: "drawing-1",
+			direction: "browser-to-pi",
+			type: "drawing:shared",
+			payload: {
+				source: "drawing",
+				userNote: "circle this",
+				tabId: 42,
+				url: "https://example.test/page",
+				sharedAt: 1234,
+				context: { source: "drawing", selectedAt: 1234 },
+				artifact: { status: "drawn", drawing: { pointCount: 2, boundingBox: { x: 1, y: 2, width: 3, height: 4 }, strokes: [{ color: "#e53935", width: 4, points: [{ x: 1, y: 2 }, { x: 4, y: 6 }] }] }, nearbyElements: [{ tagName: "span", textPreview: "120 kr" }] },
+			},
+		})));
+		const ack = await nextEnvelope(socket);
+		assert.equal(ack.type, "ack");
+		assert.equal(runtime.state.sharedDrawings.length, 1);
+		assert.equal(runtime.state.sharedDrawings[0]?.userNote, "circle this");
+		assert.equal(runtime.state.sharedDrawings[0]?.pointCount, 2);
+		assert.equal(runtime.state.sharedDrawings[0]?.nearbyElements[0]?.textPreview, "120 kr");
+		assert.equal(notified, true);
 	} finally {
 		socket.terminate();
 		await server.stop("test cleanup");

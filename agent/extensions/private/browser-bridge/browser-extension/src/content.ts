@@ -1,6 +1,8 @@
 /// <reference path="./chrome.d.ts" />
+/// <reference path="./content/share-context.ts" />
 /// <reference path="./content/selection.ts" />
 /// <reference path="./content/context-menu.ts" />
+/// <reference path="./content/drawing.ts" />
 /// <reference path="./content/overlay.ts" />
 /// <reference path="./content/interact.ts" />
 /// <reference path="./content/clipboard.ts" />
@@ -18,6 +20,17 @@ namespace PiBrowserBridgeContent {
 	interface DescribeContextMenuTargetMessage {
 		type: "pi-bridge:describe-context-menu-target";
 		options?: SelectElementsOptions;
+	}
+
+	interface ShareFeedbackMessage {
+		type: "pi-bridge:share-feedback";
+		message: string;
+		isError?: boolean;
+	}
+
+	interface DrawMessage {
+		type: "pi-bridge:draw";
+		options?: DrawingOptions;
 	}
 
 	interface OverlayMessage {
@@ -63,7 +76,7 @@ namespace PiBrowserBridgeContent {
 						height: window.innerHeight,
 						devicePixelRatio: window.devicePixelRatio || 1,
 					},
-					capabilities: ["activation", "element-selection", "context-menu-selection", "overlay", "interaction", "clipboard"],
+					capabilities: ["activation", "element-selection", "context-menu-selection", "drawing", "overlay", "interaction", "clipboard"],
 				};
 				sendResponse(response);
 				return;
@@ -75,8 +88,19 @@ namespace PiBrowserBridgeContent {
 			}
 
 			if (isDescribeContextMenuTargetMessage(message)) {
-				sendResponse(PiBrowserBridgeContent.describeLastContextMenuTarget(message.options));
+				void PiBrowserBridgeContent.describeLastContextMenuTarget(message.options).then(sendResponse, (error) => sendResponse({ status: "cancelled", elements: [], reason: error instanceof Error ? error.message : "error", context: PiBrowserBridgeContent.currentSelectionContext(message.options?.source ?? "context-menu") }));
+				return true;
+			}
+
+			if (isShareFeedbackMessage(message)) {
+				PiBrowserBridgeContent.showShareFeedback(message.message, message.isError === true);
+				sendResponse({ ok: true });
 				return;
+			}
+
+			if (isDrawMessage(message)) {
+				void PiBrowserBridgeContent.startDrawing(message.options).then(sendResponse, (error) => sendResponse({ status: "cancelled", reason: error instanceof Error ? error.message : "error", nearbyElements: [], context: PiBrowserBridgeContent.currentSelectionContext("drawing") }));
+				return true;
 			}
 
 			if (isOverlayMessage(message)) {
@@ -111,6 +135,14 @@ namespace PiBrowserBridgeContent {
 
 	function isDescribeContextMenuTargetMessage(value: unknown): value is DescribeContextMenuTargetMessage {
 		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:describe-context-menu-target";
+	}
+
+	function isShareFeedbackMessage(value: unknown): value is ShareFeedbackMessage {
+		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:share-feedback" && typeof (value as { message?: unknown }).message === "string";
+	}
+
+	function isDrawMessage(value: unknown): value is DrawMessage {
+		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:draw";
 	}
 
 	function isOverlayMessage(value: unknown): value is OverlayMessage {

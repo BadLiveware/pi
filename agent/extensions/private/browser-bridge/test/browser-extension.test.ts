@@ -66,9 +66,11 @@ test("injected content script is built as a classic single-file bundle", () => {
 	const tsconfig = JSON.parse(readBrowserExtensionFile("tsconfig.content.json"));
 	assert.equal(tsconfig.compilerOptions.module, "None");
 	assert.equal(tsconfig.compilerOptions.outFile, "dist/content.js");
-	assert.deepEqual(tsconfig.files.slice(-6), [
+	assert.deepEqual(tsconfig.files.slice(-8), [
+		"src/content/share-context.ts",
 		"src/content/selection.ts",
 		"src/content/context-menu.ts",
+		"src/content/drawing.ts",
 		"src/content/overlay.ts",
 		"src/content/interact.ts",
 		"src/content/clipboard.ts",
@@ -80,10 +82,12 @@ test("injected content script is built as a classic single-file bundle", () => {
 	}
 });
 
-test("popup exposes user-initiated selection sharing", () => {
+test("popup exposes user-initiated selection and drawing sharing", () => {
 	const popup = readBrowserExtensionFile("popup.html");
 	assert.match(popup, /id="share-selection"/);
 	assert.match(popup, /Select element for Pi/);
+	assert.match(popup, /id="share-drawing"/);
+	assert.match(popup, /Draw for Pi/);
 });
 
 test("manifest declares clipboard and context menu permissions", () => {
@@ -100,4 +104,13 @@ test("context menu sharing tracks and describes the right-clicked element", () =
 	assert.match(background, /Share element with Pi/);
 	assert.match(background, /pi-bridge:describe-context-menu-target/);
 	assert.match(background, /elements:selected/);
+});
+
+test("shared artifacts prompt for notes and expose browser feedback", () => {
+	const shareContext = readBrowserExtensionFile("src/content/share-context.ts");
+	const drawing = readBrowserExtensionFile("src/content/drawing.ts");
+	assert.match(shareContext, /promptShareContext/);
+	assert.match(shareContext, /showShareFeedback/);
+	assert.match(drawing, /startDrawing/);
+	assert.match(drawing, /nearbyElements/);
 });

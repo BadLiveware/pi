@@ -13,6 +13,7 @@ interface PopupResponse<T = unknown> {
 	ok: boolean;
 	state?: RuntimeState;
 	tab?: ActivatedTab;
+	message?: string;
 	error?: string;
 }
 
@@ -26,6 +27,7 @@ const connectButton = requireButton("connect");
 const disconnectButton = requireButton("disconnect");
 const activateButton = requireButton("activate");
 const shareSelectionButton = requireButton("share-selection");
+const shareDrawingButton = requireButton("share-drawing");
 
 for (const input of [detailsInput, urlInput, tokenInput]) {
 	input.addEventListener("input", () => handlePairingInput(input.value));
@@ -57,6 +59,13 @@ shareSelectionButton.addEventListener("click", () => {
 	void runAction(async () => {
 		const response = await send<PopupResponse>({ type: "tabs:shareSelection" });
 		handleResponse(response, "Selection shared with Pi.");
+	});
+});
+
+shareDrawingButton.addEventListener("click", () => {
+	void runAction(async () => {
+		const response = await send<PopupResponse>({ type: "tabs:shareDrawing" });
+		handleResponse(response, "Drawing shared with Pi.");
 	});
 });
 
@@ -131,7 +140,7 @@ function handleResponse(response: PopupResponse, successMessage: string): void {
 		return;
 	}
 	if (response.state) renderState(response.state);
-	setMessage(successMessage, false);
+	setMessage(response.message ?? successMessage, false);
 }
 
 function renderState(state: RuntimeState): void {
@@ -153,6 +162,7 @@ function renderState(state: RuntimeState): void {
 	disconnectButton.disabled = !state.connected;
 	activateButton.disabled = !state.connected;
 	shareSelectionButton.disabled = !state.connected;
+	shareDrawingButton.disabled = !state.connected;
 }
 
 function setBusy(busy: boolean): void {
@@ -161,6 +171,7 @@ function setBusy(busy: boolean): void {
 	disconnectButton.disabled = true;
 	activateButton.disabled = true;
 	shareSelectionButton.disabled = true;
+	shareDrawingButton.disabled = true;
 }
 
 function setMessage(message: string, isError: boolean): void {

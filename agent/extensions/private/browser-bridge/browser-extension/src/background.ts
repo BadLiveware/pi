@@ -1,9 +1,12 @@
 /// <reference path="./chrome.d.ts" />
 
 import { bridgeCloseBeforeAcceptMessage, errorMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "./shared/connection-plan.js";
+import { createBridgeAckController } from "./background/bridge-acks.js";
 import { installElementContextMenu } from "./background/context-menu.js";
 import { createKeepAliveController } from "./background/keepalive.js";
 import { detectBrowser, isSupportedTabUrl, selectionOptions, type BrowserKind } from "./background/request-helpers.js";
+import { shareDrawingFromCurrentTab } from "./background/share-drawing.js";
+import { createShareFeedback } from "./background/share-feedback.js";
 import { shareSelectionFromCurrentTab } from "./background/share-selection.js";
 import type { ActivatedTab, RuntimeState } from "./background/types.js";
 import { appendExtensionDebugLog, parseStoredDebugLog, type ExtensionDebugLogEntry } from "./shared/debug-log.js";
@@ -31,7 +34,9 @@ let debugLog: ExtensionDebugLogEntry[] = [];
 const DEBUG_LOG_KEY = "debugLog";
 const activatedTabs = new Map<number, ActivatedTab>();
 const keepAlive = createKeepAliveController(sendToBridge, recordDebug);
-installElementContextMenu({ isConnected: () => connected, sendToBridge, recordDebug });
+const ackController = createBridgeAckController({ isOpen: () => Boolean(socket && socket.readyState === WebSocket.OPEN), send: sendToBridge });
+const showShareFeedback = createShareFeedback({ recordDebug });
+installElementContextMenu({ isConnected: () => connected, sendToBridgeWithAck: ackController.sendWithAck, showShareFeedback, recordDebug });
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
 	void handleRuntimeMessage(message)
@@ -62,8 +67,13 @@ async function handleRuntimeMessage(message: unknown): Promise<unknown> {
 	}
 	if (message.type === "tabs:shareSelection") {
 		recordDebug({ level: "info", event: "popup-share-selection" });
-		const selection = await shareSelectionFromCurrentTab({ activateCurrentTab, sendToBridge, recordDebug });
-		return { ok: true, selection, state: await getRuntimeState() };
+		const result = await shareSelectionFromCurrentTab({ activateCurrentTab, sendToBridgeWithAck: ackController.sendWithAck, showShareFeedback, recordDebug });
+		return { ok: true, selection: result.response, message: result.message, state: await getRuntimeState() };
+	}
+	if (message.type === "tabs:shareDrawing") {
+		recordDebug({ level: "info", event: "popup-share-drawing" });
+		const result = await shareDrawingFromCurrentTab({ activateCurrentTab, sendToBridgeWithAck: ackController.sendWithAck, showShareFeedback, recordDebug });
+		return { ok: true, drawing: result.response, message: result.message, state: await getRuntimeState() };
 	}
 	throw new Error(`Unknown browser bridge popup message ${message.type}.`);
 }
@@ -166,6 +176,7 @@ function handleSocketClose(ws: WebSocket, event?: CloseEvent): void {
 	keepAlive.stop();
 	recordDebug({ level: wasConnected ? "warn" : "debug", event: "ws-close", data: { code: event?.code, wasClean: event?.wasClean, reason: event?.reason || undefined, wasConnected } });
 	if (socket === ws) socket = undefined;
+	ackController.rejectAll(new Error(event?.reason || "Pi bridge socket closed before acknowledgement."));
 	if (pendingPair) {
 		const pending = pendingPair;
 		pendingPair = undefined;
@@ -208,7 +219,7 @@ function clientInfo(): Record<string, unknown> {
 		clientId,
 		browser: detectBrowser(),
 		extensionVersion: chrome.runtime.getManifest().version,
-		capabilities: ["tabs", "activation", "element-selection", "context-menu-selection", "overlay", "preview", "interaction", "clipboard"],
+		capabilities: ["tabs", "activation", "element-selection", "context-menu-selection", "drawing", "overlay", "preview", "interaction", "clipboard"],
 		activeTabId: [...activatedTabs.values()].sort((a, b) => b.activatedAt - a.activatedAt)[0]?.tabId,
 	};
 }
@@ -286,6 +297,8 @@ function handleSocketMessage(text: string): void {
 		pending.reject(new Error(`Unexpected bridge connection response ${envelope.type}.`));
 		return;
 	}
+
+	if (envelope.direction === "pi-to-browser" && ackController.resolve(envelope)) return;
 
 	if (envelope.direction === "pi-to-browser" && envelope.type === "select-elements") {
 		void handleSelectElementsRequest(envelope);
@@ -422,6 +435,7 @@ function disconnect(reason: string): void {
 		globalThis.clearTimeout(pendingPair.timer);
 		pendingPair = undefined;
 	}
+	ackController.rejectAll(new Error(reason));
 	if (socket && socket.readyState === WebSocket.OPEN) socket.close(1000, reason);
 	socket = undefined;
 	connected = false;

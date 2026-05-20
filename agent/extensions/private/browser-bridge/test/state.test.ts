@@ -14,6 +14,7 @@ test("initial browser bridge state is inert and diagnostic", () => {
 	assert.equal(snapshot.clients.length, 0);
 	assert.equal(snapshot.tabs.length, 0);
 	assert.equal(snapshot.sharedSelections.length, 0);
+	assert.equal(snapshot.sharedDrawings.length, 0);
 	assert.equal(snapshot.pendingRequests.length, 0);
 	assert.equal(snapshot.debugLog.length, 0);
 	assert.deepEqual(snapshot.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
@@ -30,6 +31,7 @@ test("status summary includes compact counts and can omit diagnostics", () => {
 	assert.match(full, /listener: stopped/);
 	assert.match(full, /clients: 0/);
 	assert.match(full, /shared selections: 0/);
+	assert.match(full, /shared drawings: 0/);
 	assert.match(full, /diagnostics:/);
 	assert.doesNotMatch(compact, /diagnostics:/);
 });
@@ -53,10 +55,33 @@ test("status summary includes latest shared selection descriptors", () => {
 	assert.match(status, /#save \(Save\) — Save changes/);
 });
 
+test("status summary includes latest shared drawing details", () => {
+	const runtime = createBrowserBridgeRuntime(1234);
+	runtime.state.sharedDrawings.push({
+		drawingId: "drawing-1",
+		clientId: "client-a",
+		source: "drawing",
+		url: "https://example.test/page",
+		status: "drawn",
+		sharedAt: 1236,
+		userNote: "circle this",
+		boundingBox: { x: 10, y: 20, width: 30, height: 40 },
+		pointCount: 2,
+		strokes: [{ color: "#e53935", width: 4, points: [{ x: 10, y: 20 }, { x: 40, y: 60 }] }],
+		nearbyElements: [{ tagName: "span", selectorCandidates: [".price"], textPreview: "120 kr" }],
+	});
+	const status = formatBrowserBridgeStatus(browserBridgeStatePayload(runtime.state), { includeDiagnostics: false });
+
+	assert.match(status, /latest shared drawing: drawing, drawn, 1 stroke\(s\), 2 point\(s\)/);
+	assert.match(status, /note: circle this/);
+	assert.match(status, /.price — 120 kr/);
+});
+
 test("state payload is a defensive copy", () => {
 	const runtime = createBrowserBridgeRuntime(1234);
 	appendBrowserBridgeDebugLog(runtime.state, { at: 1235, source: "server", level: "info", event: "test", data: { clientId: "client-a" } });
 	runtime.state.sharedSelections.push({ selectionId: "selection-1", clientId: "client-a", source: "picker", url: "https://example.test/page", status: "selected", selectedAt: 1236, context: { source: "picker", clientX: 10 }, elements: [{ selectorCandidates: ["button"], attributes: { "data-testid": "button" }, boundingBox: { x: 1, y: 2, width: 3, height: 4 } }] });
+	runtime.state.sharedDrawings.push({ drawingId: "drawing-1", clientId: "client-a", status: "drawn", sharedAt: 1237, pointCount: 1, strokes: [{ points: [{ x: 1, y: 2 }] }], nearbyElements: [{ selectorCandidates: [".price"], boundingBox: { x: 1, y: 2, width: 3, height: 4 } }] });
 	const snapshot = browserBridgeStatePayload(runtime.state);
 	snapshot.capabilities.push("mutated");
 	snapshot.server.diagnostics.push("mutated");
@@ -65,6 +90,8 @@ test("state payload is a defensive copy", () => {
 	snapshot.sharedSelections[0]!.elements[0]!.selectorCandidates![0] = "mutated";
 	snapshot.sharedSelections[0]!.elements[0]!.attributes!["data-testid"] = "mutated";
 	snapshot.sharedSelections[0]!.elements[0]!.boundingBox!.x = 99;
+	snapshot.sharedDrawings[0]!.strokes[0]!.points[0]!.x = 99;
+	snapshot.sharedDrawings[0]!.nearbyElements[0]!.selectorCandidates![0] = "mutated";
 
 	const fresh = browserBridgeStatePayload(runtime.state);
 	assert.deepEqual(fresh.capabilities, [...BROWSER_BRIDGE_CAPABILITIES]);
@@ -74,6 +101,8 @@ test("state payload is a defensive copy", () => {
 	assert.equal(fresh.sharedSelections[0]?.elements[0]?.selectorCandidates?.[0], "button");
 	assert.equal(fresh.sharedSelections[0]?.elements[0]?.attributes?.["data-testid"], "button");
 	assert.equal(fresh.sharedSelections[0]?.elements[0]?.boundingBox?.x, 1);
+	assert.equal(fresh.sharedDrawings[0]?.strokes[0]?.points[0]?.x, 1);
+	assert.equal(fresh.sharedDrawings[0]?.nearbyElements[0]?.selectorCandidates?.[0], ".price");
 });
 
 test("status summary can include recent debug log entries", () => {

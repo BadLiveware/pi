@@ -10,8 +10,10 @@
   },
   "files": [
     "src/chrome.d.ts",
+    "src/content/share-context.ts",
     "src/content/selection.ts",
     "src/content/context-menu.ts",
+    "src/content/drawing.ts",
     "src/content/overlay.ts",
     "src/content/interact.ts",
     "src/content/clipboard.ts",

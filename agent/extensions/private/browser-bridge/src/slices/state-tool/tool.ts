@@ -12,8 +12,8 @@ export function registerBrowserBridgeStateTool(pi: ExtensionAPI, runtime: Browse
 	pi.registerTool({
 		name: "browser_bridge_state",
 		label: "Browser Bridge State",
-		description: "Inspect the local browser bridge server, connected browser clients, activated tabs, shared selections, pending requests, capabilities, diagnostics, and optional debug log.",
-		promptSnippet: "Inspect browser bridge state, connected browser clients, activated tabs, shared selections, pending requests, capabilities, diagnostics, and optional debug log.",
+		description: "Inspect the local browser bridge server, connected browser clients, activated tabs, shared selections/drawings, pending requests, capabilities, diagnostics, and optional debug log.",
+		promptSnippet: "Inspect browser bridge state, connected browser clients, activated tabs, shared selections/drawings, pending requests, capabilities, diagnostics, and optional debug log.",
 		promptGuidelines: [
 			"Use browser_bridge_state before using browser bridge capabilities when connection, activation, or diagnostics matter.",
 			"browser_bridge_state is read-only and safe to call when the bridge may not be running or no browser extension is connected.",

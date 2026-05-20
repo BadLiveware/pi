@@ -1,7 +1,8 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { isRecord, parseClientAuthDetails, parsePairPayload, parseResumePayload, rawDataToText, type BrowserClientAuthDetails } from "./auth-payloads.ts";
+import { parseSharedDrawing } from "./shared-drawing.ts";
 import { parseSharedSelection } from "./shared-selection.ts";
-import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, appendBrowserBridgeDebugLog, type BrowserBridgeState, type BrowserClientSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
+import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, appendBrowserBridgeDebugLog, type BrowserBridgeState, type BrowserClientSummary, type BrowserSharedDrawingSummary, type BrowserSharedSelectionSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
 import { makeBridgeId, makePairingToken } from "../core/ids.ts";
 import {
 	BRIDGE_PROTOCOL_VERSION,
@@ -24,6 +25,8 @@ export interface PairingTokenInfo {
 export interface BridgeServerOptions {
 	port?: number;
 	now?: () => number;
+	onSharedSelection?: (selection: BrowserSharedSelectionSummary) => void;
+	onSharedDrawing?: (drawing: BrowserSharedDrawingSummary) => void;
 }
 
 interface SocketRecord {
@@ -244,6 +247,12 @@ export class BrowserBridgeServer {
 			return;
 		}
 
+		if (envelope.type === "drawing:shared") {
+			this.recordSharedDrawing(record.clientId, envelope.payload);
+			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));
+			return;
+		}
+
 		this.sendError(record.socket, envelope.id, "unknown_request", `Unknown browser bridge message type "${envelope.type}".`);
 	}
 
@@ -401,6 +410,22 @@ export class BrowserBridgeServer {
 		const selection = parseSharedSelection(clientId, payload, this.now());
 		this.state.sharedSelections = [...this.state.sharedSelections, selection].slice(-20);
 		this.debug("info", "elements-selected", { clientId, tabId: selection.tabId, source: selection.source, status: selection.status, elementCount: selection.elements.length });
+		try {
+			this.options.onSharedSelection?.(selection);
+		} catch (error) {
+			this.debug("warn", "selection-notification-failed", { clientId, message: error instanceof Error ? error.message : String(error) });
+		}
+	}
+
+	private recordSharedDrawing(clientId: string, payload: unknown): void {
+		const drawing = parseSharedDrawing(clientId, payload, this.now());
+		this.state.sharedDrawings = [...this.state.sharedDrawings, drawing].slice(-20);
+		this.debug("info", "drawing-shared", { clientId, tabId: drawing.tabId, source: drawing.source, status: drawing.status, strokeCount: drawing.strokes.length, pointCount: drawing.pointCount });
+		try {
+			this.options.onSharedDrawing?.(drawing);
+		} catch (error) {
+			this.debug("warn", "drawing-notification-failed", { clientId, message: error instanceof Error ? error.message : String(error) });
+		}
 	}
 
 	private rejectPending(pending: PendingRequest, error: Error): void {

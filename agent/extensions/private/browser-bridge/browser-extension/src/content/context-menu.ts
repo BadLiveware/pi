@@ -23,12 +23,19 @@ namespace PiBrowserBridgeContent {
 		contextMenuState.installed = true;
 	}
 
-	export function describeLastContextMenuTarget(options: SelectElementsOptions = { mode: "single", source: "context-menu" }): SelectElementsResponse {
+	export async function describeLastContextMenuTarget(options: SelectElementsOptions = { mode: "single", source: "context-menu" }): Promise<SelectElementsResponse> {
 		const latest = contextMenuState.lastTarget;
 		const source = options.source ?? "context-menu";
 		if (!latest) return { status: "cancelled", elements: [], reason: "no-context-menu-target", context: currentSelectionContext(source) };
 		if (!latest.element.isConnected) return { status: "cancelled", elements: [], reason: "stale-context-menu-target", context: contextFromTarget(source, latest) };
-		return { status: "selected", elements: [describeElement(latest.element, options)], context: contextFromTarget(source, latest) };
+		const elements = [describeElement(latest.element, options)];
+		const context = contextFromTarget(source, latest);
+		if (options.askForContext) {
+			const shareContext = promptShareContext("selection");
+			if (shareContext.cancelled) return { status: "cancelled", elements, reason: "context-cancelled", context };
+			return { status: "selected", elements, context, userNote: shareContext.userNote };
+		}
+		return { status: "selected", elements, context };
 	}
 
 	function rememberContextMenuTarget(event: MouseEvent): void {

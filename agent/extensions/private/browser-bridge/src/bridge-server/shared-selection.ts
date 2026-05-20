@@ -19,13 +19,14 @@ export function parseSharedSelection(clientId: string, payload: unknown, fallbac
 		origin: stringValue(record.origin) ?? stringValue(context?.origin),
 		status: selection.status === "selected" || selection.status === "cancelled" ? selection.status : "unknown",
 		reason: typeof selection.reason === "string" ? selection.reason : undefined,
+		userNote: stringValue(record.userNote) ?? stringValue(selection.userNote),
 		selectedAt: numberValue(record.selectedAt) ?? numberValue(context?.selectedAt) ?? fallbackTime,
 		context,
 		elements,
 	};
 }
 
-function parseElementDescriptor(value: unknown): BrowserElementDescriptorSummary | undefined {
+export function parseElementDescriptor(value: unknown): BrowserElementDescriptorSummary | undefined {
 	if (!isRecord(value)) return undefined;
 	return {
 		elementId: typeof value.elementId === "string" ? value.elementId : undefined,
@@ -47,18 +48,18 @@ function parseBoundingBox(value: unknown): BrowserElementDescriptorSummary["boun
 	return { x, y, width, height, coordinateSpace: typeof value.coordinateSpace === "string" ? value.coordinateSpace : undefined };
 }
 
-function parseContext(value: unknown): BrowserSelectionContextSummary | undefined {
+export function parseContext(value: unknown): BrowserSelectionContextSummary | undefined {
 	if (!isRecord(value)) return undefined;
 	const result: BrowserSelectionContextSummary = {};
 	for (const [key, candidate] of Object.entries(value)) if (typeof candidate === "string" || typeof candidate === "number" || typeof candidate === "boolean") result[key] = candidate;
 	return Object.keys(result).length > 0 ? result : undefined;
 }
 
-function stringValue(value: unknown): string | undefined {
+export function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
 }
 
-function numberValue(value: unknown): number | undefined {
+export function numberValue(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 

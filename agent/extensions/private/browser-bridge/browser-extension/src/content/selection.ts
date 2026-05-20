@@ -1,5 +1,5 @@
 namespace PiBrowserBridgeContent {
-	export type SelectionSource = "tool" | "picker" | "context-menu";
+	export type SelectionSource = "tool" | "picker" | "context-menu" | "drawing";
 
 	export interface SelectElementsOptions {
 		mode: "single" | "multiple";
@@ -8,6 +8,7 @@ namespace PiBrowserBridgeContent {
 		maxHtmlChars?: number;
 		timeoutMs?: number;
 		source?: SelectionSource;
+		askForContext?: boolean;
 	}
 
 	export interface ElementSelectionContext {
@@ -20,6 +21,8 @@ namespace PiBrowserBridgeContent {
 		viewportWidth: number;
 		viewportHeight: number;
 		devicePixelRatio: number;
+		scrollX: number;
+		scrollY: number;
 		clientX?: number;
 		clientY?: number;
 		pageX?: number;
@@ -39,8 +42,8 @@ namespace PiBrowserBridgeContent {
 	}
 
 	export type SelectElementsResponse =
-		| { status: "selected"; elements: ElementDescriptor[]; context: ElementSelectionContext }
-		| { status: "cancelled"; elements: ElementDescriptor[]; reason: string; context: ElementSelectionContext };
+		| { status: "selected"; elements: ElementDescriptor[]; context: ElementSelectionContext; userNote?: string }
+		| { status: "cancelled"; elements: ElementDescriptor[]; reason: string; context: ElementSelectionContext; userNote?: string };
 
 	interface SelectionState {
 		elementIds: WeakMap<Element, string>;
@@ -73,7 +76,7 @@ namespace PiBrowserBridgeContent {
 			document.documentElement.append(hoverBox, selectedLayer, banner);
 
 			let finished = false;
-			const timeout = window.setTimeout(() => finish("cancelled", "timeout"), options.timeoutMs ?? 60_000);
+			const timeout = window.setTimeout(() => void finish("cancelled", "timeout"), options.timeoutMs ?? 60_000);
 
 			function cleanup(): void {
 				window.clearTimeout(timeout);
@@ -86,16 +89,25 @@ namespace PiBrowserBridgeContent {
 				if (selectionState.activeCleanup === cleanup) selectionState.activeCleanup = undefined;
 			}
 
-			function finish(status: "selected" | "cancelled", reason?: "escape" | "timeout" | "replaced"): void {
+			async function finish(status: "selected" | "cancelled", reason?: "escape" | "timeout" | "replaced"): Promise<void> {
 				if (finished) return;
 				finished = true;
 				cleanup();
 				const elements = selected.map((element) => describeElement(element, options));
 				const context = currentSelectionContext(source);
+				if (status === "selected" && options.askForContext) {
+					const shareContext = promptShareContext("selection");
+					if (shareContext.cancelled) {
+						resolve({ status: "cancelled", elements, reason: "context-cancelled", context });
+						return;
+					}
+					resolve({ status, elements, context, userNote: shareContext.userNote });
+					return;
+				}
 				resolve(status === "selected" ? { status, elements, context } : { status, elements, reason: reason ?? "escape", context });
 			}
 
-			selectionState.activeCleanup = () => finish("cancelled", "replaced");
+			selectionState.activeCleanup = () => void finish("cancelled", "replaced");
 			document.addEventListener("mousemove", onMouseMove, true);
 			document.addEventListener("click", onClick, true);
 			document.addEventListener("keydown", onKeyDown, true);
@@ -113,20 +125,20 @@ namespace PiBrowserBridgeContent {
 				event.stopPropagation();
 				if (!selected.includes(target)) selected.push(target);
 				renderSelected(selectedLayer, selected);
-				if (options.mode === "single") finish("selected");
+				if (options.mode === "single") void finish("selected");
 			}
 
 			function onKeyDown(event: KeyboardEvent): void {
 				if (event.key === "Escape") {
 					event.preventDefault();
 					event.stopPropagation();
-					finish("cancelled", "escape");
+					void finish("cancelled", "escape");
 					return;
 				}
 				if (event.key === "Enter" && options.mode === "multiple") {
 					event.preventDefault();
 					event.stopPropagation();
-					finish("selected");
+					void finish("selected");
 				}
 			}
 		});
@@ -165,6 +177,8 @@ namespace PiBrowserBridgeContent {
 			viewportWidth: window.innerWidth,
 			viewportHeight: window.innerHeight,
 			devicePixelRatio: window.devicePixelRatio || 1,
+			scrollX: window.scrollX,
+			scrollY: window.scrollY,
 			...extra,
 		};
 	}
