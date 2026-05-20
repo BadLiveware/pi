@@ -1,3 +1,4 @@
+import { dataUrlToBlob } from "../shared/data-url.js";
 import type { ExtensionDebugLogEntry } from "../shared/debug-log.js";
 import { makeEnvelope, type BridgeEnvelope } from "../shared/protocol.js";
 import type { ActivatedTab } from "./types.js";
@@ -69,8 +70,8 @@ async function captureDrawingPreview(activated: ActivatedTab, response: unknown,
 }
 
 async function cropPreviewDataUrl(dataUrl: string, box: Record<string, unknown>, viewportWidth: number, viewportHeight: number): Promise<unknown> {
-	if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") return { dataUrl, mediaType: mediaTypeFromDataUrl(dataUrl), fullViewport: true };
-	const blob = await (await fetch(dataUrl)).blob();
+	if (typeof OffscreenCanvas === "undefined" || typeof createImageBitmap === "undefined") return { dataUrl, mediaType: mediaTypeFromDataUrl(dataUrl), fullViewport: true, viewport: { width: viewportWidth, height: viewportHeight } };
+	const blob = dataUrlToBlob(dataUrl);
 	const image = await createImageBitmap(blob);
 	const padding = 96;
 	const scaleX = image.width / viewportWidth;
@@ -91,6 +92,7 @@ async function cropPreviewDataUrl(dataUrl: string, box: Record<string, unknown>,
 		crop: { ...source, coordinateSpace: "viewport" },
 		imageSize: { width: sw, height: sh },
 		viewport: { width: viewportWidth, height: viewportHeight },
+		scale: { x: scaleX, y: scaleY },
 	};
 }
 

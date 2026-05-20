@@ -2,13 +2,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { BrowserBridgeServer } from "./src/bridge-server/lifecycle.ts";
 import { createBrowserBridgeRuntime, formatSharedDrawingSummary, formatSharedSelectionSummary } from "./src/core/state.ts";
 import { PreviewServer } from "./src/preview/server.ts";
+import { registerCaptureViewTool } from "./src/slices/capture-view/tool.ts";
 import { registerClipboardTool } from "./src/slices/clipboard/tool.ts";
 import { registerBrowserBridgeCommands } from "./src/slices/commands/commands.ts";
+import { registerDesignPreviewTool } from "./src/slices/design-preview/tool.ts";
 import { registerInteractTool } from "./src/slices/interact/tool.ts";
 import { registerOpenPreviewTool } from "./src/slices/open-preview/tool.ts";
 import { registerOverlayTool } from "./src/slices/overlay/tool.ts";
 import { registerSelectElementsTool } from "./src/slices/select-elements/tool.ts";
 import { registerBrowserBridgeStateTool } from "./src/slices/state-tool/tool.ts";
+import { registerStyleInspectionTools } from "./src/slices/style-inspection/tool.ts";
 
 export default function browserBridge(pi: ExtensionAPI): void {
 	const runtime = createBrowserBridgeRuntime();
@@ -41,6 +44,9 @@ export default function browserBridge(pi: ExtensionAPI): void {
 	registerBrowserBridgeStateTool(pi, runtime);
 	registerSelectElementsTool(pi, runtime, server);
 	registerOverlayTool(pi, runtime, server);
+	registerStyleInspectionTools(pi, runtime, server);
+	registerCaptureViewTool(pi, runtime, server);
+	registerDesignPreviewTool(pi, runtime, server);
 	registerOpenPreviewTool(pi, runtime, server, previewServer);
 	registerInteractTool(pi, runtime, server);
 	registerClipboardTool(pi, runtime, server);

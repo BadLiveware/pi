@@ -4,6 +4,8 @@
 /// <reference path="./content/context-menu.ts" />
 /// <reference path="./content/drawing.ts" />
 /// <reference path="./content/overlay.ts" />
+/// <reference path="./content/style-inspection.ts" />
+/// <reference path="./content/design-preview.ts" />
 /// <reference path="./content/interact.ts" />
 /// <reference path="./content/clipboard.ts" />
 
@@ -36,6 +38,16 @@ namespace PiBrowserBridgeContent {
 	interface OverlayMessage {
 		type: "pi-bridge:overlay";
 		commands: OverlayCommand[];
+	}
+
+	interface DesignPreviewMessage {
+		type: "pi-bridge:design-preview";
+		request: DesignPreviewRequest;
+	}
+
+	interface StyleInspectionMessage {
+		type: "pi-bridge:style-inspection";
+		request: StyleInspectionRequest;
 	}
 
 	interface InteractMessage {
@@ -76,7 +88,7 @@ namespace PiBrowserBridgeContent {
 						height: window.innerHeight,
 						devicePixelRatio: window.devicePixelRatio || 1,
 					},
-					capabilities: ["activation", "element-selection", "context-menu-selection", "drawing", "overlay", "interaction", "clipboard"],
+					capabilities: ["activation", "element-selection", "context-menu-selection", "drawing", "overlay", "style-inspection", "design-preview", "style-copy", "capture-view", "interaction", "clipboard"],
 				};
 				sendResponse(response);
 				return;
@@ -108,6 +120,24 @@ namespace PiBrowserBridgeContent {
 					sendResponse(PiBrowserBridgeContent.applyOverlayCommands(message.commands));
 				} catch (error) {
 					sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
+				return;
+			}
+
+			if (isDesignPreviewMessage(message)) {
+				try {
+					sendResponse(PiBrowserBridgeContent.runDesignPreview(message.request));
+				} catch (error) {
+					sendResponse({ ok: false, applied: 0, cleared: 0, active: [], results: [{ ok: false, action: "error", summary: error instanceof Error ? error.message : String(error) }] });
+				}
+				return;
+			}
+
+			if (isStyleInspectionMessage(message)) {
+				try {
+					sendResponse(PiBrowserBridgeContent.runStyleInspection(message.request));
+				} catch (error) {
+					sendResponse({ ok: false, elements: [], error: error instanceof Error ? error.message : String(error), context: PiBrowserBridgeContent.currentSelectionContext("tool") });
 				}
 				return;
 			}
@@ -147,6 +177,14 @@ namespace PiBrowserBridgeContent {
 
 	function isOverlayMessage(value: unknown): value is OverlayMessage {
 		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:overlay" && Array.isArray((value as { commands?: unknown }).commands);
+	}
+
+	function isDesignPreviewMessage(value: unknown): value is DesignPreviewMessage {
+		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:design-preview" && typeof (value as { request?: unknown }).request === "object";
+	}
+
+	function isStyleInspectionMessage(value: unknown): value is StyleInspectionMessage {
+		return typeof value === "object" && value !== null && (value as { type?: unknown }).type === "pi-bridge:style-inspection" && typeof (value as { request?: unknown }).request === "object";
 	}
 
 	function isInteractMessage(value: unknown): value is InteractMessage {

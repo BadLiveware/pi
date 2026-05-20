@@ -46,6 +46,7 @@ namespace PiBrowserBridgeContent {
 		| { status: "cancelled"; elements: ElementDescriptor[]; reason: string; context: ElementSelectionContext; userNote?: string };
 
 	interface SelectionState {
+		documentToken: string;
 		elementIds: WeakMap<Element, string>;
 		elementsById: Map<string, Element>;
 		nextElementId: number;
@@ -58,6 +59,7 @@ namespace PiBrowserBridgeContent {
 
 	const selectionGlobal = globalThis as SelectionGlobal;
 	const selectionState = selectionGlobal.__piBrowserBridgeSelectionState ??= {
+		documentToken: Math.random().toString(36).slice(2, 10),
 		elementIds: new WeakMap<Element, string>(),
 		elementsById: new Map<string, Element>(),
 		nextElementId: 1,
@@ -193,7 +195,7 @@ namespace PiBrowserBridgeContent {
 	function getElementId(element: Element): string {
 		const existing = selectionState.elementIds.get(element);
 		if (existing) return existing;
-		const id = `el-${selectionState.nextElementId++}`;
+		const id = `el-${selectionState.documentToken}-${selectionState.nextElementId++}`;
 		selectionState.elementIds.set(element, id);
 		selectionState.elementsById.set(id, element);
 		return id;

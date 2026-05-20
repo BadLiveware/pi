@@ -1,7 +1,9 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { isRecord, parseClientAuthDetails, parsePairPayload, parseResumePayload, rawDataToText, type BrowserClientAuthDetails } from "./auth-payloads.ts";
+import { parseDebugLevel, sanitizeDebugData } from "./debug-payloads.ts";
 import { parseSharedDrawing } from "./shared-drawing.ts";
 import { parseSharedSelection } from "./shared-selection.ts";
+import type { AuthorizedClient, PendingRequest, SocketRecord } from "./types.ts";
 import { BROWSER_BRIDGE_HOST, BROWSER_BRIDGE_PORT, appendBrowserBridgeDebugLog, type BrowserBridgeState, type BrowserClientSummary, type BrowserSharedDrawingSummary, type BrowserSharedSelectionSummary, type PendingBridgeRequestSummary } from "../core/state.ts";
 import { makeBridgeId, makePairingToken } from "../core/ids.ts";
 import {
@@ -27,25 +29,6 @@ export interface BridgeServerOptions {
 	now?: () => number;
 	onSharedSelection?: (selection: BrowserSharedSelectionSummary) => void;
 	onSharedDrawing?: (drawing: BrowserSharedDrawingSummary) => void;
-}
-
-interface SocketRecord {
-	socket: WebSocket;
-	clientId?: string;
-}
-
-interface PendingRequest {
-	clientId: string;
-	request: PendingBridgeRequestSummary;
-	resolve: (envelope: BridgeEnvelope) => void;
-	reject: (error: Error) => void;
-	timer: NodeJS.Timeout;
-}
-
-interface AuthorizedClient {
-	clientId: string;
-	resumeSecret: string;
-	client?: BrowserClientAuthDetails;
 }
 
 export class BrowserBridgeServer {
@@ -235,6 +218,12 @@ export class BrowserBridgeServer {
 			return;
 		}
 
+		if (envelope.type === "client:debug") {
+			this.recordClientDebug(record.clientId, envelope.payload);
+			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));
+			return;
+		}
+
 		if (envelope.type === "tab:activated") {
 			this.updateActivatedTab(record.clientId, envelope.payload);
 			this.send(record.socket, makeBridgeEnvelope({ id: makeBridgeId("ack"), requestId: envelope.id, direction: "pi-to-browser", type: "ack", payload: { ok: true } }));
@@ -383,6 +372,20 @@ export class BrowserBridgeServer {
 		if (!isRecord(payload) || !Array.isArray(payload.capabilities)) return;
 		const capabilities = payload.capabilities.filter((capability): capability is string => typeof capability === "string");
 		this.state.clients = this.state.clients.map((client) => client.clientId === clientId ? { ...client, capabilities } : client);
+	}
+
+	private recordClientDebug(clientId: string, payload: unknown): void {
+		if (!isRecord(payload)) return;
+		const event = typeof payload.event === "string" && payload.event.length > 0 ? payload.event.slice(0, 120) : "browser-debug";
+		const level = parseDebugLevel(payload.level);
+		appendBrowserBridgeDebugLog(this.state, {
+			at: typeof payload.at === "number" && Number.isFinite(payload.at) ? payload.at : this.now(),
+			source: "browser",
+			level,
+			event,
+			message: typeof payload.message === "string" ? payload.message.slice(0, 500) : undefined,
+			data: sanitizeDebugData(payload.data, clientId),
+		});
 	}
 
 	private updateActivatedTab(clientId: string, payload: unknown): void {

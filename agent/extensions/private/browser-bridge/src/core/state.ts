@@ -1,14 +1,16 @@
+import { formatDrawingGeometry, formatStrokeRegions, isRootOnlyDrawingTarget } from "./drawing-format.ts";
+
 export const BROWSER_BRIDGE_HOST = "127.0.0.1" as const;
 export const BROWSER_BRIDGE_PORT = 43871 as const;
 export const BROWSER_BRIDGE_DEFAULT_URL = `ws://${BROWSER_BRIDGE_HOST}:${BROWSER_BRIDGE_PORT}` as const;
-export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "context-menu-selection", "drawing", "overlay", "preview-pages", "interaction", "clipboard"] as const;
+export const BROWSER_BRIDGE_CAPABILITIES = ["state", "bridge-server", "pairing", "tab-activation", "element-selection", "context-menu-selection", "drawing", "overlay", "style-inspection", "design-preview", "style-copy", "capture-view", "preview-pages", "interaction", "clipboard"] as const;
 
 export type BridgeListenerStatus = "stopped" | "running";
 export type BrowserBridgeDebugLevel = "debug" | "info" | "warn" | "error";
 
 export interface BrowserBridgeDebugLogEntry {
 	at: number;
-	source: "server" | "tool" | "command";
+	source: "server" | "tool" | "command" | "browser";
 	level: BrowserBridgeDebugLevel;
 	event: string;
 	message?: string;
@@ -94,6 +96,8 @@ export interface BrowserDrawingStrokeSummary {
 	color?: string;
 	width?: number;
 	points: BrowserDrawingPointSummary[];
+	boundingBox?: BrowserDrawingBoxSummary;
+	pageBoundingBox?: BrowserDrawingBoxSummary;
 }
 
 export interface BrowserDrawingGestureSummary {
@@ -105,12 +109,29 @@ export interface BrowserDrawingGestureSummary {
 	toElement?: BrowserElementDescriptorSummary;
 }
 
+export interface BrowserDrawingBoxSummary {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	coordinateSpace?: string;
+}
+
+export interface BrowserDrawingViewportSummary {
+	width?: number;
+	height?: number;
+	scrollX?: number;
+	scrollY?: number;
+	devicePixelRatio?: number;
+}
+
 export interface BrowserDrawingPreviewSummary {
 	path?: string;
 	mediaType?: string;
-	crop?: { x: number; y: number; width: number; height: number; coordinateSpace?: string };
+	crop?: BrowserDrawingBoxSummary;
 	imageSize?: { width: number; height: number };
 	viewport?: { width: number; height: number };
+	scale?: { x: number; y: number };
 }
 
 export interface BrowserSharedDrawingSummary {
@@ -128,12 +149,26 @@ export interface BrowserSharedDrawingSummary {
 	userNote?: string;
 	sharedAt: number;
 	context?: BrowserSelectionContextSummary;
-	boundingBox?: { x: number; y: number; width: number; height: number; coordinateSpace?: string };
+	boundingBox?: BrowserDrawingBoxSummary;
+	pageBoundingBox?: BrowserDrawingBoxSummary;
+	viewport?: BrowserDrawingViewportSummary;
 	pointCount: number;
 	strokes: BrowserDrawingStrokeSummary[];
 	gesture?: BrowserDrawingGestureSummary;
 	previewImage?: BrowserDrawingPreviewSummary;
 	nearbyElements: BrowserElementDescriptorSummary[];
+}
+
+export interface BrowserDesignPreviewSummary {
+	patchId: string;
+	clientId?: string;
+	tabId?: number;
+	action: string;
+	selector?: string;
+	elementId?: string;
+	elementCount: number;
+	summary: string;
+	createdAt: number;
 }
 
 export interface PendingBridgeRequestSummary {
@@ -158,6 +193,7 @@ export interface BrowserBridgeState {
 	tabs: BrowserTabSummary[];
 	sharedSelections: BrowserSharedSelectionSummary[];
 	sharedDrawings: BrowserSharedDrawingSummary[];
+	designPreviews: BrowserDesignPreviewSummary[];
 	pendingRequests: PendingBridgeRequestSummary[];
 	previewServer?: PreviewServerState;
 	capabilities: string[];
@@ -176,6 +212,7 @@ export interface BrowserBridgeSnapshot {
 	tabs: BrowserTabSummary[];
 	sharedSelections: BrowserSharedSelectionSummary[];
 	sharedDrawings: BrowserSharedDrawingSummary[];
+	designPreviews: BrowserDesignPreviewSummary[];
 	pendingRequests: PendingBridgeRequestSummary[];
 	previewServer?: PreviewServerState;
 	capabilities: string[];
@@ -204,6 +241,7 @@ export function createInitialBrowserBridgeState(now = Date.now()): BrowserBridge
 		tabs: [],
 		sharedSelections: [],
 		sharedDrawings: [],
+		designPreviews: [],
 		pendingRequests: [],
 		capabilities: [...BROWSER_BRIDGE_CAPABILITIES],
 		diagnostics: [],
@@ -232,11 +270,14 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 			...drawing,
 			context: drawing.context ? { ...drawing.context } : undefined,
 			boundingBox: drawing.boundingBox ? { ...drawing.boundingBox } : undefined,
-			strokes: drawing.strokes.map((stroke) => ({ ...stroke, points: stroke.points.map((point) => ({ ...point })) })),
+			pageBoundingBox: drawing.pageBoundingBox ? { ...drawing.pageBoundingBox } : undefined,
+			viewport: drawing.viewport ? { ...drawing.viewport } : undefined,
+			strokes: drawing.strokes.map((stroke) => ({ ...stroke, boundingBox: stroke.boundingBox ? { ...stroke.boundingBox } : undefined, pageBoundingBox: stroke.pageBoundingBox ? { ...stroke.pageBoundingBox } : undefined, points: stroke.points.map((point) => ({ ...point })) })),
 			gesture: drawing.gesture ? cloneGesture(drawing.gesture) : undefined,
-			previewImage: drawing.previewImage ? { ...drawing.previewImage, crop: drawing.previewImage.crop ? { ...drawing.previewImage.crop } : undefined, imageSize: drawing.previewImage.imageSize ? { ...drawing.previewImage.imageSize } : undefined, viewport: drawing.previewImage.viewport ? { ...drawing.previewImage.viewport } : undefined } : undefined,
+			previewImage: drawing.previewImage ? { ...drawing.previewImage, crop: drawing.previewImage.crop ? { ...drawing.previewImage.crop } : undefined, imageSize: drawing.previewImage.imageSize ? { ...drawing.previewImage.imageSize } : undefined, viewport: drawing.previewImage.viewport ? { ...drawing.previewImage.viewport } : undefined, scale: drawing.previewImage.scale ? { ...drawing.previewImage.scale } : undefined } : undefined,
 			nearbyElements: drawing.nearbyElements.map((element) => cloneElementDescriptor(element)),
 		})),
+		designPreviews: state.designPreviews.map((preview) => ({ ...preview })),
 		pendingRequests: state.pendingRequests.map((request) => ({ ...request, target: request.target ? { ...request.target } : undefined })),
 		previewServer: state.previewServer ? { ...state.previewServer } : undefined,
 		capabilities: [...state.capabilities],
@@ -285,7 +326,10 @@ export function formatSharedDrawingSummary(drawing: BrowserSharedDrawingSummary,
 	const lines = [`shared drawing: ${drawing.source ?? "unknown source"}, ${drawing.status}, ${drawing.strokes.length} stroke(s), ${drawing.pointCount} point(s), ${drawing.url ?? drawing.origin ?? "unknown origin"}${box}`];
 	if (drawing.userNote) lines.push(`  note: ${clipText(drawing.userNote, 240)}`);
 	if (drawing.previewImage?.path) lines.push(`  preview: ${drawing.previewImage.path}`);
+	lines.push(...formatDrawingGeometry(drawing));
+	lines.push(...formatStrokeRegions(drawing));
 	if (drawing.gesture?.type) lines.push(...formatDrawingGesture(drawing.gesture));
+	if (isRootOnlyDrawingTarget(drawing)) lines.push("  target: page/root area (no specific element detected)");
 	if (drawing.nearbyElements.length > 0) {
 		lines.push("  nearby:");
 		lines.push(...formatElementList(drawing.nearbyElements, limit).map((line) => `  ${line.trimStart()}`));
@@ -308,9 +352,10 @@ function formatElementList(elements: BrowserElementDescriptorSummary[], limit = 
 
 function formatElementDescriptor(element: BrowserElementDescriptorSummary): string {
 	const selector = element.selectorCandidates?.[0] ?? element.tagName ?? element.elementId ?? "element";
+	const elementId = element.elementId && element.elementId !== selector ? ` [${element.elementId}]` : "";
 	const accessible = element.accessibleName ? ` (${clipText(element.accessibleName, 80)})` : "";
 	const text = element.textPreview ? ` — ${clipText(element.textPreview, 140)}` : "";
-	return `${selector}${accessible}${text}`;
+	return `${selector}${elementId}${accessible}${text}`;
 }
 
 function clipText(value: string, maxChars: number): string {
@@ -328,6 +373,7 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 		`tabs: ${snapshot.tabs.length}`,
 		`shared selections: ${snapshot.sharedSelections.length}`,
 		`shared drawings: ${snapshot.sharedDrawings.length}`,
+		`design previews: ${snapshot.designPreviews.length}`,
 		`pending requests: ${snapshot.pendingRequests.length}`,
 		`capabilities: ${snapshot.capabilities.join(", ") || "none"}`,
 	];
@@ -348,6 +394,9 @@ export function formatBrowserBridgeStatus(snapshot: BrowserBridgeSnapshot, optio
 		lines.push(`latest ${summary}`);
 		lines.push(...details);
 	}
+
+	const latestDesignPreview = snapshot.designPreviews.at(-1);
+	if (latestDesignPreview) lines.push(`latest design preview: ${latestDesignPreview.action}, ${latestDesignPreview.elementCount} element(s), ${latestDesignPreview.summary}`);
 
 	const latestDrawing = snapshot.sharedDrawings.at(-1);
 	if (latestDrawing) {

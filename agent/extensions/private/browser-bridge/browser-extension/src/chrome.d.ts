@@ -26,6 +26,11 @@ declare namespace chrome {
 		};
 	}
 
+	namespace action {
+		function setIcon(details: { path: string | Record<number, string>; tabId?: number }): Promise<void>;
+		function setTitle(details: { title: string; tabId?: number }): Promise<void>;
+	}
+
 	namespace tabs {
 		interface Tab {
 			id?: number;
@@ -35,11 +40,40 @@ declare namespace chrome {
 			active?: boolean;
 		}
 
-		function query(queryInfo: { active?: boolean; currentWindow?: boolean }): Promise<Tab[]>;
+		interface ActiveInfo {
+			tabId: number;
+			windowId: number;
+		}
+
+		interface ChangeInfo {
+			url?: string;
+			status?: string;
+		}
+
+		function query(queryInfo: { active?: boolean; currentWindow?: boolean; windowId?: number }): Promise<Tab[]>;
+		function get(tabId: number): Promise<Tab>;
 		function create(createProperties: { url: string; active?: boolean }): Promise<Tab>;
 		function update(tabId: number, updateProperties: { url?: string; active?: boolean }): Promise<Tab>;
 		function sendMessage<TResponse = unknown>(tabId: number, message: unknown, options?: { frameId?: number }): Promise<TResponse>;
 		function captureVisibleTab(windowId?: number, options?: { format?: "png" | "jpeg"; quality?: number }): Promise<string>;
+
+		const onActivated: {
+			addListener(listener: (activeInfo: ActiveInfo) => void): void;
+		};
+		const onUpdated: {
+			addListener(listener: (tabId: number, changeInfo: ChangeInfo, tab: Tab) => void): void;
+		};
+		const onRemoved: {
+			addListener(listener: (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void): void;
+		};
+	}
+
+	namespace windows {
+		const WINDOW_ID_NONE: number;
+
+		const onFocusChanged: {
+			addListener(listener: (windowId: number) => void): void;
+		};
 	}
 
 	namespace scripting {

@@ -1,9 +1,20 @@
+/// <reference types="node" />
+
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
-import { bridgeCloseBeforeAcceptMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } from "../browser-extension/src/shared/connection-plan.ts";
-import { appendExtensionDebugLog, formatExtensionDebugLog, parseStoredDebugLog } from "../browser-extension/src/shared/debug-log.ts";
-import { parsePairingDetails } from "../browser-extension/src/shared/pairing-details.ts";
+
+const connectionPlanPath = "../browser-extension/src/shared/connection-plan.ts";
+const debugLogPath = "../browser-extension/src/shared/debug-log.ts";
+const iconPath = "../browser-extension/src/background/icon.ts";
+const dataUrlPath = "../browser-extension/src/shared/data-url.ts";
+const pairingDetailsPath = "../browser-extension/src/shared/pairing-details.ts";
+
+const { bridgeCloseBeforeAcceptMessage, shouldFallbackBridgeUrlToDefault, shouldFallbackResumeToPairRequest } = await import(connectionPlanPath);
+const { appendExtensionDebugLog, formatExtensionDebugLog, parseStoredDebugLog } = await import(debugLogPath);
+const { actionIconStatus, actionIconTitle, ACTION_ICON_PATHS, updateActionIcon } = await import(iconPath);
+const { dataUrlToBlob } = await import(dataUrlPath);
+const { parsePairingDetails } = await import(pairingDetailsPath);
 
 function readBrowserExtensionFile(path: string): string {
 	return readFileSync(new URL(`../browser-extension/${path}`, import.meta.url), "utf8");
@@ -66,12 +77,14 @@ test("injected content script is built as a classic single-file bundle", () => {
 	const tsconfig = JSON.parse(readBrowserExtensionFile("tsconfig.content.json"));
 	assert.equal(tsconfig.compilerOptions.module, "None");
 	assert.equal(tsconfig.compilerOptions.outFile, "dist/content.js");
-	assert.deepEqual(tsconfig.files.slice(-8), [
+	assert.deepEqual(tsconfig.files.slice(-10), [
 		"src/content/share-context.ts",
 		"src/content/selection.ts",
 		"src/content/context-menu.ts",
 		"src/content/drawing.ts",
 		"src/content/overlay.ts",
+		"src/content/style-inspection.ts",
+		"src/content/design-preview.ts",
 		"src/content/interact.ts",
 		"src/content/clipboard.ts",
 		"src/content.ts",
@@ -96,6 +109,53 @@ test("manifest declares clipboard and context menu permissions", () => {
 	assert.ok(manifest.permissions.includes("contextMenus"));
 });
 
+test("manifest declares Pi action icons and dynamic icon states", () => {
+	const manifest = JSON.parse(readBrowserExtensionFile("manifest.json"));
+	assert.equal(manifest.action.default_icon[16], "icons/pi-yellow-16.png");
+	assert.equal(manifest.icons[128], "icons/pi-yellow-128.png");
+	assert.equal(actionIconStatus(true, undefined), "connected");
+	assert.equal(actionIconStatus(true, undefined, true), "active");
+	assert.equal(actionIconStatus(false, undefined), "disconnected");
+	assert.equal(actionIconStatus(false, "boom", true), "error");
+	assert.match(actionIconTitle("error", "boom"), /boom/);
+	assert.match(actionIconTitle("active", undefined), /current tab active/);
+	assert.equal(ACTION_ICON_PATHS.connected[16], "/icons/pi-blue-16.png");
+	assert.equal(ACTION_ICON_PATHS.active[16], "/icons/pi-green-16.png");
+	const iconPaths = ACTION_ICON_PATHS as Record<string, Record<number, string>>;
+	for (const paths of Object.values(iconPaths)) {
+		for (const path of Object.values(paths)) {
+			assert.match(path, /^\/icons\//, "dynamic action icons should use extension-root absolute paths from the service worker");
+			assert.equal(existsSync(new URL(`../browser-extension/${path.slice(1)}`, import.meta.url)), true, `${path} should exist`);
+		}
+	}
+});
+
+test("action icon updates are serialized so active tab wins after pairing", async () => {
+	const originalChrome = (globalThis as Record<string, unknown>).chrome;
+	let appliedIcon: string | undefined;
+	(globalThis as Record<string, unknown>).chrome = {
+		action: {
+			async setIcon(details: { path: Record<number, string> }) {
+				const icon = details.path[16];
+				await new Promise((resolve) => setTimeout(resolve, icon.includes("yellow") ? 10 : 0));
+				appliedIcon = icon;
+			},
+			async setTitle() {},
+		},
+	};
+	try {
+		await Promise.all([
+			updateActionIcon({ connected: false }),
+			updateActionIcon({ connected: true }),
+			updateActionIcon({ connected: true, activeTab: true }),
+		]);
+		assert.equal(appliedIcon, "/icons/pi-green-16.png");
+	} finally {
+		if (originalChrome === undefined) delete (globalThis as Record<string, unknown>).chrome;
+		else (globalThis as Record<string, unknown>).chrome = originalChrome;
+	}
+});
+
 test("context menu sharing tracks and describes the right-clicked element", () => {
 	const content = readBrowserExtensionFile("src/content/context-menu.ts");
 	const background = readBrowserExtensionFile("src/background/context-menu.ts");
@@ -106,11 +166,86 @@ test("context menu sharing tracks and describes the right-clicked element", () =
 	assert.match(background, /elements:selected/);
 });
 
+test("drawing preview data URLs decode without fetch", async () => {
+	const base64Blob = dataUrlToBlob("data:text/plain;base64,SGVsbG8=");
+	assert.equal(base64Blob.type, "text/plain");
+	assert.equal(await base64Blob.text(), "Hello");
+	const plainBlob = dataUrlToBlob("data:text/plain,Hello%20Pi");
+	assert.equal(await plainBlob.text(), "Hello Pi");
+	assert.throws(() => dataUrlToBlob("https://example.test/image.png"), /Invalid preview data URL/);
+});
+
 test("shared artifacts prompt for notes and expose browser feedback", () => {
 	const shareContext = readBrowserExtensionFile("src/content/share-context.ts");
 	const drawing = readBrowserExtensionFile("src/content/drawing.ts");
+	const shareDrawing = readBrowserExtensionFile("src/background/share-drawing.ts");
 	assert.match(shareContext, /promptShareContext/);
 	assert.match(shareContext, /showShareFeedback/);
 	assert.match(drawing, /startDrawing/);
 	assert.match(drawing, /nearbyElements/);
+	assert.match(drawing, /pageBoundingBox/);
+	assert.match(drawing, /strokeWithGeometry/);
+	assert.match(drawing, /viewportToPageBox/);
+	assert.match(drawing, /region/);
+	assert.match(shareDrawing, /scale: \{ x: scaleX, y: scaleY \}/);
+});
+
+test("design preview uses a bounded content handler", () => {
+	const content = readBrowserExtensionFile("src/content/design-preview.ts");
+	const background = readBrowserExtensionFile("src/background/content-requests.ts");
+	const capture = readBrowserExtensionFile("src/background/capture-preview.ts");
+	assert.match(content, /runDesignPreview/);
+	assert.match(content, /sanitizePreviewHtml/);
+	assert.match(content, /copy-styles/);
+	assert.match(content, /computedAfter/);
+	assert.doesNotMatch(content, /window\.prompt/);
+	assert.doesNotMatch(content, /feedbackPrompt/);
+	const serviceWorker = readBrowserExtensionFile("src/background.ts");
+	assert.match(background, /pi-bridge:design-preview/);
+	assert.match(background, /capturePreviewSnapshot/);
+	assert.match(serviceWorker, /handleCaptureViewRequest/);
+	assert.match(capture, /captureVisibleTab/);
+	assert.match(capture, /captureTabSnapshot/);
+	assert.match(capture, /chrome\.tabs\.update/);
+	assert.match(capture, /collectAffectedBoxes/);
+});
+
+test("style inspection is available to content and background handlers", () => {
+	const content = readBrowserExtensionFile("src/content.ts");
+	const inspector = readBrowserExtensionFile("src/content/style-inspection.ts");
+	const background = readBrowserExtensionFile("src/background/content-requests.ts");
+	assert.match(content, /pi-bridge:style-inspection/);
+	assert.match(inspector, /getComputedStyle/);
+	assert.match(inspector, /includeCssVariables/);
+	assert.match(inspector, /ancestorSummaries/);
+	assert.match(background, /handleStyleInspectionRequest/);
+	assert.match(background, /style-inspection:result/);
+});
+
+test("design preview replaces same-id patches before capturing restores", () => {
+	const content = readBrowserExtensionFile("src/content/design-preview.ts");
+	for (const fnName of ["applyStylePreview", "applyTextPreview", "applyHtmlPreview"]) {
+		const start = content.indexOf(`function ${fnName}`);
+		const end = content.indexOf("\n\tfunction ", start + 1);
+		const body = content.slice(start, end);
+		assert.ok(start >= 0, `${fnName} should exist`);
+		assert.ok(body.indexOf("clearPatch(patchId)") < body.indexOf("const restores"), `${fnName} should clear existing patch before recording restore state`);
+	}
+});
+
+test("background mirrors warning diagnostics to Pi", () => {
+	const background = readBrowserExtensionFile("src/background.ts");
+	const clientDebug = readBrowserExtensionFile("src/background/client-debug.ts");
+	assert.match(background, /mirrorBrowserDebugToPi/);
+	assert.match(clientDebug, /client:debug/);
+});
+
+test("background updates icon when the foreground tab changes", () => {
+	const background = readBrowserExtensionFile("src/background.ts");
+	const actionIconController = readBrowserExtensionFile("src/background/action-icon-controller.ts");
+	assert.match(background, /createActionIconController/);
+	assert.match(actionIconController, /chrome\.tabs\.onActivated/);
+	assert.match(actionIconController, /chrome\.tabs\.onUpdated/);
+	assert.match(actionIconController, /chrome\.windows\.onFocusChanged/);
+	assert.match(actionIconController, /input\.isActivatedTab\(currentTabId\)/);
 });

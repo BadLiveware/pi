@@ -20,7 +20,7 @@ interface SelectionTarget {
 
 interface SelectionResultPayload {
 	status?: string;
-	elements?: Array<{ tagName?: string; textPreview?: string; selectorCandidates?: string[] }>;
+	elements?: Array<{ elementId?: string; tagName?: string; textPreview?: string; selectorCandidates?: string[] }>;
 	reason?: string;
 }
 
@@ -81,9 +81,10 @@ export function formatSelectionToolResult(response: BridgeEnvelope): { content: 
 	const lines = [`Selection ${status}: ${elements.length} element(s).`];
 	if (status === "cancelled" && payload.reason) lines.push(`Reason: ${payload.reason}.`);
 	elements.slice(0, 8).forEach((element, index) => {
-		const selector = element.selectorCandidates?.[0] ?? element.tagName ?? "element";
+		const selector = element.selectorCandidates?.[0] ?? element.tagName ?? element.elementId ?? "element";
+		const elementId = element.elementId && element.elementId !== selector ? ` [${element.elementId}]` : "";
 		const text = element.textPreview ? ` — ${element.textPreview}` : "";
-		lines.push(`${index + 1}. ${selector}${text}`);
+		lines.push(`${index + 1}. ${selector}${elementId}${text}`);
 	});
 	return { content: [{ type: "text", text: lines.join("\n") }], details: response.payload };
 }

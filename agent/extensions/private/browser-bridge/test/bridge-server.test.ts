@@ -282,9 +282,9 @@ test("browser-initiated drawings are stored in state", async () => {
 				tabId: 42,
 				url: "https://example.test/page",
 				sharedAt: 1234,
-				context: { source: "drawing", selectedAt: 1234 },
-				previewImage: { dataUrl: "data:image/png;base64,iVBORw0KGgo=", mediaType: "image/png", crop: { x: 1, y: 2, width: 3, height: 4 }, imageSize: { width: 3, height: 4 } },
-				artifact: { status: "drawn", drawing: { pointCount: 2, boundingBox: { x: 1, y: 2, width: 3, height: 4 }, gesture: { type: "arrow", confidence: "medium", start: { x: 1, y: 2 }, end: { x: 4, y: 6 }, fromElement: { tagName: "button", textPreview: "Alpha action" } }, strokes: [{ color: "#e53935", width: 4, points: [{ x: 1, y: 2 }, { x: 4, y: 6 }] }] }, nearbyElements: [{ tagName: "span", textPreview: "120 kr" }] },
+				context: { source: "drawing", selectedAt: 1234, viewportWidth: 800, viewportHeight: 600, scrollX: 10, scrollY: 20, devicePixelRatio: 2 },
+				previewImage: { dataUrl: "data:image/png;base64,iVBORw0KGgo=", mediaType: "image/png", crop: { x: 1, y: 2, width: 3, height: 4, coordinateSpace: "viewport" }, imageSize: { width: 6, height: 8 }, viewport: { width: 800, height: 600 }, scale: { x: 2, y: 2 } },
+				artifact: { status: "drawn", drawing: { pointCount: 2, boundingBox: { x: 1, y: 2, width: 3, height: 4, coordinateSpace: "viewport" }, pageBoundingBox: { x: 11, y: 22, width: 3, height: 4, coordinateSpace: "page" }, viewport: { width: 800, height: 600, scrollX: 10, scrollY: 20, devicePixelRatio: 2 }, gesture: { type: "arrow", confidence: "medium", start: { x: 1, y: 2 }, end: { x: 4, y: 6 }, fromElement: { tagName: "button", textPreview: "Alpha action" } }, strokes: [{ color: "#e53935", width: 4, points: [{ x: 1, y: 2 }, { x: 4, y: 6 }] }] }, nearbyElements: [{ tagName: "span", textPreview: "120 kr" }] },
 			},
 		})));
 		const ack = await nextEnvelope(socket);
@@ -293,11 +293,46 @@ test("browser-initiated drawings are stored in state", async () => {
 		assert.equal(runtime.state.sharedDrawings[0]?.userNote, "circle this");
 		assert.equal(runtime.state.sharedDrawings[0]?.pointCount, 2);
 		assert.equal(runtime.state.sharedDrawings[0]?.gesture?.type, "arrow");
+		assert.deepEqual(runtime.state.sharedDrawings[0]?.pageBoundingBox, { x: 11, y: 22, width: 3, height: 4, coordinateSpace: "page" });
+		assert.deepEqual(runtime.state.sharedDrawings[0]?.viewport, { width: 800, height: 600, scrollX: 10, scrollY: 20, devicePixelRatio: 2 });
+		assert.deepEqual(runtime.state.sharedDrawings[0]?.strokes[0]?.boundingBox, { x: 1, y: 2, width: 3, height: 4, coordinateSpace: "viewport" });
+		assert.deepEqual(runtime.state.sharedDrawings[0]?.strokes[0]?.pageBoundingBox, { x: 11, y: 22, width: 3, height: 4, coordinateSpace: "page" });
 		assert.equal(runtime.state.sharedDrawings[0]?.gesture?.fromElement?.textPreview, "Alpha action");
 		assert.equal(typeof runtime.state.sharedDrawings[0]?.previewImage?.path, "string");
+		assert.equal(runtime.state.sharedDrawings[0]?.previewImage?.scale?.x, 2);
 		assert.equal(existsSync(runtime.state.sharedDrawings[0]!.previewImage!.path!), true);
 		assert.equal(runtime.state.sharedDrawings[0]?.nearbyElements[0]?.textPreview, "120 kr");
 		assert.equal(notified, true);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
+test("browser debug messages are mirrored into Pi debug state", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		socket.send(JSON.stringify(makeBridgeEnvelope({
+			id: "debug-1",
+			direction: "browser-to-pi",
+			type: "client:debug",
+			payload: { at: 1234, source: "background", level: "warn", event: "drawing-preview-capture-failed", message: "Cannot capture visible tab", data: { tabId: 42 } },
+		})));
+		const ack = await nextEnvelope(socket);
+		assert.equal(ack.type, "ack");
+		assert.equal(ack.requestId, "debug-1");
+		const entry = runtime.state.debugLog.find((candidate) => candidate.event === "drawing-preview-capture-failed");
+		assert.equal(entry?.source, "browser");
+		assert.equal(entry?.level, "warn");
+		assert.equal(entry?.message, "Cannot capture visible tab");
+		assert.equal(entry?.data?.clientId, "client-a");
+		assert.equal(entry?.data?.tabId, 42);
 	} finally {
 		socket.terminate();
 		await server.stop("test cleanup");

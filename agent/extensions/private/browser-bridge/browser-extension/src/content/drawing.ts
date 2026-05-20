@@ -21,10 +21,12 @@ namespace PiBrowserBridgeContent {
 		color: string;
 		width: number;
 		points: DrawingPoint[];
+		boundingBox?: DrawingBox;
+		pageBoundingBox?: DrawingBox;
 	}
 
 	export interface DrawingGesture {
-		type: "arrow" | "mark";
+		type: "arrow" | "mark" | "region";
 		confidence: "low" | "medium";
 		start: { x: number; y: number };
 		end: { x: number; y: number };
@@ -32,9 +34,27 @@ namespace PiBrowserBridgeContent {
 		toElement?: ElementDescriptor;
 	}
 
+	export interface DrawingBox {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		coordinateSpace: "viewport" | "page";
+	}
+
+	export interface DrawingViewportGeometry {
+		width: number;
+		height: number;
+		scrollX: number;
+		scrollY: number;
+		devicePixelRatio: number;
+	}
+
 	export interface DrawingPayload {
 		coordinateSpace: "viewport";
-		boundingBox: { x: number; y: number; width: number; height: number };
+		boundingBox: DrawingBox;
+		pageBoundingBox: DrawingBox;
+		viewport: DrawingViewportGeometry;
 		pointCount: number;
 		strokes: DrawingStroke[];
 		gesture?: DrawingGesture;
@@ -210,15 +230,44 @@ namespace PiBrowserBridgeContent {
 
 	function drawingPayload(strokes: DrawingStroke[], layer: HTMLElement, options: DrawingOptions): DrawingPayload {
 		const boundingBox = boundingBoxForPoints(strokes.flatMap((stroke) => stroke.points));
-		return { coordinateSpace: "viewport", boundingBox, pointCount: totalPointCount(strokes), strokes, gesture: withLayerHidden(layer, () => inferDrawingGesture(strokes, options)) };
+		const viewport = currentViewportGeometry();
+		const strokesWithGeometry = strokes.map((stroke) => strokeWithGeometry(stroke, viewport));
+		return {
+			coordinateSpace: "viewport",
+			boundingBox,
+			pageBoundingBox: viewportToPageBox(boundingBox, viewport),
+			viewport,
+			pointCount: totalPointCount(strokes),
+			strokes: strokesWithGeometry,
+			gesture: withLayerHidden(layer, () => inferDrawingGesture(strokes, options)),
+		};
 	}
 
-	function boundingBoxForPoints(points: DrawingPoint[]): { x: number; y: number; width: number; height: number } {
+	function strokeWithGeometry(stroke: DrawingStroke, viewport: DrawingViewportGeometry): DrawingStroke {
+		const boundingBox = boundingBoxForPoints(stroke.points);
+		return { ...stroke, boundingBox, pageBoundingBox: viewportToPageBox(boundingBox, viewport) };
+	}
+
+	function boundingBoxForPoints(points: DrawingPoint[]): DrawingBox {
 		const xs = points.map((point) => point.x);
 		const ys = points.map((point) => point.y);
 		const minX = Math.min(...xs);
 		const minY = Math.min(...ys);
-		return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+		return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY, coordinateSpace: "viewport" };
+	}
+
+	function currentViewportGeometry(): DrawingViewportGeometry {
+		return {
+			width: window.innerWidth,
+			height: window.innerHeight,
+			scrollX: window.scrollX,
+			scrollY: window.scrollY,
+			devicePixelRatio: window.devicePixelRatio || 1,
+		};
+	}
+
+	function viewportToPageBox(box: DrawingBox, viewport: DrawingViewportGeometry): DrawingBox {
+		return { x: box.x + viewport.scrollX, y: box.y + viewport.scrollY, width: box.width, height: box.height, coordinateSpace: "page" };
 	}
 
 	function nearbyDrawingElements(drawing: DrawingPayload, strokes: DrawingStroke[], options: DrawingOptions): ElementDescriptor[] {
@@ -238,10 +287,13 @@ namespace PiBrowserBridgeContent {
 		const last = main.points.at(-1)!;
 		const distance = Math.hypot(last.x - first.x, last.y - first.y);
 		const length = pathLength(main.points);
-		const type = distance > 40 && length / Math.max(distance, 1) < 2.7 ? "arrow" : "mark";
+		const box = boundingBoxForPoints(main.points);
+		const closedRegion = box.width >= 32 && box.height >= 32 && distance <= Math.max(48, Math.max(box.width, box.height) * 0.3) && length >= (box.width + box.height) * 1.2;
+		const arrow = distance > 40 && length / Math.max(distance, 1) < 2.7;
+		const type = closedRegion ? "region" : arrow ? "arrow" : "mark";
 		return {
 			type,
-			confidence: type === "arrow" ? "medium" : "low",
+			confidence: type === "mark" ? "low" : "medium",
 			start: { x: first.x, y: first.y },
 			end: { x: last.x, y: last.y },
 			fromElement: elementDescriptorAt(first, options),

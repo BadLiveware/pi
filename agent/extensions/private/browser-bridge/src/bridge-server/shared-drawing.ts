@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeBridgeId } from "../core/ids.ts";
-import type { BrowserDrawingGestureSummary, BrowserDrawingPointSummary, BrowserDrawingPreviewSummary, BrowserDrawingStrokeSummary, BrowserElementDescriptorSummary, BrowserSharedDrawingSummary } from "../core/state.ts";
+import type { BrowserDrawingBoxSummary, BrowserDrawingGestureSummary, BrowserDrawingPointSummary, BrowserDrawingPreviewSummary, BrowserDrawingStrokeSummary, BrowserDrawingViewportSummary, BrowserElementDescriptorSummary, BrowserSelectionContextSummary, BrowserSharedDrawingSummary } from "../core/state.ts";
 import { isRecord } from "./auth-payloads.ts";
 import { parseElementDescriptor, parseContext, stringValue, numberValue } from "./shared-selection.ts";
 
@@ -12,6 +12,7 @@ export function parseSharedDrawing(clientId: string, payload: unknown, fallbackT
 	const drawing = isRecord(artifact.drawing) ? artifact.drawing : {};
 	const context = parseContext(record.context) ?? parseContext(artifact.context);
 	const drawingId = makeBridgeId("drawing");
+	const boundingBox = parseBoundingBox(drawing.boundingBox);
 	return {
 		drawingId,
 		clientId,
@@ -27,25 +28,28 @@ export function parseSharedDrawing(clientId: string, payload: unknown, fallbackT
 		userNote: stringValue(record.userNote) ?? stringValue(artifact.userNote),
 		sharedAt: numberValue(record.sharedAt) ?? numberValue(context?.sharedAt) ?? fallbackTime,
 		context,
-		boundingBox: parseBoundingBox(drawing.boundingBox),
+		boundingBox,
+		pageBoundingBox: parsePageBoundingBox(drawing.pageBoundingBox, boundingBox, context),
+		viewport: parseViewport(drawing.viewport, context),
 		pointCount: numberValue(drawing.pointCount) ?? countPoints(drawing.strokes),
-		strokes: parseStrokes(drawing.strokes),
+		strokes: parseStrokes(drawing.strokes, context),
 		gesture: parseGesture(drawing.gesture),
 		previewImage: parsePreviewImage(record.previewImage, drawingId),
 		nearbyElements: Array.isArray(artifact.nearbyElements) ? artifact.nearbyElements.map(parseElementDescriptor).filter((element): element is BrowserElementDescriptorSummary => Boolean(element)) : [],
 	};
 }
 
-function parseStrokes(value: unknown): BrowserDrawingStrokeSummary[] {
+function parseStrokes(value: unknown, context?: BrowserSelectionContextSummary): BrowserDrawingStrokeSummary[] {
 	if (!Array.isArray(value)) return [];
-	return value.map(parseStroke).filter((stroke): stroke is BrowserDrawingStrokeSummary => Boolean(stroke));
+	return value.map((item) => parseStroke(item, context)).filter((stroke): stroke is BrowserDrawingStrokeSummary => Boolean(stroke));
 }
 
-function parseStroke(value: unknown): BrowserDrawingStrokeSummary | undefined {
+function parseStroke(value: unknown, context?: BrowserSelectionContextSummary): BrowserDrawingStrokeSummary | undefined {
 	if (!isRecord(value)) return undefined;
 	const points = Array.isArray(value.points) ? value.points.map(parsePoint).filter((point): point is BrowserDrawingPointSummary => Boolean(point)) : [];
 	if (points.length === 0) return undefined;
-	return { color: stringValue(value.color), width: numberValue(value.width), points };
+	const boundingBox = parseBoundingBox(value.boundingBox) ?? boundingBoxForPoints(points);
+	return { color: stringValue(value.color), width: numberValue(value.width), points, boundingBox, pageBoundingBox: parsePageBoundingBox(value.pageBoundingBox, boundingBox, context) };
 }
 
 function parsePoint(value: unknown): BrowserDrawingPointSummary | undefined {
@@ -56,7 +60,16 @@ function parsePoint(value: unknown): BrowserDrawingPointSummary | undefined {
 	return { x, y, t: numberValue(value.t), pressure: numberValue(value.pressure) };
 }
 
-function parseBoundingBox(value: unknown): BrowserSharedDrawingSummary["boundingBox"] {
+function boundingBoxForPoints(points: BrowserDrawingPointSummary[]): BrowserDrawingBoxSummary | undefined {
+	if (points.length === 0) return undefined;
+	const xs = points.map((point) => point.x);
+	const ys = points.map((point) => point.y);
+	const x = Math.min(...xs);
+	const y = Math.min(...ys);
+	return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y, coordinateSpace: "viewport" };
+}
+
+function parseBoundingBox(value: unknown): BrowserDrawingBoxSummary | undefined {
 	if (!isRecord(value)) return undefined;
 	const x = numberValue(value.x);
 	const y = numberValue(value.y);
@@ -64,6 +77,27 @@ function parseBoundingBox(value: unknown): BrowserSharedDrawingSummary["bounding
 	const height = numberValue(value.height);
 	if (x === undefined || y === undefined || width === undefined || height === undefined) return undefined;
 	return { x, y, width, height, coordinateSpace: stringValue(value.coordinateSpace) };
+}
+
+function parsePageBoundingBox(value: unknown, viewportBox: BrowserDrawingBoxSummary | undefined, context: BrowserSelectionContextSummary | undefined): BrowserDrawingBoxSummary | undefined {
+	const parsed = parseBoundingBox(value);
+	if (parsed) return parsed;
+	const scrollX = numberValue(context?.scrollX);
+	const scrollY = numberValue(context?.scrollY);
+	if (!viewportBox || scrollX === undefined || scrollY === undefined) return undefined;
+	return { x: viewportBox.x + scrollX, y: viewportBox.y + scrollY, width: viewportBox.width, height: viewportBox.height, coordinateSpace: "page" };
+}
+
+function parseViewport(value: unknown, context: BrowserSelectionContextSummary | undefined): BrowserDrawingViewportSummary | undefined {
+	const record = isRecord(value) ? value : {};
+	const viewport: BrowserDrawingViewportSummary = {
+		width: numberValue(record.width) ?? numberValue(context?.viewportWidth),
+		height: numberValue(record.height) ?? numberValue(context?.viewportHeight),
+		scrollX: numberValue(record.scrollX) ?? numberValue(context?.scrollX),
+		scrollY: numberValue(record.scrollY) ?? numberValue(context?.scrollY),
+		devicePixelRatio: numberValue(record.devicePixelRatio) ?? numberValue(context?.devicePixelRatio),
+	};
+	return Object.values(viewport).some((candidate) => candidate !== undefined) ? viewport : undefined;
 }
 
 function parseGesture(value: unknown): BrowserDrawingGestureSummary | undefined {
@@ -95,6 +129,7 @@ function parsePreviewImage(value: unknown, drawingId: string): BrowserDrawingPre
 		crop: parseBoundingBox(value.crop),
 		imageSize: parseSize(value.imageSize),
 		viewport: parseSize(value.viewport),
+		scale: parseScale(value.scale),
 	};
 }
 
@@ -103,6 +138,13 @@ function parseSize(value: unknown): { width: number; height: number } | undefine
 	const width = numberValue(value.width);
 	const height = numberValue(value.height);
 	return width === undefined || height === undefined ? undefined : { width, height };
+}
+
+function parseScale(value: unknown): { x: number; y: number } | undefined {
+	if (!isRecord(value)) return undefined;
+	const x = numberValue(value.x);
+	const y = numberValue(value.y);
+	return x === undefined || y === undefined ? undefined : { x, y };
 }
 
 function writePreviewDataUrl(dataUrl: string | undefined, mediaType: string | undefined, drawingId: string): string | undefined {

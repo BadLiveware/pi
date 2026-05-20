@@ -18,3 +18,10 @@ export interface ActivatedTab {
 	capabilities: string[];
 	activatedAt: number;
 }
+
+export interface PendingPair {
+	requestId: string;
+	resolve: () => void;
+	reject: (error: Error) => void;
+	timer: ReturnType<typeof globalThis.setTimeout>;
+}
