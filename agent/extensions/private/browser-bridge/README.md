@@ -14,7 +14,7 @@ The current build registers bridge state tooling, an explicit fixed-port local g
 - `/browser-bridge pair` starts the gateway if needed and opens a short-lived no-copy pairing window with a token fallback.
 - `browser_bridge_state` returns structured state for the agent.
 - Browser extension popup defaults to the fixed gateway URL, can connect during a Pi pairing window without copying a token, shows recent browser-side debug log entries, explicitly activates the current tab, and lets the user select an element or draw freehand strokes to share with Pi.
-- The extension registers a **Share element with Pi** right-click menu item for activated tabs; user-shared selections and drawings can include an optional note, include page/frame context, show browser acknowledgement toasts after Pi ACKs them, emit visible Pi session messages, and are stored in Pi bridge state for the agent to inspect.
+- The extension registers a **Share element with Pi** right-click menu item for activated tabs; user-shared selections and drawings can include an optional note, include page/frame context, show browser acknowledgement toasts after Pi ACKs them, emit visible Pi session messages, and are stored in Pi bridge state for the agent to inspect. Drawings also include a cropped preview image artifact path and simple gesture/endpoint context when available.
 - Activated tabs report title, URL, origin, viewport, and capabilities back to Pi.
 - `browser_bridge_select_elements` asks the browser extension to let the user select one or more visible elements and returns compact descriptors.
 - `browser_bridge_overlay` shows, hides, clears, highlights, and draws visible DOM/SVG annotations on activated tabs.
@@ -29,7 +29,7 @@ The current build registers bridge state tooling, an explicit fixed-port local g
 - Browser clients must pair during a short-lived Pi pairing window or use the fallback token before registration.
 - The listener binds only to `127.0.0.1`.
 - Browser activation is explicit from the extension popup; content scripts are not injected into every page. Right-click element sharing needs the tab activated first so the content script can observe the right-clicked target.
-- Selection returns compact, capped descriptors plus page/frame context; drawing returns capped vector strokes plus nearby element descriptors. Full HTML previews are opt-in and capped.
+- Selection returns compact, capped descriptors plus page/frame context; drawing returns capped vector strokes, nearby element descriptors, arrow/mark endpoint hints, and a cropped visible-tab preview around the drawing. Full HTML previews are opt-in and capped.
 - Page interactions are limited to click, type, scroll, and key actions. There is no arbitrary JavaScript evaluation tool.
 - Clipboard support is a separate write-only capability and asks for confirmation by default.
 - No cookies, local storage, session storage, credentials, clipboard reads, or screenshots are collected by the MVP tools.
@@ -62,7 +62,7 @@ Suggested smoke flow:
 3. Open `fixtures/manual-smoke.html` in the browser and activate the tab from the popup.
 4. Use the popup **Select element for Pi** action, the popup **Draw for Pi** action, the **Share element with Pi** right-click menu item, or `browser_bridge_select_elements` in `single` mode and select the Alpha card or input. Add an optional note when prompted.
 5. Verify the browser shows a shared/cancelled toast and Pi receives a visible shared artifact message.
-6. Use `browser_bridge_state` to verify shared selections/drawings include source, note, URL/frame context, compact element descriptors, and drawing nearby-element context; then use `browser_bridge_overlay` to highlight the selected descriptor and draw an inspectable SVG arrow or rectangle.
+6. Use `browser_bridge_state` to verify shared selections/drawings include source, note, URL/frame context, compact element descriptors, drawing nearby-element context, gesture hints, and a preview image path; then use `browser_bridge_overlay` to highlight the selected descriptor and draw an inspectable SVG arrow or rectangle.
 7. Use `browser_bridge_open_preview` with inline HTML and verify a new preview tab opens.
 8. Use `browser_bridge_interact` to type into `#fixture-input` and click `#fixture-button`; confirm the in-page prompt when shown.
 9. Use `browser_bridge_clipboard` with a harmless test value and confirm the clipboard-write prompt.

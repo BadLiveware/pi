@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync } from "node:fs";
 import { once } from "node:events";
 import { WebSocket } from "ws";
 import { BrowserBridgeServer } from "../src/bridge-server/lifecycle.ts";
@@ -282,7 +283,8 @@ test("browser-initiated drawings are stored in state", async () => {
 				url: "https://example.test/page",
 				sharedAt: 1234,
 				context: { source: "drawing", selectedAt: 1234 },
-				artifact: { status: "drawn", drawing: { pointCount: 2, boundingBox: { x: 1, y: 2, width: 3, height: 4 }, strokes: [{ color: "#e53935", width: 4, points: [{ x: 1, y: 2 }, { x: 4, y: 6 }] }] }, nearbyElements: [{ tagName: "span", textPreview: "120 kr" }] },
+				previewImage: { dataUrl: "data:image/png;base64,iVBORw0KGgo=", mediaType: "image/png", crop: { x: 1, y: 2, width: 3, height: 4 }, imageSize: { width: 3, height: 4 } },
+				artifact: { status: "drawn", drawing: { pointCount: 2, boundingBox: { x: 1, y: 2, width: 3, height: 4 }, gesture: { type: "arrow", confidence: "medium", start: { x: 1, y: 2 }, end: { x: 4, y: 6 }, fromElement: { tagName: "button", textPreview: "Alpha action" } }, strokes: [{ color: "#e53935", width: 4, points: [{ x: 1, y: 2 }, { x: 4, y: 6 }] }] }, nearbyElements: [{ tagName: "span", textPreview: "120 kr" }] },
 			},
 		})));
 		const ack = await nextEnvelope(socket);
@@ -290,6 +292,10 @@ test("browser-initiated drawings are stored in state", async () => {
 		assert.equal(runtime.state.sharedDrawings.length, 1);
 		assert.equal(runtime.state.sharedDrawings[0]?.userNote, "circle this");
 		assert.equal(runtime.state.sharedDrawings[0]?.pointCount, 2);
+		assert.equal(runtime.state.sharedDrawings[0]?.gesture?.type, "arrow");
+		assert.equal(runtime.state.sharedDrawings[0]?.gesture?.fromElement?.textPreview, "Alpha action");
+		assert.equal(typeof runtime.state.sharedDrawings[0]?.previewImage?.path, "string");
+		assert.equal(existsSync(runtime.state.sharedDrawings[0]!.previewImage!.path!), true);
 		assert.equal(runtime.state.sharedDrawings[0]?.nearbyElements[0]?.textPreview, "120 kr");
 		assert.equal(notified, true);
 	} finally {

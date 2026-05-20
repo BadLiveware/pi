@@ -17,6 +17,7 @@ namespace PiBrowserBridgeContent {
 	}
 
 	export function showShareFeedback(message: string, isError = false): void {
+		document.getElementById("pi-browser-bridge-drawing-layer")?.remove();
 		document.getElementById(FEEDBACK_ID)?.remove();
 		const toast = document.createElement("div");
 		toast.id = FEEDBACK_ID;

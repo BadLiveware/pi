@@ -20,11 +20,21 @@ namespace PiBrowserBridgeContent {
 		points: DrawingPoint[];
 	}
 
+	export interface DrawingGesture {
+		type: "arrow" | "mark";
+		confidence: "low" | "medium";
+		start: { x: number; y: number };
+		end: { x: number; y: number };
+		fromElement?: ElementDescriptor;
+		toElement?: ElementDescriptor;
+	}
+
 	export interface DrawingPayload {
 		coordinateSpace: "viewport";
 		boundingBox: { x: number; y: number; width: number; height: number };
 		pointCount: number;
 		strokes: DrawingStroke[];
+		gesture?: DrawingGesture;
 	}
 
 	export type DrawingResponse =
@@ -53,29 +63,31 @@ namespace PiBrowserBridgeContent {
 			let activePath: SVGPathElement | undefined;
 			let finished = false;
 
-			function cleanup(): void {
+			function cleanup(removeLayer = true): void {
 				svg.removeEventListener("pointerdown", onPointerDown, true);
 				svg.removeEventListener("pointermove", onPointerMove, true);
 				svg.removeEventListener("pointerup", onPointerUp, true);
 				svg.removeEventListener("pointercancel", onPointerUp, true);
 				document.removeEventListener("keydown", onKeyDown, true);
-				layer.remove();
+				if (removeLayer) layer.remove();
 			}
 
 			async function finish(status: "drawn" | "cancelled", reason = "cancelled"): Promise<void> {
 				if (finished) return;
 				finished = true;
-				cleanup();
+				const drawn = status === "drawn" && totalPointCount(strokes) > 0;
+				cleanup(!drawn);
 				const context = currentSelectionContext("drawing");
-				if (status !== "drawn" || totalPointCount(strokes) === 0) {
+				if (!drawn) {
 					resolve({ status: "cancelled", reason: status === "drawn" ? "empty-drawing" : reason, nearbyElements: [], context });
 					return;
 				}
-				const drawing = drawingPayload(strokes);
-				const nearbyElements = nearbyDrawingElements(drawing, strokes, options);
+				const drawing = drawingPayload(strokes, layer, options);
+				const nearbyElements = withLayerHidden(layer, () => nearbyDrawingElements(drawing, strokes, options));
 				if (options.askForContext) {
 					const shareContext = promptShareContext("drawing");
 					if (shareContext.cancelled) {
+						layer.remove();
 						resolve({ status: "cancelled", reason: "context-cancelled", nearbyElements, context });
 						return;
 					}
@@ -193,9 +205,9 @@ namespace PiBrowserBridgeContent {
 		path.setAttribute("d", points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x} ${point.y}`).join(" "));
 	}
 
-	function drawingPayload(strokes: DrawingStroke[]): DrawingPayload {
+	function drawingPayload(strokes: DrawingStroke[], layer: HTMLElement, options: DrawingOptions): DrawingPayload {
 		const boundingBox = boundingBoxForPoints(strokes.flatMap((stroke) => stroke.points));
-		return { coordinateSpace: "viewport", boundingBox, pointCount: totalPointCount(strokes), strokes };
+		return { coordinateSpace: "viewport", boundingBox, pointCount: totalPointCount(strokes), strokes, gesture: withLayerHidden(layer, () => inferDrawingGesture(strokes, options)) };
 	}
 
 	function boundingBoxForPoints(points: DrawingPoint[]): { x: number; y: number; width: number; height: number } {
@@ -214,6 +226,43 @@ namespace PiBrowserBridgeContent {
 			if (element && !elements.includes(element)) elements.push(element);
 		}
 		return elements.slice(0, 8).map((element) => describeElement(element, { mode: "single", includeText: true, includeHtml: false, maxHtmlChars: 0, source: "drawing" }));
+	}
+
+	function inferDrawingGesture(strokes: DrawingStroke[], options: DrawingOptions): DrawingGesture | undefined {
+		const main = strokes.reduce<DrawingStroke | undefined>((best, stroke) => !best || pathLength(stroke.points) > pathLength(best.points) ? stroke : best, undefined);
+		if (!main || main.points.length < 2) return undefined;
+		const first = main.points[0]!;
+		const last = main.points.at(-1)!;
+		const distance = Math.hypot(last.x - first.x, last.y - first.y);
+		const length = pathLength(main.points);
+		const type = distance > 40 && length / Math.max(distance, 1) < 2.7 ? "arrow" : "mark";
+		return {
+			type,
+			confidence: type === "arrow" ? "medium" : "low",
+			start: { x: first.x, y: first.y },
+			end: { x: last.x, y: last.y },
+			fromElement: elementDescriptorAt(first, options),
+			toElement: elementDescriptorAt(last, options),
+		};
+	}
+
+	function elementDescriptorAt(point: { x: number; y: number }, options: DrawingOptions): ElementDescriptor | undefined {
+		const element = selectableElement(document.elementFromPoint(point.x, point.y));
+		return element ? describeElement(element, { mode: "single", includeText: true, includeHtml: false, maxHtmlChars: 0, source: "drawing" }) : undefined;
+	}
+
+	function pathLength(points: DrawingPoint[]): number {
+		return points.reduce((total, point, index) => index === 0 ? 0 : total + Math.hypot(point.x - points[index - 1]!.x, point.y - points[index - 1]!.y), 0);
+	}
+
+	function withLayerHidden<T>(layer: HTMLElement, callback: () => T): T {
+		const previous = layer.style.display;
+		layer.style.display = "none";
+		try {
+			return callback();
+		} finally {
+			layer.style.display = previous;
+		}
 	}
 
 	function samplePoints(drawing: DrawingPayload, strokes: DrawingStroke[]): Array<{ x: number; y: number }> {

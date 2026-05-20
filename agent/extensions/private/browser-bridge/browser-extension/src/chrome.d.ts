@@ -29,6 +29,7 @@ declare namespace chrome {
 	namespace tabs {
 		interface Tab {
 			id?: number;
+			windowId?: number;
 			title?: string;
 			url?: string;
 			active?: boolean;
@@ -38,6 +39,7 @@ declare namespace chrome {
 		function create(createProperties: { url: string; active?: boolean }): Promise<Tab>;
 		function update(tabId: number, updateProperties: { url?: string; active?: boolean }): Promise<Tab>;
 		function sendMessage<TResponse = unknown>(tabId: number, message: unknown, options?: { frameId?: number }): Promise<TResponse>;
+		function captureVisibleTab(windowId?: number, options?: { format?: "png" | "jpeg"; quality?: number }): Promise<string>;
 	}
 
 	namespace scripting {

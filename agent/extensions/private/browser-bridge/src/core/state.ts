@@ -96,6 +96,23 @@ export interface BrowserDrawingStrokeSummary {
 	points: BrowserDrawingPointSummary[];
 }
 
+export interface BrowserDrawingGestureSummary {
+	type?: string;
+	confidence?: string;
+	start?: { x: number; y: number };
+	end?: { x: number; y: number };
+	fromElement?: BrowserElementDescriptorSummary;
+	toElement?: BrowserElementDescriptorSummary;
+}
+
+export interface BrowserDrawingPreviewSummary {
+	path?: string;
+	mediaType?: string;
+	crop?: { x: number; y: number; width: number; height: number; coordinateSpace?: string };
+	imageSize?: { width: number; height: number };
+	viewport?: { width: number; height: number };
+}
+
 export interface BrowserSharedDrawingSummary {
 	drawingId: string;
 	clientId: string;
@@ -114,6 +131,8 @@ export interface BrowserSharedDrawingSummary {
 	boundingBox?: { x: number; y: number; width: number; height: number; coordinateSpace?: string };
 	pointCount: number;
 	strokes: BrowserDrawingStrokeSummary[];
+	gesture?: BrowserDrawingGestureSummary;
+	previewImage?: BrowserDrawingPreviewSummary;
 	nearbyElements: BrowserElementDescriptorSummary[];
 }
 
@@ -214,6 +233,8 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 			context: drawing.context ? { ...drawing.context } : undefined,
 			boundingBox: drawing.boundingBox ? { ...drawing.boundingBox } : undefined,
 			strokes: drawing.strokes.map((stroke) => ({ ...stroke, points: stroke.points.map((point) => ({ ...point })) })),
+			gesture: drawing.gesture ? cloneGesture(drawing.gesture) : undefined,
+			previewImage: drawing.previewImage ? { ...drawing.previewImage, crop: drawing.previewImage.crop ? { ...drawing.previewImage.crop } : undefined, imageSize: drawing.previewImage.imageSize ? { ...drawing.previewImage.imageSize } : undefined, viewport: drawing.previewImage.viewport ? { ...drawing.previewImage.viewport } : undefined } : undefined,
 			nearbyElements: drawing.nearbyElements.map((element) => cloneElementDescriptor(element)),
 		})),
 		pendingRequests: state.pendingRequests.map((request) => ({ ...request, target: request.target ? { ...request.target } : undefined })),
@@ -227,6 +248,10 @@ export function browserBridgeStatePayload(state: BrowserBridgeState): BrowserBri
 
 function cloneElementDescriptor(element: BrowserElementDescriptorSummary): BrowserElementDescriptorSummary {
 	return { ...element, selectorCandidates: element.selectorCandidates ? [...element.selectorCandidates] : undefined, attributes: element.attributes ? { ...element.attributes } : undefined, boundingBox: element.boundingBox ? { ...element.boundingBox } : undefined };
+}
+
+function cloneGesture(gesture: BrowserDrawingGestureSummary): BrowserDrawingGestureSummary {
+	return { ...gesture, start: gesture.start ? { ...gesture.start } : undefined, end: gesture.end ? { ...gesture.end } : undefined, fromElement: gesture.fromElement ? cloneElementDescriptor(gesture.fromElement) : undefined, toElement: gesture.toElement ? cloneElementDescriptor(gesture.toElement) : undefined };
 }
 
 export function appendBrowserBridgeDebugLog(state: BrowserBridgeState, entry: Omit<BrowserBridgeDebugLogEntry, "at"> & { at?: number }, limit = 100): void {
@@ -259,10 +284,19 @@ export function formatSharedDrawingSummary(drawing: BrowserSharedDrawingSummary,
 	const box = drawing.boundingBox ? ` bbox ${Math.round(drawing.boundingBox.width)}x${Math.round(drawing.boundingBox.height)} at ${Math.round(drawing.boundingBox.x)},${Math.round(drawing.boundingBox.y)}` : "";
 	const lines = [`shared drawing: ${drawing.source ?? "unknown source"}, ${drawing.status}, ${drawing.strokes.length} stroke(s), ${drawing.pointCount} point(s), ${drawing.url ?? drawing.origin ?? "unknown origin"}${box}`];
 	if (drawing.userNote) lines.push(`  note: ${clipText(drawing.userNote, 240)}`);
+	if (drawing.previewImage?.path) lines.push(`  preview: ${drawing.previewImage.path}`);
+	if (drawing.gesture?.type) lines.push(...formatDrawingGesture(drawing.gesture));
 	if (drawing.nearbyElements.length > 0) {
 		lines.push("  nearby:");
 		lines.push(...formatElementList(drawing.nearbyElements, limit).map((line) => `  ${line.trimStart()}`));
 	}
+	return lines;
+}
+
+function formatDrawingGesture(gesture: BrowserDrawingGestureSummary): string[] {
+	const lines = [`  gesture: ${gesture.type}${gesture.confidence ? ` (${gesture.confidence})` : ""}${gesture.start && gesture.end ? ` from ${Math.round(gesture.start.x)},${Math.round(gesture.start.y)} to ${Math.round(gesture.end.x)},${Math.round(gesture.end.y)}` : ""}`];
+	if (gesture.fromElement) lines.push(`  from: ${formatElementDescriptor(gesture.fromElement)}`);
+	if (gesture.toElement) lines.push(`  to: ${formatElementDescriptor(gesture.toElement)}`);
 	return lines;
 }
 

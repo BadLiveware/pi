@@ -240,6 +240,7 @@ async function activateCurrentTab(): Promise<ActivatedTab> {
 
 	const activated: ActivatedTab = {
 		tabId: tab.id,
+		windowId: tab.windowId,
 		title: tab.title ?? response.title,
 		url: tab.url,
 		origin: response.origin,

@@ -11,6 +11,7 @@ export interface RuntimeState {
 
 export interface ActivatedTab {
 	tabId: number;
+	windowId?: number;
 	title?: string;
 	url?: string;
 	origin?: string;
