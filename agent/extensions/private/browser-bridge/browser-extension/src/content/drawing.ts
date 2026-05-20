@@ -1,3 +1,6 @@
+/// <reference path="./share-context.ts" />
+/// <reference path="./selection.ts" />
+
 namespace PiBrowserBridgeContent {
 	export interface DrawingOptions {
 		source?: "drawing";
