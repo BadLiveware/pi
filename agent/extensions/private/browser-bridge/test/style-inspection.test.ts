@@ -49,10 +49,10 @@ test("style element targets default to latest or previous shared selections", ()
 	const target = { client: { clientId: "client-a", browser: "chromium" as const, connectedAt: 1000, capabilities: [], activeTabId: 7 }, tab: { clientId: "client-a", tabId: 7, active: true, capabilities: [] } };
 	runtime.state.sharedSelections.push(
 		{ selectionId: "selection-source", clientId: "client-a", tabId: 7, status: "selected", selectedAt: 1001, elements: [{ elementId: "el-source", selectorCandidates: [".source"] }] },
-		{ selectionId: "selection-target", clientId: "client-a", tabId: 7, status: "selected", selectedAt: 1002, elements: [{ elementId: "el-target", selectorCandidates: [".target"] }] },
+		{ selectionId: "selection-target", clientId: "client-a", tabId: 7, status: "selected", selectedAt: 1002, context: { frameId: 3 }, elements: [{ elementId: "el-target", selectorCandidates: [".target"] }] },
 	);
 
-	assert.deepEqual(resolveStyleElementTarget(runtime, target, undefined, { fallbackSelectionOffset: 0, role: "target" }), { selectionId: "selection-target", selectionIndex: 0, elementId: "el-target", expected: { elementId: "el-target", selectorCandidates: [".target"] } });
+	assert.deepEqual(resolveStyleElementTarget(runtime, target, undefined, { fallbackSelectionOffset: 0, role: "target" }), { selectionId: "selection-target", selectionIndex: 0, elementId: "el-target", frameId: 3, expected: { elementId: "el-target", selectorCandidates: [".target"] } });
 	assert.deepEqual(resolveStyleElementTarget(runtime, target, undefined, { fallbackSelectionOffset: 1, role: "source" }), { selectionId: "selection-source", selectionIndex: 0, elementId: "el-source", expected: { elementId: "el-source", selectorCandidates: [".source"] } });
 	assert.deepEqual(resolveStyleElementTarget(runtime, target, { selectionId: "selection-source", selectionIndex: 0 }, { fallbackSelectionOffset: 0, role: "source" }), { selectionId: "selection-source", selectionIndex: 0, elementId: "el-source", expected: { elementId: "el-source", selectorCandidates: [".source"] } });
 	assert.deepEqual(resolveStyleElementTarget(runtime, target, { selector: "h1" }, { fallbackSelectionOffset: 0, role: "target" }), { selector: "h1" });

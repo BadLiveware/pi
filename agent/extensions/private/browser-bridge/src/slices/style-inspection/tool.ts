@@ -91,7 +91,7 @@ export function registerStyleInspectionTools(pi: ExtensionAPI, runtime: BrowserB
 				includeCssVariables: params.includeCssVariables !== false,
 				maxCssVariables: params.maxCssVariables,
 				maxElements: params.maxElements,
-			}, { timeoutMs, target: { tabId: target.tab.tabId } });
+			}, { timeoutMs, target: { tabId: target.tab.tabId, frameId: element.frameId } });
 			return formatStyleInspectionToolResult(response);
 		},
 	});
@@ -136,7 +136,7 @@ export function registerStyleInspectionTools(pi: ExtensionAPI, runtime: BrowserB
 				...(typeof params.limit === "number" ? { limit: params.limit } : {}),
 			};
 			const timeoutMs = clampTimeout(params.timeoutMs);
-			const response = await server.sendRequestToClient(target.client.clientId, "design-preview", { commands: [command] }, { timeoutMs, target: { tabId: target.tab.tabId } });
+			const response = await server.sendRequestToClient(target.client.clientId, "design-preview", { commands: [command] }, { timeoutMs, target: { tabId: target.tab.tabId, frameId: targetElement.frameId } });
 			const result = formatDesignPreviewToolResult(response);
 			updateDesignPreviewState(runtime, target.client.clientId, target.tab.tabId, response.payload);
 			return result;
@@ -144,7 +144,7 @@ export function registerStyleInspectionTools(pi: ExtensionAPI, runtime: BrowserB
 	});
 }
 
-export function resolveStyleElementTarget(runtime: BrowserBridgeRuntime, target: BrowserTarget, input: StyleElementInput | undefined, options: { fallbackSelectionOffset: number; role: string }): { elementId?: string; selector?: string; selectionId?: string; selectionIndex?: number; expected?: unknown; limit?: number } {
+export function resolveStyleElementTarget(runtime: BrowserBridgeRuntime, target: BrowserTarget, input: StyleElementInput | undefined, options: { fallbackSelectionOffset: number; role: string }): { elementId?: string; selector?: string; selectionId?: string; selectionIndex?: number; expected?: unknown; frameId?: number; limit?: number } {
 	return resolveSharedElementTarget(runtime, target, input, options);
 }
 

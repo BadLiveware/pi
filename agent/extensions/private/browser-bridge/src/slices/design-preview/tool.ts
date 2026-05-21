@@ -7,7 +7,7 @@ import type { BrowserBridgeServer } from "../../bridge-server/lifecycle.ts";
 import type { BridgeEnvelope } from "../../core/protocol.ts";
 import type { BrowserBridgeRuntime, BrowserDesignPreviewSummary } from "../../core/state.ts";
 import { chooseSelectionTarget } from "../select-elements/tool.ts";
-import { resolveElementDescriptorFromSharedSelection } from "../shared-selection-target.ts";
+import { resolveElementDescriptorByElementId, resolveElementDescriptorFromSharedSelection } from "../shared-selection-target.ts";
 
 interface DesignPreviewParams {
 	target?: { clientId?: string; tabId?: number };
@@ -51,7 +51,7 @@ export function registerDesignPreviewTool(pi: ExtensionAPI, runtime: BrowserBrid
 			const target = chooseSelectionTarget(runtime, params);
 			const timeoutMs = clampTimeout(params.timeoutMs);
 			const commands = normalizeDesignPreviewCommands(params.commands, runtime, target);
-			const response = await server.sendRequestToClient(target.client.clientId, "design-preview", { commands, captureAfter: normalizeCaptureAfter(params.captureAfter, commands) }, { timeoutMs, target: { tabId: target.tab.tabId } });
+			const response = await server.sendRequestToClient(target.client.clientId, "design-preview", { commands, captureAfter: normalizeCaptureAfter(params.captureAfter, commands) }, { timeoutMs, target: { tabId: target.tab.tabId, frameId: frameIdFromCommands(commands) } });
 			const result = formatDesignPreviewToolResult(response);
 			updateDesignPreviewState(runtime, target.client.clientId, target.tab.tabId, result.details);
 			return result;
@@ -65,10 +65,13 @@ export function normalizeDesignPreviewCommands(commands: unknown[], runtime?: Br
 
 function normalizeDesignPreviewCommand(command: unknown, runtime: BrowserBridgeRuntime | undefined, target: { client: { clientId: string }; tab: { tabId?: number } } | undefined): unknown {
 	if (!isRecord(command)) return { action: "list" };
+	if (!runtime || !target) return command;
 	const selectionId = stringValue(command.selectionId);
 	const selectionIndex = numberValue(command.selectionIndex);
-	if (!runtime || !target || (!selectionId && selectionIndex === undefined)) return command;
-	const resolved = resolveElementDescriptorFromSharedSelection(runtime, target, selectionId, selectionIndex);
+	const elementId = stringValue(command.elementId);
+	const resolved = selectionId || selectionIndex !== undefined
+		? resolveElementDescriptorFromSharedSelection(runtime, target, selectionId, selectionIndex)
+		: elementId ? resolveElementDescriptorByElementId(runtime, target, elementId) : undefined;
 	if (!resolved) return command;
 	const expected = resolved.element;
 	const selector = expected.selectorCandidates?.[0];
@@ -76,9 +79,24 @@ function normalizeDesignPreviewCommand(command: unknown, runtime: BrowserBridgeR
 		...command,
 		selectionId: resolved.selection.selectionId,
 		selectionIndex: resolved.index,
+		...frameTargetFromSelection(resolved.selection),
 		...(expected.elementId ? { elementId: expected.elementId } : selector ? { selector } : {}),
 		expected,
 	};
+}
+
+function frameIdFromCommands(commands: unknown[]): number | undefined {
+	for (const command of commands) {
+		if (!isRecord(command)) continue;
+		const frameId = numberValue(command.frameId);
+		if (frameId !== undefined && Number.isSafeInteger(frameId) && frameId >= 0) return frameId;
+	}
+	return undefined;
+}
+
+function frameTargetFromSelection(selection: { context?: Record<string, unknown> | undefined }): { frameId?: number } {
+	const frameId = numberValue(selection.context?.frameId);
+	return frameId !== undefined && Number.isSafeInteger(frameId) && frameId >= 0 ? { frameId } : {};
 }
 
 export function normalizeCaptureAfter(value: DesignPreviewParams["captureAfter"], commands: unknown[]): DesignPreviewParams["captureAfter"] | undefined {

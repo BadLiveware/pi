@@ -187,19 +187,9 @@ namespace PiBrowserBridgeContent {
 		return [...designPreviewState.patches.values()].map(({ patchId, action, selector, elementId, elementCount, summary, createdAt, computedAfter }) => ({ patchId, action, selector, elementId, elementCount, summary, createdAt, computedAfter }));
 	}
 
-	function resolvePreviewElements(command: { selector?: string; elementId?: string; limit?: number }): Element[] {
-		const limit = Math.min(100, Math.max(1, Math.trunc(command.limit ?? 20)));
-		let elements: Element[] = [];
-		if (command.elementId) {
-			const element = designPreviewGlobal.__piBrowserBridgeSelectionState?.elementsById.get(command.elementId);
-			if (element) elements.push(element);
-		} else if (command.selector) {
-			elements = Array.from(document.querySelectorAll(command.selector)).slice(0, limit);
-		} else {
-			throw new Error("Design preview command requires selector or elementId.");
-		}
-		if (elements.length === 0) throw new Error("No elements matched the design preview target.");
-		return elements;
+	function resolvePreviewElements(command: StyleElementTarget): Element[] {
+		if (!command.elementId && !command.selector && !command.expected) throw new Error("Design preview command requires selector or elementId.");
+		return resolveStyleInspectionElements(command, command.limit);
 	}
 
 	function restoreAttribute(element: Element, name: string, value: string | null): void {

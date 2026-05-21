@@ -7,6 +7,7 @@ import { mirrorBrowserDebugToPi } from "./background/client-debug.js";
 import { installElementContextMenu } from "./background/context-menu.js";
 import { createContentRequestHandlers } from "./background/content-requests.js";
 import { createKeepAliveController } from "./background/keepalive.js";
+import { MAIN_FRAME_ID, resolveTargetFrameId } from "./background/frame-target.js";
 import { detectBrowser, isSupportedTabUrl, selectionOptions, type BrowserKind } from "./background/request-helpers.js";
 import { shareDrawingFromCurrentTab } from "./background/share-drawing.js";
 import { createShareFeedback } from "./background/share-feedback.js";
@@ -39,7 +40,7 @@ const actionIcon = createActionIconController({
 	clearActivatedTab: (tabId) => activatedTabs.delete(tabId),
 	recordDebug,
 });
-const { handleOverlayRequest, handleDesignPreviewRequest, handleStyleInspectionRequest, handleCaptureViewRequest, handleInteractRequest, handleClipboardRequest } = createContentRequestHandlers({ resolveTargetTabId, sendToBridge, recordDebug });
+const { handleOverlayRequest, handleDesignPreviewRequest, handleStyleInspectionRequest, handleCaptureViewRequest, handleInteractRequest, handleClipboardRequest } = createContentRequestHandlers({ resolveTargetTabId, resolveTargetFrameId: (envelope) => resolveTargetFrameId(envelope, activatedTabs), sendToBridge, recordDebug });
 installElementContextMenu({ isConnected: () => connected, sendToBridgeWithAck: ackController.sendWithAck, showShareFeedback, recordDebug });
 actionIcon.install();
 actionIcon.update();
@@ -260,12 +261,13 @@ async function activateCurrentTab(): Promise<ActivatedTab> {
 	if (!tab?.id) throw new Error("No active tab is available.");
 	if (!isSupportedTabUrl(tab.url)) throw new Error("This page cannot be activated by the browser bridge.");
 
-	await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ["dist/content.js"] });
-	const response = await chrome.tabs.sendMessage<ActivationResponse>(tab.id, { type: "pi-bridge:activate" });
+	await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [MAIN_FRAME_ID] }, files: ["dist/content.js"] });
+	const response = await chrome.tabs.sendMessage<ActivationResponse>(tab.id, { type: "pi-bridge:activate" }, { frameId: MAIN_FRAME_ID });
 	if (!response?.ok) throw new Error("Content script did not acknowledge activation.");
 
 	const activated: ActivatedTab = {
 		tabId: tab.id,
+		frameId: MAIN_FRAME_ID,
 		windowId: tab.windowId,
 		title: tab.title ?? response.title,
 		url: tab.url,
@@ -286,6 +288,7 @@ function sendActivatedTab(activated: ActivatedTab, viewport?: ActivationResponse
 		type: "tab:activated",
 		payload: {
 			tabId: activated.tabId,
+			frameId: activated.frameId,
 			title: activated.title,
 			origin: activated.origin,
 			url: activated.url,

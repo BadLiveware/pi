@@ -97,10 +97,16 @@ test("injected content script is built as a classic single-file bundle", () => {
 
 test("popup exposes user-initiated selection and drawing sharing", () => {
 	const popup = readBrowserExtensionFile("popup.html");
+	const background = readBrowserExtensionFile("src/background.ts");
+	const shareSelection = readBrowserExtensionFile("src/background/share-selection.ts");
+	const shareDrawing = readBrowserExtensionFile("src/background/share-drawing.ts");
 	assert.match(popup, /id="share-selection"/);
 	assert.match(popup, /Select element for Pi/);
 	assert.match(popup, /id="share-drawing"/);
 	assert.match(popup, /Draw for Pi/);
+	assert.match(background, /frameIds: \[MAIN_FRAME_ID\]/);
+	assert.match(shareSelection, /frameId: activated\.frameId/);
+	assert.match(shareDrawing, /frameId: activated\.frameId/);
 });
 
 test("manifest declares clipboard and context menu permissions", () => {
@@ -198,10 +204,12 @@ test("design preview uses a bounded content handler", () => {
 	assert.match(content, /sanitizePreviewHtml/);
 	assert.match(content, /copy-styles/);
 	assert.match(content, /computedAfter/);
+	assert.match(content, /resolveStyleInspectionElements\(command, command\.limit\)/);
 	assert.doesNotMatch(content, /window\.prompt/);
 	assert.doesNotMatch(content, /feedbackPrompt/);
 	const serviceWorker = readBrowserExtensionFile("src/background.ts");
 	assert.match(background, /pi-bridge:design-preview/);
+	assert.match(background, /resolveTargetFrameId/);
 	assert.match(background, /capturePreviewSnapshot/);
 	assert.match(serviceWorker, /handleCaptureViewRequest/);
 	assert.match(capture, /captureVisibleTab/);

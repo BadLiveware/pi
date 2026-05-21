@@ -12,9 +12,10 @@ test("normalizeDesignPreviewCommands preserves command objects and replaces inva
 test("normalizeDesignPreviewCommands resolves shared selection targets non-interactively", () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const target = { client: { clientId: "client-a" }, tab: { tabId: 7 } };
-	runtime.state.sharedSelections.push({ selectionId: "selection-target", clientId: "client-a", tabId: 7, status: "selected", selectedAt: 1001, elements: [{ elementId: "el-doc-1", selectorCandidates: [".card"], tagName: "div", textPreview: "Card" }] });
+	runtime.state.sharedSelections.push({ selectionId: "selection-target", clientId: "client-a", tabId: 7, status: "selected", selectedAt: 1001, context: { frameId: 3 }, elements: [{ elementId: "el-doc-1", selectorCandidates: [".card"], tagName: "div", textPreview: "Card" }] });
 
-	assert.deepEqual(normalizeDesignPreviewCommands([{ action: "style", selectionId: "selection-target", styles: { color: "red" } }], runtime, target), [{ action: "style", selectionId: "selection-target", selectionIndex: 0, elementId: "el-doc-1", expected: { elementId: "el-doc-1", selectorCandidates: [".card"], tagName: "div", textPreview: "Card" }, styles: { color: "red" } }]);
+	assert.deepEqual(normalizeDesignPreviewCommands([{ action: "style", selectionId: "selection-target", styles: { color: "red" } }], runtime, target), [{ action: "style", selectionId: "selection-target", selectionIndex: 0, frameId: 3, elementId: "el-doc-1", expected: { elementId: "el-doc-1", selectorCandidates: [".card"], tagName: "div", textPreview: "Card" }, styles: { color: "red" } }]);
+	assert.deepEqual(normalizeDesignPreviewCommands([{ action: "style", elementId: "el-doc-1", styles: { color: "red" } }], runtime, target), [{ action: "style", elementId: "el-doc-1", selectionId: "selection-target", selectionIndex: 0, frameId: 3, expected: { elementId: "el-doc-1", selectorCandidates: [".card"], tagName: "div", textPreview: "Card" }, styles: { color: "red" } }]);
 });
 
 test("formatDesignPreviewToolResult summarizes applied and active patches", () => {

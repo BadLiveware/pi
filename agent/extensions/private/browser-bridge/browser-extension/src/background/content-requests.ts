@@ -13,6 +13,7 @@ export interface ContentRequestHandlers {
 
 interface ContentRequestDeps {
 	resolveTargetTabId: (envelope: BridgeEnvelope) => number | undefined;
+	resolveTargetFrameId: (envelope: BridgeEnvelope) => number | undefined;
 	sendToBridge: (envelope: BridgeEnvelope) => void;
 	recordDebug?: (entry: Omit<ExtensionDebugLogEntry, "at" | "source"> & { at?: number }) => void;
 }
@@ -56,9 +57,10 @@ async function handleDesignPreviewRequest(deps: ContentRequestDeps, envelope: Br
 	try {
 		const tabId = deps.resolveTargetTabId(envelope);
 		if (!tabId) throw new Error("No activated browser tab is available for design preview commands.");
-		await chrome.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
+		const frameId = deps.resolveTargetFrameId(envelope);
+		await chrome.scripting.executeScript({ target: scriptTarget(tabId, frameId), files: ["dist/content.js"] });
 		const request = isRecord(envelope.payload) ? envelope.payload : { commands: [] };
-		const response = await chrome.tabs.sendMessage(tabId, { type: "pi-bridge:design-preview", request });
+		const response = await chrome.tabs.sendMessage(tabId, { type: "pi-bridge:design-preview", request }, messageOptions(frameId));
 		const snapshot = await capturePreviewSnapshot(tabId, response, request.captureAfter, { recordDebug: deps.recordDebug });
 		deps.sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: "design-preview:result", payload: snapshot === undefined ? response : { ...(isRecord(response) ? response : { ok: false }), snapshot } }));
 	} catch (error) {
@@ -97,8 +99,9 @@ async function handleContentRequest(deps: ContentRequestDeps, envelope: BridgeEn
 	try {
 		const tabId = deps.resolveTargetTabId(envelope);
 		if (!tabId) throw new Error(options.missingTabMessage);
-		await chrome.scripting.executeScript({ target: { tabId }, files: ["dist/content.js"] });
-		const response = await chrome.tabs.sendMessage(tabId, options.contentMessage(envelope.payload));
+		const frameId = deps.resolveTargetFrameId(envelope);
+		await chrome.scripting.executeScript({ target: scriptTarget(tabId, frameId), files: ["dist/content.js"] });
+		const response = await chrome.tabs.sendMessage(tabId, options.contentMessage(envelope.payload), messageOptions(frameId));
 		deps.sendToBridge(makeEnvelope({ direction: "browser-to-pi", requestId: envelope.id, type: options.resultType, payload: response }));
 	} catch (error) {
 		deps.sendToBridge(makeEnvelope({
@@ -108,6 +111,14 @@ async function handleContentRequest(deps: ContentRequestDeps, envelope: BridgeEn
 			payload: { code: options.errorCode, message: error instanceof Error ? error.message : String(error) || `${options.capability} failed` },
 		}));
 	}
+}
+
+function scriptTarget(tabId: number, frameId: number | undefined): { tabId: number; frameIds?: number[] } {
+	return frameId === undefined ? { tabId } : { tabId, frameIds: [frameId] };
+}
+
+function messageOptions(frameId: number | undefined): { frameId?: number } | undefined {
+	return frameId === undefined ? undefined : { frameId };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

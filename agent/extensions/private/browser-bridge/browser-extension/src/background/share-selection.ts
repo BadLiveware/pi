@@ -21,11 +21,11 @@ export async function shareSelectionFromCurrentTab(deps: ShareSelectionDependenc
 	const response = await chrome.tabs.sendMessage(activated.tabId, {
 		type: "pi-bridge:select-elements",
 		options: { mode: "single", includeHtml: false, includeText: true, maxHtmlChars: 0, source: "picker", askForContext: true },
-	});
+	}, activated.frameId !== undefined ? { frameId: activated.frameId } : undefined);
 	deps.recordDebug({ level: "info", event: "user-selection-finished", data: { tabId: activated.tabId, status: responseStatus(response), elementCount: responseElementCount(response) } });
 	if (responseStatus(response) !== "selected") {
 		const message = responseReason(response) === "context-cancelled" ? "Selection sharing cancelled." : "No selection shared with Pi.";
-		await deps.showShareFeedback(activated.tabId, undefined, message, responseReason(response) !== "context-cancelled");
+		await deps.showShareFeedback(activated.tabId, activated.frameId, message, responseReason(response) !== "context-cancelled");
 		return { response, shared: false, message };
 	}
 	const selectedAt = Date.now();
@@ -47,7 +47,7 @@ export async function shareSelectionFromCurrentTab(deps: ShareSelectionDependenc
 		},
 	}));
 	const message = "Selection shared with Pi.";
-	await deps.showShareFeedback(activated.tabId, undefined, message);
+	await deps.showShareFeedback(activated.tabId, activated.frameId, message);
 	return { response, shared: true, message };
 }
 
@@ -59,6 +59,7 @@ function selectionContext(response: unknown, activated: ActivatedTab, selectedAt
 		url: activated.url,
 		pageUrl: activated.url,
 		frameUrl: responseContextValue(response, "frameUrl"),
+		frameId: activated.frameId,
 		title: activated.title,
 		origin: activated.origin,
 		selectedAt,

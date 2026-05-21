@@ -22,11 +22,11 @@ export async function shareDrawingFromCurrentTab(deps: ShareDrawingDependencies)
 	const response = await chrome.tabs.sendMessage(activated.tabId, {
 		type: "pi-bridge:draw",
 		options: { source: "drawing", askForContext: true, color: "#e53935", width: 4, maxPoints: 1200 },
-	});
+	}, activated.frameId !== undefined ? { frameId: activated.frameId } : undefined);
 	deps.recordDebug({ level: "info", event: "user-drawing-finished", data: { tabId: activated.tabId, status: responseStatus(response), strokeCount: responseStrokeCount(response), pointCount: responsePointCount(response) } });
 	if (responseStatus(response) !== "drawn") {
 		const message = responseReason(response) === "context-cancelled" ? "Drawing sharing cancelled." : "No drawing shared with Pi.";
-		await deps.showShareFeedback(activated.tabId, undefined, message, responseReason(response) !== "context-cancelled");
+		await deps.showShareFeedback(activated.tabId, activated.frameId, message, responseReason(response) !== "context-cancelled");
 		return { response, shared: false, message };
 	}
 	const sharedAt = Date.now();
@@ -50,7 +50,7 @@ export async function shareDrawingFromCurrentTab(deps: ShareDrawingDependencies)
 		},
 	}));
 	const message = "Drawing shared with Pi.";
-	await deps.showShareFeedback(activated.tabId, undefined, message);
+	await deps.showShareFeedback(activated.tabId, activated.frameId, message);
 	return { response, shared: true, message };
 }
 
@@ -136,6 +136,7 @@ function drawingContext(response: unknown, activated: ActivatedTab, sharedAt: nu
 		url: activated.url,
 		pageUrl: activated.url,
 		frameUrl: responseContextValue(response, "frameUrl"),
+		frameId: activated.frameId,
 		title: activated.title,
 		origin: activated.origin,
 		sharedAt,
