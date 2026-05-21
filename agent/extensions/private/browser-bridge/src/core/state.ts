@@ -315,15 +315,17 @@ export function formatBrowserBridgeDebugLog(entries: BrowserBridgeDebugLogEntry[
 }
 
 export function formatSharedSelectionSummary(selection: BrowserSharedSelectionSummary, limit = 3): string[] {
-	const lines = [`shared selection: ${selection.source ?? "unknown source"}, ${selection.status}, ${selection.elements.length} element(s), ${selection.url ?? selection.origin ?? "unknown origin"}`];
+	const source = selection.source ? ` source=${selection.source}` : "";
+	const lines = [`shared selection: ${selection.selectionId}${source}, ${selection.status}, ${selection.elements.length} element(s), ${selection.url ?? selection.origin ?? "unknown origin"}`];
 	if (selection.userNote) lines.push(`  note: ${clipText(selection.userNote, 240)}`);
 	lines.push(...formatElementList(selection.elements, limit));
 	return lines;
 }
 
 export function formatSharedDrawingSummary(drawing: BrowserSharedDrawingSummary, limit = 3): string[] {
+	const source = drawing.source ? ` source=${drawing.source}` : "";
 	const box = drawing.boundingBox ? ` bbox ${Math.round(drawing.boundingBox.width)}x${Math.round(drawing.boundingBox.height)} at ${Math.round(drawing.boundingBox.x)},${Math.round(drawing.boundingBox.y)}` : "";
-	const lines = [`shared drawing: ${drawing.source ?? "unknown source"}, ${drawing.status}, ${drawing.strokes.length} stroke(s), ${drawing.pointCount} point(s), ${drawing.url ?? drawing.origin ?? "unknown origin"}${box}`];
+	const lines = [`shared drawing: ${drawing.drawingId}${source}, ${drawing.status}, ${drawing.strokes.length} stroke(s), ${drawing.pointCount} point(s), ${drawing.url ?? drawing.origin ?? "unknown origin"}${box}`];
 	if (drawing.userNote) lines.push(`  note: ${clipText(drawing.userNote, 240)}`);
 	if (drawing.previewImage?.path) lines.push(`  preview: ${drawing.previewImage.path}`);
 	lines.push(...formatDrawingGeometry(drawing));

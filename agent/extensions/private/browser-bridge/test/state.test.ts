@@ -62,7 +62,7 @@ test("status summary includes latest shared selection descriptors", () => {
 	});
 	const status = formatBrowserBridgeStatus(browserBridgeStatePayload(runtime.state), { includeDiagnostics: false });
 
-	assert.match(status, /latest shared selection: context-menu, selected, 1 element/);
+	assert.match(status, /latest shared selection: selection-1 source=context-menu, selected, 1 element/);
 	assert.match(status, /#save \(Save\) — Save changes/);
 });
 
@@ -88,7 +88,7 @@ test("status summary includes latest shared drawing details", () => {
 	});
 	const status = formatBrowserBridgeStatus(browserBridgeStatePayload(runtime.state), { includeDiagnostics: false });
 
-	assert.match(status, /latest shared drawing: drawing, drawn, 1 stroke\(s\), 2 point\(s\)/);
+	assert.match(status, /latest shared drawing: drawing-1 source=drawing, drawn, 1 stroke\(s\), 2 point\(s\)/);
 	assert.match(status, /note: circle this/);
 	assert.match(status, /preview: \/tmp\/drawing.png/);
 	assert.match(status, /region: viewport x=10 y=20 w=30 h=40; page x=15 y=27 w=30 h=40/);
