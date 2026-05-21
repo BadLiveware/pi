@@ -41,6 +41,8 @@ Before writing the message, inspect the intended diff and identify:
 
 Do not summarize by request source unless the source itself matters. Commit headers and bodies should describe the domain behavior or technical invariant that changed, not that CI, clang-tidy, a reviewer, a bot, or a user comment requested it. Prefer `fix: keep sweep artifacts stable` over `fix: address PR feedback`; prefer `fix: sequence AST predicate ownership` over `fix: resolve clang-tidy finding`.
 
+Before finalizing the message, run a private-context scrub: remove or rewrite `as requested`, `as discussed`, `from our conversation`, `the user asked`, plan/phase/step/checklist provenance, and umbrella references to feedback, review comments, CI findings, or lint findings. Replace each with the underlying bug, behavior, invariant, constraint, trade-off, or validation context. Keep process terms only when the commit changes that process itself or the process detail affects how the commit should be reviewed.
+
 Never use umbrella headers such as `fix: resolve CI findings`, `fix: address review comments`, or `chore: fix lint` when the staged changes are actually independent behavior, correctness, performance, or cleanup fixes. Split the staged diff first, then title each commit by what that commit actually changes.
 
 Default structure:

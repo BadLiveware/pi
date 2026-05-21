@@ -39,9 +39,23 @@ Use this skill to structure branches, commits, and pull requests for review.
   2. branch feature work from the refactor branch
   3. open the feature PR against the refactor branch
 
+## Pull Request Descriptions
+
+Write PR descriptions for reviewers and future maintainers who have the diff, repository, and linked issue context, but not the chat, task list, implementation plan, or review thread.
+
+Include when relevant:
+- summary
+- motivation or problem
+- what changed
+- validation
+- risks, compatibility, migration, or rollback notes
+
+Do not frame the PR as `implements the plan`, `addresses feedback`, `per request`, `as discussed`, or `fixes review comments`. When a request, CI failure, or reviewer comment exposed the work, name the underlying bug, invariant, compatibility constraint, or user-visible outcome instead. Mention process provenance only when the process itself is relevant to the PR's purpose.
+
 ## Review Checklist
 - Is the branch name appropriate?
 - Are commits logically grouped?
 - Does the commit message explain why?
+- Would the PR description make sense without the chat, plan, task list, or review thread?
 - Is the PR target correct?
 - If stacked, is the dependency chain clear?

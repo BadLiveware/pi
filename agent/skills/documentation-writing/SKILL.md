@@ -7,6 +7,14 @@ description: Use when writing or editing user-facing documentation, README conte
 
 Write documentation that helps the reader act, decide, or understand with the least necessary friction. Concise means purpose-fit and complete for the reader's job, not merely short.
 
+## Standalone Artifact Rule
+
+Documentation is a durable artifact, not a transcript of the request. Assume the reader has the page and linked project context, but not the chat, task list, implementation plan, pull request discussion, or review thread.
+
+- Explain the product behavior, reader task, constraint, trade-off, evidence, or decision outcome that matters to the reader.
+- Do not write provenance phrases such as `as requested`, `as discussed`, `from our conversation`, `this plan`, `phase/step/checklist`, `feedback`, or `review comments` unless the document is specifically documenting that process.
+- If the work came from a request, plan, CI failure, or review comment, translate it into the reader-facing reason: the bug, invariant, compatibility constraint, migration requirement, or decision outcome.
+
 ## Core Rules
 - Identify the page type before drafting: tutorial, how-to, reference, explanation, README, changelog, or result summary.
 - Name the reader state before drafting: evaluator, learner, operator, debugger, integrator, or contributor.
@@ -120,6 +128,8 @@ Rules:
 ## Review Checklist
 - Does the page have one primary job?
 - Is the reader state obvious from the content and level of detail?
+- Would the page make sense to someone who never saw the chat, plan, task list, or PR discussion?
+- Are request, review, CI, or plan references replaced with reader-facing reasons unless that process is the topic?
 - Can a busy reader find the answer or next action from the first screenful?
 - Are headings, bullets, tables, and links doing retrieval work instead of decorating prose?
 - If this is a README, does it orient, enable first success, and route to deeper docs without turning into a full manual?
