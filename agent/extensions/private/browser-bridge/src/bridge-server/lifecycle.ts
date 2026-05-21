@@ -1,6 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { isRecord, parseClientAuthDetails, parsePairPayload, parseResumePayload, rawDataToText, type BrowserClientAuthDetails } from "./auth-payloads.ts";
 import { parseDebugLevel, sanitizeDebugData } from "./debug-payloads.ts";
+import { clearAllEphemeralBrowserState, clearClientEphemeralBrowserState } from "./ephemeral-state.ts";
 import { parseSharedDrawing } from "./shared-drawing.ts";
 import { parseSharedSelection } from "./shared-selection.ts";
 import type { AuthorizedClient, PendingRequest, SocketRecord } from "./types.ts";
@@ -104,6 +105,8 @@ export class BrowserBridgeServer {
 		this.state.clients = [];
 		this.state.tabs = [];
 		this.state.pendingRequests = [];
+		const cleared = clearAllEphemeralBrowserState(this.state);
+		if (cleared) this.debug("info", "ephemeral-state-cleared", { reason: "stop", ...cleared });
 
 		const wss = this.wss;
 		this.wss = undefined;
@@ -338,6 +341,8 @@ export class BrowserBridgeServer {
 	private attachClient(record: SocketRecord, clientId: string, clientDetails: BrowserClientAuthDetails | undefined): void {
 		const existing = this.clients.get(clientId);
 		if (existing && existing !== record) existing.socket.terminate();
+		const cleared = clearClientEphemeralBrowserState(this.state, clientId);
+		if (cleared) this.debug("info", "client-ephemeral-state-cleared", { clientId, reason: "attach", ...cleared });
 		record.clientId = clientId;
 		this.clients.set(clientId, record);
 		const client: BrowserClientSummary = {
@@ -361,6 +366,8 @@ export class BrowserBridgeServer {
 		this.clients.delete(record.clientId);
 		this.state.clients = this.state.clients.filter((client) => client.clientId !== record.clientId);
 		this.state.tabs = this.state.tabs.filter((tab) => tab.clientId !== record.clientId);
+		const cleared = clearClientEphemeralBrowserState(this.state, record.clientId);
+		if (cleared) this.debug("info", "client-ephemeral-state-cleared", { clientId: record.clientId, reason: "disconnect", ...cleared });
 		for (const pending of [...this.pending.values()]) {
 			if (pending.clientId === record.clientId) this.rejectPending(pending, new Error(`Browser client ${record.clientId} disconnected.`));
 		}

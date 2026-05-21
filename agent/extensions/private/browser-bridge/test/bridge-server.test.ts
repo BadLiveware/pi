@@ -309,6 +309,33 @@ test("browser-initiated drawings are stored in state", async () => {
 	}
 });
 
+test("disconnect clears browser-scoped shared selections, drawings, and previews", async () => {
+	const runtime = createBrowserBridgeRuntime(1000);
+	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
+	const started = await server.start();
+	const pairing = server.createPairingToken(30_000);
+	const socket = await openClient(started.url);
+	try {
+		socket.send(pairMessage(pairing.token));
+		await nextEnvelope(socket);
+		runtime.state.sharedSelections.push({ selectionId: "selection-a", clientId: "client-a", status: "selected", selectedAt: 1001, elements: [] });
+		runtime.state.sharedDrawings.push({ drawingId: "drawing-a", clientId: "client-a", status: "drawn", sharedAt: 1002, pointCount: 0, strokes: [], nearbyElements: [] });
+		runtime.state.designPreviews.push({ patchId: "preview-a", clientId: "client-a", action: "style", elementCount: 1, summary: "Styled.", createdAt: 1003 });
+		runtime.state.sharedSelections.push({ selectionId: "selection-other", clientId: "client-other", status: "selected", selectedAt: 1004, elements: [] });
+
+		socket.close();
+		await once(socket, "close");
+
+		assert.deepEqual(runtime.state.sharedSelections.map((selection) => selection.selectionId), ["selection-other"]);
+		assert.equal(runtime.state.sharedDrawings.length, 0);
+		assert.equal(runtime.state.designPreviews.length, 0);
+		assert.match(runtime.state.debugLog.map((entry) => entry.event).join("\n"), /client-ephemeral-state-cleared/);
+	} finally {
+		socket.terminate();
+		await server.stop("test cleanup");
+	}
+});
+
 test("browser debug messages are mirrored into Pi debug state", async () => {
 	const runtime = createBrowserBridgeRuntime(1000);
 	const server = new BrowserBridgeServer(runtime.state, { port: 0, now: () => 1000 });
