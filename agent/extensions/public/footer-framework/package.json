@@ -32,6 +32,7 @@
     "examples",
     "index.ts",
     "skills",
+    "src",
     "package.json"
   ],
   "pi": {
