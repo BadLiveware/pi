@@ -209,17 +209,18 @@ Routine state checks normally omit diagnostics; diagnostics are for parser avail
 The same code-intelligence tool registry can run outside Pi for use from other agent harnesses such as Claude Code.
 
 ```bash
-cd agent/extensions
-node --experimental-strip-types private/code-intelligence/src/standalone/cli.ts list
-node --experimental-strip-types private/code-intelligence/src/standalone/cli.ts call code_intel_impact_map --json '{"changedFiles":["src/index.ts"]}'
-node --experimental-strip-types private/code-intelligence/src/standalone/cli.ts mcp --cwd /path/to/repo
+cd agent/extensions/private/code-intelligence
+npm run build
+./dist/standalone/cli.js list
+./dist/standalone/cli.js call code_intel_impact_map --json '{"changedFiles":["src/index.ts"]}'
+./dist/standalone/cli.js mcp --cwd /path/to/repo
 ```
 
 The standalone path exposes read-only tools by default: state, overview, outline, route, test-map, impact-map, local-map, syntax-search, read-symbol, and post-edit-map. Symbol mutation tools are registered only when `--enable-mutations` is passed, and they still require the existing hash/text safety evidence.
 
 Standalone config is loaded in this order: Pi user config, standalone user config, project config, explicit `--config` path, then inline overrides from code. The standalone user config path is `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it. Standalone path inputs default to `--path-base auto`, which accepts repo-root-relative paths or cwd-relative paths when `--cwd` points inside a larger checkout; use `--path-base repo` or `--path-base cwd` to force one interpretation. In Claude Code, pass edited files explicitly to `code_intel_post_edit_map` with `changedFiles` or `baseRef`; Pi-only touched-file session tracking is not available through MCP.
 
-The workspace package declares a `code-intel` bin for installed package use. In this source checkout, invoking the TypeScript entrypoint with `node --experimental-strip-types` is the most direct smoke path. For Claude Code configuration and smoke-test commands, see [docs/claude-code-mcp.md](docs/claude-code-mcp.md).
+The workspace package declares a `code-intel` bin at `dist/standalone/cli.js`; run `npm run build` before linking, packing, or using the short installed command. The TypeScript entrypoint can still be invoked with `node --experimental-strip-types` for source-only debugging, but normal CLI/MCP use should run the built bin. For Claude Code configuration and smoke-test commands, see [docs/claude-code-mcp.md](docs/claude-code-mcp.md).
 
 ## Configuration
 

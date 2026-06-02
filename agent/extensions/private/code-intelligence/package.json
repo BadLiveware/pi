@@ -15,12 +15,19 @@
     "LICENSE",
     "index.ts",
     "src",
+    "dist",
     "docs",
     "package.json",
     "skills"
   ],
+  "main": "./dist/tool-registry.js",
+  "types": "./dist/tool-registry.d.ts",
   "bin": {
-    "code-intel": "./src/standalone/cli.ts"
+    "code-intel": "./dist/standalone/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/standalone/cli.js",
+    "clean": "rm -rf dist"
   },
   "pi": {
     "extensions": [

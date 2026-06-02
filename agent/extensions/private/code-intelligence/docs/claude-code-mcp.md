@@ -11,17 +11,22 @@ Run code-intelligence as a Claude Code MCP server when another harness needs Pi'
 
 ## Source checkout configuration
 
-Create an MCP config file that launches the TypeScript standalone entrypoint:
+Build the standalone CLI once from the source checkout:
+
+```bash
+cd /path/to/pi/agent/extensions/private/code-intelligence
+npm run build
+```
+
+Create an MCP config file that launches the built standalone entrypoint:
 
 ```json
 {
   "mcpServers": {
     "code-intel": {
       "type": "stdio",
-      "command": "node",
+      "command": "/path/to/pi/agent/extensions/private/code-intelligence/dist/standalone/cli.js",
       "args": [
-        "--experimental-strip-types",
-        "/path/to/pi/agent/extensions/private/code-intelligence/src/standalone/cli.ts",
         "mcp",
         "--cwd",
         "/path/to/repo"
@@ -45,8 +50,7 @@ For persistent configuration, use Claude Code's project or user MCP commands ins
 
 ```bash
 claude mcp add code-intel -- \
-  node --experimental-strip-types \
-  /path/to/pi/agent/extensions/private/code-intelligence/src/standalone/cli.ts \
+  /path/to/pi/agent/extensions/private/code-intelligence/dist/standalone/cli.js \
   mcp --cwd /path/to/repo
 ```
 
@@ -110,10 +114,10 @@ Expected evidence:
 
 ## Installed package shape
 
-The package declares a `code-intel` bin. Once this extension is packaged or linked as an executable dependency, the MCP command can be shortened to:
+The package declares a `code-intel` bin backed by `dist/standalone/cli.js`. After `npm run build` and package linking/installation, the MCP command can be shortened to:
 
 ```bash
 claude mcp add code-intel -- code-intel mcp --cwd /path/to/repo
 ```
 
-The source-checkout command remains the reliable local smoke path until a build or installed package wrapper is added.
+For source-only debugging, the TypeScript entrypoint still works with `node --experimental-strip-types`, but the built bin is the preferred normal-use path.

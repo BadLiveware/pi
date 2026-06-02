@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env node
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { codeIntelToolSpec, listCodeIntelToolSpecs, runCodeIntelTool } from "../tool-registry.ts";
