@@ -1,9 +1,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { loadConfig } from "../../config.ts";
-import { runImpactMap } from "./run.ts";
-import { resolveRepoRoots } from "../../repo.ts";
+import { impactMapPromptGuidelines, impactMapToolSpec } from "./spec.ts";
 import { appendExpandHint, asArray, asNumber, asRecord, asString, compactPath, compactTopFiles, firstLine, renderBold, renderColor, renderLines, renderStatus, renderToolCall } from "../../core/tool-render.ts";
 import type { CodeIntelImpactMapParams } from "../../types.ts";
 
@@ -47,21 +45,11 @@ function renderImpactToolResult(result: unknown, options: { expanded?: boolean; 
 
 export function registerImpactMapTool(pi: ExtensionAPI): void {
 	pi.registerTool({
-		name: "code_intel_impact_map",
-		label: "Code Intelligence Impact Map",
-		description: "Build the primary Tree-sitter read-next impact map from edited files, queried symbols, or a git base ref. Code impact routing follows the language registry; Markdown changes are reported as documentation files rather than code impact.",
-		promptSnippet: "Primary code-intel entry point: list candidate caller/consumer/test files to read before edits or reviews.",
-		promptGuidelines: [
-			"Use code_intel_impact_map as the default code-intel tool after seeing a diff or before editing exported functions/types, handlers, config/schema/protocol behavior, shared helpers, or multiple files.",
-			"Use it to answer: which unchanged caller, consumer, or test files should I read before changing or reviewing this code, and what evidence made them candidates?",
-			"Rows like syntax_call, syntax_selector, and syntax_keyed_field are current-source Tree-sitter candidates with real locations; read candidates and use confirmReferences when exactness matters.",
-			"Start with symbols, changedFiles, or baseRef; inspect rootSymbols, related rows, coverage, truncation, and limitations.",
-			"If the map is empty or ok:false, use reason plus coverage.supportedImpactLanguages, unsupportedImpactFiles, docFiles, and nonSourceFiles to choose syntax search, source reads, or bounded rg fallback.",
-			"Use detail:'locations' for routing to files; use detail:'snippets' when inline context helps avoid extra reads.",
-			"Use impact maps as the candidate read list for caller, consumer, test, and compatibility inspection.",
-			"Use confirmReferences when exact-reference confirmation is worth the extra bounded provider call.",
-			"When delegating review, run this in the parent and pass candidate files/reasons to subagents, or choose a code-intel-aware subagent that can run it directly.",
-		],
+		name: impactMapToolSpec.name,
+		label: impactMapToolSpec.title,
+		description: impactMapToolSpec.description,
+		promptSnippet: impactMapToolSpec.promptSnippet,
+		promptGuidelines: impactMapPromptGuidelines,
 		renderCall: renderToolCall("code_intel_impact_map", (args) => {
 			const parts = [];
 			if (asArray(args.symbols).length > 0) parts.push(`${asArray(args.symbols).length} symbol(s)`);
@@ -86,9 +74,15 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 		}),
 		async execute(_toolCallId: string, params: CodeIntelImpactMapParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
 			const loadedConfig = loadConfig(ctx);
-			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const payload = await runImpactMap(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: compactCodeIntelOutput("impact", payload) }], details: payload };
+			const result = await impactMapToolSpec.run(params, {
+				cwd: ctx.cwd,
+				config: loadedConfig.config,
+				configPaths: { ...loadedConfig.paths, standaloneUser: "" },
+				loadedConfig: loadedConfig.loaded,
+				configDiagnostics: loadedConfig.diagnostics,
+				mutationPolicy: "enabled",
+			}, signal);
+			return { content: [{ type: "text", text: result.contentText }], details: result.details };
 		},
 	});
 }

@@ -9,9 +9,13 @@ export function normalizeToolPath(input: string): string {
 	return input.startsWith("@") ? input.slice(1) : input;
 }
 
+export function resolveRequestedRootFromCwd(cwd: string, requested?: string): string {
+	if (!requested?.trim()) return cwd;
+	return path.resolve(cwd, normalizeToolPath(requested.trim()));
+}
+
 export function resolveRequestedRoot(ctx: ExtensionContext, requested?: string): string {
-	if (!requested?.trim()) return ctx.cwd;
-	return path.resolve(ctx.cwd, normalizeToolPath(requested.trim()));
+	return resolveRequestedRootFromCwd(ctx.cwd, requested);
 }
 
 function rootInputDirectory(requestedRoot: string): string {
@@ -31,17 +35,21 @@ export function realPathOrSelf(target: string): string {
 	}
 }
 
-export async function resolveRepoRoots(ctx: ExtensionContext, requested?: string, timeoutMs = 5_000): Promise<RepoRoots> {
-	const requestedRoot = resolveRequestedRoot(ctx, requested);
-	const cwd = rootInputDirectory(requestedRoot);
+export async function resolveRepoRootsFromCwd(cwd: string, requested?: string, timeoutMs = 5_000): Promise<RepoRoots> {
+	const requestedRoot = resolveRequestedRootFromCwd(cwd, requested);
+	const rootCwd = rootInputDirectory(requestedRoot);
 	const diagnostics: string[] = [];
-	if (!fs.existsSync(cwd)) diagnostics.push(`Path does not exist: ${cwd}`);
-	const git = await runCommand("git", ["rev-parse", "--show-toplevel"], { cwd, timeoutMs, maxOutputBytes: 100_000 });
+	if (!fs.existsSync(rootCwd)) diagnostics.push(`Path does not exist: ${rootCwd}`);
+	const git = await runCommand("git", ["rev-parse", "--show-toplevel"], { cwd: rootCwd, timeoutMs, maxOutputBytes: 100_000 });
 	if (git.exitCode === 0 && git.stdout.trim()) {
 		return { requestedRoot, repoRoot: path.resolve(git.stdout.trim()), diagnostics };
 	}
 	if (git.error && git.error !== "ENOENT") diagnostics.push(`git repo detection failed: ${git.error}`);
-	return { requestedRoot, repoRoot: path.resolve(cwd), diagnostics };
+	return { requestedRoot, repoRoot: path.resolve(rootCwd), diagnostics };
+}
+
+export async function resolveRepoRoots(ctx: ExtensionContext, requested?: string, timeoutMs = 5_000): Promise<RepoRoots> {
+	return resolveRepoRootsFromCwd(ctx.cwd, requested, timeoutMs);
 }
 
 export function ensureInsideRoot(repoRoot: string, requestedPath: string): string {

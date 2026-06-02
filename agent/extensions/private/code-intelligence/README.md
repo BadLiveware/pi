@@ -204,6 +204,23 @@ Inspects Tree-sitter, `rg`, optional language-server availability, config paths,
 
 Routine state checks normally omit diagnostics; diagnostics are for parser availability, missing `rg`, footer errors, or failed probe debugging.
 
+## Standalone CLI and MCP Server
+
+The same code-intelligence tool registry can run outside Pi for use from other agent harnesses such as Claude Code.
+
+```bash
+cd agent/extensions
+node --experimental-strip-types private/code-intelligence/src/standalone/cli.ts list
+node --experimental-strip-types private/code-intelligence/src/standalone/cli.ts call code_intel_impact_map --json '{"changedFiles":["src/index.ts"]}'
+node --experimental-strip-types private/code-intelligence/src/standalone/cli.ts mcp --cwd /path/to/repo
+```
+
+The standalone path exposes read-only tools by default: state, overview, outline, route, test-map, impact-map, local-map, syntax-search, read-symbol, and post-edit-map. Symbol mutation tools are registered only when `--enable-mutations` is passed, and they still require the existing hash/text safety evidence.
+
+Standalone config is loaded in this order: Pi user config, standalone user config, project config, explicit `--config` path, then inline overrides from code. The standalone user config path is `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it. Tool path parameters remain relative to the detected git repository root; if the MCP server starts in a subdirectory, include the subdirectory prefix in `changedFiles` and other repo-relative paths. In Claude Code, pass edited files explicitly to `code_intel_post_edit_map` with `changedFiles` or `baseRef`; Pi-only touched-file session tracking is not available through MCP.
+
+The workspace package declares a `code-intel` bin for installed package use. In this source checkout, invoking the TypeScript entrypoint with `node --experimental-strip-types` is the most direct smoke path.
+
 ## Configuration
 
 Optional config files:
