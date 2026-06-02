@@ -14,6 +14,7 @@ export function codeIntelEnvForPiContext(ctx: ExtensionContext, mutationPolicy: 
 		configDiagnostics: loadedConfig.diagnostics,
 		mutationPolicy,
 		pathBase: "repo",
+		persistentLsp: true,
 	};
 }
 
