@@ -219,7 +219,7 @@ The standalone path exposes read-only tools by default: state, overview, outline
 
 Standalone config is loaded in this order: Pi user config, standalone user config, project config, explicit `--config` path, then inline overrides from code. The standalone user config path is `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it. Tool path parameters remain relative to the detected git repository root; if the MCP server starts in a subdirectory, include the subdirectory prefix in `changedFiles` and other repo-relative paths. In Claude Code, pass edited files explicitly to `code_intel_post_edit_map` with `changedFiles` or `baseRef`; Pi-only touched-file session tracking is not available through MCP.
 
-The workspace package declares a `code-intel` bin for installed package use. In this source checkout, invoking the TypeScript entrypoint with `node --experimental-strip-types` is the most direct smoke path.
+The workspace package declares a `code-intel` bin for installed package use. In this source checkout, invoking the TypeScript entrypoint with `node --experimental-strip-types` is the most direct smoke path. For Claude Code configuration and smoke-test commands, see [docs/claude-code-mcp.md](docs/claude-code-mcp.md).
 
 ## Configuration
 
