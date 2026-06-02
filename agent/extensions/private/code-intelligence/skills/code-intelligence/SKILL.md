@@ -67,7 +67,7 @@ When editing this extension, preserve the vertical-slice layout:
 - Use `rg` fallback rows for literal text in source, comments, docs, fixtures, generated files, or unsupported-language gaps.
 - Use `code_intel_state` when parser, `rg`, config, footer, or optional provider availability affects the next move.
 - Use `code_intel_post_edit_map` diagnostics as current touched-file feedback. Fix or disclose them according to the task's validation needs.
-- Use `referenceConfirmation` rows from opt-in providers such as `gopls`, TypeScript, Rust Analyzer, Pyrefly, clangd, or csharp-ls when exact-reference confirmation materially helps.
+- Use `referenceConfirmation` rows from opt-in providers such as `gopls`, TypeScript, Rust Analyzer, Pyrefly, clangd, or csharp-ls when exact-reference confirmation materially helps. For C# impact maps, `confirmReferences:"csharp-ls"` promotes exact reference rows into `related` before syntax-only candidates.
 - Pair code-intel with project-native tests, typechecks, linters, benchmarks, or language tools when those are the right validation evidence for the change.
 - For Markdown, use local-map document matching for headings, links, and code fences; inspect section text before making document claims.
 - For zsh, use the zsh-labeled shell support backed by the Bash grammar, then inspect source when zsh-specific syntax could affect behavior.
