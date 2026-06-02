@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { RepoRoots } from "./types.ts";
 import { commandDiagnostic, runCommand } from "./exec.ts";
 import { normalizeStringArray } from "./util.ts";
@@ -14,7 +13,11 @@ export function resolveRequestedRootFromCwd(cwd: string, requested?: string): st
 	return path.resolve(cwd, normalizeToolPath(requested.trim()));
 }
 
-export function resolveRequestedRoot(ctx: ExtensionContext, requested?: string): string {
+interface CwdContext {
+	cwd: string;
+}
+
+export function resolveRequestedRoot(ctx: CwdContext, requested?: string): string {
 	return resolveRequestedRootFromCwd(ctx.cwd, requested);
 }
 
@@ -48,7 +51,7 @@ export async function resolveRepoRootsFromCwd(cwd: string, requested?: string, t
 	return { requestedRoot, repoRoot: path.resolve(rootCwd), diagnostics };
 }
 
-export async function resolveRepoRoots(ctx: ExtensionContext, requested?: string, timeoutMs = 5_000): Promise<RepoRoots> {
+export async function resolveRepoRoots(ctx: CwdContext, requested?: string, timeoutMs = 5_000): Promise<RepoRoots> {
 	return resolveRepoRootsFromCwd(ctx.cwd, requested, timeoutMs);
 }
 

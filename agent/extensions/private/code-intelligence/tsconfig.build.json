@@ -12,6 +12,7 @@
     "sourceMap": true,
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"],
+  "files": ["src/standalone/cli.ts", "src/tool-registry.ts"],
+  "include": [],
   "exclude": ["test/**/*.ts", "dist"]
 }

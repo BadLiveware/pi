@@ -1,162 +1,33 @@
-import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { compactCodeIntelOutput } from "../../compact-output.ts";
-import { loadConfig } from "../../config.ts";
+import { registerCodeIntelSpecTool } from "../../pi-tool-adapter.ts";
 import { resolveRepoRoots } from "../../repo.ts";
-import { runInsertRelative, runReplaceSymbol } from "../symbol-mutations/run.ts";
+import { insertRelativeToolSpec, replaceSymbolToolSpec } from "../symbol-mutations/specs.ts";
 import { recentTouchedFilesForContext } from "../post-edit-map/touched-files.ts";
-import { runPostEditMap, runReadSymbol } from "./run.ts";
-import type { CodeIntelInsertRelativeParams, CodeIntelPostEditMapParams, CodeIntelReadSymbolParams, CodeIntelReplaceSymbolParams } from "../../types.ts";
+import { postEditMapToolSpec, readSymbolToolSpec } from "./specs.ts";
+import type { CodeIntelEnv } from "../../standalone/env.ts";
+import type { CodeIntelPostEditMapParams } from "../../types.ts";
+import type { CodeIntelToolResult } from "../../tool-registry.ts";
 
-const repoRootParam = Type.Optional(Type.String({ description: "Repository or directory to inspect. Defaults to the current working directory." }));
-const timeoutParam = Type.Optional(Type.Number({ description: "Command timeout in milliseconds. Defaults to config queryTimeoutMs." }));
-const targetParam = Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Symbol target object returned by locator-mode code-intel tools. Preferred over reconstructing path/symbol fields manually." }));
-const sourceDetailParam = Type.Optional(Type.Union([Type.Literal("source"), Type.Literal("locations")], { description: "Output detail. source returns bounded source segments; locations returns target metadata only." }));
+const trackedTouchedFilesMarker = "__trackedTouchedFiles";
+
+async function preparePostEditParams(params: CodeIntelPostEditMapParams, ctx: ExtensionContext, _env: CodeIntelEnv): Promise<CodeIntelPostEditMapParams> {
+	const useTrackedTouchedFiles = params.changedFiles === undefined && params.baseRef === undefined;
+	if (!useTrackedTouchedFiles) return params;
+	const roots = await resolveRepoRoots(ctx, params.repoRoot);
+	const trackedChangedFiles = recentTouchedFilesForContext(ctx, roots.repoRoot);
+	return trackedChangedFiles.length > 0 ? { ...params, changedFiles: trackedChangedFiles, [trackedTouchedFilesMarker]: true } as CodeIntelPostEditMapParams : params;
+}
+
+function annotateTrackedPostEditResult(result: CodeIntelToolResult, params: CodeIntelPostEditMapParams): void {
+	if ((params as Record<string, unknown>)[trackedTouchedFilesMarker] === true) result.details.touchedFileSource = "session-tracker";
+}
 
 export function registerTargetedContextTools(pi: ExtensionAPI): void {
-	pi.registerTool({
-		name: "code_intel_read_symbol",
-		label: "Code Intelligence Read Symbol",
-		description: "Read one symbol/declaration/Markdown section by a code-intel symbolTarget or explicit path/symbol selector, returning a complete bounded source segment when possible.",
-		promptSnippet: "Use after locator-mode code-intel output when you need exact source for one function, method, type, constant, variable, field, property, or Markdown section without reading the whole file.",
-		promptGuidelines: [
-			"Prefer passing a symbolTarget returned by code_intel_file_outline or another locator tool; target objects avoid brittle identity reconstruction.",
-			"Use a complete-segment source result as the source read and continue from it when it is fresh and sufficient for the edit/review.",
-			"For functions and methods, the tool returns the full declaration body by default. contextLines are mainly for small declarations and adjacent comments/attributes.",
-			"Use referenced-definition context for same-file constants, variables, fields/properties, and types when that local context helps the next step.",
-		],
-		parameters: Type.Object({
-			repoRoot: repoRootParam,
-			target: targetParam,
-			path: Type.Optional(Type.String({ description: "Repo-relative file path. Required when target is omitted." })),
-			symbol: Type.Optional(Type.String({ description: "Symbol/declaration name. Prefer target when available." })),
-			name: Type.Optional(Type.String({ description: "Alias for symbol." })),
-			owner: Type.Optional(Type.String({ description: "Optional owner such as class, struct, receiver, impl, or namespace." })),
-			kind: Type.Optional(Type.String({ description: "Optional declaration kind filter." })),
-			signature: Type.Optional(Type.String({ description: "Optional signature text to disambiguate overload-like declarations." })),
-			symbolRef: Type.Optional(Type.String({ description: "Stable symbolRef emitted by locator-mode code-intel tools." })),
-			rangeId: Type.Optional(Type.String({ description: "Stable range id emitted by locator-mode code-intel tools." })),
-			line: Type.Optional(Type.Number({ description: "Fallback: line whose enclosing declaration should be read, for diagnostic/location-originated workflows." })),
-			column: Type.Optional(Type.Number({ description: "Fallback: column for enclosing-declaration lookup." })),
-			contextLines: Type.Optional(Type.Number({ description: "Extra surrounding lines for small declarations. Function-like declarations are returned whole by default." })),
-			include: Type.Optional(Type.Array(Type.Union([Type.Literal("referenced-constants"), Type.Literal("referenced-vars"), Type.Literal("referenced-types")]), { description: "Optional one-hop same-file referenced definitions to include. Functions/helpers are deferred." })),
-			maxContextSegments: Type.Optional(Type.Number({ description: "Maximum referenced-definition segments returned. Default 8." })),
-			maxBytes: Type.Optional(Type.Number({ description: "Maximum bytes per returned source segment. Default 30000." })),
-			timeoutMs: timeoutParam,
-			detail: sourceDetailParam,
-		}),
-		async execute(_toolCallId: string, params: CodeIntelReadSymbolParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-			const loadedConfig = loadConfig(ctx);
-			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const payload = await runReadSymbol(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: compactCodeIntelOutput("read_symbol", payload) }], details: payload };
-		},
-	});
-
-	pi.registerTool({
-		name: "code_intel_replace_symbol",
-		label: "Code Intelligence Replace Symbol",
-		description: "Replace the current text of a resolved symbolTarget after verifying oldText or oldHash safety evidence.",
-		promptSnippet: "Use when you already have a code-intel symbolTarget and need to replace that exact declaration without reconstructing line numbers after edits.",
-		promptGuidelines: [
-			"Prefer code_intel_replace_symbol for declaration-sized replacements when you have a symbolTarget from code_intel_read_symbol or code_intel_file_outline.",
-			"Provide oldHash from code_intel_read_symbol for token-light safety, or oldText when exact reviewable replacement evidence is useful. If both are supplied, both must match.",
-			"After the anchored mutation, use code_intel_post_edit_map or project validation when you need changed-symbol, caller, test, or diagnostic follow-up context.",
-		],
-		parameters: Type.Object({
-			repoRoot: repoRootParam,
-			target: targetParam,
-			path: Type.Optional(Type.String({ description: "Repo-relative file path. Required when target is omitted." })),
-			symbol: Type.Optional(Type.String({ description: "Symbol/declaration name. Prefer target when available." })),
-			name: Type.Optional(Type.String({ description: "Alias for symbol." })),
-			owner: Type.Optional(Type.String({ description: "Optional owner such as class, struct, receiver, impl, or namespace." })),
-			kind: Type.Optional(Type.String({ description: "Optional declaration kind filter." })),
-			signature: Type.Optional(Type.String({ description: "Optional signature text to disambiguate overload-like declarations." })),
-			symbolRef: Type.Optional(Type.String({ description: "Stable symbolRef emitted by locator-mode code-intel tools." })),
-			rangeId: Type.Optional(Type.String({ description: "Exact range id emitted by locator-mode code-intel tools." })),
-			oldText: Type.Optional(Type.String({ description: "Exact expected current symbol text. If provided, it must match after fresh resolution." })),
-			oldHash: Type.Optional(Type.String({ description: "Hash of the exact expected current symbol text, e.g. oldHash from code_intel_read_symbol." })),
-			newText: Type.String({ description: "Replacement text for the resolved symbol range." }),
-			normalizeEol: Type.Optional(Type.Boolean({ description: "Normalize newText line endings to the target file style. Default true." })),
-			timeoutMs: timeoutParam,
-		}),
-		async execute(_toolCallId: string, params: CodeIntelReplaceSymbolParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-			const loadedConfig = loadConfig(ctx);
-			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const payload = await runReplaceSymbol(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: compactCodeIntelOutput("replace_symbol", payload) }], details: payload };
-		},
-	});
-
-	pi.registerTool({
-		name: "code_intel_insert_relative",
-		label: "Code Intelligence Insert Relative",
-		description: "Insert text before or after a resolved symbolTarget anchor, using the same stale-target resolution as read_symbol.",
-		promptSnippet: "Use with a symbolTarget from file outline or read_symbol to add a declaration before/after an existing symbol without reading the whole file.",
-		promptGuidelines: [
-			"Prefer code_intel_insert_relative for adding declarations or sections next to a resolved anchor from code_intel_file_outline or code_intel_read_symbol.",
-			"Use code_intel_read_symbol first when the inserted code depends on the anchor body; provide anchorHash when compact safety evidence from a prior read helps.",
-			"After the anchored insertion, use code_intel_post_edit_map or project validation when you need changed-symbol, caller, test, or diagnostic follow-up context.",
-		],
-		parameters: Type.Object({
-			repoRoot: repoRootParam,
-			anchor: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Symbol target object to insert before/after. Usually from file outline or read_symbol." })),
-			target: targetParam,
-			path: Type.Optional(Type.String({ description: "Repo-relative file path. Required when anchor/target is omitted." })),
-			symbol: Type.Optional(Type.String({ description: "Symbol/declaration name. Prefer anchor when available." })),
-			name: Type.Optional(Type.String({ description: "Alias for symbol." })),
-			owner: Type.Optional(Type.String({ description: "Optional owner such as class, struct, receiver, impl, or namespace." })),
-			kind: Type.Optional(Type.String({ description: "Optional declaration kind filter." })),
-			signature: Type.Optional(Type.String({ description: "Optional signature text to disambiguate overload-like declarations." })),
-			symbolRef: Type.Optional(Type.String({ description: "Stable symbolRef emitted by locator-mode code-intel tools." })),
-			rangeId: Type.Optional(Type.String({ description: "Exact range id emitted by locator-mode code-intel tools." })),
-			position: Type.Union([Type.Literal("before"), Type.Literal("after")], { description: "Insert before or after the resolved anchor symbol." }),
-			text: Type.String({ description: "Text to insert relative to the resolved anchor. A trailing newline is added when needed to avoid merging with following text." }),
-			anchorHash: Type.Optional(Type.String({ description: "Hash of the exact expected current anchor text, e.g. oldHash from code_intel_read_symbol." })),
-			normalizeEol: Type.Optional(Type.Boolean({ description: "Normalize inserted text line endings to the target file style. Default true." })),
-			timeoutMs: timeoutParam,
-		}),
-		async execute(_toolCallId: string, params: CodeIntelInsertRelativeParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-			const loadedConfig = loadConfig(ctx);
-			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const payload = await runInsertRelative(params, roots.repoRoot, loadedConfig.config, signal);
-			return { content: [{ type: "text", text: compactCodeIntelOutput("insert_relative", payload) }], details: payload };
-		},
-	});
-
-	pi.registerTool({
-		name: "code_intel_post_edit_map",
-		label: "Code Intelligence Post-edit Map",
-		description: "Build a read-only follow-up map after edits/writes: changed symbols, likely callers/tests, and optional diagnostic-focused locations.",
-		promptSnippet: "Use after editing or writing files to decide what to inspect or validate next without re-reading complete segments unnecessarily.",
-		promptGuidelines: [
-			"Use code_intel_post_edit_map after edit/write when changed-symbol, caller, test, or diagnostic follow-up context would improve confidence.",
-			"Use returned readHints or code_intel_read_symbol when source is needed for follow-up inspection.",
-			"Use includeDiagnostics:true when current touched-file diagnostics would help decide the next fix or validation step.",
-			"Use diagnostic-focused targets to prioritize source reads and fixes; pair the result with project-native validation when needed.",
-		],
-		parameters: Type.Object({
-			repoRoot: repoRootParam,
-			changedFiles: Type.Optional(Type.Array(Type.String(), { description: "Files edited or written in the current task. Defaults to session-tracked edit/write/code-intel mutation files when omitted." })),
-			baseRef: Type.Optional(Type.String({ description: "Optional git base ref for discovering changed files." })),
-			includeChangedSymbols: Type.Optional(Type.Boolean({ description: "Include changed declaration ranges/read hints. Default true." })),
-			includeCallers: Type.Optional(Type.Boolean({ description: "Include likely caller/consumer rows via impact map. Default true." })),
-			includeTests: Type.Optional(Type.Boolean({ description: "Include likely test candidates. Default true." })),
-			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Collect current touched-file diagnostics from applicable providers such as TypeScript, gopls, Rust Analyzer, Python providers, clangd, csharp-ls, ShellCheck, zsh -n, or markdownlint-cli2, and use supplied diagnostics to prioritize follow-up locations. Default false unless diagnostics are supplied." })),
-			diagnostics: Type.Optional(Type.Array(Type.Record(Type.String(), Type.Unknown()), { description: "Optional LSP/compiler diagnostics with path, line, column, endLine/endColumn, severity, source, code, and message." })),
-			avoidReReadingCompleteReturnedSegments: Type.Optional(Type.Boolean({ description: "Avoid re-suggesting exact complete source segments unless freshness or diagnostics make them relevant. Default true." })),
-			maxResults: Type.Optional(Type.Number({ description: "Maximum related/test rows returned. Defaults to config maxResults." })),
-			timeoutMs: timeoutParam,
-		}),
-		async execute(_toolCallId: string, params: CodeIntelPostEditMapParams, signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-			const loadedConfig = loadConfig(ctx);
-			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const useTrackedTouchedFiles = params.changedFiles === undefined && params.baseRef === undefined;
-			const trackedChangedFiles = useTrackedTouchedFiles ? recentTouchedFilesForContext(ctx, roots.repoRoot) : [];
-			const effectiveParams = trackedChangedFiles.length > 0 ? { ...params, changedFiles: trackedChangedFiles } : params;
-			const payload = await runPostEditMap(effectiveParams, roots.repoRoot, loadedConfig.config, signal);
-			if (trackedChangedFiles.length > 0) payload.touchedFileSource = "session-tracker";
-			return { content: [{ type: "text", text: compactCodeIntelOutput("post_edit", payload) }], details: payload };
-		},
+	registerCodeIntelSpecTool(pi, readSymbolToolSpec);
+	registerCodeIntelSpecTool(pi, replaceSymbolToolSpec);
+	registerCodeIntelSpecTool(pi, insertRelativeToolSpec);
+	registerCodeIntelSpecTool(pi, postEditMapToolSpec, {
+		prepareParams: preparePostEditParams,
+		afterResult: annotateTrackedPostEditResult,
 	});
 }

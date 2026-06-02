@@ -1,14 +1,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { loadConfig } from "../../config.ts";
+import { registerCodeIntelSpecTool } from "../../pi-tool-adapter.ts";
 import { setCodeIntelStatusSummary } from "./footer-status.ts";
 import { resolveRepoRoots } from "../../repo.ts";
-import { backendStatuses, statePayload } from "./run.ts";
-import { languageServerStatusesFromProviders, legacyLanguageServerSemanticProviderStatuses, semanticProviderStatuses } from "../../lsp/provider-status.ts";
+import { backendStatuses } from "./run.ts";
+import { stateToolSpec } from "./spec.ts";
+import { languageServerStatusesFromProviders, legacyLanguageServerSemanticProviderStatuses } from "../../lsp/provider-status.ts";
 import { appendExpandHint, asRecord, backendAvailable, compactPath, renderBold, renderColor, renderLines, renderStatus, renderToolCall, type StatusStyle } from "../../core/tool-render.ts";
 import type { CodeIntelStateParams } from "../../types.ts";
 
@@ -22,7 +22,6 @@ type RuntimeOperation = {
 	error?: string;
 };
 
-const repoRootParam = Type.Optional(Type.String({ description: "Repository or directory to inspect. Defaults to the current working directory." }));
 const recentRuntimeOperations: RuntimeOperation[] = [];
 const maxRuntimeOperations = 20;
 const maxPersistedRuntimeOperations = 200;
@@ -151,32 +150,13 @@ export async function refreshFooterStatus(ctx: ExtensionContext): Promise<void> 
 }
 
 export function registerStateTool(pi: ExtensionAPI): void {
-	pi.registerTool({
-		name: "code_intel_state",
-		label: "Code Intelligence State",
-		description: "Inspect local Tree-sitter parser, rg fallback, optional language-server availability, config, and runtime diagnostics.",
-		promptSnippet: "Inspect code-intel status before debugging parser availability, rg fallback, config, or footer errors.",
-		promptGuidelines: [
-			"Use code-intel tools as owned read-next and symbol-targeting helpers whenever they fit the code task; use source reads and validation to turn routing evidence into claims.",
-			"Start normal code-intel work from code_intel_impact_map for diffs/changed symbols or code_intel_local_map for a scoped subsystem; both are Tree-sitter/current-source first.",
-			"Use rg fallback rows for literal text, comments/docs, generated files, or unsupported-language gaps.",
-			"Use includeDiagnostics:true when parser availability, rg fallback, config, footer errors, or failed probes matter to the next move.",
-		],
+	registerCodeIntelSpecTool(pi, stateToolSpec, {
 		renderCall: renderToolCall("code_intel_state", (args) => args.includeDiagnostics === true ? "diagnostics" : undefined),
 		renderResult: renderStateToolResult,
-		parameters: Type.Object({
-			repoRoot: repoRootParam,
-			includeDiagnostics: Type.Optional(Type.Boolean({ description: "Include config diagnostics and recent runtime errors. Default false; use for debugging failures, not routine freshness checks." })),
-		}),
-		async execute(_toolCallId: string, params: CodeIntelStateParams, _signal: AbortSignal | undefined, _onUpdate: unknown, ctx: ExtensionContext) {
-			const loadedConfig = loadConfig(ctx);
-			const roots = await resolveRepoRoots(ctx, params.repoRoot);
-			const [statuses, semanticProviders] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), semanticProviderStatuses(roots.repoRoot, loadedConfig.config)]);
-			const languageServers = languageServerStatusesFromProviders(semanticProviders);
-			setCodeIntelStatusSummary(ctx, statuses, languageServers, roots.repoRoot);
-			const payload = statePayload(roots, loadedConfig, statuses, params.includeDiagnostics === true, languageServers, semanticProviders) as Record<string, unknown>;
-			if (params.includeDiagnostics === true) payload.runtimeDiagnostics = runtimeDiagnostics(roots.repoRoot);
-			return { content: [{ type: "text", text: compactCodeIntelOutput("state", payload) }], details: payload };
+		afterResult: (result, params: CodeIntelStateParams, ctx) => {
+			const repoRoot = String(result.details.repoRoot ?? ctx.cwd);
+			setCodeIntelStatusSummary(ctx, asRecord(result.details.backends) as any, asRecord(result.details.languageServers) as any, repoRoot);
+			if (params.includeDiagnostics === true) result.details.runtimeDiagnostics = runtimeDiagnostics(repoRoot);
 		},
 	});
 }
