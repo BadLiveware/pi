@@ -2,6 +2,7 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { resolveRepoRootsFromCwd } from "../../repo.ts";
 import { detailProperty, maxResultsProperty, objectSchema, repoRootProperty, stringArrayParam, stringParam, timeoutProperty } from "../../standalone/schema.ts";
 import type { CodeIntelEnv } from "../../standalone/env.ts";
+import { normalizeStandalonePathParams } from "../../standalone/path-params.ts";
 import type { CodeIntelToolSpec } from "../../tool-registry.ts";
 import type { CodeIntelSyntaxSearchParams } from "../../types.ts";
 import { runSyntaxSearch } from "./run.ts";
@@ -34,7 +35,8 @@ export const syntaxSearchToolSpec: CodeIntelToolSpec<CodeIntelSyntaxSearchParams
 	mutates: false,
 	run: async (params, env: CodeIntelEnv, signal?: AbortSignal) => {
 		const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-		const payload = await runSyntaxSearch(params, roots.repoRoot, env.config, signal);
+		const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelSyntaxSearchParams;
+		const payload = await runSyntaxSearch(effectiveParams, roots.repoRoot, env.config, signal);
 		if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 		return { contentText: compactCodeIntelOutput("syntax", payload), details: payload };
 	},

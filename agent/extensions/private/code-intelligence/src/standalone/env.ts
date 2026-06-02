@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { DEFAULT_CONFIG, type CodeIntelConfig, type LoadedConfig } from "../types.ts";
 import { isRecord, normalizePositiveInteger } from "../util.ts";
+import type { CodeIntelPathBase } from "./path-params.ts";
 
 export type CodeIntelMutationPolicy = "disabled" | "enabled";
 
@@ -13,6 +14,7 @@ export interface CodeIntelEnv {
 	loadedConfig: string[];
 	configDiagnostics: string[];
 	mutationPolicy: CodeIntelMutationPolicy;
+	pathBase: CodeIntelPathBase;
 }
 
 export interface CodeIntelEnvOptions {
@@ -20,6 +22,7 @@ export interface CodeIntelEnvOptions {
 	configPath?: string;
 	config?: Partial<CodeIntelConfig>;
 	mutationPolicy?: CodeIntelMutationPolicy;
+	pathBase?: CodeIntelPathBase;
 }
 
 function standaloneUserConfigPath(): string {
@@ -68,7 +71,7 @@ function loadConfigFile(configPath: string, config: CodeIntelConfig, loaded: str
 	}
 }
 
-export function loadStandaloneConfig(cwd: string, configPath?: string, overlay?: Partial<CodeIntelConfig>): Omit<CodeIntelEnv, "cwd" | "mutationPolicy"> {
+export function loadStandaloneConfig(cwd: string, configPath?: string, overlay?: Partial<CodeIntelConfig>): Omit<CodeIntelEnv, "cwd" | "mutationPolicy" | "pathBase"> {
 	let config: CodeIntelConfig = { ...DEFAULT_CONFIG };
 	const explicit = explicitConfigPath(configPath ?? process.env.CODE_INTEL_CONFIG, cwd);
 	const paths = {
@@ -94,5 +97,6 @@ export function createCodeIntelEnv(options: CodeIntelEnvOptions = {}): CodeIntel
 		cwd,
 		...loaded,
 		mutationPolicy: options.mutationPolicy ?? "disabled",
+		pathBase: options.pathBase ?? "auto",
 	};
 }

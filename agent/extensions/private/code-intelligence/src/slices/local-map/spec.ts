@@ -2,6 +2,7 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { resolveRepoRootsFromCwd } from "../../repo.ts";
 import { booleanParam, detailProperty, maxResultsProperty, numberParam, objectSchema, repoRootProperty, stringArrayParam, stringParam, timeoutProperty } from "../../standalone/schema.ts";
 import type { CodeIntelEnv } from "../../standalone/env.ts";
+import { normalizeStandalonePathParams } from "../../standalone/path-params.ts";
 import type { CodeIntelToolSpec } from "../../tool-registry.ts";
 import type { CodeIntelLocalMapParams } from "../../types.ts";
 import { runLocalMap } from "./run.ts";
@@ -33,7 +34,8 @@ export const localMapToolSpec: CodeIntelToolSpec<CodeIntelLocalMapParams> = {
 	mutates: false,
 	run: async (params, env: CodeIntelEnv, signal?: AbortSignal) => {
 		const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-		const payload = await runLocalMap(params, roots.repoRoot, env.config, signal);
+		const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelLocalMapParams;
+		const payload = await runLocalMap(effectiveParams, roots.repoRoot, env.config, signal);
 		if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 		return { contentText: compactCodeIntelOutput("local", payload), details: payload };
 	},

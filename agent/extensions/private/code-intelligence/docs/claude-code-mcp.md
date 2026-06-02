@@ -74,16 +74,17 @@ Keep mutations disabled for normal Claude Code use. Claude Code already has edit
 
 ## Path behavior
 
-`--cwd` sets the process working directory, but code-intel resolves the git repository root before interpreting tool path parameters. Tool inputs such as `changedFiles`, `paths`, and `path` are repo-root-relative after root detection.
+`--cwd` sets the process working directory. The standalone server defaults to `--path-base auto`, which accepts either repo-root-relative paths or cwd-relative paths for tool fields such as `path`, `paths`, `changedFiles`, and `testPaths`.
 
 Examples:
 
 ```json
 {"path":"src/index.ts"}
+{"changedFiles":["src/index.ts"]}
 {"changedFiles":["agent/extensions/private/code-intelligence/src/tool-registry.ts"]}
 ```
 
-If `--cwd` points at a subdirectory inside a larger git checkout, include the subdirectory prefix in repo-relative paths.
+In `auto` mode, code-intel first tries the input as repo-root-relative when that file exists; otherwise it resolves the path relative to `--cwd`. Use `--path-base repo` to force repo-root-relative behavior, or `--path-base cwd` to force cwd-relative behavior.
 
 Claude Code cannot currently supply Pi's session-tracked touched files. For `code_intel_post_edit_map`, pass `changedFiles` or `baseRef` explicitly.
 

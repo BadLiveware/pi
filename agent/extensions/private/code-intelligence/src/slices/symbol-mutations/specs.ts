@@ -2,6 +2,7 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { resolveRepoRootsFromCwd } from "../../repo.ts";
 import { booleanParam, objectSchema, recordParam, repoRootProperty, stringParam, timeoutProperty } from "../../standalone/schema.ts";
 import type { CodeIntelEnv } from "../../standalone/env.ts";
+import { normalizeStandalonePathParams } from "../../standalone/path-params.ts";
 import type { CodeIntelToolSpec } from "../../tool-registry.ts";
 import type { CodeIntelInsertRelativeParams, CodeIntelReplaceSymbolParams } from "../../types.ts";
 import { runInsertRelative, runReplaceSymbol } from "./run.ts";
@@ -40,7 +41,8 @@ export const replaceSymbolToolSpec: CodeIntelToolSpec<CodeIntelReplaceSymbolPara
 	mutates: true,
 	run: async (params, env: CodeIntelEnv, signal?: AbortSignal) => {
 		const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-		const payload = await runReplaceSymbol(params, roots.repoRoot, env.config, signal);
+		const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelReplaceSymbolParams;
+		const payload = await runReplaceSymbol(effectiveParams, roots.repoRoot, env.config, signal);
 		if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 		return { contentText: compactCodeIntelOutput("replace_symbol", payload), details: payload };
 	},
@@ -68,7 +70,8 @@ export const insertRelativeToolSpec: CodeIntelToolSpec<CodeIntelInsertRelativePa
 	mutates: true,
 	run: async (params, env: CodeIntelEnv, signal?: AbortSignal) => {
 		const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-		const payload = await runInsertRelative(params, roots.repoRoot, env.config, signal);
+		const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelInsertRelativeParams;
+		const payload = await runInsertRelative(effectiveParams, roots.repoRoot, env.config, signal);
 		if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 		return { contentText: compactCodeIntelOutput("insert_relative", payload), details: payload };
 	},

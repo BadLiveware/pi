@@ -2,14 +2,16 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { resolveRepoRootsFromCwd } from "../../repo.ts";
 import { booleanParam, confirmReferencesProperty, detailProperty, maxResultsProperty, numberParam, objectSchema, repoRootProperty, stringArrayParam, stringParam, timeoutProperty } from "../../standalone/schema.ts";
 import type { CodeIntelEnv } from "../../standalone/env.ts";
+import { normalizeStandalonePathParams } from "../../standalone/path-params.ts";
 import type { CodeIntelToolSpec } from "../../tool-registry.ts";
 import type { CodeIntelFileOutlineParams, CodeIntelRepoOverviewParams, CodeIntelRepoRouteParams, CodeIntelTestMapParams } from "../../types.ts";
 import { runRepoRoute } from "../repo-route/run.ts";
 import { runFileOutline, runRepoOverview, runTestMap } from "./run.ts";
 
-async function withRepoRoot<P extends { repoRoot?: string }>(params: P, env: CodeIntelEnv, run: (repoRoot: string) => Promise<Record<string, unknown>>, kind: "overview" | "outline" | "route" | "tests") {
+async function withRepoRoot<P extends { repoRoot?: string }>(params: P, env: CodeIntelEnv, run: (params: P, repoRoot: string) => Promise<Record<string, unknown>>, kind: "overview" | "outline" | "route" | "tests") {
 	const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-	const payload = await run(roots.repoRoot);
+	const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as P;
+	const payload = await run(effectiveParams, roots.repoRoot);
 	if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 	return { contentText: compactCodeIntelOutput(kind, payload), details: payload };
 }
@@ -39,7 +41,7 @@ export const repoOverviewToolSpec: CodeIntelToolSpec<CodeIntelRepoOverviewParams
 		timeoutMs: timeoutProperty,
 	}),
 	mutates: false,
-	run: async (params, env, signal) => withRepoRoot(params, env, (repoRoot) => runRepoOverview(params, repoRoot, env.config, signal), "overview"),
+	run: async (params, env, signal) => withRepoRoot(params, env, (effectiveParams, repoRoot) => runRepoOverview(effectiveParams, repoRoot, env.config, signal), "overview"),
 };
 
 export const fileOutlineToolSpec: CodeIntelToolSpec<CodeIntelFileOutlineParams> = {
@@ -62,7 +64,7 @@ export const fileOutlineToolSpec: CodeIntelToolSpec<CodeIntelFileOutlineParams> 
 		detail: detailProperty,
 	}, ["path"]),
 	mutates: false,
-	run: async (params, env, signal) => withRepoRoot(params, env, (repoRoot) => runFileOutline(params, repoRoot, env.config, signal), "outline"),
+	run: async (params, env, signal) => withRepoRoot(params, env, (effectiveParams, repoRoot) => runFileOutline(effectiveParams, repoRoot, env.config, signal), "outline"),
 };
 
 export const repoRouteToolSpec: CodeIntelToolSpec<CodeIntelRepoRouteParams> = {
@@ -85,7 +87,7 @@ export const repoRouteToolSpec: CodeIntelToolSpec<CodeIntelRepoRouteParams> = {
 		timeoutMs: timeoutProperty,
 	}, ["terms"]),
 	mutates: false,
-	run: async (params, env, signal) => withRepoRoot(params, env, (repoRoot) => runRepoRoute(params, repoRoot, env.config, signal), "route"),
+	run: async (params, env, signal) => withRepoRoot(params, env, (effectiveParams, repoRoot) => runRepoRoute(effectiveParams, repoRoot, env.config, signal), "route"),
 };
 
 export const testMapToolSpec: CodeIntelToolSpec<CodeIntelTestMapParams> = {
@@ -113,5 +115,5 @@ export const testMapToolSpec: CodeIntelToolSpec<CodeIntelTestMapParams> = {
 		detail: detailProperty,
 	}),
 	mutates: false,
-	run: async (params, env, signal) => withRepoRoot(params, env, (repoRoot) => runTestMap(params, repoRoot, env.config, signal), "tests"),
+	run: async (params, env, signal) => withRepoRoot(params, env, (effectiveParams, repoRoot) => runTestMap(effectiveParams, repoRoot, env.config, signal), "tests"),
 };

@@ -81,6 +81,7 @@ export function registerImpactMapTool(pi: ExtensionAPI): void {
 				loadedConfig: loadedConfig.loaded,
 				configDiagnostics: loadedConfig.diagnostics,
 				mutationPolicy: "enabled",
+				pathBase: "repo",
 			}, signal);
 			return { content: [{ type: "text", text: result.contentText }], details: result.details };
 		},

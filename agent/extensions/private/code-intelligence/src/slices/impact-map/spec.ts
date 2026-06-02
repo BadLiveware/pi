@@ -3,6 +3,7 @@ import { resolveRepoRootsFromCwd } from "../../repo.ts";
 import type { CodeIntelImpactMapParams } from "../../types.ts";
 import type { CodeIntelToolSpec, JsonObjectSchema } from "../../tool-registry.ts";
 import type { CodeIntelEnv } from "../../standalone/env.ts";
+import { normalizeStandalonePathParams } from "../../standalone/path-params.ts";
 import { runImpactMap } from "./run.ts";
 
 const stringArraySchema = (description: string): Record<string, unknown> => ({ type: "array", items: { type: "string" }, description });
@@ -41,7 +42,8 @@ export const impactMapPromptGuidelines = [
 
 export async function runImpactMapTool(params: CodeIntelImpactMapParams, env: CodeIntelEnv, signal?: AbortSignal) {
 	const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-	const payload = await runImpactMap(params, roots.repoRoot, env.config, signal);
+	const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelImpactMapParams;
+	const payload = await runImpactMap(effectiveParams, roots.repoRoot, env.config, signal);
 	if (roots.diagnostics.length > 0) {
 		payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 	}

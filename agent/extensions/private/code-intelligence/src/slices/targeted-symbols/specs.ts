@@ -2,6 +2,7 @@ import { compactCodeIntelOutput } from "../../compact-output.ts";
 import { resolveRepoRootsFromCwd } from "../../repo.ts";
 import { booleanParam, enumParam, maxResultsProperty, numberParam, objectSchema, recordParam, repoRootProperty, sourceDetailProperty, stringArrayParam, stringParam, timeoutProperty } from "../../standalone/schema.ts";
 import type { CodeIntelEnv } from "../../standalone/env.ts";
+import { normalizeStandalonePathParams } from "../../standalone/path-params.ts";
 import type { CodeIntelToolSpec } from "../../tool-registry.ts";
 import type { CodeIntelPostEditMapParams, CodeIntelReadSymbolParams } from "../../types.ts";
 import { runPostEditMap, runReadSymbol } from "./run.ts";
@@ -44,7 +45,8 @@ export const readSymbolToolSpec: CodeIntelToolSpec<CodeIntelReadSymbolParams> = 
 	mutates: false,
 	run: async (params, env: CodeIntelEnv, signal?: AbortSignal) => {
 		const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-		const payload = await runReadSymbol(params, roots.repoRoot, env.config, signal);
+		const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelReadSymbolParams;
+		const payload = await runReadSymbol(effectiveParams, roots.repoRoot, env.config, signal);
 		if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 		return { contentText: compactCodeIntelOutput("read_symbol", payload), details: payload };
 	},
@@ -78,7 +80,8 @@ export const postEditMapToolSpec: CodeIntelToolSpec<CodeIntelPostEditMapParams> 
 	mutates: false,
 	run: async (params, env: CodeIntelEnv, signal?: AbortSignal) => {
 		const roots = await resolveRepoRootsFromCwd(env.cwd, params.repoRoot);
-		const payload = await runPostEditMap(params, roots.repoRoot, env.config, signal);
+		const effectiveParams = normalizeStandalonePathParams(params as unknown as Record<string, unknown>, env, roots.repoRoot) as unknown as CodeIntelPostEditMapParams;
+		const payload = await runPostEditMap(effectiveParams, roots.repoRoot, env.config, signal);
 		if (roots.diagnostics.length > 0) payload.diagnostics = [...roots.diagnostics, ...(Array.isArray(payload.diagnostics) ? payload.diagnostics : [])];
 		return { contentText: compactCodeIntelOutput("post_edit", payload), details: payload };
 	},
