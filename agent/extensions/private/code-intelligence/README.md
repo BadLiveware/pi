@@ -216,7 +216,7 @@ npm run build
 ./dist/standalone/cli.js mcp --cwd /path/to/repo
 ```
 
-The standalone path exposes read-only tools by default: state, overview, outline, route, test-map, impact-map, local-map, syntax-search, read-symbol, and post-edit-map. Symbol mutation tools are registered only when `--enable-mutations` is passed, and they still require the existing hash/text safety evidence.
+The standalone path exposes read-only tools by default: state, overview, outline, route, test-map, impact-map, local-map, syntax-search, read-symbol, and post-edit-map. Symbol mutation tools are opt-in with `--enable-mutations`; enable them when a workflow should use code-intel's parsed-source edit path for hash/text-verified declaration replacements or anchor-relative insertions.
 
 Standalone config is loaded in this order: Pi user config, standalone user config, project config, explicit `--config` path, then inline overrides from code. The standalone user config path is `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it. Standalone path inputs default to `--path-base auto`, which accepts repo-root-relative paths or cwd-relative paths when `--cwd` points inside a larger checkout; use `--path-base repo` or `--path-base cwd` to force one interpretation. In Claude Code, pass edited files explicitly to `code_intel_post_edit_map` with `changedFiles` or `baseRef`; Pi-only touched-file session tracking is not available through MCP.
 
