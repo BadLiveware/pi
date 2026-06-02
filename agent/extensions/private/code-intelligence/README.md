@@ -209,8 +209,12 @@ Routine state checks normally omit diagnostics; diagnostics are for parser avail
 The same code-intelligence tool registry can run outside Pi for use from other agent harnesses such as Claude Code.
 
 ```bash
-cd agent/extensions/private/code-intelligence
+cd agent/extensions
+npm install
+cd private/code-intelligence
 npm run build
+npm link  # optional: makes the short code-intel command available on PATH
+command -v code-intel
 ./dist/standalone/cli.js list
 ./dist/standalone/cli.js call code_intel_impact_map --json '{"changedFiles":["src/index.ts"]}'
 ./dist/standalone/cli.js mcp
@@ -221,7 +225,7 @@ The standalone path exposes read-only tools by default: state, overview, outline
 
 Standalone config is loaded in this order: Pi user config, standalone user config, project config, explicit `--config` path, then inline overrides from code. The standalone user config path is `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it. Standalone path inputs default to `--path-base auto`, which accepts repo-root-relative paths or cwd-relative paths; omit `--cwd` for project-scoped Claude Code setup, and use `--cwd` only for a deliberately pinned server launched from outside the target repo. Use `--path-base repo` or `--path-base cwd` to force one interpretation. In Claude Code, pass edited files explicitly to `code_intel_post_edit_map` with `changedFiles` or `baseRef`; Pi-only touched-file session tracking is not available through MCP.
 
-The workspace package declares a `code-intel` bin at `dist/standalone/cli.js`; run `npm run build` before linking, packing, or using the short installed command. The TypeScript entrypoint can still be invoked with `node --experimental-strip-types` for source-only debugging, but normal CLI/MCP use should run the built bin. For Claude Code configuration and smoke-test commands, see [docs/claude-code-mcp.md](docs/claude-code-mcp.md).
+The workspace package declares a `code-intel` bin at `dist/standalone/cli.js`; run `npm run build` before linking, packing, or using the short installed command. If Claude reports `ENOENT` for `code-intel`, the bin is not on Claude's `PATH`; run `npm link`, install the package globally, or configure the absolute built entrypoint path. The TypeScript entrypoint can still be invoked with `node --experimental-strip-types` for source-only debugging, but normal CLI/MCP use should run the built bin. For Claude Code configuration and smoke-test commands, see [docs/claude-code-mcp.md](docs/claude-code-mcp.md).
 
 ## Configuration
 
