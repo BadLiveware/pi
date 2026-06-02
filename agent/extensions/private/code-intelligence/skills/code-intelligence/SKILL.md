@@ -63,6 +63,7 @@ When editing this extension, preserve the vertical-slice layout:
 
 - Use repo overview and file outlines for deterministic structure and syntax facts: paths, filenames, imports/includes, declarations, line ranges, and locator targets.
 - Use Tree-sitter rows as the first read-next queue. Read the suggested current source before making review findings or compatibility claims.
+- Broad code-intel scans respect git ignore rules by default. Use explicit ignored paths or `includeIgnored:true` when generated outputs such as source-generator `.g.cs` files are the evidence you need.
 - Use `rg` fallback rows for literal text in source, comments, docs, fixtures, generated files, or unsupported-language gaps.
 - Use `code_intel_state` when parser, `rg`, config, footer, or optional provider availability affects the next move.
 - Use `code_intel_post_edit_map` diagnostics as current touched-file feedback. Fix or disclose them according to the task's validation needs.
