@@ -1,8 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { collectTouchedDiagnostics, type NormalizedPostEditDiagnostic } from "../post-edit-map/diagnostics.ts";
+import { collectTouchedDiagnostics, loadStandaloneConfig, resolveRepoRootsFromCwd, type NormalizedPostEditDiagnostic } from "code-intel/pi-integration";
 import { markDiagnosticsSurfacedForContext, recentTouchedFilesNeedingDiagnosticsForContext } from "../post-edit-map/touched-files.ts";
-import { loadConfig } from "../../config.ts";
-import { resolveRepoRoots } from "../../repo.ts";
 
 export const MESSAGE_TYPE_CODE_INTEL_DIAGNOSTICS = "code-intel:lsp-diagnostics";
 
@@ -54,10 +52,10 @@ function hasPendingMessages(ctx: ExtensionContext): boolean {
 
 export async function surfaceTouchedDiagnosticsIfNeeded(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
 	if (hasPendingMessages(ctx)) return;
-	const roots = await resolveRepoRoots(ctx, undefined);
+	const roots = await resolveRepoRootsFromCwd(ctx.cwd, undefined);
 	const changedFiles = recentTouchedFilesNeedingDiagnosticsForContext(ctx, roots.repoRoot, 50);
 	if (changedFiles.length === 0) return;
-	const loadedConfig = loadConfig(ctx);
+	const loadedConfig = loadStandaloneConfig(ctx.cwd);
 	const collected = await collectTouchedDiagnostics(roots.repoRoot, changedFiles, loadedConfig.config, undefined);
 	markDiagnosticsSurfacedForContext(ctx);
 	if (collected.diagnostics.length === 0) return;

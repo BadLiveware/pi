@@ -4,7 +4,20 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { codeIntelToolSpec } from "code-intel/pi-integration";
 import { fixtureRepo, hasCommand, loadExtension, loadTools, mockContext, parseToolResult, renderText, renderTheme, withFakeGopls } from "./test-harness.ts";
+
+test("Pi adapter registers package facade tool specs", async () => {
+	const packageSpec = codeIntelToolSpec("code_intel_file_outline");
+	assert.ok(packageSpec);
+	const tools = loadTools();
+	const registered = tools.get("code_intel_file_outline") as any;
+	assert.ok(registered);
+	assert.equal(registered.name, packageSpec.name);
+	assert.equal(registered.label, packageSpec.title);
+	assert.equal(registered.description, packageSpec.description);
+	assert.deepEqual(registered.promptGuidelines, packageSpec.promptGuidelines);
+});
 
 test("registered tool surface includes targeted context and mutation tools", async () => {
 	const tools = loadTools();

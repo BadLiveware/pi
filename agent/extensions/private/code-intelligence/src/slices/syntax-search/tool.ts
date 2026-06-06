@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { syntaxSearchToolSpec } from "code-intel/pi-integration";
 import { registerCodeIntelSpecTool } from "../../pi-tool-adapter.ts";
-import { syntaxSearchToolSpec } from "./spec.ts";
 import { appendExpandHint, asArray, asNumber, asRecord, asString, compactPath, compactTopFiles, firstLine, renderBold, renderColor, renderLines, renderStatus, renderToolCall } from "../../core/tool-render.ts";
 
 function renderSyntaxResult(details: Record<string, unknown>, expanded: boolean, theme: any) {

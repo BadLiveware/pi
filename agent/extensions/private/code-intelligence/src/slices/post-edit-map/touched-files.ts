@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { ensureInsideRoot } from "../../repo.ts";
-import { isRecord } from "../../util.ts";
+import { ensureInsideRoot } from "code-intel/pi-integration";
 
 type TouchedFileRecord = {
 	sessionId: string;
@@ -15,6 +14,10 @@ const lastPostEditMapBySession = new Map<string, number>();
 const lastDiagnosticSurfaceBySession = new Map<string, number>();
 const maxTouchedFiles = 120;
 const maxAgeMs = 2 * 60 * 60 * 1000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;

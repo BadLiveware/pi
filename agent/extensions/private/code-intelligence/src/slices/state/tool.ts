@@ -2,15 +2,18 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadConfig } from "../../config.ts";
+import {
+	backendStatuses,
+	languageServerStatusesFromProviders,
+	legacyLanguageServerSemanticProviderStatuses,
+	loadStandaloneConfig,
+	resolveRepoRootsFromCwd,
+	stateToolSpec,
+	type CodeIntelStateParams,
+} from "code-intel/pi-integration";
 import { registerCodeIntelSpecTool } from "../../pi-tool-adapter.ts";
 import { setCodeIntelStatusSummary } from "./footer-status.ts";
-import { resolveRepoRoots } from "../../repo.ts";
-import { backendStatuses } from "./run.ts";
-import { stateToolSpec } from "./spec.ts";
-import { languageServerStatusesFromProviders, legacyLanguageServerSemanticProviderStatuses } from "../../lsp/provider-status.ts";
 import { appendExpandHint, asRecord, backendAvailable, compactPath, renderBold, renderColor, renderLines, renderStatus, renderToolCall, type StatusStyle } from "../../core/tool-render.ts";
-import type { CodeIntelStateParams } from "../../types.ts";
 
 type RuntimeOperation = {
 	timestamp: string;
@@ -137,8 +140,8 @@ function renderStateToolResult(result: unknown, options: { expanded?: boolean; i
 export async function refreshFooterStatus(ctx: ExtensionContext): Promise<void> {
 	setCodeIntelStatus(ctx, "ci:checking", "dim");
 	try {
-		const loadedConfig = loadConfig(ctx);
-		const roots = await resolveRepoRoots(ctx);
+		const loadedConfig = loadStandaloneConfig(ctx.cwd);
+		const roots = await resolveRepoRootsFromCwd(ctx.cwd);
 		const [statuses, semanticProviders] = await Promise.all([backendStatuses(roots.repoRoot, loadedConfig.config), legacyLanguageServerSemanticProviderStatuses(roots.repoRoot, loadedConfig.config)]);
 		const languageServers = languageServerStatusesFromProviders(semanticProviders);
 		setCodeIntelStatusSummary(ctx, statuses, languageServers, roots.repoRoot);

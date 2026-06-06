@@ -1,17 +1,12 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { loadConfig } from "./config.ts";
-import type { CodeIntelEnv, CodeIntelMutationPolicy } from "./standalone/env.ts";
-import type { CodeIntelToolResult, CodeIntelToolSpec, JsonObjectSchema } from "./tool-registry.ts";
+import { loadStandaloneConfig, type CodeIntelEnv, type CodeIntelMutationPolicy, type CodeIntelToolResult, type CodeIntelToolSpec, type JsonObjectSchema } from "code-intel/pi-integration";
 
 export function codeIntelEnvForPiContext(ctx: ExtensionContext, mutationPolicy: CodeIntelMutationPolicy = "enabled"): CodeIntelEnv {
-	const loadedConfig = loadConfig(ctx);
+	const loadedConfig = loadStandaloneConfig(ctx.cwd);
 	return {
 		cwd: ctx.cwd,
-		config: loadedConfig.config,
-		configPaths: { ...loadedConfig.paths, standaloneUser: "" },
-		loadedConfig: loadedConfig.loaded,
-		configDiagnostics: loadedConfig.diagnostics,
+		...loadedConfig,
 		mutationPolicy,
 		pathBase: "repo",
 		persistentLsp: true,

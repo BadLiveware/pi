@@ -5,8 +5,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import codeIntelligence from "../index.ts";
-import { collectTouchedDiagnostics } from "../src/slices/post-edit-map/diagnostics.ts";
-import { DEFAULT_CONFIG } from "../src/types.ts";
+import { collectTouchedDiagnostics } from "code-intel/pi-integration";
+import { DEFAULT_CONFIG } from "code-intel/pi-integration";
 
 function loadTools(): Map<string, { execute: (...args: any[]) => Promise<any> }> {
 	const tools = new Map<string, any>();

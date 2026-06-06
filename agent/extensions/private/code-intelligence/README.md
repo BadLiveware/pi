@@ -2,6 +2,8 @@
 
 Pi Code Intelligence is a private local Pi extension for repository orientation, read-next context gathering, and targeted symbol operations. It gives Pi agents bounded, current-source maps of files, symbols, callers, tests, and syntax patterns, plus narrow helpers for reading or mutating resolved declarations.
 
+Reusable code-intel behavior lives in the standalone TypeScript package at `/home/fl/code/personal/code-intel/`. This Pi extension imports that package through `code-intel/pi-integration` and keeps only Pi-specific lifecycle hooks, session tracking, footer/status rendering, usage feedback, touched-file defaults, skills, and tool registration adapters locally.
+
 ## How It Fits the Pi Workflow
 
 Code-intel covers two adjacent parts of the Pi workflow: context routing before source reads, and symbol-targeted operations after a declaration has been resolved.
@@ -206,12 +208,11 @@ Routine state checks normally omit diagnostics; diagnostics are for parser avail
 
 ## Standalone CLI and MCP Server
 
-The same code-intelligence tool registry can run outside Pi for use from other agent harnesses such as Claude Code.
+The standalone package can run outside Pi for use from other agent harnesses such as Claude Code.
 
 ```bash
-cd agent/extensions
+cd /home/fl/code/personal/code-intel
 npm install
-cd private/code-intelligence
 npm run build
 npm link  # optional: makes the short code-intel command available on PATH
 command -v code-intel
@@ -225,16 +226,18 @@ The standalone path exposes read-only tools by default: state, overview, outline
 
 Standalone config is loaded in this order: Pi user config, standalone user config, project config, explicit `--config` path, then inline overrides from code. The standalone user config path is `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it. Standalone path inputs default to `--path-base auto`, which accepts repo-root-relative paths or cwd-relative paths; omit `--cwd` for project-scoped Claude Code setup, and use `--cwd` only for a deliberately pinned server launched from outside the target repo. Use `--path-base repo` or `--path-base cwd` to force one interpretation. Broad standalone scans respect git ignore rules by default using tracked plus unignored working-tree files; use explicit ignored paths or `includeIgnored: true` when generated outputs such as source-generator `.g.cs` files should participate in discovery. Long-lived MCP sessions cache parsed files and extracted symbol records by current content hash; the server reads and hashes files before cache reuse so edits invalidate cached source facts. MCP sessions also keep a bounded csharp-ls workspace process warm, refresh open file text by content hash with full-document `didChange`, and restart the server when C# project graph files change. In Claude Code, pass edited files explicitly to `code_intel_post_edit_map` with `changedFiles` or `baseRef`; Pi-only touched-file session tracking is not available through MCP.
 
-The workspace package declares a `code-intel` bin at `dist/standalone/cli.js`; run `npm run build` before linking, packing, or using the short installed command. If Claude reports `ENOENT` for `code-intel`, the bin is not on Claude's `PATH`; run `npm link`, install the package globally, or configure the absolute built entrypoint path. The TypeScript entrypoint can still be invoked with `node --experimental-strip-types` for source-only debugging, but normal CLI/MCP use should run the built bin. For Claude Code configuration and smoke-test commands, see [docs/claude-code-mcp.md](docs/claude-code-mcp.md).
+The standalone package declares a `code-intel` bin at `dist/standalone/cli.js`; run `npm run build` before linking, packing, or using the short installed command. If Claude reports `ENOENT` for `code-intel`, the bin is not on Claude's `PATH`; run `npm link`, install the package globally, or configure the absolute built entrypoint path. The TypeScript entrypoint can still be invoked with `node --experimental-strip-types` for source-only debugging, but normal CLI/MCP use should run the built bin. For Claude Code configuration and smoke-test commands, see the standalone package's `docs/claude-code-mcp.md`.
 
 ## Configuration
 
-Optional config files:
+Optional config files are loaded by the standalone package helper used by both CLI/MCP and Pi:
 
-- user: `~/.pi/agent/code-intelligence.json`
-- project: `.pi/code-intelligence.json`
+1. Pi user config: `~/.pi/agent/code-intelligence.json`
+2. standalone user config: `~/.config/code-intelligence/config.json` unless `XDG_CONFIG_HOME` changes it
+3. project config: `.pi/code-intelligence.json`
+4. explicit config path for standalone CLI/MCP launches
 
-Project config overlays user config.
+Later sources overlay earlier sources.
 
 Defaults:
 
@@ -313,16 +316,21 @@ The extension is optimized for read-next routing and targeted symbol operations,
 
 ## Source Layout and Extension Work
 
-Code-intelligence is organized by vertical slices. `index.ts` is lifecycle wiring only: resource discovery, passive usage hooks, session-start footer refresh, and tool registration calls.
+Reusable tool behavior, schemas, compact text, parser/provider integration, CLI/MCP support, and reusable tests belong in `/home/fl/code/personal/code-intel/`. The standalone package exposes the Pi-facing reusable surface through `code-intel/pi-integration`.
 
-- `src/slices/<slice>/tool.ts` owns tool schema, prompt guidance, execution wiring, and custom TUI rendering for that slice.
-- `src/slices/<slice>/run.ts` owns the slice behavior when implementation is slice-specific.
-- `src/slices/<slice>/compact.ts` owns the compact agent-visible text renderer for that slice; `src/compact-output.ts` is only a dispatcher.
-- `src/slices/<slice>/types.ts` owns slice-specific parameter types; `src/types.ts` re-exports shared and slice types for compatibility with existing imports.
-- `src/core/` contains small shared primitives for compact rendering, tool-card rendering, and cross-slice types.
-- Shared parser/range/repo/config helpers stay outside slices and should remain behavior-neutral. If `tree-sitter.ts` or another shared engine keeps growing, split it by parser concern before adding more feature-specific logic to it.
+This Pi extension is the adapter layer. `index.ts` is lifecycle wiring only: resource discovery, passive usage hooks, session-start footer refresh, diagnostic surfacing hooks, and tool registration calls.
 
-When adding a tool, start with a slice folder and keep the tool contract, run behavior, compact renderer, and focused tests close together. Avoid adding new tool behavior to `index.ts`, `compact-output.ts`, or `types.ts` beyond dispatcher/re-export wiring.
+Local Pi-owned files are limited to:
+
+- `src/pi-tool-adapter.ts` for `CodeIntelToolSpec` to Pi `registerTool` adaptation;
+- `src/slices/<slice>/tool.ts` for Pi registration and custom TUI rendering around package tool specs;
+- `src/slices/post-edit-map/touched-files.ts` for Pi session-touched-file defaults;
+- `src/slices/diagnostic-surface/hook.ts` for idle diagnostic surfacing;
+- `src/slices/state/footer-status.ts` and `src/slices/state/tool.ts` for footer/runtime status integration;
+- `src/slices/usage/**` for local usage feedback metadata;
+- `src/core/tool-render.ts` for Pi TUI card helpers.
+
+When changing reusable behavior, edit `/home/fl/code/personal/code-intel/` first and then validate the Pi adapter. Avoid reintroducing mirrored common source under this extension.
 
 ## Evaluation Notes
 

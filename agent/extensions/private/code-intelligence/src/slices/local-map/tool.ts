@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { localMapToolSpec } from "code-intel/pi-integration";
 import { registerCodeIntelSpecTool } from "../../pi-tool-adapter.ts";
-import { localMapToolSpec } from "./spec.ts";
 import { appendExpandHint, asArray, asRecord, compactPath, renderBold, renderColor, renderLines, renderStatus, renderToolCall } from "../../core/tool-render.ts";
 
 function renderLocalMapResult(details: Record<string, unknown>, expanded: boolean, theme: any) {

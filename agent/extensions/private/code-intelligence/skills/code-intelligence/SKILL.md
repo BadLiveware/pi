@@ -34,15 +34,17 @@ Before delegating review, the parent should usually:
 
 Prefer a custom code-intel-aware reviewer when review quality depends on these maps and the agent is configured with the relevant tools.
 
-## Source Layout for Extension Work
+## Source Layout for Code-intel Work
 
-When editing this extension, preserve the vertical-slice layout:
+Reusable tool behavior lives in `/home/fl/code/personal/code-intel/`, not in the Pi extension. Edit that standalone package first for schemas, prompt guidance, compact output, parser/provider behavior, CLI/MCP behavior, and reusable tests. The package exposes Pi-needed reusable APIs through `code-intel/pi-integration`.
 
-- Put each tool's schema, prompt guidance, registration, and TUI result rendering in `src/slices/<slice>/tool.ts`.
-- Put slice behavior in `src/slices/<slice>/run.ts` when it is not shared parser/core behavior.
-- Put compact agent-visible output in `src/slices/<slice>/compact.ts`; keep `src/compact-output.ts` as a dispatcher only.
-- Put slice-specific parameter types in `src/slices/<slice>/types.ts`; keep `src/types.ts` as compatibility re-exports plus shared types only through `src/core/types.ts`.
-- Do not add new tool behavior to `index.ts`; it should only wire lifecycle hooks and slice registrations.
+When editing the Pi extension, keep it as the adapter layer:
+
+- `index.ts` wires lifecycle hooks and slice registrations only.
+- `src/pi-tool-adapter.ts` adapts package `CodeIntelToolSpec` objects to Pi `registerTool` calls.
+- `src/slices/<slice>/tool.ts` owns Pi registration and custom TUI result rendering around package specs.
+- `src/slices/post-edit-map/touched-files.ts`, `src/slices/diagnostic-surface/hook.ts`, `src/slices/state/**`, and `src/slices/usage/**` own Pi-specific session, footer, diagnostic-surfacing, and usage behavior.
+- Do not reintroduce mirrored common implementation files under the Pi extension.
 
 ## Tool Selection
 

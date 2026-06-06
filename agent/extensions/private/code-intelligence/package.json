@@ -20,15 +20,6 @@
     "package.json",
     "skills"
   ],
-  "main": "./dist/tool-registry.js",
-  "types": "./dist/tool-registry.d.ts",
-  "bin": {
-    "code-intel": "./dist/standalone/cli.js"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json && chmod +x dist/standalone/cli.js",
-    "clean": "rm -rf dist"
-  },
   "pi": {
     "extensions": [
       "./index.ts"
@@ -43,8 +34,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@vscode/tree-sitter-wasm": "^0.3.1",
-    "typescript": "^5.9.0"
+    "code-intel": "file:../../../../../code-intel"
   }
 }

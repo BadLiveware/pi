@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 import { codeIntelStatusSummary } from "../src/slices/state/footer-status.ts";
-import type { BackendName, BackendStatus, LanguageServerName, LanguageServerStatus } from "../src/types.ts";
+import type { BackendName, BackendStatus, LanguageServerName, LanguageServerStatus } from "code-intel/pi-integration";
 
 function mockContext(cwd: string) {
 	return { cwd, ui: { theme: { fg: (_style: string, text: string) => text } } } as any;

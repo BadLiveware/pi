@@ -9,7 +9,6 @@ const defaultMaxLines = 500;
 // Existing large files are technical debt. They are allowed only up to their
 // current size so routine work cannot make them larger by accident.
 const grandfatheredMaxLines = new Map(Object.entries({
-	"agent/extensions/private/code-intelligence/src/tree-sitter.ts": 1050,
 	"agent/extensions/private/stardock/src/policy.ts": 536,
 	"agent/extensions/private/stardock/src/state/migration.ts": 501,
 	"agent/extensions/private/stardock/test/lifecycle.test.ts": 523,

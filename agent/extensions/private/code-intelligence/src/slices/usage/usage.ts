@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { followupShape, rememberCodeIntelResult, rememberMutationFollowup, returnedFilesForResult, returnedSegmentsForResult } from "./followup.ts";
-import { isRecord } from "../../util.ts";
 
 type UsageKind = "tool_call" | "tool_result";
 
@@ -38,6 +37,10 @@ type PendingToolCall = {
 
 const pendingToolCalls = new Map<string, PendingToolCall>();
 const codeIntelPrefix = "code_intel_";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function usageLogDir(): string {
 	return process.env.PI_CODE_INTEL_USAGE_DIR ?? path.join(process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache"), "pi-code-intelligence", "usage");

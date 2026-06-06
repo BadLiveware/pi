@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { extractFileRecords, parseFiles } from "../src/tree-sitter.ts";
+import { extractFileRecords, parseFiles } from "code-intel/pi-integration";
 import { loadTools, mockContext, parseToolResult } from "./test-harness.ts";
 
 function pythonRepo(): string {

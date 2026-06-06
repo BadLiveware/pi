@@ -3,8 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { JsonRpcClient } from "../src/lsp/json-rpc-client.ts";
-import { LspSession } from "../src/lsp/lsp-session.ts";
+import { JsonRpcClient } from "code-intel/pi-integration";
+import { LspSession } from "code-intel/pi-integration";
 
 function fixtureRepo(): string {
 	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-lsp-session-"));

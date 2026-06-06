@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { BackendName, BackendStatus, LanguageServerName, LanguageServerStatus } from "../../types.ts";
+import type { BackendName, BackendStatus, LanguageServerName, LanguageServerStatus } from "code-intel/pi-integration";
 
 type StatusStyle = "dim" | "muted" | "accent" | "success" | "warning" | "error";
 

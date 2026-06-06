@@ -2,8 +2,8 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import test from "node:test";
-import { LANGUAGE_CAPABILITIES } from "../src/language-support/registry.ts";
-import { SEMANTIC_PROVIDER_METADATA } from "../src/lsp/provider-metadata.ts";
+import { LANGUAGE_CAPABILITIES } from "code-intel/pi-integration";
+import { SEMANTIC_PROVIDER_METADATA } from "code-intel/pi-integration";
 
 const extensionRoot = path.resolve("private/code-intelligence");
 const requestedLanguages = ["go", "typescript", "tsx", "javascript", "rust", "python", "cpp", "csharp", "bash", "zsh", "markdown"];

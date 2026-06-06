@@ -4,8 +4,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
-import { DEFAULT_CONFIG } from "../src/types.ts";
-import { collectTouchedDiagnostics } from "../src/slices/post-edit-map/diagnostics.ts";
+import { DEFAULT_CONFIG } from "code-intel/pi-integration";
+import { collectTouchedDiagnostics } from "code-intel/pi-integration";
 
 function fixtureRepo(): string {
 	const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-code-intel-diagnostics-providers-"));
