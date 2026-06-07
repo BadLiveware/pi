@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when encountering a bug, failing test, build failure, performance regression, or unexpected behavior before proposing fixes.
+description: Use when a reproducible failure or unclear bug needs root-cause investigation before fixing: failing test/build command, runtime error, regression, or unexpected behavior. Do not use for advisory diagnostics or routine validation triage after an authoritative check passes.
 ---
 
 # Systematic Debugging
@@ -9,6 +9,9 @@ Find the root cause before fixing symptoms. Do not stack speculative fixes when 
 
 ## When to Use
 Use when tests/builds fail, behavior differs from expectations, the cause is not proven, prior fixes failed, or multiple components/configs/environments could be involved.
+
+## Nearby Non-Triggers
+Do not use this skill just because a tool surfaced advisory diagnostics, stale-looking LSP output, or touched-file warnings when an authoritative project check already passed. Treat that as validation triage: inspect freshness/provenance, rerun or cite the authoritative check when needed, and use `verification-before-completion` before claiming readiness. Escalate to systematic debugging only if you reproduce a real failure, the authoritative check fails, or the discrepancy itself blocks the task.
 
 ## Outcome
 - reproduced or clearly observed failure
