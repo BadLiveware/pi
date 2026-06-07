@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7
+
+- Removed Stardock-specific loop detection and completion-marker guidance; Stardock owns its own progress and completion lifecycle.
+- Kept overflow and generic stalled-turn nudges generic, with `watchdog_answer` as the only watchdog response contract.
+- Wrapped watchdog prompts in a dedicated `<watchdog_nudge>` block and scoped `done` to the whole active work set.
+- Ignored continuation-language examples inside fenced code blocks and blockquotes so prompt-writing replies do not arm the stalled-turn watchdog.
+
 ## 0.1.6
 
 - Added Stardock loop awareness to compaction recovery so unresolved `stardock_done` prompts are handled like Ralph prompts.
@@ -12,7 +19,7 @@
 - Added opt-in passive tracking for watchdog detection, nudge, skip, and `watchdog_answer` events.
 - Added the `compaction_continue_state` tool plus config/log-path reporting for inspection and debugging.
 - Added user/project config loading for passive tracking, with tracking disabled by default unless enabled by config.
-- Scoped watchdog completion-marker guidance to active loops so non-loop nudges do not ask agents to emit `<promise>COMPLETE</promise>`.
+- Scoped watchdog completion guidance to active loops so non-loop nudges do not ask agents to emit loop-owned completion signals.
 
 ## 0.1.4
 

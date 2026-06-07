@@ -138,3 +138,55 @@ test("stardock_done does not queue checklist prompts for gated workflow states",
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
+
+test("agent_end queues a continuation prompt for active ungated work without stardock_done", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
+	try {
+		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		assert.ok(start);
+		assert.ok(brief);
+
+		await start.execute("tool-workflow-continuation-start", { name: "Workflow Continuation", mode: "checklist", taskContent: "# Workflow continuation\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await brief.execute("tool-workflow-continuation-brief", { action: "upsert", loopName: "Workflow_Continuation", id: "b-next", objective: "Continue active work.", task: "Do the next bounded task.", activate: true }, undefined, undefined, ctx);
+		const beforeAgentEndMessages = messages.length;
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+
+		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "Next active checkpoint is ready." }] }] }, ctx);
+
+		assert.equal(messages.length, beforeAgentEndMessages + 1);
+		assert.match(messages.at(-1)?.content ?? "", /Stardock continuation guard/);
+		assert.match(messages.at(-1)?.content ?? "", /Workflow: active_work/);
+		assert.match(messages.at(-1)?.content ?? "", /Brief: b-next/);
+		assert.deepEqual(messages.at(-1)?.options, { deliverAs: "followUp" });
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_complete blocks while active work remains", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		const complete = tools.get("stardock_complete");
+		assert.ok(start);
+		assert.ok(brief);
+		assert.ok(complete);
+
+		await start.execute("tool-workflow-complete-block-start", { name: "Workflow Complete Block", mode: "checklist", taskContent: "# Workflow complete block\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await brief.execute("tool-workflow-complete-block-brief", { action: "upsert", loopName: "Workflow_Complete_Block", id: "b-active", objective: "Do active work.", task: "Unfinished active work.", activate: true }, undefined, undefined, ctx);
+
+		const result = await complete.execute("tool-workflow-complete-block", {}, undefined, undefined, ctx);
+
+		const state = loadState(ctx, "Workflow_Complete_Block");
+		assert.equal(state?.status, "active");
+		assert.match(result.content[0].text, /completion blocked/);
+		assert.match(result.content[0].text, /workflow is active_work/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});

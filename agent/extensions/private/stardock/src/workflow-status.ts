@@ -138,7 +138,7 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 			severity: "action",
 			summary: "Completion policy found no obvious readiness gaps.",
 			reasons: compactReasons(completion.findings.filter((finding) => finding.recommendation === "ready").map((finding) => finding.rationale)),
-			recommendedActions: [{ label: "Complete the loop", command: "<promise>COMPLETE</promise>" }, action("Inspect completion policy", "stardock_policy", { action: "completion", loopName: state.name })],
+			recommendedActions: [action("Complete the loop", "stardock_complete", { includeState: true }), action("Inspect completion policy", "stardock_policy", { action: "completion", loopName: state.name })],
 		};
 	}
 

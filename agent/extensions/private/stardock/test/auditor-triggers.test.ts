@@ -5,25 +5,23 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { makeHarness, statePath } from "./test-harness.ts";
 
-test("completion marker creates auditor request when auditor gate is active", async () => {
+test("stardock_complete creates auditor request when auditor gate is active", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-auditor-trigger-test-"));
 	try {
-		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const { tools, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
 		const ledger = tools.get("stardock_ledger");
+		const complete = tools.get("stardock_complete");
 		assert.ok(start);
 		assert.ok(ledger);
+		assert.ok(complete);
 
 		await start.execute("tool-complete-audit-start", { name: "Complete Audit Loop", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
 		await ledger.execute("tool-complete-audit-criterion", { action: "upsertCriterion", loopName: "Complete_Audit_Loop", id: "c-skipped", description: "Skipped criterion", passCondition: "Auditor accepts the gap.", status: "skipped" }, undefined, undefined, ctx);
 
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
-		const beforeMessages = messages.length;
-		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "<promise>COMPLETE</promise>" }] }] }, ctx);
+		const result = await complete.execute("tool-complete-audit-blocked", {}, undefined, undefined, ctx);
 
-		assert.equal(messages.length, beforeMessages + 1);
-		assert.match(messages.at(-1)?.content ?? "", /completion blocked: auditor request auditor-1/);
+		assert.match(result.content[0].text, /completion blocked: auditor request auditor-1/);
 		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Audit_Loop"), "utf-8"));
 		assert.equal(state.status, "active");
 		assert.equal(state.outsideRequests[0].kind, "auditor_review");
@@ -33,28 +31,28 @@ test("completion marker creates auditor request when auditor gate is active", as
 	}
 });
 
-test("completion marker does not create repeat auditor requests for accepted final-report gaps", async () => {
+test("stardock_complete does not create repeat auditor requests for accepted final-report gaps", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-auditor-trigger-test-"));
 	try {
-		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const { tools, messages, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
 		const ledger = tools.get("stardock_ledger");
 		const report = tools.get("stardock_final_report");
 		const auditor = tools.get("stardock_auditor");
+		const complete = tools.get("stardock_complete");
 		assert.ok(start);
 		assert.ok(ledger);
 		assert.ok(report);
 		assert.ok(auditor);
+		assert.ok(complete);
 
 		await start.execute("tool-accepted-gap-start", { name: "Accepted Gap Loop", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
 		await ledger.execute("tool-accepted-gap-criterion", { action: "upsertCriterion", loopName: "Accepted_Gap_Loop", id: "c-pass", description: "Passed criterion", passCondition: "Evidence exists.", status: "passed" }, undefined, undefined, ctx);
 		await report.execute("tool-accepted-gap-report", { action: "record", loopName: "Accepted_Gap_Loop", id: "fr-gap", status: "passed", summary: "Passed with a disclosed gap.", criterionIds: ["c-pass"], validation: [{ result: "passed", summary: "Bounded checks passed." }], unresolvedGaps: ["External provider smoke test intentionally skipped."] }, undefined, undefined, ctx);
 		await auditor.execute("tool-accepted-gap-auditor", { action: "record", loopName: "Accepted_Gap_Loop", id: "ar-gap", status: "passed", summary: "Auditor accepts the disclosed final-report gap.", finalReportIds: ["fr-gap"] }, undefined, undefined, ctx);
 
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
 		const beforeMessages = messages.length;
-		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "<promise>COMPLETE</promise>" }] }] }, ctx);
+		await complete.execute("tool-accepted-gap-complete", {}, undefined, undefined, ctx);
 
 		assert.equal(messages.length, beforeMessages, "completion should not enqueue another auditor request");
 		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Accepted_Gap_Loop"), "utf-8"));

@@ -8,7 +8,7 @@ This directory contains small executable TLA+ models for critical Stardock state
 
 - `stardock_start`
 - `stardock_done`
-- completion marker handling
+- `stardock_complete` handling
 - pause/stop completion transitions
 - attempt placeholder/report state
 - governor cadence and stagnation/scaffold outside-request creation

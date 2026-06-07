@@ -14,6 +14,7 @@ import { defaultCriterionLedger, defaultGovernorState } from "../state/migration
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
+import { openMutableWorkerRun } from "../worker-runs.ts";
 import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
 import { applyActiveBriefLifecycle } from "../briefs.ts";
 import { FollowupToolParameter, withFollowupTool } from "./followups.ts";
@@ -24,6 +25,8 @@ function checklistDoneShouldQueueNext(status: WorkflowStatus): boolean {
 	return status.state === "ready_for_work" || status.state === "active_work";
 }
 
+const COMPLETION_BLOCKED_WORKFLOW_STATES = new Set<WorkflowStatus["state"]>(["active_work", "needs_parent_review", "needs_auditor_review", "needs_breakout_decision", "ready_for_final_verification", "blocked"]);
+
 export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
 	pi.registerTool({
 		name: "stardock_start",
@@ -32,7 +35,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 		promptSnippet: "Start a persistent multi-iteration development loop with pacing and reflection controls.",
 		promptGuidelines: [
 			"Use this tool when the user explicitly wants an iterative loop, autonomous repeated passes, or paced multi-step execution.",
-			"After starting a loop, continue each finished iteration with stardock_done unless the completion marker has already been emitted.",
+			"After starting a loop, continue each finished iteration with stardock_done, or call stardock_complete when the whole loop is ready to complete.",
 		],
 		parameters: Type.Object({
 			name: Type.String({ description: "Loop name (e.g., 'refactor-auth')" }),
@@ -105,9 +108,9 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 	pi.registerTool({
 		name: "stardock_done",
 		label: "Stardock Iteration Done",
-		description: "Signal that you've completed this iteration of the Stardock loop. Call this after making progress to get the next iteration prompt. Do NOT call this if you've output the completion marker.",
+		description: "Signal that you've completed this iteration of the Stardock loop. Call this after making progress to get the next iteration prompt; use stardock_complete for whole-loop completion.",
 		promptSnippet: "Advance an active Stardock loop after completing the current iteration.",
-		promptGuidelines: ["Call this after making real iteration progress so Stardock can queue the next prompt.", "Do not call this if there is no active loop, if pending messages are already queued, or if the completion marker has already been emitted."],
+		promptGuidelines: ["Call this after making real iteration progress so Stardock can queue the next prompt.", "Do not call this if there is no active loop, if pending messages are already queued, or if the whole loop should be completed instead."],
 		parameters: Type.Object({
 			briefLifecycle: Type.Optional(Type.Union([Type.Literal("keep"), Type.Literal("complete"), Type.Literal("clear")], { description: "Opt-in active brief lifecycle action after the completed iteration. Default keep preserves existing behavior." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
@@ -149,6 +152,57 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"), { deliverAs: "followUp" });
 			const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
 			return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, auditorRequest, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
+		},
+	});
+
+	pi.registerTool({
+		name: "stardock_complete",
+		label: "Complete Stardock Loop",
+		description: "Complete an active Stardock loop after readiness gates are clear. This is the canonical whole-loop completion path.",
+		promptSnippet: "Complete an active Stardock loop after validation and readiness evidence are recorded.",
+		promptGuidelines: ["Use this only when the whole loop is ready to finish, not for normal iteration advancement.", "If completion is blocked, inspect the returned workflow status and resolve the gate instead of forcing completion."],
+		parameters: Type.Object({
+			activeBriefLifecycle: Type.Optional(Type.Union([Type.Literal("complete"), Type.Literal("clear"), Type.Literal("keep")], { description: "How to handle an active brief on successful completion. Default complete." })),
+			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
+			followupTool: FollowupToolParameter,
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (!runtime.ref.currentLoop) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
+			const state = loadState(ctx, runtime.ref.currentLoop);
+			if (!state || state.status !== "active") return { content: [{ type: "text", text: "Stardock loop is not active." }], details: {} };
+
+			const openRun = openMutableWorkerRun(state);
+			if (openRun) {
+				return {
+					content: [{ type: "text", text: `Stardock completion blocked: implementer WorkerRun ${openRun.id} is ${openRun.status}. Review it with stardock_worker({ action: "review", runId: "${openRun.id}" }) or dismiss it before completing.` }],
+					details: { loopName: state.name, workerRun: openRun, blocked: true },
+				};
+			}
+
+			const auditorRequest = maybeCreateAutomaticAuditorRequest(state);
+			if (auditorRequest) {
+				saveState(ctx, state);
+				runtime.updateUI(ctx);
+				return {
+					content: [{ type: "text", text: `Stardock completion blocked: auditor request ${auditorRequest.id} is ${auditorRequest.status}. Build the payload with stardock_outside_payload({ requestId: "${auditorRequest.id}" }), record the review with stardock_auditor, or escalate to the user before completing.` }],
+					details: { loopName: state.name, auditorRequest, blocked: true, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) },
+				};
+			}
+
+			const workflowStatus = evaluateWorkflowStatus(state);
+			if (COMPLETION_BLOCKED_WORKFLOW_STATES.has(workflowStatus.state)) {
+				return {
+					content: [{ type: "text", text: `Stardock completion blocked: workflow is ${workflowStatus.state}.\n\n${formatWorkflowStatus(workflowStatus)}` }],
+					details: { loopName: state.name, workflowStatus, blocked: true, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) },
+				};
+			}
+
+			const loopName = state.name;
+			const activeBriefLifecycle = (params.activeBriefLifecycle ?? "complete") as BriefLifecycleAction;
+			runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────
+✅ STARDOCK LOOP COMPLETE: ${state.name} | ${state.iteration} iterations
+───────────────────────────────────────────────────────────────────────`, activeBriefLifecycle);
+			return withFollowupTool({ content: [{ type: "text", text: `Completed Stardock loop "${state.name}".` }], details: { loopName: state.name, activeBriefLifecycle, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, loopName, params.followupTool, ["stardock_complete"]);
 		},
 	});
 

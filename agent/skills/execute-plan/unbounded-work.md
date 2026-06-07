@@ -140,5 +140,5 @@ Default behavior:
 3. Move older verbose details to optional archive and leave one pointer note in canonical file.
 4. Never duplicate archived details back into plan summaries or secondary files.
 
-## Completion Marker
-Do not emit `<promise>COMPLETE</promise>` for a still-running unbounded loop. Emit it only when the user explicitly ends the loop or agreed stop criteria are reached.
+## Completion
+Do not declare a still-running unbounded loop complete. Use the loop-owned completion mechanism only when the user explicitly ends the loop or agreed stop criteria are reached.

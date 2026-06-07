@@ -50,8 +50,8 @@ Ordered decision tree in `shouldRecoverStalledAssistantTurn`. First match wins.
 | Field | Value |
 |-------|-------|
 | Location | `analysis.ts:shouldRecoverStalledAssistantTurn` via `assistantRequestsContinuation` |
-| Detection | Assistant's text matches continuation-language patterns (see [L1-L7](#continuation-language-patterns)) |
-| Semantic scenario | The assistant said something like "I'll continue now" but then produced no tool calls in the same turn. The session is idle but the agent declared intent to keep working. |
+| Detection | Assistant's own text matches continuation-language patterns (see [L1-L7](#continuation-language-patterns)); fenced code blocks, `~~~` blocks, and quoted blockquote lines are stripped before matching. |
+| Semantic scenario | The assistant said something like "I'll continue now" but then produced no tool calls in the same turn. The session is idle but the agent declared intent to keep working. Quoted prompt examples are not treated as the assistant's own continuation promise. |
 | Action | Return `true` — nudge. |
 
 ### R6. Blank assistant stop without tool progress → recover
@@ -63,25 +63,26 @@ Ordered decision tree in `shouldRecoverStalledAssistantTurn`. First match wins.
 | Semantic scenario | The assistant produced an empty turn after a user prompt, without having done any tool work yet. This is a model hiccup or premature stop. If tool results had already arrived for this user prompt, a blank follow-up is normal (the agent already worked and is done). |
 | Action | Return `true` — nudge. Only when `hadToolResultSincePreviousUser !== true`. |
 
-### R7. Loop compaction ends with context-only acknowledgement after tool progress → recover
+### R7. Ralph compaction ends with context-only acknowledgement after tool progress → recover
 
 | Field | Value |
 |-------|-------|
 | Location | `analysis.ts:analyzeCompactionRecovery` via `isContextOnlyAssistantAck` |
-| Detection | Latest assistant message after an unresolved Ralph/Stardock prompt only acknowledges visible-context/MRC guidance after tool results, with no loop-advance tool result. |
-| Semantic scenario | The agent did real loop work, then responded only to internal continuity guidance such as "Understood, I'll prefer visible context...". That acknowledgement is not a completion signal and should not suppress loop recovery after compaction. |
-| Action | Return loop recovery (`<loop>-context-ack-after-tool-progress`) unless `ralph_done`/`stardock_done` already advanced the prompt. |
+| Detection | Latest assistant message after an unresolved Ralph prompt only acknowledges visible-context/MRC guidance after tool results, with no `ralph_done` tool result. |
+| Semantic scenario | The agent did real Ralph loop work, then responded only to internal continuity guidance such as "Understood, I'll prefer visible context...". That acknowledgement is not a completion signal and should not suppress Ralph recovery after compaction. |
+| Action | Return Ralph recovery (`ralph-context-ack-after-tool-progress`) unless `ralph_done` already advanced the prompt. |
 
 ## Continuation Language Patterns
 
 Regex patterns in `assistantRequestsContinuation` that detect an assistant declaring
-intent to continue but not actually doing work in the same turn.
+intent to continue but not actually doing work in the same turn. Detection runs
+after stripping fenced code blocks and blockquotes so quoted prompt examples do
+not arm the watchdog.
 
 ### Exclusion filters (checked first)
 
 | Pattern | Semantic scenario |
 |---------|-------------------|
-| `<promise>COMPLETE</promise>` | Loop completion marker — work is done |
 | `blocked \| paused \| waiting for \| cannot proceed \| can't proceed \| unable to proceed` | Agent explicitly blocked |
 | `need (your\|user) (input\|decision\|confirmation\|approval)` | Agent waiting for user |
 | `please (confirm\|advise\|decide) \| should i \| do you want` | Agent asking user a question |
@@ -169,7 +170,7 @@ idle timer is cleared — the user's explicit "keep going" counts as forward pro
 | Field | Value |
 |-------|-------|
 | Location | `runtime.ts:turn_end` |
-| Trigger | Every assistant `turn_end` event where `shouldRecoverStalledAssistantTurn` returns `true` |
+| Trigger | Every assistant `turn_end` event where `shouldRecoverStalledAssistantTurn` returns `true` after quoted-example stripping |
 | Action | Increment `assistantIdleRecoveryStreak`, schedule `scheduleAssistantIdleRecovery` after `ASSISTANT_IDLE_DELAY_MS` (2s) |
 | Guard | Nudge suppressed when streak exceeds `MAX_ASSISTANT_IDLE_RECOVERIES_PER_STREAK` (3) |
 
@@ -203,5 +204,5 @@ idle timer is cleared — the user's explicit "keep going" counts as forward pro
 |-------|-------|
 | Location | `analysis.ts:analyzeCompactionRecovery` |
 | Trigger | After a context-overflow or loop-prompt compaction |
-| Decision | Recovery fires for: (a) overflow compactions — always nudge, even when compaction is wrapped by internal custom/MRC entries before the assistant length-stop message; (b) Ralph or Stardock compactions where the most recent loop prompt lacks `ralph_done`/`stardock_done` and the last assistant turn looks stalled or is only a context/MRC acknowledgement after tool progress |
+| Decision | Recovery fires for: (a) overflow compactions — always nudge, even when compaction is wrapped by internal custom/MRC entries before the assistant length-stop message; (b) Ralph compactions where the most recent Ralph prompt lacks `ralph_done` and the last assistant turn looks stalled or is only a context/MRC acknowledgement after tool progress. Stardock state and completion semantics are intentionally out of scope. |
 | Suppressed | Recovery suppressed when: no active loop, the loop already advanced, or latest assistant didn't request continuation |

@@ -135,8 +135,8 @@ stateDiagram-v2
   PendingAudit --> Blocked: auditor blocker requires user/governor response
   Blocked --> ActiveRecursive: override or required action recorded
 
-  ActiveChecklist --> FinalVerification: completion marker
-  ActiveRecursive --> FinalVerification: completion marker or stop criteria met
+  ActiveChecklist --> FinalVerification: stardock_complete
+  ActiveRecursive --> FinalVerification: stardock_complete or stop criteria met
 
   FinalVerification --> PendingAudit: unresolved/skipped criteria or high-risk completion
   FinalVerification --> Completed: all required evidence accepted

@@ -144,65 +144,6 @@ test("stardock_done supports explicit active brief lifecycle actions", async () 
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
-test("completion marker completes active brief and clears current brief", async () => {
-	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
-	try {
-		const { tools, handlers, ctx } = makeHarness(cwd);
-		const start = tools.get("stardock_start");
-		const brief = tools.get("stardock_brief");
-		assert.ok(start);
-		assert.ok(brief);
-
-		await start.execute(
-			"tool-complete-brief-start",
-			{
-				name: "Complete Brief Loop",
-				taskContent: "# Task\n\n## Checklist\n- [x] Done\n",
-				maxIterations: 3,
-			},
-			undefined,
-			undefined,
-			ctx,
-		);
-		await brief.execute(
-			"tool-complete-brief-upsert",
-			{
-				action: "upsert",
-				loopName: "Complete_Brief_Loop",
-				id: "b-complete",
-				objective: "Finish the active brief with the loop.",
-				task: "Complete this brief when the loop completes normally.",
-				activate: true,
-			},
-			undefined,
-			undefined,
-			ctx,
-		);
-
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
-		await agentEnd(
-			{
-				messages: [
-					{
-						role: "assistant",
-						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
-					},
-				],
-			},
-			ctx,
-		);
-
-		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Brief_Loop"), "utf-8"));
-		assert.equal(state.status, "completed");
-		assert.equal(state.currentBriefId, undefined);
-		assert.equal(state.briefs[0].status, "completed");
-		assert.ok(state.briefs[0].completedAt);
-	} finally {
-		fs.rmSync(cwd, { recursive: true, force: true });
-	}
-});
-
 test("max iteration stop clears active brief back to draft", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
@@ -348,12 +289,14 @@ test("manual stop clears active brief back to draft", async () => {
 	}
 });
 
-test("completion marker completes loop without queuing a user message", async () => {
+test("stardock_complete completes loop without queuing a user message", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
-		const { tools, handlers, messages, entries, notifications, ctx } = makeHarness(cwd);
+		const { tools, messages, entries, notifications, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
+		const complete = tools.get("stardock_complete");
 		assert.ok(start);
+		assert.ok(complete);
 
 		await start.execute(
 			"tool-1",
@@ -368,21 +311,10 @@ test("completion marker completes loop without queuing a user message", async ()
 		);
 		assert.equal(messages.length, 1);
 
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
-		await agentEnd(
-			{
-				messages: [
-					{
-						role: "assistant",
-						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
-					},
-				],
-			},
-			ctx,
-		);
+		const result = await complete.execute("tool-complete", { includeState: true }, undefined, undefined, ctx);
 
-		assert.equal(messages.length, 1, "completion should not send a user message while agent_end is running");
+		assert.match(result.content[0].text, /Completed Stardock loop/);
+		assert.equal(messages.length, 1, "completion should not send a follow-up user message");
 		assert.equal(entries.at(-1)?.customType, "stardock");
 		assert.match(String((entries.at(-1)?.data as any).banner), /STARDOCK LOOP COMPLETE: Complete_Loop/);
 		assert.ok(notifications.some((message) => message.includes("STARDOCK LOOP COMPLETE: Complete_Loop")));
@@ -394,26 +326,26 @@ test("completion marker completes loop without queuing a user message", async ()
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
-test("completion marker is blocked by unreviewed implementer WorkerRun", async () => {
+test("stardock_complete is blocked by unreviewed implementer WorkerRun", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
-		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const { tools, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
+		const complete = tools.get("stardock_complete");
 		assert.ok(start);
+		assert.ok(complete);
 
 		await start.execute("tool-complete-blocked", { name: "Complete Blocked", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
 		const rawState = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Blocked"), "utf-8"));
 		rawState.workerRuns = [{ id: "run1", role: "implementer", status: "needs_review", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }];
 		fs.writeFileSync(statePath(cwd, "Complete_Blocked"), JSON.stringify(rawState, null, 2));
 
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
-		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "<promise>COMPLETE</promise>" }] }] }, ctx);
+		const result = await complete.execute("tool-complete-blocked-result", {}, undefined, undefined, ctx);
 
 		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Blocked"), "utf-8"));
 		assert.equal(state.status, "active");
-		assert.match(messages.at(-1)?.content ?? "", /completion blocked/);
-		assert.match(messages.at(-1)?.content ?? "", /stardock_brief_worker/);
+		assert.match(result.content[0].text, /completion blocked/);
+		assert.match(result.content[0].text, /stardock_worker/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -422,7 +354,7 @@ test("completion marker is blocked by unreviewed implementer WorkerRun", async (
 test("archive moves managed run folders under archive", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
-		const { tools, commands, handlers, ctx } = makeHarness(cwd);
+		const { tools, commands, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
 		assert.ok(start);
 
@@ -438,19 +370,9 @@ test("archive moves managed run folders under archive", async () => {
 			ctx,
 		);
 
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
-		await agentEnd(
-			{
-				messages: [
-					{
-						role: "assistant",
-						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
-					},
-				],
-			},
-			ctx,
-		);
+		const complete = tools.get("stardock_complete");
+		assert.ok(complete);
+		await complete.execute("tool-archive-complete", {}, undefined, undefined, ctx);
 
 		const stardock = commands.get("stardock");
 		assert.ok(stardock);

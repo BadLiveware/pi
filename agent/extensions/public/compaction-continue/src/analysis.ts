@@ -3,7 +3,7 @@ import { WATCHDOG_ANSWER_TOOL } from "./model.ts";
 
 // Pattern catalog: PATTERNS.md — update when adding/removing/changing detection patterns.
 
-export type LoopPromptKind = "ralph" | "stardock";
+export type LoopPromptKind = "ralph";
 
 export interface RalphPromptInfo {
 	key: string;
@@ -117,17 +117,12 @@ function watchdogAnswerDoneValue(message: unknown): boolean | undefined {
 	return undefined;
 }
 
-function isLoopDoneToolResultMessage(message: unknown, kind: LoopPromptKind): boolean {
-	const toolName = kind === "stardock" ? "stardock_done" : "ralph_done";
-	return messageRole(message) === "toolResult" && messageToolName(message) === toolName && !messageIsError(message);
+function isLoopDoneToolResultMessage(message: unknown, _kind: LoopPromptKind): boolean {
+	return messageRole(message) === "toolResult" && messageToolName(message) === "ralph_done" && !messageIsError(message);
 }
 
 export function isRalphLoopPromptText(text: string): boolean {
 	return /RALPH LOOP:/i.test(text) || (/You are in a Ralph loop/i.test(text) && /ralph_done/i.test(text));
-}
-
-export function isStardockLoopPromptText(text: string): boolean {
-	return /STARDOCK LOOP:/i.test(text) || (/You are in a Stardock loop/i.test(text) && /stardock_done/i.test(text));
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -142,43 +137,37 @@ function makeLoopPromptKey(text: string, prompt: Omit<RalphPromptInfo, "key">): 
 	return `${prompt.loop ?? "unknown"}:${prompt.iteration ?? 0}:${fingerprint}`;
 }
 
-function loopPrompt(kind: LoopPromptKind, text: string, timestamp: number, sourceEntryId?: string): RalphPromptInfo | undefined {
-	const headerLabel = kind === "stardock" ? "STARDOCK LOOP" : "RALPH LOOP";
-	const doneTool = kind === "stardock" ? "stardock_done" : "ralph_done";
-	const loopName = kind === "stardock" ? "Stardock" : "Ralph";
-	const taskPathPattern = kind === "stardock" ? /\.stardock\/runs\/([^/\s)]+)\/task\.md\b/i : /\.ralph\/([^\s)]+)\b/i;
-	const header = text.match(new RegExp(`${headerLabel}:\\s*([^|\\n]+)(?:\\s*\\|\\s*Iteration\\s+(\\d+)\\/(\\d+))?`, "i"));
-	const instructionIteration = text.match(new RegExp(`You are in a ${loopName} loop\\s*\\(iteration\\s+(\\d+)\\s+of\\s+(\\d+)\\)`, "i"));
-	const taskFile = text.match(taskPathPattern);
+function loopPrompt(text: string, timestamp: number, sourceEntryId?: string): RalphPromptInfo | undefined {
+	const header = text.match(/RALPH LOOP:\s*([^|\n]+)(?:\s*\|\s*Iteration\s+(\d+)\/(\d+))?/i);
+	const instructionIteration = text.match(/You are in a Ralph loop\s*\(iteration\s+(\d+)\s+of\s+(\d+)\)/i);
+	const taskFile = text.match(/\.ralph\/([^\s)]+)\b/i);
 	const loop = (header?.[1] ?? taskFile?.[1]?.replace(/\.md$/i, ""))?.trim();
 	const iteration = parsePositiveInt(header?.[2]) ?? parsePositiveInt(instructionIteration?.[1]);
 	const maxIterations = parsePositiveInt(header?.[3]) ?? parsePositiveInt(instructionIteration?.[2]);
-	const hasPrompt = kind === "stardock" ? isStardockLoopPromptText(text) : isRalphLoopPromptText(text);
-	if (!hasPrompt || (!header && !instructionIteration && !taskFile && !text.includes(doneTool))) return undefined;
+	if (!isRalphLoopPromptText(text) || (!header && !instructionIteration && !taskFile && !text.includes("ralph_done"))) return undefined;
 	const prompt = { loop, iteration, maxIterations, sourceEntryId, timestamp };
 	return { ...prompt, key: makeLoopPromptKey(text, prompt) };
 }
 
 export function parseRalphPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): RalphPromptInfo | undefined {
-	return loopPrompt("ralph", text, timestamp, sourceEntryId);
-}
-
-function parseStardockPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): RalphPromptInfo | undefined {
-	return loopPrompt("stardock", text, timestamp, sourceEntryId);
+	return loopPrompt(text, timestamp, sourceEntryId);
 }
 
 function parseLoopPrompt(text: string, timestamp = Date.now(), sourceEntryId?: string): { kind: LoopPromptKind; prompt: RalphPromptInfo } | undefined {
 	const ralph = parseRalphPrompt(text, timestamp, sourceEntryId);
-	if (ralph) return { kind: "ralph", prompt: ralph };
-	const stardock = parseStardockPrompt(text, timestamp, sourceEntryId);
-	if (stardock) return { kind: "stardock", prompt: stardock };
-	return undefined;
+	return ralph ? { kind: "ralph", prompt: ralph } : undefined;
+}
+
+function stripQuotedExamples(text: string): string {
+	return text
+		.replace(/```[\s\S]*?```/g, "\n")
+		.replace(/~~~[\s\S]*?~~~/g, "\n")
+		.replace(/^\s*>.*$/gm, "\n");
 }
 
 export function assistantRequestsContinuation(text: string): boolean {
-	const normalized = text.replace(/[’]/g, "'").trim().toLowerCase();
+	const normalized = stripQuotedExamples(text).replace(/[’]/g, "'").trim().toLowerCase();
 	if (!normalized) return false;
-	if (normalized.includes("<promise>complete</promise>")) return false;
 	if (/\b(blocked|paused|waiting for|cannot proceed|can't proceed|unable to proceed)\b/.test(normalized)) return false;
 	if (/\bneed (your|user) (input|decision|confirmation|approval)\b/.test(normalized)) return false;
 	if (/\bplease (confirm|advise|decide)|\bshould i\b|\bdo you want\b/.test(normalized)) return false;
@@ -272,7 +261,7 @@ function entryMessage(entry: SessionEntry): unknown | undefined {
 	return entry.type === "message" ? entry.message : undefined;
 }
 
-function analyzeLoopBranchForStall(entries: SessionEntry[], timestamp = Date.now(), kinds: LoopPromptKind[] = ["ralph", "stardock"]): RalphBranchAnalysis {
+function analyzeLoopBranchForStall(entries: SessionEntry[], timestamp = Date.now(), kinds: LoopPromptKind[] = ["ralph"]): RalphBranchAnalysis {
 	let promptIndex = -1;
 	let prompt: RalphPromptInfo | undefined;
 	let kind: LoopPromptKind | undefined;

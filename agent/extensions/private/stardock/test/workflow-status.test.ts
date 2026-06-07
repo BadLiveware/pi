@@ -104,7 +104,8 @@ test("workflow status reports ready to complete after passing final report", () 
 	});
 	const status = evaluateWorkflowStatus(state);
 	assert.equal(status.state, "ready_to_complete");
-	assert.equal(status.recommendedActions[0].command, "<promise>COMPLETE</promise>");
+	assert.equal(status.recommendedActions[0].tool, "stardock_complete");
+	assert.deepEqual(status.recommendedActions[0].args, { includeState: true });
 });
 
 test("workflow status reports completed loops", () => {

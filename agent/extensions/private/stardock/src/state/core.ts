@@ -7,7 +7,6 @@
  */
 
 export const STARDOCK_DIR = ".stardock";
-export const COMPLETE_MARKER = "<promise>COMPLETE</promise>";
 
 export const DEFAULT_TEMPLATE = `# Task
 

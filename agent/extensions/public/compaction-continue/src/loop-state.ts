@@ -4,7 +4,7 @@ import type { ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-a
 import { assistantStoppedForContextLimit } from "./analysis.ts";
 
 type LoopStatus = "active" | "paused" | "completed";
-export type LoopKind = "ralph" | "stardock";
+export type LoopKind = "ralph";
 
 export interface RalphState {
 	kind?: LoopKind;
@@ -20,10 +20,6 @@ type LoopCandidate = { state: RalphState; mtimeMs: number };
 
 function ralphDir(ctx: ExtensionContext): string {
 	return path.resolve(ctx.cwd, ".ralph");
-}
-
-function stardockRunsDir(ctx: ExtensionContext): string {
-	return path.resolve(ctx.cwd, ".stardock", "runs");
 }
 
 function stateStatus(state: RalphState): LoopStatus {
@@ -72,23 +68,8 @@ function activeRalphCandidates(ctx: ExtensionContext): LoopCandidate[] {
 	return candidates;
 }
 
-function activeStardockCandidates(ctx: ExtensionContext): LoopCandidate[] {
-	const dir = stardockRunsDir(ctx);
-	if (!fs.existsSync(dir)) return [];
-
-	const candidates: LoopCandidate[] = [];
-	for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-		if (!entry.isDirectory()) continue;
-		const filePath = path.join(dir, entry.name, "state.json");
-		const state = readState(filePath, "stardock");
-		if (!state || stateStatus(state) !== "active") continue;
-		candidates.push({ state, mtimeMs: mtimeMs(filePath) });
-	}
-	return candidates;
-}
-
 export function findMostRecentActiveLoop(ctx: ExtensionContext): RalphState | undefined {
-	const candidates = [...activeRalphCandidates(ctx), ...activeStardockCandidates(ctx)];
+	const candidates = activeRalphCandidates(ctx);
 	candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
 	return candidates[0]?.state;
 }

@@ -204,7 +204,7 @@ Done(action) ==
               /\ currentLoop' = FALSE
               /\ pendingPrompt' = FALSE
 
-CompletionMarker ==
+CompletionTool ==
     /\ status = "active"
     /\ status' = "completed"
     /\ currentLoop' = FALSE
@@ -235,7 +235,7 @@ Next ==
     \/ \E i \in Iterations : ReportAttemptBad(i)
     \/ \E i \in Iterations : ReportAttemptScaffold(i)
     \/ \E action \in BriefActions : Done(action)
-    \/ CompletionMarker
+    \/ CompletionTool
     \/ StopOrPause
 
 Spec == Init /\ [][Next]_vars

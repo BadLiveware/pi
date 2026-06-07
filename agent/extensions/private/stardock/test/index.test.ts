@@ -11,6 +11,7 @@ test("stardock registers tools and commands", () => {
 		const { tools, commands, handlers } = makeHarness(cwd);
 		assert.ok(tools.has("stardock_start"));
 		assert.ok(tools.has("stardock_done"));
+		assert.ok(tools.has("stardock_complete"));
 		assert.ok(tools.has("stardock_state"));
 		assert.ok(tools.has("stardock_ledger"));
 		assert.ok(tools.has("stardock_brief"));

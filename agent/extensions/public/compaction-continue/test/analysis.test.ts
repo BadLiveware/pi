@@ -8,14 +8,13 @@ import {
 	assistantRequestsContinuation,
 	assistantRequestsRalphContinuation,
 	assistantStoppedForContextLimit,
-	isStardockLoopPromptText,
 	parseRalphPrompt,
 	shouldRecoverStalledAssistantTurn,
 	userRequestsSimpleContinuation,
 	WATCHDOG_ANSWER_TOOL,
 	WATCHDOG_NUDGE_PROMPT,
 } from "../index.ts";
-import { messageEntry, ralphPrompt, stardockPrompt } from "./shared.ts";
+import { messageEntry, ralphPrompt } from "./shared.ts";
 
 describe("Ralph idle watch detection", () => {
 	it("parses Ralph loop prompts", () => {
@@ -44,7 +43,22 @@ describe("Ralph idle watch detection", () => {
 			true,
 		);
 		assert.equal(assistantRequestsContinuation("I’m blocked waiting for your decision before proceeding."), false);
-		assert.equal(assistantRequestsContinuation("<promise>COMPLETE</promise>"), false);
+	});
+
+	it("ignores continuation examples quoted in code blocks", () => {
+		assert.equal(
+			assistantRequestsContinuation(
+				[
+					"I'd replace the watchdog prompt with this:",
+					"```text",
+					"Answer `watchdog_answer(done: false)` if any explicit larger work remains.",
+					"Then continue with the next concrete open item instead of replying about the nudge.",
+					"```",
+					"Main fix: scope done to the whole active work set.",
+				].join("\n"),
+			),
+			false,
+		);
 	});
 
 	it("recognizes simple user continuation nudges", () => {
@@ -54,14 +68,17 @@ describe("Ralph idle watch detection", () => {
 	});
 
 	it("uses an explicit self-checking watchdog nudge", () => {
+		assert.match(WATCHDOG_NUDGE_PROMPT, /<watchdog_nudge source="pi-compaction-continue" not_user_request="true">/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /Automated watchdog nudge/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /not a new user request/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /does not mean more work is required/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /Do not acknowledge this nudge in prose/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, /whole active user-visible work set/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, /explicit or tracked larger work remains/);
+		assert.match(WATCHDOG_NUDGE_PROMPT, /requested, planned, or tracked/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, new RegExp(WATCHDOG_ANSWER_TOOL));
 		assert.match(WATCHDOG_NUDGE_PROMPT, /done: true/);
 		assert.match(WATCHDOG_NUDGE_PROMPT, /done: false/);
-		assert.match(WATCHDOG_NUDGE_PROMPT, /<promise>COMPLETE<\/promise>/);
 	});
 
 	it("flags the observed stalled pattern after a Ralph prompt", () => {
@@ -155,55 +172,32 @@ describe("Ralph idle watch detection", () => {
 		assert.equal(analysis.hadToolResultSincePreviousUser, true);
 	});
 
-	it("treats stardock prompts as loop prompts for parsing helpers", () => {
-		assert.equal(isStardockLoopPromptText("🔄 STARDOCK LOOP: demo | Iteration 1/10\n\nYou are in a Stardock loop (iteration 1 of 10). Call stardock_done when not complete."), true);
-	});
-
-	it("recovers a Stardock compaction stall with a blank length-stopped assistant", () => {
+	it("does not treat Stardock prompts as compaction loop prompts", () => {
+		const stardockPrompt = "🔄 STARDOCK LOOP: demo | Iteration 1/10\nCall stardock_done when not complete.";
 		const entries: SessionEntry[] = [
 			messageEntry("user-stardock", "user", [{ type: "text", text: stardockPrompt }]),
-			messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "read", arguments: { path: ".stardock/runs/excession-phase-6-solver-and-model-checking-prototypes/task.md" } }]),
+			messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "read", arguments: { path: ".stardock/runs/demo/task.md" } }]),
 			messageEntry("tool-result", "toolResult", [{ type: "text", text: "Implement all slice items." }], { toolName: "read", isError: false }),
-			messageEntry("assistant-length", "assistant", [{ type: "thinking", thinking: "Need to continue." }], { stopReason: "length" }),
-		];
-
-		const analysis = analyzeCompactionRecovery(entries, { hasActiveLoop: true, isOverflow: false, timestamp: 123 });
-		assert.equal(analysis.shouldRecover, true);
-		assert.equal(analysis.kind, "stardock");
-		assert.equal(analysis.reason, "stardock-prompt-has-no-assistant-response");
-		assert.equal(analysis.ralph?.kind, "stardock");
-		assert.equal(analysis.ralph?.prompt?.loop, "excession-phase-6-solver-and-model-checking-prototypes");
-		assert.equal(analysis.ralph?.prompt?.iteration, 1);
-	});
-
-	it("recovers a Stardock compaction stall when the assistant only acknowledges context after tool progress", () => {
-		const entries: SessionEntry[] = [
-			messageEntry("user-stardock", "user", [{ type: "text", text: stardockPrompt }]),
-			messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "edit", arguments: { path: ".stardock/runs/excession-phase-6-solver-and-model-checking-prototypes/progress-log.md" } }]),
-			messageEntry("tool-result", "toolResult", [{ type: "text", text: "Successfully replaced 1 block(s)." }], { toolName: "edit", isError: false }),
-			messageEntry("assistant-context-ack", "assistant", [{ type: "text", text: "Understood. I’ll prefer visible context and reread files directly; I’ll only use `mrc_lookup` if needed." }]),
-		];
-
-		const analysis = analyzeCompactionRecovery(entries, { hasActiveLoop: true, isOverflow: false, timestamp: 123 });
-		assert.equal(analysis.shouldRecover, true);
-		assert.equal(analysis.kind, "stardock");
-		assert.equal(analysis.reason, "stardock-context-ack-after-tool-progress");
-	});
-
-	it("does not recover once stardock_done completed the prompt", () => {
-		const entries: SessionEntry[] = [
-			messageEntry("user-stardock", "user", [{ type: "text", text: stardockPrompt }]),
-			messageEntry("assistant-tool", "assistant", [{ type: "toolCall", name: "stardock_done", arguments: {} }]),
-			messageEntry("tool-result", "toolResult", [{ type: "text", text: "Iteration 1 complete. Next iteration queued." }], {
-				toolName: "stardock_done",
-				isError: false,
-			}),
-			messageEntry("assistant-final", "assistant", [{ type: "text", text: "Advanced Stardock." }]),
+			messageEntry("assistant-final", "assistant", [{ type: "text", text: "Understood. I’ll prefer visible context and reread files directly." }]),
 		];
 
 		const analysis = analyzeCompactionRecovery(entries, { hasActiveLoop: true, isOverflow: false, timestamp: 123 });
 		assert.equal(analysis.shouldRecover, false);
-		assert.equal(analysis.reason, "stardock-done-after-latest-prompt");
+		assert.equal(analysis.reason, "active-loop-not-present-in-session-branch");
+	});
+
+	it("keeps overflow recovery generic near Stardock prompts", () => {
+		const stardockPrompt = "🔄 STARDOCK LOOP: demo | Iteration 1/10\nCall stardock_done when not complete.";
+		const entries: SessionEntry[] = [
+			messageEntry("user-stardock", "user", [{ type: "text", text: stardockPrompt }]),
+			messageEntry("assistant-length", "assistant", [{ type: "thinking", thinking: "Need to continue." }], { stopReason: "length" }),
+		];
+
+		const analysis = analyzeCompactionRecovery(entries, { hasActiveLoop: false, isOverflow: true, timestamp: 123 });
+		assert.equal(analysis.shouldRecover, true);
+		assert.equal(analysis.kind, "overflow");
+		assert.equal(analysis.reason, "context-overflow-compaction");
+		assert.equal(analysis.ralph?.prompt, undefined);
 	});
 
 	it("does not recover once ralph_done completed the prompt", () => {

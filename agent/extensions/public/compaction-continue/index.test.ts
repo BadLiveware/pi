@@ -12,15 +12,12 @@ describe("compaction-continue extension surface", () => {
 		assert.match(WATCHDOG_NUDGE_PROMPT, /watchdog nudge/i);
 	});
 
-	it("buildWatchdogNudgePrompt includes COMPLETE marker when in a loop", () => {
-		const prompt = buildWatchdogNudgePrompt(true);
-		assert.match(prompt, /<promise>COMPLETE<\/promise>/);
-		assert.match(prompt, /emit the loop completion marker/);
-	});
-
-	it("buildWatchdogNudgePrompt forbids COMPLETE marker when no loop is active", () => {
-		const prompt = buildWatchdogNudgePrompt(false);
-		assert.match(prompt, /do not emit.*COMPLETE/);
-		assert.match(prompt, /no active loop/);
+	it("buildWatchdogNudgePrompt stays generic and avoids loop completion instructions", () => {
+		const prompt = buildWatchdogNudgePrompt();
+		assert.match(prompt, /watchdog_answer/);
+		assert.match(prompt, /done: true/);
+		assert.match(prompt, /done: false/);
+		assert.doesNotMatch(prompt, /stardock/i);
+		assert.doesNotMatch(prompt, /ralph_done|stardock_done/);
 	});
 });

@@ -5,7 +5,7 @@
 import { appendActiveBriefPromptSection, appendLedgerSummarySection, appendRecordedWorkerContextSection, appendTaskSourceSection, currentBrief } from "../briefs.ts";
 import { appendGovernorMemoryPromptSection } from "../governor-state.ts";
 import { latestGovernorDecision, maybeCreateRecursiveOutsideRequests, pendingOutsideRequests } from "../outside-requests.ts";
-import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, COMPLETE_MARKER, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
+import { compactText, type IterationBrief, type LoopMode, type LoopModeHandler, type LoopModeState, type LoopState, type PromptReason, type RecursiveModeState, type RecursiveResetPolicy, type RecursiveStopCriterion, DEFAULT_REFLECT_INSTRUCTIONS, EVOLVE_IMPLEMENTATION_GATES } from "../state/core.ts";
 import { formatWorkerEvidencePromotionLines, WORKER_EVIDENCE_PROMOTION_NOTE } from "../worker-evidence-guidance.ts";
 import { defaultModeState, defaultRecursiveModeState, numberOrDefault } from "../state/modes.ts";
 import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
@@ -20,7 +20,7 @@ function workflowGateInstruction(status: WorkflowStatus): string | undefined {
 	if (status.state === "needs_breakout_decision") return "Do not continue as if unblocked until the breakout decision/gap is packaged, resolved, or explicitly accepted.";
 	if (status.state === "blocked") return "Do not continue implementation until the blocked/paused state is resolved.";
 	if (status.state === "ready_for_final_verification") return "Prioritize final verification/reporting before starting new implementation work.";
-	if (status.state === "ready_to_complete") return "Do not start new implementation work; finish by responding with the completion marker unless you find a concrete readiness gap.";
+	if (status.state === "ready_to_complete") return "Do not start new implementation work; finish by calling stardock_complete unless you find a concrete readiness gap.";
 	return undefined;
 }
 
@@ -63,10 +63,10 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	if (activeBrief) {
 		parts.push(`6. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
 		parts.push(`7. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
-		parts.push(`8. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL briefs are done.`);
+		parts.push("8. Create the next brief for remaining work, or call stardock_complete when ALL briefs are done.");
 		parts.push(`9. Otherwise, call stardock_done to proceed to the next iteration.`);
 	} else {
-		parts.push(`6. Create the next brief for remaining work, or respond with ${COMPLETE_MARKER} when ALL work is done.`);
+		parts.push("6. Create the next brief for remaining work, or call stardock_complete when ALL work is done.");
 		parts.push(`7. Otherwise, call stardock_done to proceed to the next iteration.`);
 	}
 	if (state.itemsPerIteration > 0) parts.push(`\nAim to make measurable progress on the brief this iteration.`);
@@ -140,7 +140,7 @@ const checklistModeHandler: LoopModeHandler = {
 			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
 		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
-		instructions += `- When FULLY COMPLETE: ${COMPLETE_MARKER}\n`;
+		instructions += "- When FULLY COMPLETE: call stardock_complete\n";
 		instructions += `- Otherwise, call stardock_done tool to proceed to next iteration`;
 		return instructions;
 	},
@@ -185,7 +185,7 @@ const recursiveModeHandler: LoopModeHandler = {
 		}
 		parts.push("4. Record the hypothesis, action summary, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.");
 		parts.push(`5. Apply reset policy: ${modeState.resetPolicy}.`);
-		parts.push(`6. When the objective is met or stop criteria apply, respond with: ${COMPLETE_MARKER}`);
+		parts.push("6. When the objective is met or stop criteria apply, call stardock_complete.");
 		parts.push("7. Otherwise, call the stardock_done tool to proceed to the next bounded attempt.");
 		if (modeState.governEvery || modeState.outsideHelpEvery || modeState.outsideHelpOnStagnation) {
 			parts.push("\nOutside-help cues are configured. If this attempt is blocked, stagnant, or out of ideas, record the needed help in the task file before calling stardock_done.");
@@ -208,7 +208,7 @@ const recursiveModeHandler: LoopModeHandler = {
 			"- Prefer stardock_worker for non-trivial scoped implementation or governance request help to preserve governor context; use list_pi_models before a non-default model override and keep implementer runs serial/reviewed.",
 			`- ${WORKER_EVIDENCE_PROMOTION_NOTE}`,
 			"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.",
-			`- When FULLY COMPLETE or stop criteria apply: ${COMPLETE_MARKER}`,
+			"- When FULLY COMPLETE or stop criteria apply: call stardock_complete",
 			"- Otherwise, call stardock_done tool to proceed to next iteration.",
 		]
 			.filter((line): line is string => Boolean(line))

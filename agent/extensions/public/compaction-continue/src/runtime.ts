@@ -236,10 +236,9 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			}
 
 			lastRecoveredCompactionId = compactionId;
-			const loopLabel = recoveryKind === "stardock" ? "Stardock" : "Ralph";
-			const title = recoveryKind === "ralph" || recoveryKind === "stardock" ? `Unresolved ${loopLabel} loop after compaction` : "Context overflow compaction finished";
+			const title = recoveryKind === "ralph" ? "Unresolved Ralph loop after compaction" : "Context overflow compaction finished";
 			sendNudge(ctx, {
-				content: buildWatchdogNudgePrompt(Boolean(loop)),
+				content: buildWatchdogNudgePrompt(),
 				details: {
 					kind: "watchdog_nudge",
 					recoveryKind,
@@ -258,8 +257,8 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 					timestamp: new Date().toISOString(),
 				},
 				notification:
-					recoveryKind === "ralph" || recoveryKind === "stardock"
-						? `Compaction left an unresolved ${loopLabel} loop idle; sending watchdog nudge.`
+					recoveryKind === "ralph"
+						? "Compaction left an unresolved Ralph loop idle; sending watchdog nudge."
 						: "Context overflow compaction finished; sending watchdog nudge.",
 			});
 		}, RECOVERY_DELAY_MS);
@@ -269,37 +268,30 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 		clearAssistantIdleTimer();
 		pendingAssistantIdleTimer = setTimeout(() => {
 			pendingAssistantIdleTimer = undefined;
-			const activeLoop = findMostRecentActiveLoop(ctx);
-			const loop = activeLoop?.name;
-			const iteration = activeLoop?.iteration;
-			recordCandidate(ctx, "assistant-stall", { recoveryKind: "assistant-stall", reason, loop, iteration });
+			recordCandidate(ctx, "assistant-stall", { recoveryKind: "assistant-stall", reason });
 			if (!enabled) {
-				recordSkip(ctx, { source: "assistant-stall", skipReason: "disabled", recoveryKind: "assistant-stall", reason, loop, iteration });
+				recordSkip(ctx, { source: "assistant-stall", skipReason: "disabled", recoveryKind: "assistant-stall", reason });
 				return;
 			}
 			if (!canSendNudge(ctx)) {
-				recordSkip(ctx, { source: "assistant-stall", skipReason: "not-idle-or-pending", recoveryKind: "assistant-stall", reason, loop, iteration });
+				recordSkip(ctx, { source: "assistant-stall", skipReason: "not-idle-or-pending", recoveryKind: "assistant-stall", reason });
 				return;
 			}
 			if (assistantIdleRecoveryStreak <= 0 || assistantIdleRecoveryStreak > MAX_ASSISTANT_IDLE_RECOVERIES_PER_STREAK) {
-				recordSkip(ctx, { source: "assistant-stall", skipReason: "streak-cap", recoveryKind: "assistant-stall", reason, loop, iteration });
+				recordSkip(ctx, { source: "assistant-stall", skipReason: "streak-cap", recoveryKind: "assistant-stall", reason });
 				return;
 			}
 
 			sendNudge(ctx, {
-				content: buildWatchdogNudgePrompt(Boolean(loop)),
+				content: buildWatchdogNudgePrompt(),
 				details: {
 					kind: "watchdog_nudge",
 					recoveryKind: "assistant-stall",
 					title: "Assistant turn appears stalled",
 					reason,
-					loop,
-					iteration,
 				},
 				entry: {
 					kind: "assistant-stall",
-					loop,
-					iteration,
 					reason,
 					streak: assistantIdleRecoveryStreak,
 					timestamp: new Date().toISOString(),

@@ -61,7 +61,7 @@ test("stardock_final_report records bounded final verification evidence", async 
 				artifactIds: ["a-final-test"],
 				validation: [{ command: "npm test --prefix agent/extensions -- private/stardock/index.test.ts", result: "passed", summary: "Focused Stardock tests passed.", artifactIds: ["a-final-test"] }],
 				unresolvedGaps: ["External service smoke was not run because no credentials were available."],
-				compatibilityNotes: ["Completion marker behavior remains unchanged."],
+				compatibilityNotes: ["Completion tool behavior remains unchanged."],
 				securityNotes: ["No new external side effects."],
 				performanceNotes: ["Report summaries are capped before persistence."],
 				includeState: true,

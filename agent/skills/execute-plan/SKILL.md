@@ -63,7 +63,7 @@ When a plan is intended for Stardock or an active Stardock loop exists, use Star
 
 - For bounded checklist execution, use one active `stardock_brief` for the current execution-spine item. Include the slice objective, bounded task text, relevant acceptance criteria, required context, constraints, source refs, and validation requirements.
 - Use `stardock_ledger` for explicit criteria and compact verification artifact refs. Promote only the active slice's relevant checks; do not blindly distill a whole split plan or long nested checklist into one ledger.
-- When a brief is complete, update criteria/evidence, complete the brief, then create the next brief or use the completion marker only when all scoped work is done.
+- When a brief is complete, update criteria/evidence, complete the brief, then create the next brief or call `stardock_complete` only when all scoped work is done.
 - For unbounded recursive execution, each iteration is one evaluated attempt. Record hypothesis, action summary, validation, result, keep/reset decision, and evidence with `stardock_attempt_report` before `stardock_done` when available.
 - Near substantial completion, use `stardock_policy({ action: "completion" })` when criteria/artifacts/final reports exist or risk is high; record `stardock_final_report`, `stardock_auditor`, or `stardock_breakout` when the policy or evidence warrants it.
 

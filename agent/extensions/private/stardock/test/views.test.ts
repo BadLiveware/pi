@@ -53,15 +53,17 @@ test("stardock_state lists and inspects loop summaries", async () => {
 test("active widget summarizes recursive run progress and clears on completion", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
-		const { tools, handlers, statuses, widgets, ctx } = makeHarness(cwd);
+		const { tools, statuses, widgets, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
 		const report = tools.get("stardock_attempt_report");
 		const govern = tools.get("stardock_govern");
 		const answerOutside = tools.get("stardock_outside_answer");
+		const complete = tools.get("stardock_complete");
 		assert.ok(start);
 		assert.ok(report);
 		assert.ok(govern);
 		assert.ok(answerOutside);
+		assert.ok(complete);
 
 		await start.execute(
 			"tool-widget-start",
@@ -122,19 +124,7 @@ test("active widget summarizes recursive run progress and clears on completion",
 		assert.ok(widget.some((line) => line.includes("Outside: 0/1 pending")));
 		assert.ok(widget.some((line) => line.includes("Governor: Use the widget as an at-a-glance companion")));
 
-		const agentEnd = handlers.get("agent_end")?.[0];
-		assert.ok(agentEnd);
-		await agentEnd(
-			{
-				messages: [
-					{
-						role: "assistant",
-						content: [{ type: "text", text: "<promise>COMPLETE</promise>" }],
-					},
-				],
-			},
-			ctx,
-		);
+		await complete.execute("tool-widget-complete", {}, undefined, undefined, ctx);
 		assert.equal(statuses.get("stardock"), undefined);
 		assert.equal(widgets.get("stardock"), undefined);
 	} finally {
