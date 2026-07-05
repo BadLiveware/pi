@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Re-issued the package contents fix under a fresh release version after the 0.3.1 tag failed before publishing.
+
 ## 0.3.1
 
 - Fixed the published package contents so `src/` helper modules imported by `index.ts` are included in npm installs.
