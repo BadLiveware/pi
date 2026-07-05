@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fixed the published package contents so `src/` helper modules imported by `index.ts` are included in npm installs.
+
 ## 0.3.0
 
 - Added cache read/write token and cost fields to the footer `stats` source so custom renderers can show cache activity alongside input, output, totals, and cost.
