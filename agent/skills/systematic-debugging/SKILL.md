@@ -1,6 +1,9 @@
 ---
 name: systematic-debugging
-description: Use when a reproducible failure or unclear bug needs root-cause investigation before fixing: failing test/build command, runtime error, regression, or unexpected behavior. Do not use for advisory diagnostics or routine validation triage after an authoritative check passes.
+description: >-
+  Use when a reproducible failure or unclear bug needs root-cause investigation before fixing:
+  failing test/build command, runtime error, regression, or unexpected behavior. Do not use for
+  advisory diagnostics or routine validation triage after an authoritative check passes.
 ---
 
 # Systematic Debugging
