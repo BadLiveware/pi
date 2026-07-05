@@ -80,7 +80,7 @@ jobs:
 
       - name: Type-check public extensions
         working-directory: agent/extensions
-        run: npm run typecheck
+        run: npm run typecheck:public
 
       - name: Verify package contents
         working-directory: agent/extensions
