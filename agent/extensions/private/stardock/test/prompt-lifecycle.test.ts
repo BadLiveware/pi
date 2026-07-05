@@ -71,6 +71,11 @@ test("checklist prompt includes ledger summary when brief has linked criteria", 
 		assert.match(messages[1].content, /## Worker Evidence Promotion/);
 		assert.match(messages[1].content, /Worker output is advisory until the parent records it as Stardock state/);
 		assert.match(messages[1].content, /does not automatically turn worker claims into passed criteria/);
+		assert.match(messages[1].content, /role: "implementer"/);
+		assert.match(messages[1].content, /do not satisfy implementation delegation/);
+		assert.match(messages[1].content, /Direct parent edits are exceptions/);
+		assert.match(messages[1].content, /single-file, at most two localized hunks/);
+		assert.match(messages[1].content, /generic "continue" does not count/);
 
 		// Create a brief linking the two criteria
 		await brief.execute("tool-brief", {
@@ -92,6 +97,11 @@ test("checklist prompt includes ledger summary when brief has linked criteria", 
 		const prompt3 = messages[2].content;
 		assert.match(prompt3, /## Criteria/);
 		assert.match(prompt3, /Worker output is advisory until the parent records it as Stardock state/);
+		assert.match(prompt3, /role: "implementer"/);
+		assert.match(prompt3, /do not satisfy implementation delegation/);
+		assert.match(prompt3, /Direct parent edits are exceptions/);
+		assert.match(prompt3, /single-file, at most two localized hunks/);
+		assert.match(prompt3, /generic "continue" does not count/);
 		assert.match(prompt3, /c-summary-01/);
 		assert.match(prompt3, /c-summary-02/);
 		assert.match(prompt3, /First criterion/);

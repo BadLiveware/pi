@@ -47,7 +47,7 @@ export type WorkerInvocationResult = {
 } | { ok: false; error: string };
 
 const ROLE_DEFINITIONS: Record<StardockWorkerRole, StardockWorkerRoleDefinition> = {
-	explorer: { role: "explorer", scopes: ["brief"], mutability: "read_only", expectedMutation: false, defaultAgent: "scout", description: "Map files, symbols, tests, validation plans, context gaps, risks, and review hints for one brief." },
+	explorer: { role: "explorer", scopes: ["brief"], mutability: "read_only", expectedMutation: false, defaultAgent: "scout", description: "Map files, symbols, tests, validation plans, context gaps, risks, and review hints for one brief; does not satisfy implementation delegation." },
 	test_runner: { role: "test_runner", scopes: ["brief"], mutability: "read_only", expectedMutation: false, defaultAgent: "delegate", description: "Run bounded validation for selected criteria without editing or fixing failures." },
 	implementer: { role: "implementer", scopes: ["brief"], mutability: "mutable", expectedMutation: true, defaultAgent: "implementer", description: "Perform one scoped mutable implementation attempt for one brief." },
 	governor: { role: "governor", scopes: ["outside_request", "loop"], mutability: "read_only", expectedMutation: false, defaultAgent: "oracle", description: "Emit a bounded steering decision for the loop." },
@@ -113,6 +113,7 @@ export function workerOutputContract(role: StardockWorkerRole): string {
 			"Return a compact explorer WorkerReport.",
 			"Include evaluatedCriterionIds, likelyFiles, likelySymbols, likelyTests, validationPlan, contextGaps, risks, openQuestions, suggestedNextMove, and reviewHints.",
 			"Do not edit files, run broad validation, spawn agents, or change Stardock state.",
+			"State clearly that explorer output is mapping only and does not satisfy implementation delegation for non-trivial code edits.",
 		].join(" ");
 	}
 	if (role === "test_runner") {
@@ -150,6 +151,7 @@ export function workerInstructions(role: StardockWorkerRole): string {
 			"Do not edit files. Do not run broad validation. Do not spawn agents. Do not call Stardock tools or mutate Stardock state.",
 			"Inspect only enough repository context to map likely files, symbols, tests, validation commands, context gaps, risks, open questions, and parent review hints for this brief.",
 			"Treat code-intel/search results as routing evidence only; do not report defects until the parent inspects or validates them.",
+			"Your result does not satisfy implementation delegation for non-trivial code edits; if the next step is mutation, tell the parent to run a Stardock implementer worker or record a direct-edit exception before editing.",
 			WORKER_EVIDENCE_PROMOTION_NOTE,
 		].join("\n");
 	}

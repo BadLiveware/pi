@@ -63,7 +63,7 @@ Prefer concrete repo-defined agents over generic builtins when guidance names a 
 | Impact-aware review | `impact-reviewer` |
 | Generic code/plan/diff audit | `auditor` |
 | Feynman research workflows | `feynman-researcher`, `feynman-verifier`, `feynman-reviewer`, `feynman-writer` |
-| Stardock active brief or governance work | `stardock_worker` (or `stardock_brief_worker` compatibility wrapper for brief-scoped runs), not raw `subagent` |
+| Stardock active brief or governance work | `stardock_worker` (or `stardock_brief_worker` compatibility wrapper for brief-scoped runs), not raw `subagent`; for non-trivial code mutation use `role: "implementer"` before parent edits, because explorer/test_runner/reviewer/auditor roles do not satisfy implementation delegation |
 
 Use a generic builtin only as an explicit degraded fallback when the intended custom agent/tool is unavailable; record the degraded path. For research-heavy or source-sensitive work, prefer configured researcher/verifier/reviewer/writer-style agents when available; otherwise use a configured general-purpose agent with a bounded prompt.
 
@@ -86,7 +86,7 @@ Validation: <how the parent will check the result>
 ```
 
 ## Common Failure Modes
-- “I can just do it myself.” For non-trivial bounded work, delegate/downshift one useful leaf unless an avoid condition applies.
+- “I can just do it myself.” For non-trivial bounded work, delegate/downshift one useful leaf unless an avoid condition applies. In a Stardock active brief, one scout/explorer does not satisfy implementation delegation; run `stardock_worker` with `role: "implementer"` before parent edits unless a direct-edit exception is explicit. Treat multi-file or new-file slices as non-trivial, not trivial/surgical.
 - “The strongest model is safest.” Do not spend scarce top-model quota on mechanical, easy-to-verify work.
 - “It is enabled/authenticated, so it is usable.” Require catalog `support: yes` and `enabled: yes`.
 - “Spark is cheap because it is fast.” Spark is premium latency.

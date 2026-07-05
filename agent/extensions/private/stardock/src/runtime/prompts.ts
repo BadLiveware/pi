@@ -57,17 +57,19 @@ export function buildChecklistPrompt(state: LoopState, _taskContent: string, rea
 	parts.push(`You are in a Stardock loop (iteration ${state.iteration}${state.maxIterations > 0 ? ` of ${state.maxIterations}` : ""}).\n`);
 	parts.push(`1. If no active brief is shown above, create one with stardock_brief to scope this iteration.`);
 	parts.push(`2. Work on the active brief's bounded task. Update criterion statuses with stardock_ledger as you make progress.`);
-	parts.push(`3. Prefer Stardock worker roles for non-trivial implementation or governance-request help so the governor preserves context and can match worker model capability to scope complexity: call stardock_worker({ action: "run", role: "explorer" | "test_runner" | "implementer" | "governor" | "auditor" | "researcher" | "reviewer", briefId, requestId, model: "provider/model" }) when overriding the model, or omit model for the default. Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision. Use list_pi_models before setting a non-default model. Implementer workers are serial mutable workers: start one only for scoped edits, then review/accept or dismiss the WorkerRun before another implementer or completion.`);
-	parts.push(`4. After any worker returns, inspect the WorkerReport or saved output and explicitly record useful validation/artifact/criterion/final-report/auditor/breakout/governor facts with the matching Stardock tools before relying on them as lifecycle evidence.`);
-	parts.push(`5. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
+	parts.push(`3. For non-trivial active-brief implementation, default to stardock_worker({ action: "run", role: "implementer", briefId }) before parent edit/write so the governor preserves context and Stardock owns mutability, result classification, WorkerRun, and WorkerReport evidence. Use explorer/test_runner/reviewer/auditor for mapping, validation, or review only; those roles do not satisfy implementation delegation.`);
+	parts.push(`4. Direct parent edits are exceptions: before the first edit/write for non-trivial brief work, either run the implementer worker or record why parent edits are allowed (trivial/surgical change, unavailable or unsafe worker bridge, or explicit gate/user decision). Trivial/surgical means single-file, at most two localized hunks, no new files, no public contract/schema/config/runtime behavior changes, and obvious validation; multi-file or new-file slices are non-trivial. Unavailable/unsafe bridge means a concrete current blocker such as bridge failure, an unreviewed implementer run, or a policy/user prohibition; latency, time pressure, or a parent-created dirty workspace do not count. Explicit gate/user decision means a current loop instruction to use parent edits; generic "continue" does not count. Decide before editing.`);
+	parts.push(`5. Use list_pi_models before setting a non-default worker model. Implementer workers are serial mutable workers: start one only for scoped edits, then review/accept or dismiss the WorkerRun before another implementer or completion.`);
+	parts.push(`6. After any worker returns, inspect the WorkerReport or saved output and explicitly record useful validation/artifact/criterion/final-report/auditor/breakout/governor facts with the matching Stardock tools before relying on them as lifecycle evidence.`);
+	parts.push(`7. Update the task file (${state.taskFile}) with brief status changes only. Log detailed progress and reflections to progress-log.md.`);
 	if (activeBrief) {
-		parts.push(`6. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
-		parts.push(`7. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
-		parts.push("8. Create the next brief for remaining work, or call stardock_complete when ALL briefs are done.");
-		parts.push(`9. Otherwise, call stardock_done to proceed to the next iteration.`);
+		parts.push(`8. When the active brief's criteria are satisfied and more work remains, call stardock_done({ briefLifecycle: "complete", includeState: true }) to complete the brief and queue the next iteration in one step.`);
+		parts.push(`9. If the active brief should stop routing but remain draft, call stardock_done({ briefLifecycle: "clear" }).`);
+		parts.push("10. Create the next brief for remaining work, or call stardock_complete when ALL briefs are done.");
+		parts.push(`11. Otherwise, call stardock_done to proceed to the next iteration.`);
 	} else {
-		parts.push("6. Create the next brief for remaining work, or call stardock_complete when ALL work is done.");
-		parts.push(`7. Otherwise, call stardock_done to proceed to the next iteration.`);
+		parts.push("8. Create the next brief for remaining work, or call stardock_complete when ALL work is done.");
+		parts.push(`9. Otherwise, call stardock_done to proceed to the next iteration.`);
 	}
 	if (state.itemsPerIteration > 0) parts.push(`\nAim to make measurable progress on the brief this iteration.`);
 
@@ -134,9 +136,11 @@ const checklistModeHandler: LoopModeHandler = {
 		} else {
 			instructions += `- Active brief: ${brief.id} — "${compactBriefTask(brief)}"\n`;
 			instructions += `- Work on the brief's bounded task; update criteria with stardock_ledger\n`;
-			instructions += `- Prefer stardock_worker for non-trivial mapping, validation, scoped implementation, or governance request help so the governor preserves context; use list_pi_models before a non-default model override and choose cheaper/faster or stronger enabled models according to scope complexity\n`;
+			instructions += `- For non-trivial scoped implementation, default to stardock_worker({ action: "run", role: "implementer", briefId }) before parent edit/write; explorer/test_runner/reviewer/auditor runs are mapping/validation/review only and do not satisfy implementation delegation\n`;
+			instructions += `- Direct parent edits require an explicit pre-edit exception: trivial/surgical change, unavailable or unsafe worker bridge, or explicit gate/user decision; trivial/surgical means single-file, at most two localized hunks, no new files, no public contract/schema/config/runtime behavior changes, and obvious validation; unavailable/unsafe bridge requires a concrete current blocker, and generic continue/time pressure/parent-created dirty workspace do not count; decide before editing\n`;
+			instructions += `- Use list_pi_models before a non-default worker model override and choose cheaper/faster or stronger enabled models according to scope complexity\n`;
 			instructions += `- ${WORKER_EVIDENCE_PROMOTION_NOTE}\n`;
-			instructions += `- Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision; implementer runs must be reviewed and accepted/dismissed before another mutable worker or completion\n`;
+			instructions += `- Implementer runs are serial mutable workers and must be reviewed and accepted/dismissed before another mutable worker or completion\n`;
 			instructions += `- When criteria are satisfied and more work remains, prefer stardock_done({ briefLifecycle: "complete", includeState: true }) instead of separate brief-complete and done calls\n`;
 		}
 		instructions += `- Update task file with brief status only; log details to progress-log.md\n`;
@@ -176,7 +180,8 @@ const recursiveModeHandler: LoopModeHandler = {
 		parts.push("Treat this iteration as one bounded implementer attempt, not an open-ended lane.");
 		parts.push("1. Choose or state one concrete hypothesis for improving the objective.");
 		parts.push("2. Make one bounded attempt that tests that hypothesis.");
-		parts.push("Prefer stardock_worker for non-trivial mapping, validation, scoped implementation, or governance request help before the attempt so the governor preserves context and can choose a cheaper/faster or stronger enabled model for the scope. Use list_pi_models before setting a non-default model. Do direct parent edits only for trivial/surgical changes, unavailable or unsafe worker bridge, or an explicit gate/user decision. Implementer runs are serial mutable workers and must be reviewed before another implementer or completion.");
+		parts.push("For non-trivial scoped implementation, default to stardock_worker({ action: \"run\", role: \"implementer\", briefId }) before parent edit/write. Explorer/test_runner/reviewer/auditor workers are mapping, validation, or review only; they do not satisfy implementation delegation.");
+		parts.push("Direct parent edits are exceptions: before the first edit/write for non-trivial attempt work, either run the implementer worker or record why parent edits are allowed (trivial/surgical change, unavailable or unsafe worker bridge, or explicit gate/user decision). Trivial/surgical means single-file, at most two localized hunks, no new files, no public contract/schema/config/runtime behavior changes, and obvious validation; multi-file or new-file attempts are non-trivial. Unavailable/unsafe bridge means a concrete current blocker such as bridge failure, an unreviewed implementer run, or a policy/user prohibition; latency, time pressure, or a parent-created dirty workspace do not count. Explicit gate/user decision means a current loop instruction to use parent edits; generic \"continue\" does not count. Decide before editing. Use list_pi_models before setting a non-default worker model; implementer runs are serial and must be reviewed before another implementer or completion.");
 		parts.push("After any worker returns, inspect the WorkerReport or saved output and explicitly record useful validation/artifact/criterion/final-report/auditor/breakout/governor facts with the matching Stardock tools before relying on them as lifecycle evidence.");
 		if (modeState.validationCommand) {
 			parts.push(`3. Run or explain the validation check: ${modeState.validationCommand}`);
@@ -205,7 +210,8 @@ const recursiveModeHandler: LoopModeHandler = {
 			modeState.validationCommand ? `- Validate with or explain: ${modeState.validationCommand}` : "- Run or describe relevant validation for the attempt.",
 			pending > 0 ? `- There are ${pending} pending outside request(s); include or record answers when relevant.` : undefined,
 			decision?.requiredNextMove ? `- Governor required next move: ${decision.requiredNextMove}` : undefined,
-			"- Prefer stardock_worker for non-trivial scoped implementation or governance request help to preserve governor context; use list_pi_models before a non-default model override and keep implementer runs serial/reviewed.",
+			"- For non-trivial scoped implementation, default to stardock_worker({ action: \"run\", role: \"implementer\", briefId }) before parent edit/write; explorer/test_runner/reviewer/auditor workers do not satisfy implementation delegation.",
+			"- Direct parent edits require an explicit pre-edit exception: trivial/surgical change, unavailable or unsafe worker bridge, or explicit gate/user decision; trivial/surgical means single-file, at most two localized hunks, no new files, no public contract/schema/config/runtime behavior changes, and obvious validation; unavailable/unsafe bridge requires a concrete current blocker, and generic continue/time pressure/parent-created dirty workspace do not count; use list_pi_models before a non-default worker model and keep implementer runs serial/reviewed.",
 			`- ${WORKER_EVIDENCE_PROMOTION_NOTE}`,
 			"- Record hypothesis, actions, validation, result, and keep/reset decision in the task file; use stardock_attempt_report when available.",
 			"- When FULLY COMPLETE or stop criteria apply: call stardock_complete",

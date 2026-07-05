@@ -230,7 +230,7 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 	}
 }
 
-const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("researcher"), Type.Literal("reviewer")], { description: "Worker role. Roles are Stardock-owned prompt/output contracts; pi-subagents is only the execution transport." });
+const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("researcher"), Type.Literal("reviewer")], { description: "Worker role. For non-trivial active-brief implementation, pass implementer before parent edit/write. explorer/test_runner/reviewer/auditor are mapping/validation/review roles and do not satisfy implementation delegation. Roles are Stardock-owned prompt/output contracts; pi-subagents is only the execution transport." });
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
 const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the role complexity." });
 const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
@@ -251,9 +251,9 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 	pi.registerTool({
 		name: "stardock_worker",
 		label: "Run Stardock Worker",
-		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence, with optional model and thinking-level overrides. Use this instead of raw subagent calls for Stardock work. Worker output is advisory until the parent records lifecycle evidence with Stardock tools. Implementer runs are serial and require parent review.",
+		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence, with optional model and thinking-level overrides. Use this instead of raw subagent calls for Stardock work. For non-trivial active-brief code mutation, run role=implementer before parent edit/write; explorer/test_runner/reviewer/auditor do not satisfy implementation delegation. Worker output is advisory until the parent records lifecycle evidence with Stardock tools. Implementer runs are serial and require parent review.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review accepts or dismisses an implementer run." }),
+			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review accepts or dismisses an implementer run. Run implementer before non-trivial active-brief edits unless a direct-parent-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			role: Type.Optional(roleSchema),
 			briefId: Type.Optional(Type.String({ description: "Brief id. Defaults to the active brief for brief-scoped roles." })),
@@ -269,7 +269,7 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 			outputMode: Type.Optional(outputModeSchema),
 			recordResult: Type.Optional(Type.Boolean({ description: "Record the returned result as a compact WorkerReport. Default: true." })),
 			reportId: Type.Optional(Type.String({ description: "WorkerReport id to create/update when recordResult is true. Generated when omitted." })),
-			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false." })),
+			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a parent-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
 			return executeStardockWorkerTool(pi, deps, params as WorkerRunParams, signal, onUpdate, ctx);
