@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Implement an approved bounded coding task as the single writer, preserving scope, validating changes, and escalating unapproved decisions.
-model: openai-codex/gpt-5.4
+model: openai-codex/gpt-5.6-sol
 tools: read, write, edit, grep, find, ls, bash, process, code_search, context7_resolve-library-id, context7_query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, code_intel_replace_symbol, code_intel_insert_relative, excession_excession_model_guide, excession_excession_write_model, excession_excession_validate_model, excession_excession_run_model
 inheritProjectContext: true
 inheritSkills: false

@@ -1,13 +1,13 @@
 ---
 name: validator
 description: Run bounded validation commands and report pass/fail/skipped evidence without editing or fixing failures.
-model: openai-codex/gpt-5.4-mini
+model: openai-codex/gpt-5.6-luna
 tools: read, grep, find, ls, bash, process, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, excession_excession_validate_model, excession_excession_run_model
 inheritProjectContext: true
 inheritSkills: false
 skills: code-intelligence, excession-behavior-modeling
 defaultContext: fresh
-thinking: medium
+thinking: high
 output: false
 defaultProgress: true
 ---

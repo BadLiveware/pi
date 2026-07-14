@@ -1,13 +1,13 @@
 ---
 name: plan-reviewer
 description: Review implementation plans for executable order, topology, acceptance criteria, validation, safety gates, and Stardock handoff readiness.
-model: openai-codex/gpt-5.4
+model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls, bash, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, excession_excession_model_guide
 inheritProjectContext: true
 inheritSkills: false
 skills: code-intelligence
 defaultContext: fresh
-thinking: high
+thinking: medium
 output: false
 defaultProgress: true
 ---
