@@ -42,6 +42,9 @@ export function updateWorkerRun(ctx: ExtensionContext, loopName: string, runId: 
 export function reviewWorkerRun(ctx: ExtensionContext, loopName: string, params: { runId?: string; reviewStatus?: ReviewStatus; reviewRationale?: string }, updateUI: (ctx: ExtensionContext) => void) {
 	const state = loadState(ctx, loopName);
 	if (!state) return { content: [textContent(`Loop "${loopName}" not found.`)], details: { loopName }, isError: true };
+	if (!params.runId && state.workerRuns.some((item) => item.isolation === "treehouse" && item.status === "needs_review")) {
+		return { content: [textContent("Stage-associated implementer reviews require an explicit runId so reversed completion order cannot review the wrong lane.")], details: { loopName, code: "run_id_required" }, isError: true };
+	}
 	const run = params.runId ? state.workerRuns.find((item) => item.id === params.runId) : openMutableWorkerRun(state);
 	if (!run) return { content: [textContent(params.runId ? `WorkerRun "${params.runId}" not found.` : "No open implementer WorkerRun needs review.")], details: { loopName }, isError: true };
 	if (run.role !== "implementer") return { content: [textContent(`WorkerRun ${run.id} is ${run.role}; only implementer runs use review acceptance.`)], details: { loopName, run }, isError: true };
@@ -50,6 +53,25 @@ export function reviewWorkerRun(ctx: ExtensionContext, loopName: string, params:
 	run.status = status;
 	run.reviewRationale = params.reviewRationale?.trim() || `${status} by parent/governor.`;
 	run.updatedAt = new Date().toISOString();
+	if (run.isolation === "treehouse" && run.graphId && run.stageId && run.nodeId && state.executionGraph?.id === run.graphId) {
+		const graph = state.executionGraph;
+		const stage = graph.stages.find((candidate) => candidate.id === run.stageId);
+		const node = graph.nodes.find((candidate) => candidate.id === run.nodeId);
+		const attempt = node?.attempts.find((candidate) => candidate.id === run.attemptId);
+		if (!stage || !node || !attempt || attempt.workerRunId !== run.id || !stage.implementationNodeIds.includes(node.id)) {
+			return { content: [textContent(`WorkerRun ${run.id} stage/node/attempt identity no longer matches durable graph state.`)], details: { loopName, run, code: "stage_identity_mismatch" }, isError: true };
+		}
+		node.status = "failed";
+		if (status === "accepted") node.status = "succeeded";
+		if (status === "dismissed") {
+			stage.status = "failed";
+			graph.status = "blocked";
+		} else if (stage.implementationNodeIds.every((nodeId) => graph.nodes.find((candidate) => candidate.id === nodeId)?.status === "succeeded")) {
+			stage.status = "awaiting_integration";
+			const fanIn = graph.nodes.find((candidate) => candidate.id === stage.fanInNodeId);
+			if (fanIn?.status === "blocked") fanIn.status = "ready";
+		}
+	}
 	saveState(ctx, state);
 	let reportError: string | undefined;
 	if (run.reportId) {

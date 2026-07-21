@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./core.ts";
-import type { ExecutionAttempt, ExecutionStageOwnership } from "../stages/contracts.ts";
+import { digestExecutionNodeContract, digestExecutionStageContract, type ExecutionAttempt, type ExecutionStageOwnership } from "../stages/contracts.ts";
 import { migrateState } from "./migration.ts";
 import { archiveDir, ensureDir, existingStatePath, runsDir, stageOwnerPath, stardockDir, statePath, tryRead } from "./paths.ts";
 import {
@@ -53,12 +53,19 @@ function assertAttemptPreserved(current: ExecutionAttempt, candidate: ExecutionA
 	for (const field of ["id", "baseCommit", "branchRef", "startedAt"] as const) {
 		if (candidate[field] !== current[field]) throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${current.id}" field "${field}" is immutable.`);
 	}
-	for (const field of ["workerRunId", "headCommit", "worktreePath", "leaseHolder", "completedAt"] as const) {
+	for (const field of ["workerRunId", "workerReportId", "bridgeRunId", "nodeContractDigest", "stageContractDigest", "headCommit", "worktreePath", "leaseHolder", "clean", "completedAt"] as const) {
 		if (current[field] !== undefined && candidate[field] !== current[field]) {
 			throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${current.id}" once-set field "${field}" is immutable.`);
 		}
 	}
+	for (const field of ["writes", "resourceClaims", "validationCommands"] as const) {
+		if (current[field] !== undefined && JSON.stringify(candidate[field]) !== JSON.stringify(current[field])) {
+			throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${current.id}" contract field "${field}" is immutable.`);
+		}
+	}
 	assertAppendOnly(current.id, "lane commit", current.laneCommits, candidate.laneCommits);
+	assertAppendOnly(current.id, "changed path", current.changedPaths ?? [], candidate.changedPaths ?? []);
+	assertAppendOnly(current.id, "violation", current.violations ?? [], candidate.violations ?? []);
 	assertAppendOnly(current.id, "validation", current.validation, candidate.validation);
 }
 
@@ -67,6 +74,8 @@ function assertPriorAttemptsPreserved(current: LoopState, candidate: LoopState):
 	if (!currentGraph) return;
 	const candidateGraph = candidate.executionGraph;
 	if (!candidateGraph) throw new OwnershipProtocolError("attempt_history_removed", "Execution graph removal would discard durable attempt history.");
+	const hasDurableAttempts = currentGraph.nodes.some((node) => node.attempts.length > 0);
+	if (hasDurableAttempts && currentGraph.id !== candidateGraph.id) throw new OwnershipProtocolError("execution_contract_immutable", "Execution graph identity cannot change after durable attempts exist.");
 	const candidateAttempts = candidateGraph.nodes.flatMap((node) => node.attempts);
 	if (new Set(candidateAttempts.map((attempt) => attempt.id)).size !== candidateAttempts.length) {
 		throw new OwnershipProtocolError("attempt_identity_duplicate", "Execution attempt ids must remain unique across the graph.");
@@ -76,6 +85,9 @@ function assertPriorAttemptsPreserved(current: LoopState, candidate: LoopState):
 		const candidateNode = candidateNodes.get(currentNode.id);
 		if (!candidateNode && currentNode.attempts.length > 0) throw new OwnershipProtocolError("attempt_history_removed", `Execution node "${currentNode.id}" with durable attempts cannot be removed.`);
 		if (!candidateNode) continue;
+		if (currentNode.attempts.length > 0 && digestExecutionNodeContract(currentNode) !== digestExecutionNodeContract(candidateNode)) {
+			throw new OwnershipProtocolError("execution_contract_immutable", `Execution node "${currentNode.id}" contract cannot change after its first durable attempt.`);
+		}
 		if (candidateNode.attempts.length < currentNode.attempts.length) {
 			throw new OwnershipProtocolError("attempt_history_removed", `Execution node "${currentNode.id}" attempt history cannot shrink.`);
 		}
@@ -86,6 +98,17 @@ function assertPriorAttemptsPreserved(current: LoopState, candidate: LoopState):
 				throw new OwnershipProtocolError("attempt_history_immutable", `Execution node "${currentNode.id}" attempt order is append-only.`);
 			}
 			assertAttemptPreserved(attempt, next);
+		}
+	}
+	const candidateStages = new Map(candidateGraph.stages.map((stage) => [stage.id, stage]));
+	for (const currentStage of currentGraph.stages) {
+		const hasAttempts = [currentStage.contractNodeId, ...currentStage.implementationNodeIds, currentStage.fanInNodeId]
+			.some((nodeId) => currentGraph.nodes.find((node) => node.id === nodeId)?.attempts.length);
+		if (!hasAttempts) continue;
+		const candidateStage = candidateStages.get(currentStage.id);
+		if (!candidateStage) throw new OwnershipProtocolError("execution_contract_immutable", `Execution stage "${currentStage.id}" cannot be removed after durable attempts exist.`);
+		if (currentStage.contractDigest !== candidateStage.contractDigest || digestExecutionStageContract(currentGraph, currentStage) !== digestExecutionStageContract(candidateGraph, candidateStage)) {
+			throw new OwnershipProtocolError("execution_contract_immutable", `Execution stage "${currentStage.id}" contract cannot change after its first durable attempt.`);
 		}
 	}
 }

@@ -6,6 +6,7 @@ const SUBAGENT_RESPONSE_EVENT = "subagent:slash:response";
 const SUBAGENT_UPDATE_EVENT = "subagent:slash:update";
 const SUBAGENT_CANCEL_EVENT = "subagent:slash:cancel";
 const START_TIMEOUT_MS = 15_000;
+const CANCELLATION_SETTLEMENT_TIMEOUT_MS = 15_000;
 const MAX_SAVED_OUTPUT_EXCERPT_BYTES = 64_000;
 
 export type EventBus = {
@@ -100,14 +101,24 @@ function subscribe(events: EventBus, event: string, handler: (data: unknown) => 
 	if (typeof unsubscribe === "function") subscriptions.push(unsubscribe);
 }
 
+function preDispatchCancellationError(requestId: string): Error {
+	return new Error(`Subagent run cancelled before request dispatch for request "${requestId}".`);
+}
+
 export async function runSubagentThroughBridge(input: {
 	events: EventBus | undefined;
 	requestId: string;
 	params: Record<string, unknown>;
 	signal?: AbortSignal;
+	cancellationSettlementMs?: number;
 	onUpdate?: (text: string, details?: Record<string, unknown>) => void;
 }): Promise<SubagentResponse> {
 	const { events, requestId, params, signal, onUpdate } = input;
+	if (signal?.aborted) throw preDispatchCancellationError(requestId);
+	const cancellationSettlementMs = input.cancellationSettlementMs ?? CANCELLATION_SETTLEMENT_TIMEOUT_MS;
+	if (!Number.isFinite(cancellationSettlementMs) || cancellationSettlementMs < 1) {
+		throw new Error("cancellationSettlementMs must be a positive finite number.");
+	}
 	if (!events || typeof events.on !== "function" || typeof events.emit !== "function") {
 		throw new Error("pi-subagents event bridge is unavailable. Ensure pi-subagents is installed and loaded.");
 	}
@@ -115,32 +126,40 @@ export async function runSubagentThroughBridge(input: {
 	return await new Promise<SubagentResponse>((resolve, reject) => {
 		let done = false;
 		let started = false;
+		let cancelling = false;
 		const subscriptions: Array<() => void> = [];
-		let timeout: ReturnType<typeof setTimeout> | undefined;
+		let startTimeout: ReturnType<typeof setTimeout> | undefined;
+		let cancellationTimeout: ReturnType<typeof setTimeout> | undefined;
 
 		const finish = (next: () => void) => {
 			if (done) return;
 			done = true;
-			if (timeout) clearTimeout(timeout);
+			if (startTimeout) clearTimeout(startTimeout);
+			if (cancellationTimeout) clearTimeout(cancellationTimeout);
 			for (const unsubscribe of subscriptions) unsubscribe();
 			if (signal) signal.removeEventListener("abort", abortHandler);
 			next();
 		};
 
 		const abortHandler = () => {
+			if (done || cancelling) return;
+			cancelling = true;
+			if (startTimeout) clearTimeout(startTimeout);
+			cancellationTimeout = setTimeout(() => {
+				finish(() => reject(new Error(`Subagent cancellation was not confirmed within ${cancellationSettlementMs}ms for request "${requestId}".`)));
+			}, cancellationSettlementMs);
 			try {
 				events.emit(SUBAGENT_CANCEL_EVENT, { requestId });
 			} catch {
-				// Cancellation is best-effort; finish still reports the abort.
+				// The settlement deadline still reports that cancellation was not confirmed.
 			}
-			finish(() => reject(new Error("Subagent run cancelled.")));
 		};
 
 		subscribe(events, SUBAGENT_STARTED_EVENT, (data) => {
 			if (!data || typeof data !== "object") return;
 			if ((data as { requestId?: unknown }).requestId !== requestId) return;
 			started = true;
-			if (timeout) clearTimeout(timeout);
+			if (startTimeout) clearTimeout(startTimeout);
 			onUpdate?.("Subagent run started.", { requestId });
 		}, subscriptions);
 
@@ -156,13 +175,20 @@ export async function runSubagentThroughBridge(input: {
 			if (!data || typeof data !== "object") return;
 			const response = data as Partial<SubagentResponse>;
 			if (response.requestId !== requestId || !response.result) return;
+			if (cancelling) {
+				finish(() => reject(new Error(`Subagent run cancelled after bridge acknowledgement for request "${requestId}".`)));
+				return;
+			}
 			finish(() => resolve({ requestId, result: response.result as SubagentResult, isError: response.isError === true, errorText: response.errorText }));
 		}, subscriptions);
 
-		if (signal?.aborted) return abortHandler();
+		if (signal?.aborted) {
+			finish(() => reject(preDispatchCancellationError(requestId)));
+			return;
+		}
 		if (signal) signal.addEventListener("abort", abortHandler, { once: true });
 
-		timeout = setTimeout(() => {
+		startTimeout = setTimeout(() => {
 			finish(() => reject(new Error("Subagent bridge did not start within 15s. Ensure pi-subagents is loaded correctly.")));
 		}, START_TIMEOUT_MS);
 

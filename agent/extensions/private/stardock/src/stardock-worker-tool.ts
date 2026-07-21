@@ -7,7 +7,8 @@ import { Type } from "typebox";
 import { currentBrief } from "./briefs.ts";
 import { summarizeBrief } from "./compact-loop-summary.ts";
 import { formatPageNote, paginateItems } from "./app/pagination.ts";
-import { finalOutput, outputRefs, runSubagentThroughBridge, type EventBus, type SubagentResponse } from "./brief-worker-run-bridge.ts";
+import { finalOutput, outputRefs, type EventBus, type SubagentResponse } from "./brief-worker-run-bridge.ts";
+import { executeWorkerInvocation, prepareWorkerInvocation } from "./worker-invocation.ts";
 import { formatChangedFiles, gitStatusSnapshot } from "./brief-worker-run-git.ts";
 import { recordWorkerReport } from "./worker-reports.ts";
 import { formatWorkerRunOverview, openMutableWorkerRun, reviewWorkerRun, updateWorkerRun } from "./worker-runs.ts";
@@ -188,9 +189,11 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 	const scopeId = brief?.id ?? request?.id ?? "loop";
 	const output = params.output === false ? false : typeof params.output === "string" ? params.output : defaultWorkerOutputPath(state, scopeId, role);
 	const outputMode: OutputMode = params.outputMode ?? (output === false ? "inline" : "file-only");
-	const invocation = { ...built.invocation, output, outputMode, async: false, clarify: false };
-	const model = typeof built.invocation.model === "string" ? built.invocation.model : undefined;
 	const requestId = `stardock-${sanitize(state.name)}-${sanitize(scopeId)}-${role}-${randomUUID().slice(0, 8)}`;
+	const prepared = prepareWorkerInvocation(built.invocation, { requestId, output, outputMode });
+	const invocation = prepared.params;
+	let model: string | undefined;
+	if (typeof built.invocation.model === "string") model = built.invocation.model;
 	const now = new Date().toISOString();
 	const run: WorkerRun = {
 		id: nextSequentialId("run", state.workerRuns),
@@ -199,6 +202,7 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 		scope,
 		briefId: brief?.id,
 		outsideRequestId: request?.id,
+		isolation: "current_workspace",
 		requestId,
 		agentName,
 		model,
@@ -219,10 +223,9 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 	deps.updateUI(ctx);
 
 	try {
-		const response = await runSubagentThroughBridge({
+		const response = await executeWorkerInvocation({
 			events: (pi as unknown as { events?: EventBus }).events,
-			requestId,
-			params: invocation,
+			...prepared,
 			signal,
 			onUpdate: (text, details) => onUpdate?.({ content: [textContent(text)], details: details ?? {} }),
 		});

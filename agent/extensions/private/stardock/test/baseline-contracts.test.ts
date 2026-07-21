@@ -136,7 +136,49 @@ test("baseline bridge forwards start, multiple updates, and response events", as
 	assert.equal((updates[2].details?.update as { toolCount: number }).toolCount, 2);
 });
 
-test("baseline bridge emits cancellation and rejects the active request", async () => {
+test("baseline bridge rejects a pre-aborted call without emitting request or cancellation events", async () => {
+	const events = new FakeEventBus();
+	const controller = new AbortController();
+	controller.abort();
+
+	await assert.rejects(
+		runSubagentThroughBridge({ events, requestId: "request-pre-aborted", params: {}, signal: controller.signal, cancellationSettlementMs: 5 }),
+		/Subagent run cancelled before request dispatch/,
+	);
+	assert.deepEqual(events.emitted, []);
+});
+
+test("baseline bridge cancellation waits for the matching terminal acknowledgement", async () => {
+	const events = new FakeEventBus();
+	const controller = new AbortController();
+	let acknowledged = false;
+	events.on("subagent:slash:request", (data) => {
+		const requestId = (data as { requestId: string }).requestId;
+		events.emit("subagent:slash:started", { requestId });
+		controller.abort();
+	});
+	events.on("subagent:slash:cancel", (data) => {
+		const requestId = (data as { requestId: string }).requestId;
+		setTimeout(() => {
+			acknowledged = true;
+			events.emit("subagent:slash:response", {
+				requestId,
+				isError: true,
+				errorText: "cancelled",
+				result: { content: [{ type: "text", text: "cancelled" }], isError: true },
+			});
+		}, 10);
+	});
+
+	await assert.rejects(
+		runSubagentThroughBridge({ events, requestId: "request-cancel", params: {}, signal: controller.signal, cancellationSettlementMs: 100 }),
+		/Subagent run cancelled after bridge acknowledgement/,
+	);
+	assert.equal(acknowledged, true);
+	assert.ok(events.emitted.some(({ event, data }) => event === "subagent:slash:cancel" && (data as { requestId: string }).requestId === "request-cancel"));
+});
+
+test("baseline bridge cancellation fails explicitly after a bounded unconfirmed settlement", async () => {
 	const events = new FakeEventBus();
 	const controller = new AbortController();
 	events.on("subagent:slash:request", (data) => {
@@ -146,10 +188,9 @@ test("baseline bridge emits cancellation and rejects the active request", async 
 	});
 
 	await assert.rejects(
-		runSubagentThroughBridge({ events, requestId: "request-cancel", params: {}, signal: controller.signal }),
-		/Subagent run cancelled/,
+		runSubagentThroughBridge({ events, requestId: "request-unconfirmed-cancel", params: {}, signal: controller.signal, cancellationSettlementMs: 5 }),
+		/cancellation was not confirmed within 5ms/,
 	);
-	assert.ok(events.emitted.some(({ event, data }) => event === "subagent:slash:cancel" && (data as { requestId: string }).requestId === "request-cancel"));
 });
 
 test("baseline bridge preserves provider failure responses", async () => {

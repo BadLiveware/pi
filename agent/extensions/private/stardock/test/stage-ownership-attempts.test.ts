@@ -39,6 +39,20 @@ test("attempt identities and once-set refs are immutable while commit and valida
 		appendedAttempt.headCommit = "2".repeat(40);
 		saveState(harness.ctx, appended);
 
+		const changedNodeContract = loadState(harness.ctx, harness.name);
+		assert.ok(changedNodeContract);
+		const contractNode = changedNodeContract.executionGraph?.nodes.find((value) => value.id === "wave-a");
+		assert.ok(contractNode);
+		contractNode.objective = "silently changed objective";
+		assert.throws(() => saveState(harness.ctx, changedNodeContract), /node "wave-a" contract cannot change/);
+
+		const changedStageContract = loadState(harness.ctx, harness.name);
+		assert.ok(changedStageContract);
+		const stageContract = changedStageContract.executionGraph?.stages[0];
+		assert.ok(stageContract);
+		stageContract.maxConcurrency += 1;
+		assert.throws(() => saveState(harness.ctx, changedStageContract), /stage "wave-stage" contract cannot change/);
+
 		const changedIdentity = loadState(harness.ctx, harness.name);
 		assert.ok(changedIdentity);
 		const changedAttempt = changedIdentity.executionGraph?.nodes.find((value) => value.id === "wave-a")?.attempts[0];

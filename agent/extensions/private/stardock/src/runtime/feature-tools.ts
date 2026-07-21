@@ -15,7 +15,7 @@ import { registerOutsideRequestTools } from "../outside-requests.ts";
 import { registerPolicyTool } from "../policy.ts";
 import { registerStardockWorkerTool } from "../stardock-worker-tool.ts";
 import { registerWorkerReportTool } from "../worker-reports.ts";
-import { registerStageOwnershipTool } from "../stages/ownership-tool.ts";
+import { registerStageTool } from "../stages/tool.ts";
 import type { StardockRuntime } from "./types.ts";
 
 export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
@@ -33,5 +33,5 @@ export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime)
 	registerWorkerReportTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerAttemptReportTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
 	registerOutsideRequestTools(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
-	registerStageOwnershipTool(pi, runtime);
+	registerStageTool(pi, runtime);
 }

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import * as path from "node:path";
+import type { IterationBrief } from "../state/core.ts";
 
 export type ExecutionGraphStatus = "draft" | "running" | "blocked" | "completed" | "abandoned";
 export type ExecutionNodeKind = "contract" | "serial" | "implementation" | "fan_in";
@@ -19,16 +20,29 @@ export interface ResourceClaim {
 	value?: string;
 }
 
+export type ExecutionAttemptStatus = "prepared" | "running" | "needs_review" | "failed" | "detached";
+
 export interface ExecutionAttempt {
 	id: string;
 	workerRunId?: string;
+	workerReportId?: string;
+	bridgeRunId?: string;
+	nodeContractDigest?: string;
+	stageContractDigest?: string;
+	writes?: string[];
+	resourceClaims?: ResourceClaim[];
+	validationCommands?: string[];
 	baseCommit: string;
 	branchRef: string;
 	laneCommits: string[];
 	headCommit?: string;
 	worktreePath?: string;
 	leaseHolder?: string;
+	clean?: boolean;
+	changedPaths?: string[];
+	violations?: string[];
 	validation: ExecutionValidationRecord[];
+	status?: ExecutionAttemptStatus;
 	startedAt: string;
 	completedAt?: string;
 }
@@ -152,6 +166,26 @@ export function canonicalDigest(value: unknown): string {
 	return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
+export function iterationBriefContract(brief: IterationBrief): Record<string, unknown> {
+	return {
+		id: brief.id,
+		objective: brief.objective,
+		task: brief.task,
+		criterionIds: sortedUnique(brief.criterionIds),
+		acceptanceCriteria: [...brief.acceptanceCriteria],
+		verificationRequired: [...brief.verificationRequired],
+		requiredContext: [...brief.requiredContext],
+		constraints: [...brief.constraints],
+		avoid: [...brief.avoid],
+		outputContract: brief.outputContract,
+		sourceRefs: sortedUnique(brief.sourceRefs),
+	};
+}
+
+export function digestIterationBriefContract(brief: IterationBrief): string {
+	return canonicalDigest(iterationBriefContract(brief));
+}
+
 export function executionNodeContract(node: ExecutionNode): Record<string, unknown> {
 	return {
 		id: node.id,
@@ -239,11 +273,18 @@ function isExecutionAttempt(value: unknown): value is ExecutionAttempt {
 	if (!isRecord(value)) return false;
 	if (typeof value.id !== "string" || typeof value.baseCommit !== "string" || typeof value.branchRef !== "string" || typeof value.startedAt !== "string") return false;
 	if (!isStringArray(value.laneCommits)) return false;
+	if (value.writes !== undefined && !isStringArray(value.writes)) return false;
+	if (value.resourceClaims !== undefined && (!Array.isArray(value.resourceClaims) || !value.resourceClaims.every(isResourceClaim))) return false;
+	if (value.validationCommands !== undefined && !isStringArray(value.validationCommands)) return false;
+	if (value.changedPaths !== undefined && !isStringArray(value.changedPaths)) return false;
+	if (value.violations !== undefined && !isStringArray(value.violations)) return false;
 	if (!Array.isArray(value.validation) || !value.validation.every(isExecutionValidationRecord)) return false;
-	for (const key of ["workerRunId", "headCommit", "worktreePath", "leaseHolder", "completedAt"]) {
+	for (const key of ["workerRunId", "workerReportId", "bridgeRunId", "nodeContractDigest", "stageContractDigest", "headCommit", "worktreePath", "leaseHolder", "completedAt"]) {
 		if (!hasOptionalString(value, key)) return false;
 	}
-	return true;
+	if (value.clean !== undefined && typeof value.clean !== "boolean") return false;
+	if (value.status === undefined) return true;
+	return value.status === "prepared" || value.status === "running" || value.status === "needs_review" || value.status === "failed" || value.status === "detached";
 }
 
 function isExecutionNode(value: unknown): value is ExecutionNode {
@@ -317,11 +358,12 @@ function isExecutionStageOwnership(value: unknown): value is ExecutionStageOwner
 
 export function readPersistedExecutionGraph(value: unknown): ExecutionGraph | undefined {
 	if (!isRecord(value)) return undefined;
-	if (typeof value.id !== "string" || typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") return undefined;
-	if (!Number.isInteger(value.revision)) return undefined;
-	if (value.status !== "draft" && value.status !== "running" && value.status !== "blocked" && value.status !== "completed" && value.status !== "abandoned") return undefined;
-	if (!Array.isArray(value.nodes) || !value.nodes.every(isExecutionNode)) return undefined;
-	if (!Array.isArray(value.stages) || !value.stages.every(isExecutionStage)) return undefined;
-	if (value.ownership !== undefined && !isExecutionStageOwnership(value.ownership)) return undefined;
-	return value as unknown as ExecutionGraph;
+	const candidate = structuredClone(value);
+	if (typeof candidate.id !== "string" || typeof candidate.createdAt !== "string" || typeof candidate.updatedAt !== "string") return undefined;
+	if (!Number.isInteger(candidate.revision)) return undefined;
+	if (candidate.status !== "draft" && candidate.status !== "running" && candidate.status !== "blocked" && candidate.status !== "completed" && candidate.status !== "abandoned") return undefined;
+	if (!Array.isArray(candidate.nodes) || !candidate.nodes.every(isExecutionNode)) return undefined;
+	if (!Array.isArray(candidate.stages) || !candidate.stages.every(isExecutionStage)) return undefined;
+	if (candidate.ownership !== undefined && !isExecutionStageOwnership(candidate.ownership)) return undefined;
+	return candidate as unknown as ExecutionGraph;
 }

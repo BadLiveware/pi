@@ -1,5 +1,10 @@
 import { compactText, type AdvisoryHandoffRole, type ChangedFileReport, type WorkerRun, type WorkerRunScope, type WorkerRunStatus } from "./core.ts";
 
+function optionalCompactText(value: unknown): string | undefined {
+	if (typeof value !== "string" || !value.trim()) return undefined;
+	return compactText(value.trim(), 240) ?? value.trim();
+}
+
 function normalizeId(value: unknown, fallback: string): string {
 	const raw = typeof value === "string" ? value.trim() : "";
 	return raw || fallback;
@@ -52,6 +57,9 @@ export function migrateWorkerRuns(value: unknown): WorkerRun[] {
 			const requestId = typeof run.requestId === "string" && run.requestId.trim() ? run.requestId.trim() : "";
 			if (!requestId) return null;
 			const now = new Date().toISOString();
+			let isolation: WorkerRun["isolation"];
+			if (run.isolation === "treehouse") isolation = "treehouse";
+			else if (run.isolation === "current_workspace") isolation = "current_workspace";
 			return {
 				id: normalizeId(run.id, `run${index + 1}`),
 				role: isAdvisoryHandoffRole(run.role) ? run.role : "explorer",
@@ -59,6 +67,15 @@ export function migrateWorkerRuns(value: unknown): WorkerRun[] {
 				scope,
 				briefId: briefId || undefined,
 				outsideRequestId: outsideRequestId || undefined,
+				graphId: optionalCompactText(run.graphId),
+				stageId: optionalCompactText(run.stageId),
+				nodeId: optionalCompactText(run.nodeId),
+				attemptId: optionalCompactText(run.attemptId),
+				isolation,
+				baseCommit: optionalCompactText(run.baseCommit),
+				headCommit: optionalCompactText(run.headCommit),
+				branchRef: optionalCompactText(run.branchRef),
+				leaseHolder: optionalCompactText(run.leaseHolder),
 				requestId,
 				agentName: typeof run.agentName === "string" && run.agentName.trim() ? compactText(run.agentName.trim(), 120) ?? run.agentName.trim() : "worker",
 				model: typeof run.model === "string" && run.model.trim() ? compactText(run.model.trim(), 120) ?? run.model.trim() : undefined,

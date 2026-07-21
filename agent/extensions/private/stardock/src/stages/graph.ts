@@ -330,16 +330,27 @@ export function validateExecutionGraph(graph: ExecutionGraph, repoRoot = "."): E
 export function initializeExecutionGraph(graph: ExecutionGraph): ExecutionGraph {
 	const initialized = structuredClone(graph);
 	const order = topologicalOrder(initialized);
-	const orderSet = new Set(order);
+	const nodeById = new Map(initialized.nodes.map((node) => [node.id, node]));
+	const stageContractIds = new Set(initialized.stages.map((stage) => stage.contractNodeId));
 	for (const node of initialized.nodes) {
-		let ready = node.dependsOn.length === 0;
-		if (!orderSet.has(node.id)) ready = false;
 		node.status = "blocked";
-		if (ready) node.status = "ready";
 		node.attempts = [];
 	}
+	for (const nodeId of order) {
+		const node = nodeById.get(nodeId);
+		if (!node) continue;
+		const dependenciesSatisfied = node.dependsOn.every((dependencyId) => {
+			const dependency = nodeById.get(dependencyId);
+			return dependency?.status === "succeeded" || dependency?.status === "integrated";
+		});
+		if (!dependenciesSatisfied) continue;
+		if (stageContractIds.has(node.id)) node.status = "integrated";
+		else node.status = "ready";
+	}
 	for (const stage of initialized.stages) {
+		const contract = nodeById.get(stage.contractNodeId);
 		stage.status = "draft";
+		if (contract?.status === "integrated") stage.status = "contracts_ready";
 		delete stage.integration;
 	}
 	initialized.status = "running";

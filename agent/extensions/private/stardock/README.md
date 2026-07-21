@@ -48,7 +48,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
 | `stardock_outside_payload` | Return a ready-to-copy governor or researcher task payload for one outside request. |
 | `stardock_outside_answer` | Record an outside-help answer or structured governor decision without editing state files manually. |
-| `stardock_stage` | Inspect, acquire, heartbeat, or explicitly reconcile exclusive durable execution-stage ownership. Read-only inspection remains available to sibling runtimes, while takeover requires matching dead-owner evidence, rationale, approval, and worker/Treehouse classification. |
+| `stardock_stage` | Validate and compare-and-swap execution graphs, list bounded stage state, run ready implementation nodes in isolated Treehouse leases, or manage exclusive durable stage ownership. Read-only inspection remains available to sibling runtimes, while takeover requires matching dead-owner evidence, rationale, approval, and worker/Treehouse classification. |
 
 ## Commands
 
@@ -91,7 +91,14 @@ Options for `/stardock start`:
 
 ## Understanding a run
 
-### Execution-stage ownership
+### Execution stages and ownership
+
+Use `stardock_stage({ action: "upsert", graph })` to create a validated execution graph, and include `expectedGraphRevision` on later graph updates.
+Use `stardock_stage({ action: "list" })` for bounded graph, stage, node, attempt, and ownership state.
+Use `runReady` with exact graph, stage, node, and revision inputs only after implementation briefs and contracts are frozen.
+The owning parent persists attempts, WorkerRuns, and draft WorkerReports before dispatch, runs concurrent implementers only in distinct Treehouse leases, and waits for started workers to acknowledge cancellation before settlement.
+WorkerReports become reviewable only after their workers settle, and every isolated lane review requires an explicit WorkerRun id.
+Failed, dirty, ambiguous, or unconfirmed leases remain preserved for reconciliation; `runReady` does not integrate branches or force cleanup.
 
 Use `stardock_stage({ action: "acquire", graphId, stageId, expectedGraphRevision })` only for a fully validated, ready, nonterminal stage.
 The owning runtime keeps its raw token in process memory and persists only a digest beside matching graph ownership state.

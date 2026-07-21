@@ -8,6 +8,7 @@ import { existingStatePath, safeMtimeMs, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, mutationBlockReason, saveState } from "../state/store.ts";
 import { evaluateWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
 import { detachOwnedStages } from "../stages/ownership.ts";
+import { cancelActiveStageRuns } from "../stages/run-ready-registry.ts";
 import { bindOwnershipContext } from "../stages/ownership-records.ts";
 import { getModeHandler } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
@@ -113,6 +114,7 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 	pi.on("session_shutdown", async (_event, ctx) => {
 		unsubscribeInterruptInput?.();
 		unsubscribeInterruptInput = undefined;
+		await cancelActiveStageRuns(ctx, runtime.ref.sessionId);
 		detachOwnedStages(ctx, runtime.ref.sessionId);
 		if (runtime.ref.currentLoop) {
 			const state = loadState(ctx, runtime.ref.currentLoop);

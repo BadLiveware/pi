@@ -14,7 +14,7 @@ const ALWAYS_READ_ONLY_TOOLS = new Set([
 function stageActionOwnsItsGuard(params: Record<string, unknown>): boolean {
 	if (params.action === "list") return true;
 	if (params.action === "reconcile" && params.takeOwnership !== true) return true;
-	if (params.action === "acquire" || params.action === "heartbeat") return true;
+	if (params.action === "acquire" || params.action === "heartbeat" || params.action === "runReady") return true;
 	if (params.action === "reconcile" && params.takeOwnership === true) return true;
 	return false;
 }

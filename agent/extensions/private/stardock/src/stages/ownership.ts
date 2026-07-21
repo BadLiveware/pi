@@ -108,6 +108,41 @@ function startHeartbeat(ctx: ExtensionContext, loopName: string, sessionId: stri
 	setOwnershipHeartbeat(ctx, loopName, sessionId, timer);
 }
 
+export function acquireOrReuseStageOwnership(ctx: ExtensionContext, request: AcquireStageOwnershipRequest): OwnershipAcquisition {
+	const state = loadState(ctx, request.loopName);
+	const graph = state?.executionGraph;
+	if (!graph?.ownership) return acquireStageOwnership(ctx, request);
+	if (graph.id !== request.graphId) throw new OwnershipProtocolError("graph_mismatch", `Execution graph mismatch: expected "${request.graphId}", current "${graph.id}".`);
+	if (graph.revision !== request.expectedGraphRevision) {
+		throw new OwnershipProtocolError("stale_revision", `Stale execution graph revision: expected ${request.expectedGraphRevision}, current ${graph.revision}. Reload state before reusing ownership.`);
+	}
+	assertStageAcquirable(graph, request.stageId, ctx.cwd, true);
+	const owner = readOwnerRecord(ctx, request.loopName);
+	const entry = ownershipTokenForContext(ctx, request.loopName);
+	const ownership = graph.ownership;
+	const exactLocalOwner = owner?.status === "active"
+		&& owner.graphId === request.graphId
+		&& owner.stageId === request.stageId
+		&& owner.sessionId === request.sessionId
+		&& owner.pid === process.pid
+		&& owner.stateRevision === graph.revision
+		&& ownership.graphId === owner.graphId
+		&& ownership.stageId === owner.stageId
+		&& ownership.sessionId === owner.sessionId
+		&& ownership.pid === owner.pid
+		&& ownership.tokenDigest === owner.tokenDigest
+		&& ownership.stateRevision === graph.revision
+		&& entry?.graphId === owner.graphId
+		&& entry.stageId === owner.stageId
+		&& entry.sessionId === owner.sessionId
+		&& entry.tokenDigest === owner.tokenDigest
+		&& digestOwnershipToken(entry.token) === owner.tokenDigest;
+	if (!exactLocalOwner || !owner) {
+		throw new OwnershipProtocolError("non_owner", `runReady may reuse only exact active local ownership for graph "${request.graphId}" stage "${request.stageId}" at revision ${graph.revision}.`);
+	}
+	return { ok: true, graphId: request.graphId, stageId: request.stageId, stateRevision: graph.revision, owner: ownerRecordWithoutSecret(owner) };
+}
+
 export function acquireStageOwnership(ctx: ExtensionContext, request: AcquireStageOwnershipRequest): OwnershipAcquisition {
 	const state = loadState(ctx, request.loopName);
 	if (!state?.executionGraph) throw new OwnershipProtocolError("graph_missing", `Loop "${request.loopName}" has no execution graph.`);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	TreehouseAdapter,
+	TreehouseLeaseSetupError,
 	type ArgumentProcessResult,
 	type ArgumentProcessRunner,
 	type LeaseAndAnchorInput,
@@ -22,6 +23,7 @@ interface RecordedCall {
 
 class FakeProcess {
 	readonly calls: RecordedCall[] = [];
+	readonly signals: Array<AbortSignal | undefined> = [];
 	readonly existingBranches = new Set<string>();
 	parentBranchRef = "refs/heads/main";
 	parentHead = SHA;
@@ -38,6 +40,7 @@ class FakeProcess {
 
 	readonly runner: ArgumentProcessRunner = async (command, args, options) => {
 		this.calls.push({ command, args: [...args], cwd: options.cwd });
+		this.signals.push(options.signal);
 		if (command === "treehouse") return this.treehouse(args);
 		if (command === "git") return this.git(args);
 		return { exitCode: 127, stdout: "", stderr: `unknown command ${command}` };
@@ -196,6 +199,22 @@ test("one durable lease uses argument arrays, survives spaces and banners, ancho
 	assert.deepEqual(treehouseCalls(fake, "return")[0]?.args, ["return", LEASE_PATH]);
 });
 
+test("lease setup propagates one AbortSignal through every Treehouse and Git subprocess", async () => {
+	const fake = new FakeProcess();
+	const controller = new AbortController();
+	await adapterFor(fake).leaseAndAnchor(leaseInput({ signal: controller.signal }));
+	assert.ok(fake.signals.length > 0);
+	assert.ok(fake.signals.every((signal) => signal === controller.signal));
+});
+
+test("an already-aborted signal prevents Treehouse setup subprocesses", async () => {
+	const fake = new FakeProcess();
+	const controller = new AbortController();
+	controller.abort(new Error("cancelled before setup"));
+	await assert.rejects(adapterFor(fake).leaseAndAnchor(leaseInput({ signal: controller.signal })), /cancelled before setup/);
+	assert.equal(fake.calls.length, 0);
+});
+
 test("immutable parent input mismatch fails before any process runs", async () => {
 	const fake = new FakeProcess();
 	await assert.rejects(
@@ -244,6 +263,23 @@ test("unmanaged, wrong-repository, dirty, and wrong-base leases remain retained 
 			assert.equal(treehouseCalls(fake, "return").length, 0);
 		});
 	}
+});
+
+test("post-get setup failures expose typed partial lease evidence", async () => {
+	const fake = new FakeProcess();
+	fake.leaseCommonDir = "/tmp/different-repository/.git";
+	let received: unknown;
+	try {
+		await adapterFor(fake).leaseAndAnchor(leaseInput());
+	} catch (error) {
+		received = error;
+	}
+	assert.ok(received instanceof TreehouseLeaseSetupError);
+	assert.equal(received.partialLease.worktreePath, LEASE_PATH);
+	assert.equal(received.partialLease.repositoryCommonDir, COMMON_DIR);
+	assert.equal(received.partialLease.contractCommit, SHA);
+	assert.equal(received.partialLease.leaseHolder, "stardock:loop:stage:node:attempt");
+	assert.equal(received.partialLease.branchRef, undefined);
 });
 
 test("branch collisions generate a new suffix without deleting or overwriting the existing ref", async () => {

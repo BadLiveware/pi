@@ -373,6 +373,15 @@ export interface WorkerRun {
 	scope: WorkerRunScope;
 	briefId?: string;
 	outsideRequestId?: string;
+	graphId?: string;
+	stageId?: string;
+	nodeId?: string;
+	attemptId?: string;
+	isolation?: "current_workspace" | "treehouse";
+	baseCommit?: string;
+	headCommit?: string;
+	branchRef?: string;
+	leaseHolder?: string;
 	requestId: string;
 	agentName: string;
 	model?: string;

@@ -257,6 +257,49 @@ export function buildBriefWorkerInvocation(state: LoopState, cwd: string, input:
 	return { ok: true, invocation: invocationFor(input.role, task, cwd, input), role: input.role, scope: "brief", requestedOutput: workerOutputContract(input.role) };
 }
 
+export interface StageWorkerContract {
+	graphId: string;
+	stageId: string;
+	nodeId: string;
+	attemptId: string;
+	contractCommit: string;
+	branchRef: string;
+	writes: string[];
+	reads: string[];
+	resourceClaims: Array<{ key: string; mode: "shared" | "exclusive"; value?: string }>;
+	validationCommands: string[];
+}
+
+export function buildStageBriefWorkerInvocation(
+	state: LoopState,
+	cwd: string,
+	input: BuildWorkerInvocationInput & { role: "implementer"; briefId: string; contract: StageWorkerContract },
+): WorkerInvocationResult {
+	const payload = buildBriefWorkerPayload(state, { briefId: input.briefId, role: input.role, requestedOutput: workerOutputContract(input.role) });
+	if (!payload.ok) return payload;
+	const contract = input.contract;
+	const stageInstructions = [
+		"Adapter role: implementer",
+		"You are a bounded Stardock implementer running in an isolated Treehouse lease.",
+		`Execution identity: graph=${contract.graphId} stage=${contract.stageId} node=${contract.nodeId} attempt=${contract.attemptId}.`,
+		`Start contract: exact commit ${contract.contractCommit} on branch ${contract.branchRef}.`,
+		`Owned writes: ${contract.writes.join(", ") || "none"}.`,
+		`Read scope: ${contract.reads.join(", ") || "none"}.`,
+		`Resource claims: ${contract.resourceClaims.map((claim) => {
+			let allocatedValue = "";
+			if (claim.value) allocatedValue = `=${claim.value}`;
+			return `${claim.mode}:${claim.key}${allocatedValue}`;
+		}).join(", ") || "none"}.`,
+		`Validation commands: ${contract.validationCommands.join(" ; ")}.`,
+		"Edit only owned write paths. Stop and report if the frozen contract, write ownership, or resource allocation must change.",
+		"Commit every intended change on the assigned branch and leave the worktree clean. Do not merge, rebase, integrate, return the lease, mutate the parent checkout, or call Stardock tools.",
+		"Do not spawn agents, run hidden fanout, push, or declare the loop complete.",
+		"Return branch, exact base/head, ordered commits, changed paths, validation results, risks, and open questions.",
+	].join("\n");
+	const task = [stageInstructions, "", payload.payload].join("\n");
+	return { ok: true, invocation: invocationFor(input.role, task, cwd, input), role: input.role, scope: "brief", requestedOutput: workerOutputContract(input.role) };
+}
+
 export function buildRequestWorkerInvocation(state: LoopState, cwd: string, input: BuildWorkerInvocationInput & { request: OutsideRequest }): WorkerInvocationResult {
 	const role = input.role;
 	const request = input.request;
