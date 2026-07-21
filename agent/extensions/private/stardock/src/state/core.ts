@@ -6,6 +6,8 @@
  * Shared Stardock state, migration, and file helpers.
  */
 
+import type { ExecutionGraph } from "../stages/contracts.ts";
+
 export const STARDOCK_DIR = ".stardock";
 
 export const DEFAULT_TEMPLATE = `# Task
@@ -447,6 +449,7 @@ export interface LoopState {
 	breakoutPackages: BreakoutPackage[];
 	workerReports: WorkerReport[];
 	workerRuns: WorkerRun[];
+	executionGraph?: ExecutionGraph;
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };

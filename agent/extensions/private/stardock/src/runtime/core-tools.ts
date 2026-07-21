@@ -10,6 +10,7 @@ import { hasGovernorMemory } from "../governor-state.ts";
 import { formatCriterionCounts } from "../ledger.ts";
 import { latestGovernorDecision, maybeCreateAutomaticAuditorRequest, pendingOutsideRequests } from "../outside-requests.ts";
 import { type BriefLifecycleAction, DEFAULT_REFLECT_INSTRUCTIONS, type LoopState, type StateView } from "../state/core.ts";
+import { createEmptyExecutionGraph } from "../stages/contracts.ts";
 import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
@@ -95,6 +96,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				breakoutPackages: [],
 				workerReports: [],
 				workerRuns: [],
+				executionGraph: createEmptyExecutionGraph(`${loopName}:execution`, new Date().toISOString()),
 			};
 
 			saveState(ctx, state);

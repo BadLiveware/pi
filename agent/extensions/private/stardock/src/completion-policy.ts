@@ -1,5 +1,6 @@
 import type { Criterion, FinalVerificationReport, LoopState } from "./state/core.ts";
 import type { CompletionPolicyResult, PolicyFinding } from "./policy.ts";
+import { evaluateExecutionGraphLifecycle } from "./stages/graph.ts";
 
 function criteriaByStatus(state: LoopState, statuses: Set<Criterion["status"]>): Criterion[] {
 	return state.criterionLedger.criteria.filter((criterion) => statuses.has(criterion.status));
@@ -98,6 +99,19 @@ export function evaluateCompletionPolicy(state: LoopState): CompletionPolicyResu
 	const concernedAudits = state.auditorReviews.filter((review) => review.status === "concerns" || review.status === "blocked" || review.requiredFollowups.length > 0);
 	const openBreakouts = state.breakoutPackages.filter((breakout) => breakout.status === "open" || breakout.status === "draft");
 	const criteriaNeedingFinalReport = state.criterionLedger.criteria.filter((criterion) => !acceptedDeferredIds.has(criterion.id));
+	const graphLifecycle = evaluateExecutionGraphLifecycle(state.executionGraph);
+
+	if (graphLifecycle.blocked) {
+		findings.push(
+			finding({
+				id: "execution-graph-nonterminal",
+				severity: "blocker",
+				recommendation: "parent_review",
+				rationale: graphLifecycle.nextAction ?? "Resolve the nonterminal execution graph before completion.",
+				suggestedTool: "stardock_state",
+			}),
+		);
+	}
 
 	if (!hasCriteria) {
 		findings.push(

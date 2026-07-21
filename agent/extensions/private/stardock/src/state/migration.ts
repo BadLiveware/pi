@@ -33,6 +33,7 @@ type WorkerReport,
 type WorkerReportStatus,
 type WorkerValidationRecord,
 } from "./core.ts";
+import { readPersistedExecutionGraph } from "../stages/contracts.ts";
 import { defaultGovernorState, migrateGovernorState } from "./governor-memory-migration.ts";
 export { defaultGovernorState, migrateGovernorState } from "./governor-memory-migration.ts";
 import { migrateModeState, numberOrDefault } from "./modes.ts";
@@ -489,5 +490,6 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		breakoutPackages: migrateBreakoutPackages(raw.breakoutPackages),
 		workerReports: migrateWorkerReports(raw.workerReports),
 		workerRuns: migrateWorkerRuns(raw.workerRuns),
+		executionGraph: readPersistedExecutionGraph(raw.executionGraph),
 	};
 }

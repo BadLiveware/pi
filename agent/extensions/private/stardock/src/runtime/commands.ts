@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { answerOutsideRequest, createManualGovernorPayload, formatOutsideRequests, getOutsideRequestPayload } from "../outside-requests.ts";
 import { DEFAULT_TEMPLATE, type LoopState } from "../state/core.ts";
 import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
+import { createEmptyExecutionGraph } from "../stages/contracts.ts";
 import { archiveDir, defaultTaskFile, ensureDir, legacyPath, runDir, sanitize, stardockDir, statePath, taskPath, tryDelete, tryRead, tryRemoveDir } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatLoop, formatRunOverview, formatRunTimeline } from "../views.ts";
@@ -107,6 +108,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 				breakoutPackages: [],
 				workerReports: [],
 				workerRuns: [],
+				executionGraph: createEmptyExecutionGraph(`${loopName}:execution`, new Date().toISOString()),
 			};
 			saveState(ctx, state);
 			runtime.ref.currentLoop = loopName;

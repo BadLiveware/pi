@@ -38,6 +38,7 @@ const STATE_KEYS = [
 	"breakoutPackages",
 	"briefs",
 	"criterionLedger",
+	"executionGraph",
 	"finalVerificationReports",
 	"governorState",
 	"itemsPerIteration",
@@ -95,6 +96,8 @@ test("baseline state writes the exact current schema-v3 top-level shape", async 
 		assert.equal(raw.itemsPerIteration, 0);
 		assert.deepEqual(Object.keys(raw).sort(), [...STATE_KEYS]);
 		assert.deepEqual(Object.keys(raw.modeState).sort(), ["kind"]);
+		assert.deepEqual(raw.executionGraph.nodes, []);
+		assert.deepEqual(raw.executionGraph.stages, []);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

@@ -23,6 +23,7 @@ import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
 import { criterionCounts, formatCriterionCounts } from "./ledger.ts";
 import { latestGovernorDecision, pendingOutsideRequests } from "./outside-requests.ts";
 import { compactText, type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
+import { summarizeExecutionGraph } from "./stages/graph.ts";
 import { existingStatePath } from "./state/paths.ts";
 import { evaluateWorkflowStatus, formatWorkflowStatus } from "./workflow-status.ts";
 
@@ -70,6 +71,8 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 	const governorRouting = governorRoutingInspection(state, latestDecision);
 	const checklistDrift = loadChecklistLedgerDrift(ctx, state);
 	const workflowStatus = evaluateWorkflowStatus(state);
+	let executionGraph: ReturnType<typeof summarizeExecutionGraph> | undefined;
+	if (state.executionGraph) executionGraph = summarizeExecutionGraph(state.executionGraph);
 	const artifactsByKind = state.verificationArtifacts.reduce<Record<string, number>>((counts, artifact) => {
 		counts[artifact.kind] = (counts[artifact.kind] ?? 0) + 1;
 		return counts;
@@ -132,6 +135,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 		breakoutPackages: summarizeBreakoutPackages(state),
 		workerReports: summarizeWorkerReports(state),
 		workerRuns: summarizeWorkerRuns(state),
+		executionGraph,
 		checklistLedgerDrift: {
 			total: checklistDrift.length,
 			items: includeDetails ? checklistDrift : checklistDrift.slice(0, 5),

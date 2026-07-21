@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
 import { makeHarness,runDir,statePath,taskPath } from "./test-harness.ts";
+import { serialChainFixture } from "./fixtures/execution-graphs.ts";
 
 test("stardock_start writes task state and stardock_done queues next iteration", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
@@ -47,6 +48,9 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		assert.deepEqual(state.briefs, []);
 		assert.equal(state.currentBriefId, undefined);
 		assert.deepEqual(state.finalVerificationReports, []);
+		assert.equal(state.executionGraph.id, "Demo_Loop:execution");
+		assert.deepEqual(state.executionGraph.nodes, []);
+		assert.deepEqual(state.executionGraph.stages, []);
 		assert.equal(state.iteration, 1);
 		assert.equal(state.itemsPerIteration, 1);
 
@@ -346,6 +350,28 @@ test("stardock_complete is blocked by unreviewed implementer WorkerRun", async (
 		assert.equal(state.status, "active");
 		assert.match(result.content[0].text, /completion blocked/);
 		assert.match(result.content[0].text, /stardock_worker/);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_complete blocks on a nonterminal execution graph with the exact next action", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const complete = tools.get("stardock_complete");
+		assert.ok(start);
+		assert.ok(complete);
+		await start.execute("graph-complete-start", { name: "Graph Complete", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
+		const filePath = statePath(cwd, "Graph_Complete");
+		const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+		raw.executionGraph = serialChainFixture();
+		fs.writeFileSync(filePath, JSON.stringify(raw, null, 2));
+
+		const result = await complete.execute("graph-complete", {}, undefined, undefined, ctx);
+		assert.match(result.content[0].text, /Run ready execution node "serial-a"\./);
+		assert.equal(JSON.parse(fs.readFileSync(filePath, "utf-8")).status, "active");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

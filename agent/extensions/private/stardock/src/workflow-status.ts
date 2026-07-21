@@ -10,6 +10,7 @@ import { criterionCounts } from "./ledger.ts";
 import { evaluateBreakoutPolicy } from "./policy.ts";
 import { evaluateAuditorGatePolicy, evaluateParentReviewPolicy } from "./subagent-readiness-policy.ts";
 import { compactText, type LoopState } from "./state/core.ts";
+import { evaluateExecutionGraphLifecycle } from "./stages/graph.ts";
 
 export type WorkflowState = "ready_for_work" | "active_work" | "needs_parent_review" | "needs_auditor_review" | "needs_breakout_decision" | "ready_for_final_verification" | "ready_to_complete" | "blocked" | "completed";
 export type WorkflowSeverity = "info" | "action" | "warning" | "blocked";
@@ -61,6 +62,18 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 	}
 	if (state.status === "paused") {
 		return { state: "blocked", severity: "blocked", summary: `Loop ${state.name} is paused.`, reasons: ["The loop is paused and will not queue more work until resumed."], recommendedActions: [{ label: "Resume loop", command: `/stardock resume ${state.name}` }] };
+	}
+
+	const graphLifecycle = evaluateExecutionGraphLifecycle(state.executionGraph);
+	if (graphLifecycle.blocked) {
+		const nextAction = graphLifecycle.nextAction ?? "Resolve the execution graph lifecycle before continuing.";
+		return {
+			state: "blocked",
+			severity: "blocked",
+			summary: nextAction,
+			reasons: [`Execution graph lifecycle state is ${graphLifecycle.state}.`],
+			recommendedActions: [action("Inspect bounded execution graph status", "stardock_state", { loopName: state.name, view: "overview" })],
+		};
 	}
 
 	const auditorBlockers = blockingAuditorReasons(state);

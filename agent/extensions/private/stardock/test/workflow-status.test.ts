@@ -4,6 +4,7 @@ import { evaluateWorkflowStatus } from "../src/workflow-status.ts";
 import { defaultCriterionLedger, defaultGovernorState } from "../src/state/migration.ts";
 import { defaultModeState } from "../src/state/modes.ts";
 import type { LoopState } from "../src/state/core.ts";
+import { serialChainFixture } from "./fixtures/execution-graphs.ts";
 
 function baseState(overrides: Partial<LoopState> = {}): LoopState {
 	return {
@@ -45,6 +46,14 @@ test("workflow status is ready for clean checklist work", () => {
 	const status = evaluateWorkflowStatus(baseState());
 	assert.equal(status.state, "ready_for_work");
 	assert.equal(status.severity, "info");
+});
+
+test("workflow status blocks on the execution graph and exposes its exact next action", () => {
+	const status = evaluateWorkflowStatus(baseState({ executionGraph: serialChainFixture() }));
+	assert.equal(status.state, "blocked");
+	assert.equal(status.severity, "blocked");
+	assert.equal(status.summary, 'Run ready execution node "serial-a".');
+	assert.equal(status.recommendedActions[0].tool, "stardock_state");
 });
 
 test("workflow status surfaces parent review for risky worker reports", () => {
