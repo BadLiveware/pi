@@ -61,6 +61,7 @@ Out of scope:
 ```bash
 npm run typecheck --prefix agent/extensions
 cd agent/extensions && node --experimental-strip-types --test \
+  private/stardock/test/baseline-contracts.test.ts \
   private/stardock/test/index.test.ts \
   private/stardock/test/lifecycle.test.ts \
   private/stardock/test/brief-worker-runs.test.ts

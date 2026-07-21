@@ -26,6 +26,7 @@ Run from repository root:
 
 ```bash
 cd agent/extensions && node --experimental-strip-types --test \
+  private/stardock/test/baseline-contracts.test.ts \
   private/stardock/test/index.test.ts \
   private/stardock/test/views.test.ts \
   private/stardock/test/lifecycle.test.ts \
