@@ -69,7 +69,9 @@ export function precreateLane(
 			branchRef: lease.branchRef,
 			laneCommits: [],
 			worktreePath: lease.worktreePath,
+			repositoryCommonDir: lease.repositoryCommonDir,
 			leaseHolder: lease.leaseHolder,
+			leaseDisposition: "held",
 			changedPaths: [],
 			violations: [],
 			validation: [],
@@ -150,7 +152,7 @@ export function recordSetupFailure(
 		const stage = graph?.stages.find((candidate) => candidate.id === request.stageId);
 		if (!graph || graph.id !== request.graphId || !node || !stage) throw new Error(`Setup failure identity disappeared for node "${nodeId}".`);
 		if (node.attempts.some((attempt) => attempt.id === attemptId)) throw new Error(`Setup failure attempt "${attemptId}" already exists.`);
-		node.attempts.push({
+		const failedAttempt: ExecutionAttempt = {
 			id: attemptId,
 			nodeContractDigest: digestExecutionNodeContract(node),
 			stageContractDigest: stage.contractDigest,
@@ -161,6 +163,7 @@ export function recordSetupFailure(
 			branchRef: lease?.branchRef ?? `unanchored/${attemptId}`,
 			laneCommits: [],
 			worktreePath: lease?.worktreePath,
+			repositoryCommonDir: lease?.repositoryCommonDir,
 			leaseHolder,
 			changedPaths: [],
 			violations: [error],
@@ -168,7 +171,9 @@ export function recordSetupFailure(
 			status,
 			startedAt: now,
 			completedAt: now,
-		});
+		};
+		if (lease) failedAttempt.leaseDisposition = "preserved";
+		node.attempts.push(failedAttempt);
 		node.status = status;
 	});
 }
@@ -222,10 +227,12 @@ export async function settleSetupFailure(
 		mutatePreparedLanes(ctx, request, [lane], (node, attempt, run, report) => {
 			if (returned) {
 				attempt.status = "failed";
+				attempt.leaseDisposition = "released";
 				node.status = "retry_ready";
 				run.status = "failed";
 			} else {
 				attempt.status = "detached";
+				attempt.leaseDisposition = "preserved";
 				node.status = "detached";
 				run.status = "cancelled";
 			}

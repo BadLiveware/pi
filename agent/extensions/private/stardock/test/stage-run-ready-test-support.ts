@@ -73,6 +73,23 @@ export class FakeAdapter implements RunReadyAdapter {
 		return { headCommit, branchRef: `refs/heads/${lease.branchRef}`, clean: true, baseIsAncestor: true, laneCommits: [headCommit], changedPaths: [`src/${lease.worktreePath.split("/").at(-1)}/result.ts`] };
 	}
 
+	async inspectLeaseReservation(lease: { worktreePath?: string; repositoryCommonDir?: string; statusContextCwd?: string; leaseHolder?: string }) {
+		let state: "held" | "absent" = "held";
+		let reason = "fake pool still lists the worktree";
+		if (lease.worktreePath && this.returned.includes(lease.worktreePath)) {
+			state = "absent";
+			reason = "fake pool no longer lists the worktree";
+		}
+		return {
+			state,
+			poolPath: "/fake",
+			reason,
+			entries: [],
+			holderEntries: [],
+			statusStdout: "",
+		};
+	}
+
 	async runValidationCommands(_worktreePath: string, commands: string[]) {
 		return commands.map((command) => ({ command, result: "passed" as const, summary: "fake validation passed" }));
 	}

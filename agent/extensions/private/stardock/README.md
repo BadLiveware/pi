@@ -99,6 +99,11 @@ Use `runReady` with exact graph, stage, node, and revision inputs only after imp
 The owning parent persists attempts, WorkerRuns, and draft WorkerReports before dispatch, runs concurrent implementers only in distinct Treehouse leases, and waits for started workers to acknowledge cancellation before settlement.
 WorkerReports become reviewable only after their workers settle, and every isolated lane review requires an explicit WorkerRun id.
 Failed, dirty, ambiguous, or unconfirmed leases remain preserved for reconciliation; `runReady` does not integrate branches or force cleanup.
+After explicit lane review, `integrationPlan` verifies exact accepted attempt/ref evidence and returns ordered argument-array commands for a unique integration branch and no-ff merges.
+The parent executes those commands, commits fan-in work, validates it, and calls `prepareIntegration` with exact merge mappings, fan-in commits, and validation evidence.
+Preparation persists only the token digest and returns argument-array switch/fast-forward commands; `recordIntegrated` verifies the external parent fast-forward and is idempotent for identical evidence.
+Use read-only `reconcile` before approved takeover, `retry` only for explicit retry-ready nodes, `abandon` only for clean terminal disposition, and `release` only after integration or explicit abandonment.
+Normal release never force-cleans a lease and clears ownership only after every lease has a durable released disposition.
 
 Use `stardock_stage({ action: "acquire", graphId, stageId, expectedGraphRevision })` only for a fully validated, ready, nonterminal stage.
 The owning runtime keeps its raw token in process memory and persists only a digest beside matching graph ownership state.

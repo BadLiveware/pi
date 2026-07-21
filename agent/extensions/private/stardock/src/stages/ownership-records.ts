@@ -234,6 +234,34 @@ export function removeMatchingAcquiringOwner(ctx: ExtensionContext, loopName: st
 	fs.unlinkSync(stageOwnerPath(ctx, loopName));
 }
 
+export function removeMatchingActiveOwner(ctx: ExtensionContext, loopName: string, tokenDigest: string): void {
+	const record = readOwnerRecord(ctx, loopName);
+	if (record?.status !== "active" || record.tokenDigest !== tokenDigest) {
+		throw new OwnershipProtocolError("evidence_changed", "Active owner evidence changed before terminal ownership release.");
+	}
+	fs.unlinkSync(stageOwnerPath(ctx, loopName));
+}
+
+export function clearTerminalOwnerEvidence(
+	ctx: ExtensionContext,
+	loopName: string,
+	expected: { graphId: string; stageId: string; sessionId: string; pid: number; tokenDigest: string; stateRevision: number },
+): { removed: boolean } {
+	const record = readOwnerRecord(ctx, loopName);
+	if (!record) return { removed: false };
+	if (record.status !== "active"
+		|| record.graphId !== expected.graphId
+		|| record.stageId !== expected.stageId
+		|| record.sessionId !== expected.sessionId
+		|| record.pid !== expected.pid
+		|| record.tokenDigest !== expected.tokenDigest
+		|| record.stateRevision !== expected.stateRevision) {
+		throw new OwnershipProtocolError("evidence_changed", "Active owner evidence changed before terminal ownership cleanup.");
+	}
+	fs.unlinkSync(stageOwnerPath(ctx, loopName));
+	return { removed: true };
+}
+
 export function quarantineOwnershipFile(ctx: ExtensionContext, loopName: string, kind: "owner" | "mutex", expectedDigest: string): string {
 	let source = stateMutationPath(ctx, loopName);
 	let record: StageOwnerRecord | StateMutationRecord | null = readMutationRecord(ctx, loopName);

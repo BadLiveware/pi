@@ -26,6 +26,8 @@ test("runReady precreates five durable lanes and observes bounded distinct-workt
 		const launchRunCounts: number[] = [];
 		const launchReportStatuses: string[][] = [];
 		const completionOrder: string[] = [];
+		let releaseFirstCompletion: () => void = () => undefined;
+		const firstCompletionGate = new Promise<void>((resolve) => { releaseFirstCompletion = resolve; });
 		let id = 0;
 		const result = await runReadyStage({ events: harness.events } as any, harness.ctx, {
 			loopName: harness.loopName,
@@ -43,7 +45,8 @@ test("runReady precreates five durable lanes and observes bounded distinct-workt
 				active += 1;
 				maximum = Math.max(maximum, active);
 				const index = adapter.leases.indexOf(lease);
-				await new Promise((resolve) => setTimeout(resolve, (adapter.leases.length - index) * 3));
+				if (index === 0) await firstCompletionGate;
+				if (index === 1) releaseFirstCompletion();
 				active -= 1;
 				completionOrder.push(node.id);
 				return { response: { requestId: node.id, result: { details: { runId: `bridge-${node.id}`, results: [{ finalOutput: `implemented ${node.id}` }] } }, isError: false } };

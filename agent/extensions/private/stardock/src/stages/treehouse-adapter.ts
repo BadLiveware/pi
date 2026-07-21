@@ -1,27 +1,27 @@
-import { execFile, type ExecFileException } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
+import {
+	defaultArgumentProcessRunner,
+	type ArgumentProcessResult,
+	type ArgumentProcessRunner,
+} from "./argument-process.ts";
+import { commandDescription, failureMessage, processOptions } from "./treehouse-process.ts";
+import {
+	inspectLeaseReservationStatus,
+	type LeaseReservationInspection,
+	type TreehouseStatusEntry,
+} from "./treehouse-status.ts";
+
+export {
+	defaultArgumentProcessRunner,
+	type ArgumentProcessOptions,
+	type ArgumentProcessResult,
+	type ArgumentProcessRunner,
+} from "./argument-process.ts";
 
 const EXACT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const DEFAULT_BRANCH_ATTEMPTS = 20;
 const BRANCH_SEGMENT_LIMIT = 80;
-
-export interface ArgumentProcessOptions {
-	cwd: string;
-	signal?: AbortSignal;
-}
-
-export interface ArgumentProcessResult {
-	exitCode: number;
-	stdout: string;
-	stderr: string;
-}
-
-export type ArgumentProcessRunner = (
-	command: string,
-	args: readonly string[],
-	options: ArgumentProcessOptions,
-) => Promise<ArgumentProcessResult>;
 
 export interface ParentPreflightInput {
 	parentRepositoryPath: string;
@@ -51,16 +51,19 @@ export interface LeaseAndAnchorInput extends ParentPreflightInput, LaneIdentity 
 }
 
 export interface PartialTreehouseLease {
-	worktreePath: string;
+	worktreePath?: string;
 	repositoryCommonDir?: string;
+	statusContextCwd?: string;
 	contractCommit: string;
 	branchRef?: string;
-	leaseHolder: string;
+	leaseHolder?: string;
 }
 
 export interface TreehouseLease extends PartialTreehouseLease {
+	worktreePath: string;
 	repositoryCommonDir: string;
 	branchRef: string;
+	leaseHolder: string;
 }
 
 export interface LeaseInspectionInput {
@@ -99,6 +102,8 @@ export interface LaneValidationEvidence {
 	result: "passed" | "failed";
 	summary: string;
 }
+
+export type { LeaseReservationInspection, TreehouseStatusEntry } from "./treehouse-status.ts";
 
 export interface TreehouseAdapterOptions {
 	runner?: ArgumentProcessRunner;
@@ -139,21 +144,6 @@ export function partialLeaseFromError(error: unknown): PartialTreehouseLease | u
 	return undefined;
 }
 
-export const defaultArgumentProcessRunner: ArgumentProcessRunner = (
-	command: string,
-	args: readonly string[],
-	options: ArgumentProcessOptions,
-): Promise<ArgumentProcessResult> => new Promise<ArgumentProcessResult>((resolve) => {
-	execFile(command, [...args], { cwd: options.cwd, encoding: "utf8", signal: options.signal }, (error: ExecFileException | null, stdout: string, stderr: string) => {
-		let exitCode = 0;
-		if (error) {
-			exitCode = 1;
-			if (typeof error.code === "number") exitCode = error.code;
-		}
-		resolve({ exitCode, stdout, stderr });
-	});
-});
-
 function nonEmpty(value: string, label: string): string {
 	const trimmed = value.trim();
 	if (!trimmed) throw new TreehouseAdapterError(`${label} must not be empty.`);
@@ -173,25 +163,6 @@ function singleLine(result: ArgumentProcessResult, label: string): string {
 		throw new TreehouseAdapterError(`${label} must produce exactly one non-empty stdout line; received ${lines.length}.`);
 	}
 	return lines[0];
-}
-
-function commandDescription(command: string, args: readonly string[]): string {
-	return [command, ...args].map((value) => JSON.stringify(value)).join(" ");
-}
-
-function failureMessage(label: string, command: string, args: readonly string[], result: ArgumentProcessResult): string {
-	const stderr = result.stderr.trim();
-	const stdout = result.stdout.trim();
-	let detail = "no output";
-	if (stderr) detail = `stderr: ${stderr}`;
-	else if (stdout) detail = `stdout: ${stdout}`;
-	return `${label} failed with exit code ${result.exitCode} (${commandDescription(command, args)}); ${detail}.`;
-}
-
-function processOptions(cwd: string, signal?: AbortSignal): ArgumentProcessOptions {
-	const options: ArgumentProcessOptions = { cwd };
-	if (signal) options.signal = signal;
-	return options;
 }
 
 function normalizeCommonDir(worktreePath: string, value: string): string {
@@ -254,6 +225,31 @@ export class TreehouseAdapter {
 		return this.checked(this.treehouseCommand, ["status"], cwd, "Treehouse status inspection", signal);
 	}
 
+	async inspectLeaseReservation(lease: PartialTreehouseLease, signal?: AbortSignal): Promise<LeaseReservationInspection> {
+		let statusCwd: string | undefined;
+		if (lease.statusContextCwd) {
+			statusCwd = path.resolve(nonEmpty(lease.statusContextCwd, "statusContextCwd"));
+		} else if (lease.repositoryCommonDir) {
+			const repositoryCommonDir = path.resolve(lease.repositoryCommonDir);
+			statusCwd = repositoryCommonDir;
+			if (path.basename(repositoryCommonDir) === ".git") statusCwd = path.dirname(repositoryCommonDir);
+		} else if (lease.worktreePath) {
+			statusCwd = path.resolve(nonEmpty(lease.worktreePath, "worktreePath"));
+		}
+		if (!statusCwd) {
+			return {
+				state: "ambiguous",
+				reason: "Lease reservation inspection requires an exact worktree path, lease holder, or parent repository context.",
+				entries: [],
+				holderEntries: [],
+				statusStdout: "",
+			};
+		}
+		const statusLease: PartialTreehouseLease = { ...lease, statusContextCwd: statusCwd };
+		const status = await this.status(statusCwd, signal);
+		return inspectLeaseReservationStatus(statusLease, status.stdout);
+	}
+
 	async preflightParent(input: ParentPreflightInput): Promise<ParentPreflightResult> {
 		const parentPath = path.resolve(nonEmpty(input.parentRepositoryPath, "parentRepositoryPath"));
 		const parentBranch = nonEmpty(input.parentBranch, "parentBranch");
@@ -291,7 +287,7 @@ export class TreehouseAdapter {
 		if (repositoryCommonDir !== expectedCommonDir) {
 			throw new TreehouseAdapterError(`Leased worktree repository mismatch: expected Git common directory "${expectedCommonDir}", received "${repositoryCommonDir}". Keep the lease for inspection.`);
 		}
-		await this.assertClean(worktreePath, "Leased worktree", input.signal);
+		const status = await this.git(worktreePath, ["status", "--porcelain=v1", "--untracked-files=all"], "Leased worktree cleanliness inspection", input.signal);
 		const headResult = await this.git(worktreePath, ["rev-parse", "--verify", "HEAD^{commit}"], "Leased worktree HEAD inspection", input.signal);
 		const headCommit = singleLine(headResult, "Leased worktree HEAD inspection");
 		if (input.expectedHeadCommit !== undefined) {
@@ -313,7 +309,7 @@ export class TreehouseAdapter {
 				throw new TreehouseAdapterError(`Leased worktree branch mismatch: expected "${expectedBranchRef}", received "${branchRef ?? "detached HEAD"}". Keep the lease for inspection.`);
 			}
 		}
-		return { worktreePath, repositoryCommonDir, headCommit, branchRef, clean: true };
+		return { worktreePath, repositoryCommonDir, headCommit, branchRef, clean: status.stdout.length === 0 };
 	}
 
 	async leaseAndAnchor(input: LeaseAndAnchorInput): Promise<TreehouseLease> {
@@ -339,23 +335,26 @@ export class TreehouseAdapter {
 			const worktreePath = path.normalize(rawWorktreePath);
 			partialLease.worktreePath = worktreePath;
 			partialLease.repositoryCommonDir = preflight.repositoryCommonDir;
-			await this.inspectLease({ worktreePath, expectedRepositoryCommonDir: preflight.repositoryCommonDir, signal: input.signal });
+			const acquiredInspection = await this.inspectLease({ worktreePath, expectedRepositoryCommonDir: preflight.repositoryCommonDir, signal: input.signal });
+			if (!acquiredInspection.clean) throw new TreehouseAdapterError(`Leased worktree at "${worktreePath}" is dirty immediately after acquisition. Keep the lease for inspection.`);
 			await this.git(worktreePath, ["switch", "--detach", preflight.contractCommit], "Lease base checkout", input.signal);
-			await this.inspectLease({
+			const detachedInspection = await this.inspectLease({
 				worktreePath,
 				expectedRepositoryCommonDir: preflight.repositoryCommonDir,
 				expectedHeadCommit: preflight.contractCommit,
 				signal: input.signal,
 			});
+			if (!detachedInspection.clean) throw new TreehouseAdapterError(`Leased worktree at "${worktreePath}" became dirty while anchoring. Keep the lease for inspection.`);
 			const branchRef = await this.createUniqueBranch(worktreePath, input, preflight.contractCommit, input.signal);
 			partialLease.branchRef = branchRef;
-			await this.inspectLease({
+			const anchoredInspection = await this.inspectLease({
 				worktreePath,
 				expectedRepositoryCommonDir: preflight.repositoryCommonDir,
 				expectedHeadCommit: preflight.contractCommit,
 				expectedBranchRef: branchRef,
 				signal: input.signal,
 			});
+			if (!anchoredInspection.clean) throw new TreehouseAdapterError(`Leased worktree at "${worktreePath}" became dirty while creating its branch. Keep the lease for inspection.`);
 			return {
 				worktreePath,
 				repositoryCommonDir: preflight.repositoryCommonDir,
@@ -418,13 +417,14 @@ export class TreehouseAdapter {
 
 	async returnLease(input: ReturnLeaseInput): Promise<ArgumentProcessResult> {
 		const expectedHead = exactSha(input.expectedHeadCommit, "expectedHeadCommit");
-		await this.inspectLease({
+		const inspection = await this.inspectLease({
 			worktreePath: input.lease.worktreePath,
 			expectedRepositoryCommonDir: input.lease.repositoryCommonDir,
 			expectedHeadCommit: expectedHead,
 			expectedBranchRef: input.lease.branchRef,
 			signal: input.signal,
 		});
+		if (!inspection.clean) throw new TreehouseAdapterError(`Leased worktree at "${inspection.worktreePath}" is dirty. Preserve it and inspect before return.`);
 		return this.checked(
 			this.treehouseCommand,
 			["return", input.lease.worktreePath],

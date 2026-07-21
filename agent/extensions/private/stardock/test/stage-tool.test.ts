@@ -170,7 +170,7 @@ test("stardock_stage upsert derives initial state, lists bounded details, and re
 	}
 });
 
-test("unavailable stage actions return not_implemented without mutating durable state", async () => {
+test("stage lifecycle actions reject incomplete identity without mutating durable state", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stage-future-actions-"));
 	try {
 		const harness = makeHarness(cwd);
@@ -186,13 +186,37 @@ test("unavailable stage actions return not_implemented without mutating durable 
 		const before = fs.readFileSync(statePath(cwd, loopName));
 		const actions = ["integrationPlan", "prepareIntegration", "recordIntegrated", "retry", "abandon", "release"];
 		for (const action of actions) {
-			const result = await stage.execute(`future-${action}`, { action, loopName, graphId: graph.id, stageId: "stage", expectedGraphRevision: 1 }, undefined, undefined, harness.ctx);
+			const result = await stage.execute(`incomplete-${action}`, { action, loopName }, undefined, undefined, harness.ctx);
 			assert.equal(result.isError, true);
 			assert.equal(result.details.ok, false);
-			assert.equal(result.details.code, "not_implemented");
-			assert.equal(result.details.action, action);
 			assert.deepEqual(fs.readFileSync(statePath(cwd, loopName)), before);
 		}
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("abandon requires nonblank rationale and approvalRef without mutating durable state", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stage-abandon-tool-"));
+	try {
+		const harness = makeHarness(cwd);
+		await harness.tools.get("stardock_start").execute("start", { name: "Stage Abandon Tool", taskContent: "# Stage abandon\n" }, undefined, undefined, harness.ctx);
+		const loopName = "Stage_Abandon_Tool";
+		const { graph, brief } = graphAndBrief(`${loopName}:execution`);
+		const raw = JSON.parse(fs.readFileSync(statePath(cwd, loopName), "utf-8"));
+		raw.briefs.push(brief);
+		fs.writeFileSync(statePath(cwd, loopName), JSON.stringify(raw, null, 2));
+		const stage = harness.tools.get("stardock_stage");
+		const created = await stage.execute("upsert", { action: "upsert", loopName, graph }, undefined, undefined, harness.ctx);
+		assert.equal(created.details.ok, true);
+		const before = fs.readFileSync(statePath(cwd, loopName));
+		const missing = await stage.execute("abandon-missing", { action: "abandon", loopName, graphId: graph.id, stageId: "stage", expectedGraphRevision: 1 }, undefined, undefined, harness.ctx);
+		assert.equal(missing.isError, true);
+		assert.match(missing.content[0].text, /rationale and approvalRef/);
+		assert.deepEqual(fs.readFileSync(statePath(cwd, loopName)), before);
+		const blank = await stage.execute("abandon-blank", { action: "abandon", loopName, graphId: graph.id, stageId: "stage", expectedGraphRevision: 1, rationale: " ", approvalRef: "  " }, undefined, undefined, harness.ctx);
+		assert.equal(blank.isError, true);
+		assert.deepEqual(fs.readFileSync(statePath(cwd, loopName)), before);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

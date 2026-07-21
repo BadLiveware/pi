@@ -10,16 +10,20 @@ import {
 	type ExecutionGraph,
 	type ExecutionNode,
 	type ExecutionStage,
+	type ExecutionValidationRecord,
+	type IntegrationLaneMerge,
 } from "./contracts.ts";
 import { initializeExecutionGraph, summarizeExecutionGraph, validateExecutionGraph } from "./graph.ts";
+import { createIntegrationPlan, prepareIntegration, recordIntegrated, reissuePreparedIntegrationToken } from "./integration.ts";
 import { acquireStageOwnership, heartbeatStageOwnership, inspectStageOwnership, reconcileStageOwnership } from "./ownership.ts";
 import { OwnershipProtocolError } from "./ownership-records.ts";
-import { runReadyStage, type RunReadyDependencies, type RunReadyRequest } from "./run-ready.ts";
+import { abandonStage, reconcileStageResources, releaseStage } from "./reconcile.ts";
+import { runReadyStage, type RunReadyAdapter, type RunReadyDependencies, type RunReadyRequest } from "./run-ready.ts";
+import type { StageGitAdapter } from "./stage-git-adapter.ts";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const MAX_NESTED_ITEMS = 20;
-const MUTATING_FUTURE_ACTIONS = new Set(["integrationPlan", "prepareIntegration", "recordIntegrated", "retry", "abandon", "release"]);
 
 export interface StageToolParams {
 	action: "upsert" | "list" | "runReady" | "acquire" | "heartbeat" | "reconcile" | "integrationPlan" | "prepareIntegration" | "recordIntegrated" | "retry" | "abandon" | "release";
@@ -36,6 +40,12 @@ export interface StageToolParams {
 	limit?: number;
 	offset?: number;
 	timeoutMs?: number;
+	integrationHeadCommit?: string;
+	laneMerges?: IntegrationLaneMerge[];
+	fanInCommits?: string[];
+	validation?: ExecutionValidationRecord[];
+	prepareToken?: string;
+	parentResultCommit?: string;
 }
 
 function textResult(text: string, details: Record<string, unknown>, isError = false) {
@@ -150,6 +160,7 @@ function projectAttempt(nodeId: string, attempt: ExecutionAttempt): Record<strin
 		branchRef: attempt.branchRef,
 		headCommit: attempt.headCommit,
 		leaseHolder: attempt.leaseHolder,
+		leaseDisposition: attempt.leaseDisposition,
 		clean: attempt.clean,
 		status: attempt.status,
 		startedAt: attempt.startedAt,
@@ -205,6 +216,8 @@ function projectStage(stage: ExecutionStage): Record<string, unknown> {
 		integrationBranch: stage.integrationBranch,
 		maxConcurrency: stage.maxConcurrency,
 		integrationStatus: stage.integration?.status,
+		abandonment: stage.abandonment,
+		terminalOwnershipCleanup: stage.terminalOwnershipCleanup,
 	};
 }
 
@@ -241,6 +254,11 @@ function listGraph(ctx: ExtensionContext, loopName: string, params: StageToolPar
 	});
 }
 
+export interface StageActionDependencies {
+	gitAdapter?: StageGitAdapter;
+	lifecycleAdapter?: RunReadyAdapter;
+}
+
 export async function executeStageTool(
 	pi: ExtensionAPI,
 	runtime: StardockRuntime,
@@ -249,6 +267,7 @@ export async function executeStageTool(
 	onUpdate: ((update: { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> }) => void) | undefined,
 	ctx: ExtensionContext,
 	runReadyDependencies?: Partial<RunReadyDependencies>,
+	stageActionDependencies: StageActionDependencies = {},
 ) {
 	const loopName = params.loopName ?? runtime.ref.currentLoop;
 	if (!loopName) return textResult("No Stardock loop selected.", { ok: false }, true);
@@ -264,7 +283,7 @@ export async function executeStageTool(
 			return textResult(`Heartbeat refreshed for graph "${owner.graphId}" stage "${owner.stageId}".`, { ok: true, owner });
 		}
 		if (params.action === "reconcile") {
-			const result = reconcileStageOwnership(ctx, {
+			const ownership = reconcileStageOwnership(ctx, {
 				loopName,
 				takeOwnership: params.takeOwnership,
 				rationale: params.rationale,
@@ -274,21 +293,77 @@ export async function executeStageTool(
 				stageId: params.stageId,
 				sessionId: runtime.ref.sessionId,
 			});
-			return textResult(`Ownership reconciliation inspected durable evidence for "${loopName}".`, { ok: true, result });
+			let resources;
+			let preparedRecovery;
+			if (params.graphId && params.stageId) {
+				let expectedGraphRevision = params.expectedGraphRevision;
+				if (params.takeOwnership) expectedGraphRevision = undefined;
+				resources = await reconcileStageResources(ctx, {
+					loopName,
+					graphId: params.graphId,
+					stageId: params.stageId,
+					expectedGraphRevision,
+					apply: params.takeOwnership === true,
+				}, signal, stageActionDependencies.lifecycleAdapter);
+				const reconciledStage = loadState(ctx, loopName)?.executionGraph?.stages.find((stage) => stage.id === params.stageId);
+				if (params.takeOwnership && resources.ok && reconciledStage?.status === "integration_prepared" && reconciledStage.integration?.status === "prepared") {
+					preparedRecovery = await reissuePreparedIntegrationToken(ctx, { loopName, graphId: params.graphId, stageId: params.stageId }, signal, stageActionDependencies.gitAdapter);
+				}
+			}
+			return textResult(`Reconciliation inspected durable ownership and lease evidence for "${loopName}".`, { ok: true, ownership, resources, preparedRecovery });
 		}
 		if (params.action === "acquire") {
 			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined) return textResult("Acquire requires graphId, stageId, and expectedGraphRevision.", { ok: false }, true);
 			const acquisition = acquireStageOwnership(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision, sessionId: runtime.ref.sessionId });
 			return textResult(`Acquired graph "${acquisition.graphId}" stage "${acquisition.stageId}" at revision ${acquisition.stateRevision}.`, { ok: true, acquisition });
 		}
-		if (params.action === "runReady") {
-			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined) return textResult("runReady requires exact graphId, stageId, and expectedGraphRevision.", { ok: false }, true);
+		if (params.action === "runReady" || params.action === "retry") {
+			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined) return textResult(`${params.action} requires exact graphId, stageId, and expectedGraphRevision.`, { ok: false }, true);
+			if (params.action === "retry") {
+				const state = loadState(ctx, loopName);
+				const graph = state?.executionGraph;
+				const requested = params.nodeIds ?? [];
+				if (!graph || graph.id !== params.graphId || graph.revision !== params.expectedGraphRevision) throw new Error("Retry graph identity or revision changed; reload before creating a new attempt.");
+				if (requested.length === 0) throw new Error("retry requires at least one explicit nodeId.");
+				for (const nodeId of requested) {
+					const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+					if (!node || node.status !== "retry_ready") throw new Error(`Retry node "${nodeId}" must be retry_ready; prior attempts and refs were preserved.`);
+				}
+			}
 			const request: RunReadyRequest = { loopName, graphId: params.graphId, stageId: params.stageId, nodeIds: params.nodeIds, expectedGraphRevision: params.expectedGraphRevision, sessionId: runtime.ref.sessionId, timeoutMs: params.timeoutMs };
 			const result = await runReadyStage(pi, ctx, request, signal, (text, details) => onUpdate?.({ content: [{ type: "text", text }], details: details ?? {} }), { ...runReadyDependencies, updateUI: runtime.updateUI });
 			runtime.updateUI(ctx);
-			return textResult(`runReady settled ${result.lanes.length} lanes for stage "${result.stageId}": ${result.counts.needs_review} need review, ${result.counts.failed} failed, ${result.counts.detached} detached.`, { ...result }, !result.ok);
+			return textResult(`${params.action} settled ${result.lanes.length} immutable lanes for stage "${result.stageId}".`, { ...result }, !result.ok);
 		}
-		if (MUTATING_FUTURE_ACTIONS.has(params.action)) return textResult(`stardock_stage ${params.action} is not implemented by the current execution contract. No integration, parent-ref mutation, retry, abandonment, or release action ran.`, { ok: false, code: "not_implemented", action: params.action }, true);
+		if (params.action === "integrationPlan") {
+			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined) return textResult("integrationPlan requires exact graphId, stageId, and expectedGraphRevision.", { ok: false }, true);
+			const result = await createIntegrationPlan(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision }, signal, stageActionDependencies.gitAdapter);
+			return textResult(`Prepared a parent-owned no-ff command plan for ${result.acceptedLanes.length} accepted lanes. No Git ref was mutated.`, { ...result });
+		}
+		if (params.action === "prepareIntegration") {
+			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined || !params.integrationHeadCommit || !params.laneMerges || !params.fanInCommits || !params.validation) return textResult("prepareIntegration requires exact graph/stage/revision, integrationHeadCommit, laneMerges, fanInCommits, and validation evidence.", { ok: false }, true);
+			const result = await prepareIntegration(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision, integrationHeadCommit: params.integrationHeadCommit, laneMerges: params.laneMerges, fanInCommits: params.fanInCommits, validation: params.validation }, signal, stageActionDependencies.gitAdapter);
+			runtime.updateUI(ctx);
+			return textResult(`Durably prepared integration head ${result.preparedHeadCommit}. Parent must execute the returned argument-array fast-forward commands.`, { ...result });
+		}
+		if (params.action === "recordIntegrated") {
+			if (!params.graphId || !params.stageId || !params.prepareToken || !params.parentResultCommit) return textResult("recordIntegrated requires graphId, stageId, prepareToken, and parentResultCommit.", { ok: false }, true);
+			const result = await recordIntegrated(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision, prepareToken: params.prepareToken, parentResultCommit: params.parentResultCommit }, signal, stageActionDependencies.gitAdapter);
+			runtime.updateUI(ctx);
+			let text = `Recorded integrated parent result ${result.parentResultCommit}.`;
+			if (result.idempotent) text = "Integration finalization was already recorded with exact matching evidence.";
+			return textResult(text, result);
+		}
+		if (params.action === "abandon" || params.action === "release") {
+			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined) return textResult(`${params.action} requires exact graphId, stageId, and expectedGraphRevision.`, { ok: false }, true);
+			let result;
+			if (params.action === "abandon") {
+				if (!params.rationale?.trim() || !params.approvalRef?.trim()) return textResult("abandon requires nonblank rationale and approvalRef.", { ok: false }, true);
+				result = await abandonStage(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision, rationale: params.rationale, approvalRef: params.approvalRef }, signal, stageActionDependencies.lifecycleAdapter);
+			} else result = await releaseStage(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision }, signal, stageActionDependencies.lifecycleAdapter);
+			runtime.updateUI(ctx);
+			return textResult(`${params.action} completed with durable lease disposition evidence.`, result, result.ok !== true);
+		}
 		return textResult(`Unsupported stardock_stage action "${String(params.action)}".`, { ok: false }, true);
 	} catch (error) {
 		return protocolFailure(error);
@@ -299,12 +374,13 @@ export function registerStageTool(pi: ExtensionAPI, runtime: StardockRuntime): v
 	pi.registerTool({
 		name: "stardock_stage",
 		label: "Stardock Execution Stage",
-		description: "Validate/CAS-upsert bounded execution graphs, inspect graph/ownership state, and run ready implementation nodes concurrently only in distinct owned Treehouse leases. Integration actions remain explicitly disabled.",
-		promptSnippet: "Upsert or inspect a validated execution graph, then run ready isolated lanes with exact graph/stage/revision inputs.",
+		description: "Run the parent-owned execution-stage lifecycle: isolated lanes, deterministic no-ff integration planning, durable prepare/finalize, reconciliation, immutable retry, abandonment, and safe lease release.",
+		promptSnippet: "Run isolated lanes, review exact WorkerRun ids, then plan/prepare/finalize parent-controlled integration and release clean terminal leases.",
 		promptGuidelines: [
 			"Use upsert with a canonical graph and brief digests; creation omits expectedGraphRevision and every update must compare-and-swap the current revision.",
 			"Use runReady only for validated ready implementation nodes. It owns all lifecycle state while children work only inside distinct Treehouse leases.",
-			"Review every stage WorkerRun with an explicit runId. Integration, retry, abandonment, and release actions return not_implemented without mutating durable state.",
+			"Review every stage WorkerRun with an explicit runId. integrationPlan returns argument arrays only; execute them as parent, then prepare, fast-forward, recordIntegrated, and release.",
+			"Use reconcile read-only first. Takeover requires confirmed owner death plus rationale, approval, and classification. Retry creates a new attempt and never overwrites prior refs.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["upsert", "list", "runReady", "acquire", "heartbeat", "reconcile", "integrationPlan", "prepareIntegration", "recordIntegrated", "retry", "abandon", "release"] as const),
@@ -321,6 +397,12 @@ export function registerStageTool(pi: ExtensionAPI, runtime: StardockRuntime): v
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_LIMIT })),
 			offset: Type.Optional(Type.Integer({ minimum: 0 })),
 			timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 24 * 60 * 60 * 1000 })),
+			integrationHeadCommit: Type.Optional(Type.String()),
+			laneMerges: Type.Optional(Type.Array(Type.Object({ nodeId: Type.String(), sourceHeadCommit: Type.String(), mergeCommit: Type.String() }), { maxItems: 100 })),
+			fanInCommits: Type.Optional(Type.Array(Type.String(), { maxItems: 100 })),
+			validation: Type.Optional(Type.Array(Type.Object({ command: Type.String(), result: StringEnum(["passed", "failed", "skipped"] as const), summary: Type.String() }), { maxItems: 100 })),
+			prepareToken: Type.Optional(Type.String()),
+			parentResultCommit: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			return executeStageTool(pi, runtime, params as StageToolParams, signal, onUpdate, ctx);

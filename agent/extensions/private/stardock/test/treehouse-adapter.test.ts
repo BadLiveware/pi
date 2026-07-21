@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as os from "node:os";
 import { test } from "node:test";
 import {
 	TreehouseAdapter,
@@ -14,6 +15,7 @@ const OTHER_SHA = "2".repeat(40);
 const PARENT_PATH = "/tmp/treehouse parent repo";
 const LEASE_PATH = "/tmp/treehouse pool/lane one";
 const COMMON_DIR = "/tmp/treehouse parent repo/.git";
+const HOME_LEASE_PATH = `${os.homedir()}/.treehouse/status-pool/1/status-repo`;
 
 interface RecordedCall {
 	command: string;
@@ -35,6 +37,7 @@ class FakeProcess {
 	leaseBranchRef: string | undefined;
 	leaseFailure: ArgumentProcessResult | undefined;
 	wrongHeadAfterDetach: string | undefined;
+	statusStdout: string | undefined;
 	leased = false;
 	returned = false;
 
@@ -51,8 +54,8 @@ class FakeProcess {
 			return { exitCode: 0, stdout: "v2.0.0\n", stderr: "upgrade banner on stderr\n" };
 		}
 		if (args.length === 1 && args[0] === "status") {
-			let stdout = "🌳 No worktrees in pool.\n";
-			if (this.leased) stdout = `leased: ${LEASE_PATH}\n`;
+			let stdout = this.statusStdout ?? "🌳 No worktrees in pool.\n";
+			if (this.statusStdout === undefined && this.leased) stdout = `leased: ${LEASE_PATH}\n`;
 			return { exitCode: 0, stdout, stderr: "status banner\n" };
 		}
 		if (args[0] === "get") {
@@ -313,6 +316,93 @@ test("dirty, wrong-head, wrong-branch, and wrong-repository return attempts are 
 		});
 	}
 });
+
+test("lease reservation inspection proves an already-returned lease absent from an empty pool", async () => {
+	const fake = new FakeProcess();
+	const adapter = adapterFor(fake);
+	const inspection = await adapter.inspectLeaseReservation({ worktreePath: LEASE_PATH, contractCommit: SHA, leaseHolder: "holder" });
+	assert.equal(inspection.state, "absent");
+	assert.match(inspection.reason, /empty/);
+	assert.equal(inspection.poolPath, "/tmp/treehouse pool");
+});
+
+test("lease reservation inspection uses the parent repository root instead of the lane directory when repository identity is known", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = `1     available    ${LEASE_PATH}\n`;
+	const adapter = adapterFor(fake);
+	const inspection = await adapter.inspectLeaseReservation({ worktreePath: LEASE_PATH, repositoryCommonDir: COMMON_DIR, contractCommit: SHA, leaseHolder: "holder" });
+	assert.equal(inspection.state, "absent");
+	assert.equal(treehouseCalls(fake, "status").at(-1)?.cwd, PARENT_PATH);
+});
+
+test("lease reservation inspection parses literal Treehouse v2.0 leased and available rows", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = `1     leased       ~/.treehouse/status-pool/1/status-repo  (held by exact-holder)\n`;
+	const adapter = adapterFor(fake);
+	const held = await adapter.inspectLeaseReservation({ worktreePath: HOME_LEASE_PATH, contractCommit: SHA, leaseHolder: "exact-holder" });
+	assert.equal(held.state, "held");
+	assert.equal(held.exactPathEntry?.worktreePath, HOME_LEASE_PATH);
+	assert.equal(held.exactPathEntry?.leaseHolder, "exact-holder");
+
+	fake.statusStdout = `1     available    ~/.treehouse/status-pool/1/status-repo\n`;
+	const absent = await adapter.inspectLeaseReservation({ worktreePath: HOME_LEASE_PATH, contractCommit: SHA, leaseHolder: "exact-holder" });
+	assert.equal(absent.state, "absent");
+	assert.equal(absent.exactPathEntry?.worktreePath, HOME_LEASE_PATH);
+	assert.equal(absent.exactPathEntry?.leaseHolder, undefined);
+});
+
+test("lease reservation inspection fails closed when path absence lacks exact holder evidence", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = `1     available    /tmp/treehouse pool/2/other worktree\n`;
+	const adapter = adapterFor(fake);
+	const inspection = await adapter.inspectLeaseReservation({ worktreePath: LEASE_PATH, contractCommit: SHA, leaseHolder: "holder" });
+	assert.equal(inspection.state, "ambiguous");
+	assert.match(inspection.reason, /absence of worktree path/);
+});
+
+test("lease reservation inspection detects conflicting literal holder and path evidence", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = `1     leased       ~/.treehouse/status-pool/2/other-repo  (held by exact-holder)\n`;
+	const adapter = adapterFor(fake);
+	const inspection = await adapter.inspectLeaseReservation({ worktreePath: HOME_LEASE_PATH, contractCommit: SHA, leaseHolder: "exact-holder" });
+	assert.equal(inspection.state, "ambiguous");
+	assert.match(inspection.reason, /still reports holder/);
+});
+
+test("lease reservation inspection treats unrecognized nonempty stdout as ambiguous", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = "pool summary unavailable\n";
+	const adapter = adapterFor(fake);
+	const inspection = await adapter.inspectLeaseReservation({ worktreePath: LEASE_PATH, contractCommit: SHA, leaseHolder: "holder" });
+	assert.equal(inspection.state, "ambiguous");
+	assert.match(inspection.reason, /unrecognized nonempty lines/);
+});
+
+test("lease reservation inspection keeps holder-only absence ambiguous when leased rows omit holder evidence", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = `1     leased       ~/.treehouse/status-pool/2/other-repo\n`;
+	const adapter = adapterFor(fake);
+	const inspection = await adapter.inspectLeaseReservation({ contractCommit: SHA, leaseHolder: "exact-holder", statusContextCwd: PARENT_PATH });
+	assert.equal(inspection.state, "ambiguous");
+	assert.match(inspection.reason, /without holder evidence/);
+});
+
+test("lease reservation inspection prefers transient parent repository context for holder-only evidence", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = `1     available    ~/.treehouse/status-pool/2/other-repo\n`;
+	const adapter = adapterFor(fake);
+	const absent = await adapter.inspectLeaseReservation({ contractCommit: SHA, leaseHolder: "exact-holder", statusContextCwd: PARENT_PATH });
+	assert.equal(absent.state, "absent");
+	assert.match(absent.reason, /does not report holder/);
+	assert.equal(treehouseCalls(fake, "status").at(-1)?.cwd, PARENT_PATH);
+
+	fake.statusStdout = `1     leased       ~/.treehouse/status-pool/2/other-repo  (held by exact-holder)\n`;
+	const held = await adapter.inspectLeaseReservation({ contractCommit: SHA, leaseHolder: "exact-holder", statusContextCwd: PARENT_PATH });
+	assert.equal(held.state, "held");
+	assert.match(held.reason, /still reports exact holder/);
+	assert.equal(treehouseCalls(fake, "status").at(-1)?.cwd, PARENT_PATH);
+});
+
 
 test("status command failures retain structured command evidence", async () => {
 	const runner: ArgumentProcessRunner = async () => ({ exitCode: 9, stdout: "partial", stderr: "status unavailable" });

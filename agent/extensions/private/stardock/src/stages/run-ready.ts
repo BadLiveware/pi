@@ -18,7 +18,15 @@ import {
 	type ExecutionValidationRecord,
 } from "./contracts.ts";
 import { readyExecutionNodeIds, validateExecutionGraph } from "./graph.ts";
-import { partialLeaseFromError, TreehouseAdapter, type LaneCompletionEvidence, type LaneValidationEvidence, type PartialTreehouseLease, type TreehouseLease } from "./treehouse-adapter.ts";
+import {
+	partialLeaseFromError,
+	TreehouseAdapter,
+	type LaneCompletionEvidence,
+	type LaneValidationEvidence,
+	type LeaseReservationInspection,
+	type PartialTreehouseLease,
+	type TreehouseLease,
+} from "./treehouse-adapter.ts";
 
 const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -43,6 +51,7 @@ export interface RunReadyAdapter {
 	leaseAndAnchor(input: Parameters<TreehouseAdapter["leaseAndAnchor"]>[0]): Promise<TreehouseLease>;
 	returnLease(input: Parameters<TreehouseAdapter["returnLease"]>[0]): Promise<unknown>;
 	inspectLaneCompletion(lease: TreehouseLease, signal?: AbortSignal): Promise<LaneCompletionEvidence>;
+	inspectLeaseReservation(lease: PartialTreehouseLease, signal?: AbortSignal): Promise<LeaseReservationInspection>;
 	runValidationCommands(worktreePath: string, commands: string[], signal?: AbortSignal): Promise<LaneValidationEvidence[]>;
 }
 
@@ -121,14 +130,17 @@ function errorMessage(error: unknown): string {
 	return String(error);
 }
 
-function canonicalLeasePath(lease: PartialTreehouseLease): string {
+function canonicalLeasePath(lease: PartialTreehouseLease): string | undefined {
+	if (!lease.worktreePath) return undefined;
 	if (path.isAbsolute(lease.worktreePath)) return path.resolve(lease.worktreePath);
 	return path.normalize(lease.worktreePath);
 }
 
 function leaseIdentityConflicts(left: PartialTreehouseLease, right: PartialTreehouseLease): boolean {
-	if (canonicalLeasePath(left) === canonicalLeasePath(right)) return true;
-	if (left.leaseHolder === right.leaseHolder) return true;
+	const leftPath = canonicalLeasePath(left);
+	const rightPath = canonicalLeasePath(right);
+	if (leftPath && rightPath && leftPath === rightPath) return true;
+	if (left.leaseHolder && right.leaseHolder && left.leaseHolder === right.leaseHolder) return true;
 	if (left.branchRef && right.branchRef && left.branchRef === right.branchRef) return true;
 	return false;
 }

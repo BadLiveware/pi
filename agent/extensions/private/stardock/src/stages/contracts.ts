@@ -21,6 +21,7 @@ export interface ResourceClaim {
 }
 
 export type ExecutionAttemptStatus = "prepared" | "running" | "needs_review" | "failed" | "detached";
+export type LeaseDisposition = "held" | "release_pending" | "released" | "preserved" | "abandoned";
 
 export interface ExecutionAttempt {
 	id: string;
@@ -37,7 +38,9 @@ export interface ExecutionAttempt {
 	laneCommits: string[];
 	headCommit?: string;
 	worktreePath?: string;
+	repositoryCommonDir?: string;
 	leaseHolder?: string;
+	leaseDisposition?: LeaseDisposition;
 	clean?: boolean;
 	changedPaths?: string[];
 	violations?: string[];
@@ -63,7 +66,14 @@ export interface IntegrationRecord {
 	prepareTokenDigest?: string;
 	preparedAt?: string;
 	parentResultCommit?: string;
+	integratedAt?: string;
 	validation: ExecutionValidationRecord[];
+}
+
+export interface ExecutionStageAbandonment {
+	rationale: string;
+	approvalRef: string;
+	abandonedAt: string;
 }
 
 export interface ExecutionNode {
@@ -95,6 +105,8 @@ export interface ExecutionStage {
 	maxConcurrency: number;
 	integrationOrder: string[];
 	integration?: IntegrationRecord;
+	abandonment?: ExecutionStageAbandonment;
+	terminalOwnershipCleanup?: ExecutionStageOwnership;
 }
 
 export type ExecutionOwnershipStatus = "active" | "detached" | "reconciling";
@@ -279,9 +291,15 @@ function isExecutionAttempt(value: unknown): value is ExecutionAttempt {
 	if (value.changedPaths !== undefined && !isStringArray(value.changedPaths)) return false;
 	if (value.violations !== undefined && !isStringArray(value.violations)) return false;
 	if (!Array.isArray(value.validation) || !value.validation.every(isExecutionValidationRecord)) return false;
-	for (const key of ["workerRunId", "workerReportId", "bridgeRunId", "nodeContractDigest", "stageContractDigest", "headCommit", "worktreePath", "leaseHolder", "completedAt"]) {
+	for (const key of ["workerRunId", "workerReportId", "bridgeRunId", "nodeContractDigest", "stageContractDigest", "headCommit", "worktreePath", "repositoryCommonDir", "leaseHolder", "completedAt"]) {
 		if (!hasOptionalString(value, key)) return false;
 	}
+	if (value.leaseDisposition !== undefined
+		&& value.leaseDisposition !== "held"
+		&& value.leaseDisposition !== "release_pending"
+		&& value.leaseDisposition !== "released"
+		&& value.leaseDisposition !== "preserved"
+		&& value.leaseDisposition !== "abandoned") return false;
 	if (value.clean !== undefined && typeof value.clean !== "boolean") return false;
 	if (value.status === undefined) return true;
 	return value.status === "prepared" || value.status === "running" || value.status === "needs_review" || value.status === "failed" || value.status === "detached";
@@ -314,6 +332,13 @@ function isIntegrationLaneMerge(value: unknown): value is IntegrationLaneMerge {
 	return typeof value.nodeId === "string" && typeof value.sourceHeadCommit === "string" && typeof value.mergeCommit === "string";
 }
 
+function isExecutionStageAbandonment(value: unknown): value is ExecutionStageAbandonment {
+	if (!isRecord(value)) return false;
+	return typeof value.rationale === "string"
+		&& typeof value.approvalRef === "string"
+		&& typeof value.abandonedAt === "string";
+}
+
 function isIntegrationRecord(value: unknown): value is IntegrationRecord {
 	if (!isRecord(value)) return false;
 	if (value.status !== "building" && value.status !== "prepared" && value.status !== "integrated" && value.status !== "failed") return false;
@@ -321,7 +346,7 @@ function isIntegrationRecord(value: unknown): value is IntegrationRecord {
 	if (!Array.isArray(value.laneMerges) || !value.laneMerges.every(isIntegrationLaneMerge)) return false;
 	if (!isStringArray(value.fanInCommits)) return false;
 	if (!Array.isArray(value.validation) || !value.validation.every(isExecutionValidationRecord)) return false;
-	for (const key of ["prepareTokenDigest", "preparedAt", "parentResultCommit"]) {
+	for (const key of ["prepareTokenDigest", "preparedAt", "parentResultCommit", "integratedAt"]) {
 		if (!hasOptionalString(value, key)) return false;
 	}
 	return true;
@@ -335,6 +360,8 @@ function isExecutionStage(value: unknown): value is ExecutionStage {
 	if (!isStringArray(value.implementationNodeIds) || !isStringArray(value.integrationOrder)) return false;
 	if (!Number.isInteger(value.maxConcurrency)) return false;
 	if (value.integration !== undefined && !isIntegrationRecord(value.integration)) return false;
+	if (value.abandonment !== undefined && !isExecutionStageAbandonment(value.abandonment)) return false;
+	if (value.terminalOwnershipCleanup !== undefined && !isExecutionStageOwnership(value.terminalOwnershipCleanup)) return false;
 	return value.status === "draft"
 		|| value.status === "contracts_ready"
 		|| value.status === "running"

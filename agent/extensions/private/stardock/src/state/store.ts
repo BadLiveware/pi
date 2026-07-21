@@ -7,7 +7,7 @@ import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./core.ts";
-import { digestExecutionNodeContract, digestExecutionStageContract, type ExecutionAttempt, type ExecutionStageOwnership } from "../stages/contracts.ts";
+import { digestExecutionNodeContract, digestExecutionStageContract, type ExecutionAttempt, type ExecutionStageOwnership, type LeaseDisposition } from "../stages/contracts.ts";
 import { migrateState } from "./migration.ts";
 import { archiveDir, ensureDir, existingStatePath, runsDir, stageOwnerPath, stardockDir, statePath, tryRead } from "./paths.ts";
 import {
@@ -19,6 +19,9 @@ import {
 	ownershipTokenForContext,
 	readOwnerRecord,
 	releaseMatchingMutationMutex,
+	clearTerminalOwnerEvidence,
+	removeMatchingActiveOwner,
+	removeOwnershipToken,
 	type StateMutationRecord,
 } from "../stages/ownership-records.ts";
 
@@ -28,6 +31,7 @@ export interface StateMutationOptions {
 	priorOwnershipEvidence?: ExecutionStageOwnership;
 	mutexWaitMs?: number;
 	afterCommit?: (state: LoopState) => void;
+	releaseOwnership?: ExecutionStageOwnership;
 }
 
 export function readStateFile(filePath: string): LoopState | null {
@@ -49,11 +53,24 @@ function assertAppendOnly<T>(attemptId: string, field: string, current: T[], can
 	}
 }
 
+function assertLeaseDispositionTransition(current: LeaseDisposition | undefined, candidate: LeaseDisposition | undefined, attemptId: string): void {
+	if (current === candidate || current === undefined) return;
+	const allowed: Record<LeaseDisposition, LeaseDisposition[]> = {
+		held: ["release_pending", "released", "preserved", "abandoned"],
+		release_pending: ["released", "preserved"],
+		released: [],
+		preserved: ["release_pending", "released", "abandoned"],
+		abandoned: ["release_pending", "released"],
+	};
+	if (candidate && allowed[current].includes(candidate)) return;
+	throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${attemptId}" lease disposition cannot change from "${current}" to "${String(candidate)}".`);
+}
+
 function assertAttemptPreserved(current: ExecutionAttempt, candidate: ExecutionAttempt): void {
 	for (const field of ["id", "baseCommit", "branchRef", "startedAt"] as const) {
 		if (candidate[field] !== current[field]) throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${current.id}" field "${field}" is immutable.`);
 	}
-	for (const field of ["workerRunId", "workerReportId", "bridgeRunId", "nodeContractDigest", "stageContractDigest", "headCommit", "worktreePath", "leaseHolder", "clean", "completedAt"] as const) {
+	for (const field of ["workerRunId", "workerReportId", "bridgeRunId", "nodeContractDigest", "stageContractDigest", "headCommit", "worktreePath", "repositoryCommonDir", "leaseHolder", "clean", "completedAt"] as const) {
 		if (current[field] !== undefined && candidate[field] !== current[field]) {
 			throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${current.id}" once-set field "${field}" is immutable.`);
 		}
@@ -63,6 +80,7 @@ function assertAttemptPreserved(current: ExecutionAttempt, candidate: ExecutionA
 			throw new OwnershipProtocolError("attempt_history_immutable", `Execution attempt "${current.id}" contract field "${field}" is immutable.`);
 		}
 	}
+	assertLeaseDispositionTransition(current.leaseDisposition, candidate.leaseDisposition, current.id);
 	assertAppendOnly(current.id, "lane commit", current.laneCommits, candidate.laneCommits);
 	assertAppendOnly(current.id, "changed path", current.changedPaths ?? [], candidate.changedPaths ?? []);
 	assertAppendOnly(current.id, "violation", current.violations ?? [], candidate.violations ?? []);
@@ -272,11 +290,16 @@ function prepareCandidate(
 	candidate: LoopState,
 	identity: ReturnType<typeof mutationIdentity>,
 	priorOwnershipEvidence: ExecutionStageOwnership | undefined,
+	releaseOwnership: ExecutionStageOwnership | undefined,
 ): void {
 	candidate.active = candidate.status === "active";
 	assertPriorAttemptsPreserved(current, candidate);
 	if (priorOwnershipEvidence) assertOwnershipReplacement(current, candidate, priorOwnershipEvidence, identity);
-	else assertOwnedCandidatePreserved(current, candidate);
+	else if (releaseOwnership) {
+		const ownership = current.executionGraph?.ownership;
+		if (!ownership || !ownershipIdentityMatches(ownership, releaseOwnership)) throw new OwnershipProtocolError("evidence_changed", "Terminal ownership release evidence changed before mutation.");
+		if (candidate.executionGraph?.ownership) throw new OwnershipProtocolError("owner_identity_changed", "Terminal ownership release must remove the exact persisted graph ownership.");
+	} else assertOwnedCandidatePreserved(current, candidate);
 	const currentGraph = current.executionGraph;
 	const candidateGraph = candidate.executionGraph;
 	if (!currentGraph || !candidateGraph) return;
@@ -332,9 +355,14 @@ export function mutateState(
 		compareGraphRevision(current, options.expectedGraphRevision);
 		const candidate = structuredClone(current);
 		mutate(candidate);
-		prepareCandidate(current, candidate, identity, options.priorOwnershipEvidence);
+		prepareCandidate(current, candidate, identity, options.priorOwnershipEvidence, options.releaseOwnership);
 		atomicReplaceState(ctx, candidate, false);
-		syncActiveOwnerRevision(ctx, candidate);
+		if (options.releaseOwnership) {
+			clearTerminalOwnerEvidence(ctx, name, options.releaseOwnership);
+			removeOwnershipToken(ctx, name, options.releaseOwnership.sessionId);
+		} else {
+			syncActiveOwnerRevision(ctx, candidate);
+		}
 		if (options.afterCommit) options.afterCommit(candidate);
 		return candidate;
 	} finally {
