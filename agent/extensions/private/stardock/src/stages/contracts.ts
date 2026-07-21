@@ -83,6 +83,21 @@ export interface ExecutionStage {
 	integration?: IntegrationRecord;
 }
 
+export type ExecutionOwnershipStatus = "active" | "detached" | "reconciling";
+
+export interface ExecutionStageOwnership {
+	graphId: string;
+	stageId: string;
+	sessionId: string;
+	pid: number;
+	tokenDigest: string;
+	status: ExecutionOwnershipStatus;
+	acquiredAt: string;
+	heartbeatAt: string;
+	stateRevision: number;
+	detachedAt?: string;
+}
+
 export interface ExecutionGraph {
 	id: string;
 	revision: number;
@@ -91,6 +106,7 @@ export interface ExecutionGraph {
 	stages: ExecutionStage[];
 	createdAt: string;
 	updatedAt: string;
+	ownership?: ExecutionStageOwnership;
 }
 
 function canonicalValue(value: unknown): unknown {
@@ -289,6 +305,16 @@ function isExecutionStage(value: unknown): value is ExecutionStage {
 		|| value.status === "abandoned";
 }
 
+function isExecutionStageOwnership(value: unknown): value is ExecutionStageOwnership {
+	if (!isRecord(value)) return false;
+	for (const key of ["graphId", "stageId", "sessionId", "tokenDigest", "acquiredAt", "heartbeatAt"]) {
+		if (typeof value[key] !== "string") return false;
+	}
+	if (!Number.isInteger(value.pid) || !Number.isInteger(value.stateRevision)) return false;
+	if (value.detachedAt !== undefined && typeof value.detachedAt !== "string") return false;
+	return value.status === "active" || value.status === "detached" || value.status === "reconciling";
+}
+
 export function readPersistedExecutionGraph(value: unknown): ExecutionGraph | undefined {
 	if (!isRecord(value)) return undefined;
 	if (typeof value.id !== "string" || typeof value.createdAt !== "string" || typeof value.updatedAt !== "string") return undefined;
@@ -296,5 +322,6 @@ export function readPersistedExecutionGraph(value: unknown): ExecutionGraph | un
 	if (value.status !== "draft" && value.status !== "running" && value.status !== "blocked" && value.status !== "completed" && value.status !== "abandoned") return undefined;
 	if (!Array.isArray(value.nodes) || !value.nodes.every(isExecutionNode)) return undefined;
 	if (!Array.isArray(value.stages) || !value.stages.every(isExecutionStage)) return undefined;
+	if (value.ownership !== undefined && !isExecutionStageOwnership(value.ownership)) return undefined;
 	return value as unknown as ExecutionGraph;
 }

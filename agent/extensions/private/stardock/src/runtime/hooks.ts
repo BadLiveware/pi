@@ -5,8 +5,10 @@ import { matchesKey } from "@earendil-works/pi-tui";
 import * as path from "node:path";
 import type { LoopState } from "../state/core.ts";
 import { existingStatePath, safeMtimeMs, tryRead } from "../state/paths.ts";
-import { listLoops, loadState, saveState } from "../state/store.ts";
+import { listLoops, loadState, mutationBlockReason, saveState } from "../state/store.ts";
 import { evaluateWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
+import { detachOwnedStages } from "../stages/ownership.ts";
+import { bindOwnershipContext } from "../stages/ownership-records.ts";
 import { getModeHandler } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
 
@@ -68,6 +70,7 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 		const messages = transcriptMessages(event.messages);
 
 		if (state.maxIterations > 0 && state.iteration >= state.maxIterations) {
+			if (mutationBlockReason(ctx, state.name)) return;
 			runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────
 ⚠️ STARDOCK LOOP STOPPED: ${state.name} | Max iterations (${state.maxIterations}) reached
 ───────────────────────────────────────────────────────────────────────`, "clear");
@@ -78,6 +81,7 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
+		bindOwnershipContext(ctx, runtime.ref.sessionId);
 		unsubscribeInterruptInput?.();
 		unsubscribeInterruptInput = ctx.hasUI
 			? ctx.ui.onTerminalInput((data) => {
@@ -109,9 +113,10 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 	pi.on("session_shutdown", async (_event, ctx) => {
 		unsubscribeInterruptInput?.();
 		unsubscribeInterruptInput = undefined;
+		detachOwnedStages(ctx, runtime.ref.sessionId);
 		if (runtime.ref.currentLoop) {
 			const state = loadState(ctx, runtime.ref.currentLoop);
-			if (state) saveState(ctx, state);
+			if (state && !state.executionGraph?.ownership) saveState(ctx, state);
 		}
 	});
 }

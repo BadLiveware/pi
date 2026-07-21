@@ -24,6 +24,7 @@ const REGISTERED_TOOL_NAMES = [
 	"stardock_outside_payload",
 	"stardock_outside_requests",
 	"stardock_policy",
+	"stardock_stage",
 	"stardock_start",
 	"stardock_state",
 	"stardock_worker",

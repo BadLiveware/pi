@@ -48,6 +48,7 @@ The older flat layout, `.stardock/<name>.md` plus `.stardock/<name>.state.json`,
 | `stardock_outside_requests` | List pending or answered outside-help/governor requests for a loop. |
 | `stardock_outside_payload` | Return a ready-to-copy governor or researcher task payload for one outside request. |
 | `stardock_outside_answer` | Record an outside-help answer or structured governor decision without editing state files manually. |
+| `stardock_stage` | Inspect, acquire, heartbeat, or explicitly reconcile exclusive durable execution-stage ownership. Read-only inspection remains available to sibling runtimes, while takeover requires matching dead-owner evidence, rationale, approval, and worker/Treehouse classification. |
 
 ## Commands
 
@@ -89,6 +90,24 @@ Options for `/stardock start`:
 | `--outside-help-on-stagnation` | Cue outside help when structured attempt results stagnate or show scaffolding drift. |
 
 ## Understanding a run
+
+### Execution-stage ownership
+
+Use `stardock_stage({ action: "acquire", graphId, stageId, expectedGraphRevision })` only for a fully validated, ready, nonterminal stage.
+The owning runtime keeps its raw token in process memory and persists only a digest beside matching graph ownership state.
+Every state mutation and heartbeat is serialized by the short mutation mutex, so sibling runtimes cannot overwrite stage, node, attempt, or review state.
+
+Sibling runtimes may continue using state, policy, status, list, and payload inspection actions.
+Use `stardock_stage({ action: "list" })` or read-only `reconcile` to inspect bounded owner, process, heartbeat, mutex, and graph evidence.
+A stale heartbeat is suspicion only and never authorizes automatic cleanup or takeover.
+Approved takeover requires confirmed process death, matching graph/stage/session/token/revision evidence, a rationale, an approval reference, and worker/Treehouse classification.
+Reconciliation quarantines only matching dead file evidence, keeps prior graph ownership durable, and atomically replaces that exact prior ownership during acquisition.
+If the reconciler stops after quarantine but before acquisition, the orphaned graph ownership continues to block mutation and remains eligible for another approved reconciliation.
+Standalone dead-mutex recovery still uses normal stage readiness and cannot resume a running or detached stage without genuine prior graph ownership evidence.
+Malformed, unreadable, missing, or contradictory evidence fails closed.
+
+Owner pause or session shutdown leaves the stage and running attempts detached, stops the process-local heartbeat, and preserves the durable owner record for explicit reconciliation.
+Prior attempt arrays preserve graph-wide unique ids and existing order, identity, and once-set refs, while commit and validation histories are append-only.
 
 While a loop is active, Stardock also shows an at-a-glance widget with loop name, mode/status/iteration, recursive attempt progress, outside request count, and the latest governor steer when present.
 

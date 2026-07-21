@@ -7,12 +7,57 @@ import { answerOutsideRequest, createManualGovernorPayload, formatOutsideRequest
 import { DEFAULT_TEMPLATE, type LoopState } from "../state/core.ts";
 import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
 import { createEmptyExecutionGraph } from "../stages/contracts.ts";
+import { bindOwnershipContext } from "../stages/ownership-records.ts";
 import { archiveDir, defaultTaskFile, ensureDir, legacyPath, runDir, sanitize, stardockDir, statePath, taskPath, tryDelete, tryRead, tryRemoveDir } from "../state/paths.ts";
-import { listLoops, loadState, saveState } from "../state/store.ts";
+import { destructiveOwnershipBlockReason, listLoops, loadState, mutationBlockReason, saveState } from "../state/store.ts";
 import { formatLoop, formatRunOverview, formatRunTimeline } from "../views.ts";
 import { parseArgs, parseLoopViewArgs, selectLoopForView } from "./args.ts";
 import { buildPrompt, createModeState, isImplementedMode, unsupportedModeMessage } from "./prompts.ts";
 import type { StardockRuntime } from "./types.ts";
+
+function commandMutationTarget(command: string, rest: string, ctx: ExtensionContext, runtime: StardockRuntime): { loopNames: string[]; destructive: boolean } | null {
+	if (["status", "view", "timeline", "list"].includes(command)) return null;
+	if (command === "start") return null;
+	if (command === "outside") {
+		const parts = rest.trim().split(/\s+/).filter(Boolean);
+		if (parts[0] !== "answer") return null;
+		const loopNames: string[] = [];
+		if (parts[1]) loopNames.push(parts[1]);
+		return { loopNames, destructive: false };
+	}
+	if (command === "clean" || command === "nuke") return { loopNames: listLoops(ctx).map((loop) => loop.name), destructive: true };
+	if (command === "cancel" || command === "archive") {
+		const loopNames: string[] = [];
+		if (rest.trim()) loopNames.push(rest.trim());
+		return { loopNames, destructive: true };
+	}
+	if (command === "resume") {
+		const loopNames: string[] = [];
+		if (rest.trim()) loopNames.push(rest.trim());
+		return { loopNames, destructive: false };
+	}
+	if (command === "stop") {
+		if (runtime.ref.currentLoop) return { loopNames: [runtime.ref.currentLoop], destructive: false };
+		const active = listLoops(ctx).find((loop) => loop.status === "active");
+		const loopNames: string[] = [];
+		if (active) loopNames.push(active.name);
+		return { loopNames, destructive: false };
+	}
+	if (runtime.ref.currentLoop) return { loopNames: [runtime.ref.currentLoop], destructive: false };
+	return { loopNames: [], destructive: false };
+}
+
+function commandOwnershipBlock(command: string, rest: string, ctx: ExtensionContext, runtime: StardockRuntime): string | undefined {
+	const target = commandMutationTarget(command, rest, ctx, runtime);
+	if (!target) return undefined;
+	for (const loopName of target.loopNames) {
+		let blocked: string | undefined;
+		if (target.destructive) blocked = destructiveOwnershipBlockReason(ctx, loopName);
+		else blocked = mutationBlockReason(ctx, loopName);
+		if (blocked) return blocked;
+	}
+	return undefined;
+}
 
 const HELP = `Stardock - Governed implementation loops
 
@@ -287,9 +332,16 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 	pi.registerCommand("stardock", {
 		description: "Stardock - governed implementation loops",
 		handler: async (args, ctx) => {
+			bindOwnershipContext(ctx, runtime.ref.sessionId);
 			const [cmd] = args.trim().split(/\s+/);
+			const rest = args.slice(cmd.length).trim();
 			const handler = commands[cmd];
-			if (handler) handler(args.slice(cmd.length).trim(), ctx);
+			const blocked = commandOwnershipBlock(cmd, rest, ctx, runtime);
+			if (blocked) {
+				ctx.ui.notify(blocked, "warning");
+				return;
+			}
+			if (handler) handler(rest, ctx);
 			else ctx.ui.notify(HELP, "info");
 		},
 	});
@@ -297,6 +349,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 	pi.registerCommand("stardock-stop", {
 		description: "Stop active Stardock loop (idle only)",
 		handler: async (_args, ctx) => {
+			bindOwnershipContext(ctx, runtime.ref.sessionId);
 			if (!ctx.isIdle()) {
 				if (ctx.hasUI) ctx.ui.notify("Agent is busy. Press ESC to interrupt, then run /stardock-stop.", "warning");
 				return;
@@ -312,6 +365,11 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 			}
 			if (state.status !== "active") {
 				if (ctx.hasUI) ctx.ui.notify(`Loop "${state.name}" is not active`, "warning");
+				return;
+			}
+			const blocked = mutationBlockReason(ctx, state.name);
+			if (blocked) {
+				if (ctx.hasUI) ctx.ui.notify(blocked, "warning");
 				return;
 			}
 			runtime.stopLoop(ctx, state, `Stopped Stardock loop: ${state.name} (iteration ${state.iteration})`);

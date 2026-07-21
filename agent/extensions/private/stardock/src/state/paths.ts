@@ -24,6 +24,18 @@ export function taskPath(ctx: ExtensionContext, name: string, archived = false):
 	return path.join(runDir(ctx, name, archived), "task.md");
 }
 
+export function stageOwnerPath(ctx: ExtensionContext, name: string): string {
+	return path.join(runDir(ctx, name), "stage-owner.json");
+}
+
+export function stateMutationPath(ctx: ExtensionContext, name: string): string {
+	return path.join(runDir(ctx, name), "state-mutation.json");
+}
+
+export function ownershipQuarantineDir(ctx: ExtensionContext, name: string): string {
+	return path.join(runDir(ctx, name), "ownership-quarantine");
+}
+
 export function defaultTaskFile(name: string): string {
 	return path.join(STARDOCK_DIR, "runs", sanitize(name), "task.md");
 }
