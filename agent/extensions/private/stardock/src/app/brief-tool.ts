@@ -48,7 +48,7 @@ export function runBriefUpsert(loopName: string, params: BriefMutationParams, op
 	if (batch.isBatch && params.activate === true) response.contentText += ` and activated ${brief.id}`;
 	return {
 		contentText: `${response.contentText} in loop "${loopName}".`,
-		details: { loopName, [response.detailKey]: response.detailValue, brief, briefs: updatedState.briefs, currentBriefId: updatedState.currentBriefId },
+		details: { loopName, [response.detailKey]: response.detailValue, brief, briefs: { total: updatedState.briefs.length }, currentBriefId: updatedState.currentBriefId },
 		state: updatedState,
 	};
 }

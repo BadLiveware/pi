@@ -17,7 +17,7 @@ export function runBreakoutPackageRecord(loopName: string, params: BreakoutPacka
 		return result.ok ? { state: result.state, item: result.breakout, created: result.created, normalizedStatus: result.normalizedStatus } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	const response = batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "breakout", pluralName: "breakout packages", pluralDetailKey: "packages", singleItemText: (breakout, result) => `${result.created ? "Recorded" : "Updated"} breakout package ${breakout.id}`, stateDetails: (state) => ({ breakoutPackages: state.breakoutPackages }) });
+	const response = batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "breakout", pluralName: "breakout packages", pluralDetailKey: "packages", singleItemText: (breakout, result) => `${result.created ? "Recorded" : "Updated"} breakout package ${breakout.id}`, stateDetails: (state) => ({ breakoutPackages: { total: state.breakoutPackages.length } }) });
 	const normalizedStatuses = (batch.results as Array<(typeof batch.results)[number] & { normalizedStatus?: { from: string; to: BreakoutPackageStatus } }>).map((result) => result.normalizedStatus).filter((item): item is { from: string; to: BreakoutPackageStatus } => Boolean(item));
 	return normalizedStatuses.length ? { ...response, details: { ...response.details, normalizedStatus: normalizedStatuses[0], normalizedStatuses } } : response;
 }

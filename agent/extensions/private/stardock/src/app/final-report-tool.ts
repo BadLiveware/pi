@@ -16,5 +16,5 @@ export function runFinalReportRecord(loopName: string, params: FinalReportMutati
 		return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "report", pluralName: "final reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} final report ${report.id}`, stateDetails: (state) => ({ finalVerificationReports: state.finalVerificationReports }) });
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "report", pluralName: "final reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} final report ${report.id}`, stateDetails: (state) => ({ finalVerificationReports: { total: state.finalVerificationReports.length } }) });
 }

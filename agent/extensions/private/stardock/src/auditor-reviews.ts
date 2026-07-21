@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runAuditorReviewRecord } from "./app/auditor-review-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
@@ -23,17 +24,16 @@ function compactList(items: string[], maxItems = 5, maxLength = 160): string[] {
 	return items.slice(0, maxItems).map((item) => compactText(item, maxLength) ?? item);
 }
 
-export function formatAuditorReviewOverview(state: LoopState): string {
-	const lines = [`Auditor reviews for ${state.name}`, `Reviews: ${state.auditorReviews.length} total`, formatCriterionCounts(state.criterionLedger), `Final reports: ${state.finalVerificationReports.length} total`];
+export function formatAuditorReviewOverview(state: LoopState, total = state.auditorReviews.length): string {
+	const lines = [`Auditor reviews for ${state.name}`, `Reviews: ${total} total`, formatCriterionCounts(state.criterionLedger), `Final reports: ${state.finalVerificationReports.length} total`];
 	if (state.auditorReviews.length > 0) {
 		lines.push("");
-		for (const review of state.auditorReviews.slice(0, 10)) {
+		for (const review of state.auditorReviews) {
 			lines.push(`- ${review.id} [${review.status}] ${compactText(review.summary, 140)}`);
 			lines.push(`  Focus: ${compactText(review.focus, 140)}`);
 			if (review.concerns.length) lines.push(`  Concerns: ${compactList(review.concerns, 3, 100).join("; ")}`);
 			if (review.requiredFollowups.length) lines.push(`  Followups: ${compactList(review.requiredFollowups, 3, 100).join("; ")}`);
 		}
-		if (state.auditorReviews.length > 10) lines.push(`... ${state.auditorReviews.length - 10} more reviews`);
 	}
 	return lines.join("\n");
 }
@@ -192,6 +192,8 @@ export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): vo
 			recommendations: Type.Optional(Type.Array(Type.String(), { description: "Compact auditor recommendations." })),
 			requiredFollowups: Type.Optional(Type.Array(Type.String(), { description: "Required follow-up checks or actions." })),
 			reviews: Type.Optional(Type.Array(auditorReviewInputSchema, { description: "Batch auditor reviews for record. Single-review fields remain compatibility sugar." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -202,15 +204,17 @@ export function registerAuditorTool(pi: ExtensionAPI, deps: AuditorToolDeps): vo
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 			if (params.action === "list") {
+				const page = paginateItems(state.auditorReviews, params);
+				const pageState = { ...state, auditorReviews: page.items };
 				return {
-					content: [{ type: "text", text: formatAuditorReviewOverview(state) }],
-					details: { loopName, auditorReviews: state.auditorReviews },
+					content: [{ type: "text", text: `${formatAuditorReviewOverview(pageState, page.page.total)}\n${formatPageNote(page.page)}` }],
+					details: { loopName, auditorReviews: page.items, page: page.page },
 				};
 			}
 			if (params.action === "payload") {
 				return {
 					content: [{ type: "text", text: buildAuditorPayload(state, params.focus) }],
-					details: { loopName, focus: params.focus, auditorReviews: state.auditorReviews },
+					details: { loopName, focus: params.focus, auditorReviews: { total: state.auditorReviews.length } },
 				};
 			}
 			const response = runAuditorReviewRecord(loopName, params, { record: (input) => recordAuditorReview(ctx, loopName, input) });

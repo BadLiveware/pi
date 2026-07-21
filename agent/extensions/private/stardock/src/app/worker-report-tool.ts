@@ -18,5 +18,5 @@ export function runWorkerReportRecord(loopName: string, params: WorkerReportMuta
 		return result.ok ? { state: result.state, item: result.report, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "report", pluralName: "worker reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} worker report ${report.id}`, stateDetails: (state) => ({ workerReports: state.workerReports }) });
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "report", pluralName: "worker reports", pluralDetailKey: "reports", singleItemText: (report, result) => `${result.created ? "Recorded" : "Updated"} worker report ${report.id}`, stateDetails: (state) => ({ workerReports: { total: state.workerReports.length } }) });
 }

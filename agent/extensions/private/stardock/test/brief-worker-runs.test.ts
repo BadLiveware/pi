@@ -67,6 +67,11 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 		assert.deepEqual(result.details.report.evaluatedCriterionIds, ["c-brief-worker"]);
 		assert.match(result.details.report.reviewHints[0], /Worker output refs:/);
 		assert.equal(result.details.subagent.requestId, capturedRequest.requestId);
+		assert.equal(typeof result.details.invocation.task, "object");
+		assert.ok(result.details.invocation.task.characters > 0);
+		assert.equal("finalOutput" in result.details.subagent.results[0], false);
+		assert.match(workerRun.description, /Keep file-only output/);
+		assert.ok(workerRun.promptGuidelines.some((guideline: string) => guideline.includes("mapping gap")));
 		assert.equal(capturedRequest.params.agent, "scout");
 		assert.equal(capturedRequest.params.model, "test/worker-model:xhigh");
 		assert.equal(capturedRequest.params.context, "fresh");
@@ -104,6 +109,9 @@ test("stardock_worker runs brief and request scoped Stardock roles", async () =>
 		assert.ok(worker);
 		assert.ok(govern);
 		assert.ok(outside);
+		assert.match(worker.description, /one coherent implementer per brief/);
+		assert.ok(worker.promptGuidelines.some((guideline: string) => guideline.includes("Skip explorer")));
+		assert.ok(worker.promptGuidelines.some((guideline: string) => guideline.includes("selective parent review")));
 
 		await start.execute("tool-worker-tool-start", { name: "Worker Tool", mode: "recursive", taskContent: "# Worker tool task\n", objective: "Exercise Stardock worker routing.", baseline: "No workers run yet.", validationCommand: "npm test --prefix agent/extensions -- private/stardock/brief-worker-runs.test.ts", maxIterations: 3 }, undefined, undefined, ctx);
 		await ledger.execute("tool-worker-tool-criterion", { action: "upsertCriterion", loopName: "Worker_Tool", id: "c-worker-tool", description: "Stardock worker role runs.", passCondition: "WorkerRun records the role output.", status: "pending" }, undefined, undefined, ctx);

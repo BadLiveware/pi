@@ -110,8 +110,9 @@ export function classifyWorkerReportStatus(input: WorkerClassificationInput): Wo
 export function workerOutputContract(role: StardockWorkerRole): string {
 	if (role === "explorer") {
 		return [
-			"Return a compact explorer WorkerReport.",
-			"Include evaluatedCriterionIds, likelyFiles, likelySymbols, likelyTests, validationPlan, contextGaps, risks, openQuestions, suggestedNextMove, and reviewHints.",
+			"Return a compact explorer WorkerReport of at most 4,000 characters.",
+			"Include only the highest-signal evaluatedCriterionIds, likelyFiles (max 12), likelySymbols (max 15), likelyTests (max 12), validationPlan, contextGaps, risks, openQuestions, suggestedNextMove, and reviewHints.",
+			"If the brief already names exact files, symbols, tests, and validation, confirm that boundary briefly instead of reconstructing the subsystem.",
 			"Do not edit files, run broad validation, spawn agents, or change Stardock state.",
 			"State clearly that explorer output is mapping only and does not satisfy implementation delegation for non-trivial code edits.",
 		].join(" ");
@@ -149,7 +150,8 @@ export function workerInstructions(role: StardockWorkerRole): string {
 			"Adapter role: explorer",
 			"You are a Stardock explorer for one active brief.",
 			"Do not edit files. Do not run broad validation. Do not spawn agents. Do not call Stardock tools or mutate Stardock state.",
-			"Inspect only enough repository context to map likely files, symbols, tests, validation commands, context gaps, risks, open questions, and parent review hints for this brief.",
+			"Inspect only enough repository context to resolve the brief's remaining mapping gap. If exact files, symbols, tests, and validation are already named, return a short boundary confirmation and stop.",
+			"Cap likely files at 12, likely symbols at 15, likely tests at 12, and the entire report at 4,000 characters. Do not inventory the whole subsystem, restate the full plan, or propose broad validation unrelated to the immediate brief.",
 			"Treat code-intel/search results as routing evidence only; do not report defects until the parent inspects or validates them.",
 			"Your result does not satisfy implementation delegation for non-trivial code edits; if the next step is mutation, tell the parent to run a Stardock implementer worker or record a direct-edit exception before editing.",
 			WORKER_EVIDENCE_PROMOTION_NOTE,
@@ -203,9 +205,9 @@ export function workerInstructions(role: StardockWorkerRole): string {
 	}
 	return [
 		"Adapter role: reviewer",
-		"You are a Stardock reviewer for one bounded scope.",
+		"You are a Stardock reviewer for one bounded, risk-selected scope; your invocation should represent concrete uncertainty, a policy gate, or required independent evidence rather than routine duplication of parent review.",
 		"Do not edit files. Do not mutate Stardock state. Do not spawn agents. Do not declare the loop complete.",
-		"Inspect implementation/evidence only enough to return pass/concerns/blockers, validation checked, review hints, and required follow-ups.",
+		"Inspect only the named risk boundary and return pass/concerns/blockers, validation checked, review hints, and required follow-ups. Do not reconstruct the entire brief when focused evidence is sufficient.",
 	].join("\n");
 }
 

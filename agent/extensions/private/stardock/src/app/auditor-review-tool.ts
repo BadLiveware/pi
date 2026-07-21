@@ -16,5 +16,5 @@ export function runAuditorReviewRecord(loopName: string, params: AuditorReviewMu
 		return result.ok ? { state: result.state, item: result.review, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "review", pluralName: "auditor reviews", pluralDetailKey: "reviews", singleItemText: (review, result) => `${result.created ? "Recorded" : "Updated"} auditor review ${review.id}`, stateDetails: (state) => ({ auditorReviews: state.auditorReviews }) });
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "review", pluralName: "auditor reviews", pluralDetailKey: "reviews", singleItemText: (review, result) => `${result.created ? "Recorded" : "Updated"} auditor review ${review.id}`, stateDetails: (state) => ({ auditorReviews: { total: state.auditorReviews.length } }) });
 }

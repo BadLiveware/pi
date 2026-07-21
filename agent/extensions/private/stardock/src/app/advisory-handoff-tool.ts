@@ -16,5 +16,5 @@ export function runAdvisoryHandoffRecord(loopName: string, params: AdvisoryHando
 		return result.ok ? { state: result.state, item: result.handoff, created: result.created } : result;
 	});
 	if (!batch.ok) return { contentText: batch.error, details: batchFailureDetails(loopName, batch), error: batch.error };
-	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "handoff", pluralName: "advisory handoffs", pluralDetailKey: "handoffs", singleItemText: (handoff, result) => `${result.created ? "Recorded" : "Updated"} advisory handoff ${handoff.id}`, stateDetails: (state) => ({ advisoryHandoffs: state.advisoryHandoffs }) });
+	return batchMutationResponse(loopName, batch, { verb: "Recorded", singularName: "handoff", pluralName: "advisory handoffs", pluralDetailKey: "handoffs", singleItemText: (handoff, result) => `${result.created ? "Recorded" : "Updated"} advisory handoff ${handoff.id}`, stateDetails: (state) => ({ advisoryHandoffs: { total: state.advisoryHandoffs.length } }) });
 }

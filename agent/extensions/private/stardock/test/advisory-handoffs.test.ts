@@ -25,7 +25,8 @@ test("stardock_handoff builds provider-neutral payloads and records compact resu
 		delete migratedState.advisoryHandoffs;
 		fs.writeFileSync(statePath(cwd, "Handoff_Loop"), JSON.stringify(migratedState, null, 2), "utf-8");
 		const defaulted = await stateTool.execute("tool-handoff-default-state", { loopName: "Handoff_Loop", includeDetails: true }, undefined, undefined, ctx);
-		assert.deepEqual(defaulted.details.loop.advisoryHandoffs, []);
+		assert.equal(defaulted.details.loop.advisoryHandoffs.total, 0);
+		assert.deepEqual(defaulted.details.loop.advisoryHandoffList, []);
 
 		await ledger.execute("tool-handoff-criteria", { action: "upsertCriterion", loopName: "Handoff_Loop", id: "c-map", description: "Map risky files.", passCondition: "Explorer reports files and risks.", status: "pending" }, undefined, undefined, ctx);
 		await ledger.execute("tool-handoff-artifact", { action: "recordArtifact", loopName: "Handoff_Loop", id: "a-context", kind: "log", summary: `${"large transcript ".repeat(80)}done`, criterionIds: ["c-map"] }, undefined, undefined, ctx);
@@ -88,7 +89,8 @@ test("stardock_handoff builds provider-neutral payloads and records compact resu
 		assert.equal(recorded.details.handoff.provider.implementation, "example-runner");
 		assert.equal(recorded.details.handoff.provider.sessionId, "opaque-session");
 		assert.equal(recorded.details.handoff.resultSummary.length, 500);
-		assert.equal(recorded.details.loop.advisoryHandoffs.length, 1);
+		assert.equal(recorded.details.loop.advisoryHandoffs.total, 1);
+		assert.equal(recorded.details.advisoryHandoffs.total, 1);
 
 		const listed = await handoff.execute("tool-handoff-list", { action: "list", loopName: "Handoff_Loop" }, undefined, undefined, ctx);
 		assert.match(listed.content[0].text, /Handoffs: 1 total/);

@@ -27,7 +27,9 @@ test("stardock_advisory_adapter builds parent-owned explorer and test-runner inv
 		assert.match(explorer.content[0].text, /Stardock does not execute it/);
 		assert.match(explorer.content[0].text, /"agent": "scout"/);
 		assert.match(explorer.content[0].text, /Adapter role: explorer/);
-		assert.match(explorer.content[0].text, /Do not edit files, run broad validation, spawn agents, or change Stardock state/);
+		assert.match(explorer.content[0].text, /Do not edit files\. Do not run broad validation/);
+		assert.match(explorer.content[0].text, /exact files, symbols, tests, and validation are already named/);
+		assert.match(explorer.content[0].text, /entire report at 4,000 characters/);
 		assert.equal(explorer.details.invocation.cwd, cwd);
 		assert.equal(Object.hasOwn(explorer.details.invocation, "output"), false);
 

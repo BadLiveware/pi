@@ -100,6 +100,7 @@ test("stardock tools support reduced-round-trip batch and activation workflows",
 		assert.match(briefResult.content[0].text, /Created brief b-one and activated it/);
 		assert.equal(briefResult.details.currentBriefId, "b-one");
 		assert.equal(briefResult.details.brief.status, "active");
+		assert.equal(briefResult.details.briefs.total, 1);
 		assert.equal(briefResult.details.loop.briefs.currentBriefId, "b-one");
 		assert.match(briefResult.details.promptPreview, /## Active Iteration Brief/);
 		assert.match(briefResult.details.promptPreview, /c-one \[pending\]/);

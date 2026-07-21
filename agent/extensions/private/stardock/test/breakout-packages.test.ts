@@ -32,7 +32,8 @@ test("stardock_breakout builds payloads and records compact decision packages", 
 		migratedState.modeState.attempts = [{ id: "ra1", iteration: 1, createdAt: "2026-01-01T00:00:00.000Z", status: "reported", result: "blocked", summary: "Attempt hit the same failure." }];
 		fs.writeFileSync(statePath(cwd, "Breakout_Loop"), JSON.stringify(migratedState, null, 2), "utf-8");
 		const defaulted = await stateTool.execute("tool-breakout-default-state", { loopName: "Breakout_Loop", includeDetails: true }, undefined, undefined, ctx);
-		assert.deepEqual(defaulted.details.loop.breakoutPackages, []);
+		assert.equal(defaulted.details.loop.breakoutPackages.total, 0);
+		assert.deepEqual(defaulted.details.loop.breakoutPackageList, []);
 
 		await ledger.execute("tool-breakout-criterion", { action: "upsertCriterion", loopName: "Breakout_Loop", id: "c-blocked", description: "Resolve the blocking failure.", passCondition: "A decision identifies a safe resume path.", status: "blocked" }, undefined, undefined, ctx);
 		await ledger.execute("tool-breakout-artifact", { action: "recordArtifact", loopName: "Breakout_Loop", id: "a-log", kind: "log", summary: `${"long failing log ".repeat(80)}done`, criterionIds: ["c-blocked"] }, undefined, undefined, ctx);
@@ -105,7 +106,8 @@ test("stardock_breakout builds payloads and records compact decision packages", 
 		);
 		assert.match(recorded.content[0].text, /Recorded breakout package bp-stuck/);
 		assert.equal(recorded.details.breakout.lastErrors[0].length, 240);
-		assert.equal(recorded.details.loop.breakoutPackages.length, 1);
+		assert.equal(recorded.details.loop.breakoutPackages.total, 1);
+		assert.equal(recorded.details.breakoutPackages.total, 1);
 
 		const listed = await breakout.execute("tool-breakout-list", { action: "list", loopName: "Breakout_Loop" }, undefined, undefined, ctx);
 		assert.match(listed.content[0].text, /Packages: 1 total/);

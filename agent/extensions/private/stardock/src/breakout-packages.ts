@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runBreakoutPackageRecord } from "./app/breakout-package-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type BreakoutPackage, type BreakoutPackageStatus, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
@@ -93,17 +94,16 @@ function validateRefs(
 	return { ok: true, blockedCriterionIds, attemptIds: normalizedAttemptIds, artifactIds, finalReportIds, auditorReviewIds, advisoryHandoffIds, outsideRequestIds };
 }
 
-export function formatBreakoutPackageOverview(state: LoopState): string {
-	const lines = [`Breakout packages for ${state.name}`, `Packages: ${state.breakoutPackages.length} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Final reports: ${state.finalVerificationReports.length} total`];
+export function formatBreakoutPackageOverview(state: LoopState, total = state.breakoutPackages.length): string {
+	const lines = [`Breakout packages for ${state.name}`, `Packages: ${total} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Final reports: ${state.finalVerificationReports.length} total`];
 	if (state.breakoutPackages.length > 0) {
 		lines.push("");
-		for (const breakout of state.breakoutPackages.slice(0, 10)) {
+		for (const breakout of state.breakoutPackages) {
 			lines.push(`- ${breakout.id} [${breakout.status}] ${compactText(breakout.summary, 140)}`);
 			if (breakout.blockedCriterionIds.length) lines.push(`  Blocked criteria: ${breakout.blockedCriterionIds.join(",")}`);
 			lines.push(`  Decision: ${compactText(breakout.requestedDecision, 140)}`);
 			if (breakout.recommendedNextActions.length) lines.push(`  Next: ${compactList(breakout.recommendedNextActions, 3, 100).join("; ")}`);
 		}
-		if (state.breakoutPackages.length > 10) lines.push(`... ${state.breakoutPackages.length - 10} more breakout packages`);
 	}
 	return lines.join("\n");
 }
@@ -231,6 +231,8 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 			resumeCriteria: Type.Optional(Type.Array(Type.String(), { description: "Conditions that make resuming safe or useful." })),
 			recommendedNextActions: Type.Optional(Type.Array(Type.String(), { description: "Compact recommended next actions." })),
 			packages: Type.Optional(Type.Array(breakoutPackageInputSchema, { description: "Batch breakout packages for record. Single-package fields remain compatibility sugar." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -240,11 +242,15 @@ export function registerBreakoutTool(pi: ExtensionAPI, deps: BreakoutToolDeps): 
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
-			if (params.action === "list") return { content: [{ type: "text", text: formatBreakoutPackageOverview(state) }], details: { loopName, breakoutPackages: state.breakoutPackages } };
+			if (params.action === "list") {
+				const page = paginateItems(state.breakoutPackages, params);
+				const pageState = { ...state, breakoutPackages: page.items };
+				return { content: [{ type: "text", text: `${formatBreakoutPackageOverview(pageState, page.page.total)}\n${formatPageNote(page.page)}` }], details: { loopName, breakoutPackages: page.items, page: page.page } };
+			}
 			if (params.action === "payload") {
 				const payload = buildBreakoutPayload(state, params);
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
-				return { content: [{ type: "text", text: payload.payload }], details: { loopName, breakoutPackages: state.breakoutPackages } };
+				return { content: [{ type: "text", text: payload.payload }], details: { loopName, breakoutPackages: { total: state.breakoutPackages.length } } };
 			}
 			const response = runBreakoutPackageRecord(loopName, params, { record: (input) => recordBreakoutPackage(ctx, loopName, input) });
 			if (response.error) return { content: [{ type: "text", text: response.contentText }], details: response.details };

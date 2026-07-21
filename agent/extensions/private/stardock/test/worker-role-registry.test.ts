@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyWorkerReportStatus, classifyWorkerRunStatus, modelWithThinkingSuffix, normalizeWorkerThinking, workerInstructions } from "../src/worker-role-registry.ts";
+import { classifyWorkerReportStatus, classifyWorkerRunStatus, modelWithThinkingSuffix, normalizeWorkerThinking, workerInstructions, workerOutputContract } from "../src/worker-role-registry.ts";
 
 const noChanges: never[] = [];
 
@@ -17,6 +17,14 @@ test("read-only Stardock worker roles explicitly forbid edits", () => {
 		assert.match(workerInstructions(role), /Do not edit files/);
 	}
 	assert.match(workerInstructions("implementer"), /Edit only files necessary/);
+});
+
+test("explorer and reviewer prompts enforce bounded non-duplicative work", () => {
+	assert.match(workerInstructions("explorer"), /exact files, symbols, tests, and validation are already named/);
+	assert.match(workerInstructions("explorer"), /entire report at 4,000 characters/);
+	assert.match(workerOutputContract("explorer"), /likelyFiles \(max 12\)/);
+	assert.match(workerInstructions("reviewer"), /concrete uncertainty, a policy gate, or required independent evidence/);
+	assert.match(workerInstructions("reviewer"), /Do not reconstruct the entire brief/);
 });
 
 test("worker role classification treats advisory no-edit output as success", () => {

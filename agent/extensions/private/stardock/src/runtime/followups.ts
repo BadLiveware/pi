@@ -3,18 +3,20 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { attachFollowup, booleanArg, cyclicFollowup, followupEffect, type FollowupOutput, type FollowupToolRequest, stringArg, type StardockTextResult, unsupportedFollowup } from "../app/tool-kernel.ts";
+import { formatPageNote, paginateItems } from "../app/pagination.ts";
 import { formatAdvisoryHandoffOverview } from "../advisory-handoffs.ts";
 import { formatAuditorReviewOverview } from "../auditor-reviews.ts";
 import { formatBreakoutPackageOverview } from "../breakout-packages.ts";
-import { formatBriefOverview } from "../briefs.ts";
+import { currentBrief, formatBriefOverview } from "../briefs.ts";
 import { formatFinalReportOverview } from "../final-reports.ts";
 import { formatCriterionCounts, formatLedgerOverview } from "../ledger.ts";
+import { latestGovernorDecision } from "../outside-requests.ts";
 import { evaluateAuditorGatePolicy, evaluateAuditorPolicy, evaluateBreakoutPolicy, evaluateCompletionPolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatAuditorPolicy, formatBreakoutPolicy, formatCompletionPolicy, formatParentReviewPolicy } from "../policy.ts";
 import { formatWorkerReportOverview } from "../worker-reports.ts";
 import { formatWorkerRunOverview } from "../worker-runs.ts";
 import { existingStatePath } from "../state/paths.ts";
 import { listLoops, loadState } from "../state/store.ts";
-import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
+import { formatRunOverview, formatRunTimeline, formatStateSummary, governorRoutingInspection, summarizeLoopState } from "../views.ts";
 
 export type { FollowupAttachMode, FollowupOutput, FollowupToolRequest } from "../app/tool-kernel.ts";
 
@@ -34,7 +36,9 @@ function runStateFollowup(ctx: ExtensionContext, currentLoop: string | null, arg
 	if (loopName) {
 		const state = loadState(ctx, loopName, archived);
 		if (!state) return { name: "stardock_state", args, content: `Loop "${loopName}" not found.`, details: { loopName, archived, ok: false } };
-		const text = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : `Loop: ${state.name}\nStatus: ${state.status}\nMode: ${state.mode}\nIteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}\nTask file: ${state.taskFile}\nState file: ${ctx.cwd ? existingStatePath(ctx, state.name, archived).replace(`${ctx.cwd}/`, "") : existingStatePath(ctx, state.name, archived)}`;
+		const baseText = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : `Loop: ${state.name}\nStatus: ${state.status}\nMode: ${state.mode}\nIteration: ${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}\nTask file: ${state.taskFile}\nState file: ${ctx.cwd ? existingStatePath(ctx, state.name, archived).replace(`${ctx.cwd}/`, "") : existingStatePath(ctx, state.name, archived)}`;
+		const governorWarning = governorRoutingInspection(state, latestGovernorDecision(state)).message;
+		const text = governorWarning ? `${baseText}\n${governorWarning}` : baseText;
 		return { name: "stardock_state", args, content: text, details: { loopName: state.name, archived, view, loop: summarizeLoopState(ctx, state, archived, includeDetails) } };
 	}
 	const loops = listLoops(ctx, archived).sort((a, b) => a.name.localeCompare(b.name));
@@ -54,14 +58,47 @@ function runListFollowup(ctx: ExtensionContext, currentLoop: string | null, args
 	const resolved = loopStateForFollowup(ctx, currentLoop, args, toolName);
 	if (!resolved.state) return resolved.output!;
 	const { state, loopName } = resolved;
-	if (toolName === "stardock_brief") return { name: toolName, args, content: formatBriefOverview(state), details: { loopName, briefs: state.briefs, currentBriefId: state.currentBriefId } };
-	if (toolName === "stardock_ledger") return { name: toolName, args, content: formatLedgerOverview(state), details: { loopName, criterionLedger: state.criterionLedger, verificationArtifacts: state.verificationArtifacts, baselineValidations: state.baselineValidations } };
-	if (toolName === "stardock_final_report") return { name: toolName, args, content: formatFinalReportOverview(state, formatCriterionCounts), details: { loopName, finalVerificationReports: state.finalVerificationReports } };
-	if (toolName === "stardock_auditor") return { name: toolName, args, content: formatAuditorReviewOverview(state), details: { loopName, auditorReviews: state.auditorReviews } };
-	if (toolName === "stardock_breakout") return { name: toolName, args, content: formatBreakoutPackageOverview(state), details: { loopName, breakoutPackages: state.breakoutPackages } };
-	if (toolName === "stardock_handoff") return { name: toolName, args, content: formatAdvisoryHandoffOverview(state), details: { loopName, advisoryHandoffs: state.advisoryHandoffs } };
-	if (toolName === "stardock_worker_report") return { name: toolName, args, content: formatWorkerReportOverview(state), details: { loopName, workerReports: state.workerReports } };
-	if (toolName === "stardock_worker") return { name: toolName, args, content: formatWorkerRunOverview(state), details: { loopName, workerRuns: state.workerRuns } };
+	if (toolName === "stardock_brief") {
+		const page = paginateItems(state.briefs, args);
+		return { name: toolName, args, content: `${formatBriefOverview({ ...state, briefs: page.items }, page.page.total, currentBrief(state))}\n${formatPageNote(page.page)}`, details: { loopName, briefs: page.items, currentBriefId: state.currentBriefId, page: page.page } };
+	}
+	if (toolName === "stardock_ledger") {
+		const criteria = paginateItems(state.criterionLedger.criteria, args);
+		const requirementTrace = paginateItems(state.criterionLedger.requirementTrace, args);
+		const artifacts = paginateItems(state.verificationArtifacts, args);
+		const baselines = paginateItems(state.baselineValidations, args);
+		const pageState = { ...state, criterionLedger: { criteria: criteria.items, requirementTrace: requirementTrace.items }, verificationArtifacts: artifacts.items, baselineValidations: baselines.items };
+		return {
+			name: toolName,
+			args,
+			content: `${formatLedgerOverview(pageState, state)}\nCriteria ${formatPageNote(criteria.page)}\nRequirement trace ${formatPageNote(requirementTrace.page)}\nArtifacts ${formatPageNote(artifacts.page)}\nBaselines ${formatPageNote(baselines.page)}`,
+			details: { loopName, criterionLedger: pageState.criterionLedger, verificationArtifacts: artifacts.items, baselineValidations: baselines.items, pages: { criteria: criteria.page, requirementTrace: requirementTrace.page, artifacts: artifacts.page, baselines: baselines.page } },
+		};
+	}
+	if (toolName === "stardock_final_report") {
+		const page = paginateItems(state.finalVerificationReports, args);
+		return { name: toolName, args, content: `${formatFinalReportOverview({ ...state, finalVerificationReports: page.items }, formatCriterionCounts, page.page.total)}\n${formatPageNote(page.page)}`, details: { loopName, finalVerificationReports: page.items, page: page.page } };
+	}
+	if (toolName === "stardock_auditor") {
+		const page = paginateItems(state.auditorReviews, args);
+		return { name: toolName, args, content: `${formatAuditorReviewOverview({ ...state, auditorReviews: page.items }, page.page.total)}\n${formatPageNote(page.page)}`, details: { loopName, auditorReviews: page.items, page: page.page } };
+	}
+	if (toolName === "stardock_breakout") {
+		const page = paginateItems(state.breakoutPackages, args);
+		return { name: toolName, args, content: `${formatBreakoutPackageOverview({ ...state, breakoutPackages: page.items }, page.page.total)}\n${formatPageNote(page.page)}`, details: { loopName, breakoutPackages: page.items, page: page.page } };
+	}
+	if (toolName === "stardock_handoff") {
+		const page = paginateItems(state.advisoryHandoffs, args);
+		return { name: toolName, args, content: `${formatAdvisoryHandoffOverview({ ...state, advisoryHandoffs: page.items }, page.page.total)}\n${formatPageNote(page.page)}`, details: { loopName, advisoryHandoffs: page.items, page: page.page } };
+	}
+	if (toolName === "stardock_worker_report") {
+		const page = paginateItems(state.workerReports, args);
+		return { name: toolName, args, content: `${formatWorkerReportOverview({ ...state, workerReports: page.items }, page.page.total)}\n${formatPageNote(page.page)}`, details: { loopName, workerReports: page.items, page: page.page } };
+	}
+	if (toolName === "stardock_worker") {
+		const page = paginateItems(state.workerRuns, args);
+		return { name: toolName, args, content: `${formatWorkerRunOverview({ ...state, workerRuns: page.items }, page.page.total)}\n${formatPageNote(page.page)}`, details: { loopName, workerRuns: page.items, page: page.page } };
+	}
 	return { name: toolName, args, content: `Unsupported read-only Stardock followupTool: ${toolName}.`, details: { ok: false, reason: "unsupported_readonly" } };
 }
 

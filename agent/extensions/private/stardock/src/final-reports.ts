@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runFinalReportRecord } from "./app/final-report-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type FinalValidationRecord, type FinalVerificationReport, type FinalVerificationStatus, type LoopState, nextSequentialId } from "./state/core.ts";
 import { isFinalVerificationStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList } from "./state/migration.ts";
@@ -68,17 +69,16 @@ export function migrateFinalVerificationReports(value: unknown): FinalVerificati
 		.filter((report): report is FinalVerificationReport => report !== null);
 }
 
-export function formatFinalReportOverview(state: LoopState, formatCriterionCounts: (ledger: LoopState["criterionLedger"]) => string): string {
-	const lines = [`Final verification reports for ${state.name}`, `Reports: ${state.finalVerificationReports.length} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`];
+export function formatFinalReportOverview(state: LoopState, formatCriterionCounts: (ledger: LoopState["criterionLedger"]) => string, total = state.finalVerificationReports.length): string {
+	const lines = [`Final verification reports for ${state.name}`, `Reports: ${total} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`];
 	if (state.finalVerificationReports.length > 0) {
 		lines.push("");
-		for (const report of state.finalVerificationReports.slice(0, 8)) {
+		for (const report of state.finalVerificationReports) {
 			lines.push(`- ${report.id} [${report.status}] ${compactText(report.summary, 140)}`);
 			if (report.criterionIds.length) lines.push(`  Criteria: ${report.criterionIds.join(",")}`);
 			if (report.artifactIds.length) lines.push(`  Artifacts: ${report.artifactIds.join(",")}`);
 			if (report.unresolvedGaps.length) lines.push(`  Gaps: ${report.unresolvedGaps.slice(0, 3).map((gap) => compactText(gap, 100)).join("; ")}`);
 		}
-		if (state.finalVerificationReports.length > 8) lines.push(`... ${state.finalVerificationReports.length - 8} more reports`);
 	}
 	return lines.join("\n");
 }
@@ -164,6 +164,8 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 			securityNotes: Type.Optional(Type.Array(Type.String(), { description: "Security notes or verification gaps." })),
 			performanceNotes: Type.Optional(Type.Array(Type.String(), { description: "Performance notes or measurement gaps." })),
 			reports: Type.Optional(Type.Array(finalReportInputSchema, { description: "Batch final reports for record. Single-report fields remain compatibility sugar." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -174,9 +176,11 @@ export function registerFinalReportTool(pi: ExtensionAPI, deps: FinalReportToolD
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 			if (params.action === "list") {
+				const page = paginateItems(state.finalVerificationReports, params);
+				const pageState = { ...state, finalVerificationReports: page.items };
 				return {
-					content: [{ type: "text", text: formatFinalReportOverview(state, formatCriterionCounts) }],
-					details: { loopName, finalVerificationReports: state.finalVerificationReports },
+					content: [{ type: "text", text: `${formatFinalReportOverview(pageState, formatCriterionCounts, page.page.total)}\n${formatPageNote(page.page)}` }],
+					details: { loopName, finalVerificationReports: page.items, page: page.page },
 				};
 			}
 			const response = runFinalReportRecord(loopName, params, { record: (input) => recordFinalVerificationReport(ctx, loopName, input) });

@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runWorkerReportRecord } from "./app/worker-report-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type ChangedFileReport, compactText, type LoopState, nextSequentialId, type WorkerReport } from "./state/core.ts";
@@ -87,17 +88,16 @@ function validateRefs(state: LoopState, input: { evaluatedCriterionIds?: unknown
 	return { ok: true, evaluatedCriterionIds, artifactIds, advisoryHandoffIds, validation };
 }
 
-export function formatWorkerReportOverview(state: LoopState): string {
-	const lines = [`Worker reports for ${state.name}`, `Reports: ${state.workerReports.length} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Handoffs: ${state.advisoryHandoffs.length} total`];
+export function formatWorkerReportOverview(state: LoopState, total = state.workerReports.length): string {
+	const lines = [`Worker reports for ${state.name}`, `Reports: ${total} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Handoffs: ${state.advisoryHandoffs.length} total`];
 	if (state.workerReports.length > 0) {
 		lines.push("");
-		for (const report of state.workerReports.slice(0, 10)) {
+		for (const report of state.workerReports) {
 			lines.push(`- ${report.id} [${report.status}/${report.role}] ${compactText(report.summary, 140)}`);
 			if (report.evaluatedCriterionIds.length) lines.push(`  Criteria: ${report.evaluatedCriterionIds.join(",")}`);
 			if (report.changedFiles.length) lines.push(`  Files: ${report.changedFiles.slice(0, 3).map((file) => file.path).join(",")}${report.changedFiles.length > 3 ? ",..." : ""}`);
 			if (report.reviewHints.length) lines.push(`  Review hints: ${compactList(report.reviewHints, 3, 100).join("; ")}`);
 		}
-		if (state.workerReports.length > 10) lines.push(`... ${state.workerReports.length - 10} more worker reports`);
 	}
 	return lines.join("\n");
 }
@@ -215,6 +215,8 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 			suggestedNextMove: Type.Optional(Type.String({ description: "Suggested next move from the worker." })),
 			reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective parent review hints." })),
 			reports: Type.Optional(Type.Array(workerReportInputSchema, { description: "Batch worker reports for record. Single-report fields remain compatibility sugar." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -224,11 +226,15 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
-			if (params.action === "list") return { content: [{ type: "text", text: formatWorkerReportOverview(state) }], details: { loopName, workerReports: state.workerReports } };
+			if (params.action === "list") {
+				const page = paginateItems(state.workerReports, params);
+				const pageState = { ...state, workerReports: page.items };
+				return { content: [{ type: "text", text: `${formatWorkerReportOverview(pageState, page.page.total)}\n${formatPageNote(page.page)}` }], details: { loopName, workerReports: page.items, page: page.page } };
+			}
 			if (params.action === "payload") {
 				const payload = buildWorkerReportPayload(state, params);
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
-				return { content: [{ type: "text", text: payload.payload }], details: { loopName, workerReports: state.workerReports } };
+				return { content: [{ type: "text", text: payload.payload }], details: { loopName, workerReports: { total: state.workerReports.length } } };
 			}
 			const response = runWorkerReportRecord(loopName, params, { record: (input) => recordWorkerReport(ctx, loopName, input) });
 			if (response.error) return { content: [{ type: "text", text: response.contentText }], details: response.details };

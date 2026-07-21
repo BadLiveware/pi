@@ -25,7 +25,8 @@ test("stardock_auditor builds payloads and records compact manual reviews", asyn
 		delete migratedState.auditorReviews;
 		fs.writeFileSync(statePath(cwd, "Auditor_Loop"), JSON.stringify(migratedState, null, 2), "utf-8");
 		const defaulted = await stateTool.execute("tool-auditor-default-state", { loopName: "Auditor_Loop", includeDetails: true }, undefined, undefined, ctx);
-		assert.deepEqual(defaulted.details.loop.auditorReviews, []);
+		assert.equal(defaulted.details.loop.auditorReviews.total, 0);
+		assert.deepEqual(defaulted.details.loop.auditorReviewList, []);
 
 		await ledger.execute(
 			"tool-auditor-criteria",
@@ -78,7 +79,8 @@ test("stardock_auditor builds payloads and records compact manual reviews", asyn
 		assert.equal(recorded.details.review.summary.length, 500);
 		assert.equal(recorded.details.review.status, "concerns");
 		assert.deepEqual(recorded.details.review.finalReportIds, ["fr-partial"]);
-		assert.equal(recorded.details.loop.auditorReviews.length, 1);
+		assert.equal(recorded.details.loop.auditorReviews.total, 1);
+		assert.equal(recorded.details.auditorReviews.total, 1);
 
 		const listed = await auditor.execute("tool-auditor-list", { action: "list", loopName: "Auditor_Loop" }, undefined, undefined, ctx);
 		assert.match(listed.content[0].text, /Reviews: 1 total/);

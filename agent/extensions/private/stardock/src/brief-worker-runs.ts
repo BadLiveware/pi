@@ -13,14 +13,20 @@ const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runn
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
 const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the brief complexity." });
 const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
-const outputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file-only")], { description: "Return subagent output inline or as a concise file reference. Default: file-only." });
+const outputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file-only")], { description: "Return saved output inline or as a concise file reference. Default file-only; keep that default for normal runs and use inline only for deliberately short output." });
 const outputSchema = Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }], description: "Output file path for subagent findings, or false to disable saved output. Default is a .stardock/runs/<loop>/workers path." });
 
 export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRunDeps): void {
 	pi.registerTool({
 		name: "stardock_brief_worker",
 		label: "Run Stardock Brief Worker",
-		description: "Compatibility/convenience wrapper for brief-scoped Stardock worker roles, with optional model and thinking-level overrides. Prefer stardock_worker for new workflows; this tool uses the same execution path for explorer, test_runner, and implementer. For non-trivial brief implementation, run implementer before parent edit/write; explorer/test_runner do not satisfy implementation delegation. Implementer runs are serial, mutable, and require parent review before another implementer can run.",
+		description: "Compatibility wrapper for one bounded brief-scoped Stardock worker. Prefer stardock_worker for new workflows. Keep file-only output, skip explorers when exact implementation targets are already known, and avoid automatic reviewer-style churn around every implementation. Implementer runs are serial, mutable, and require selective parent review before another implementer can run.",
+		promptSnippet: "Run one bounded brief worker with file-only output and compact evidence.",
+		promptGuidelines: [
+			"Keep file-only output for normal runs.",
+			"Use explorer only when the brief still has a concrete repository-mapping gap.",
+			"Prefer one coherent implementer per brief; split mutable mega-briefs before repeatedly cold-starting workers.",
+		],
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit brief-scoped subagent; review accepts or dismisses an implementer run. Run implementer before non-trivial active-brief edits unless a direct-parent-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
@@ -37,6 +43,8 @@ export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRu
 			outputMode: Type.Optional(outputModeSchema),
 			recordResult: Type.Optional(Type.Boolean({ description: "Record the returned result as a compact WorkerReport. Default: true." })),
 			reportId: Type.Optional(Type.String({ description: "WorkerReport id to create/update when recordResult is true. Generated when omitted." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum WorkerRuns to return for action=list. Default 20, max 100." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a parent-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {

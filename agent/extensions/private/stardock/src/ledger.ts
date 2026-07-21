@@ -6,6 +6,7 @@ import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-ag
 import { Type } from "typebox";
 import * as path from "node:path";
 import { runLedgerArtifactRecord, runLedgerCriteriaUpsert, runLedgerTaskDistillation } from "./app/ledger-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { compactText, type BaselineValidation, type Criterion, type CriterionLedger, type CriterionStatus, type LoopState, nextSequentialId, type VerificationArtifact, type VerificationArtifactKind } from "./state/core.ts";
 import { isArtifactKind, isCriterionStatus, isValidationResult, normalizeId, normalizeIds, normalizeStringList, rebuildRequirementTrace } from "./state/migration.ts";
@@ -38,36 +39,39 @@ function normalizeArtifactKindInput(value: unknown, fallback: VerificationArtifa
 	return { ok: false, error: `Unsupported verification artifact kind "${raw}". Supported kinds: test, smoke, curl, browser, screenshot, walkthrough, benchmark, log, url, pr, diff, command, document, other; aliases: doc -> document, manual -> other.` };
 }
 
-export function formatLedgerOverview(state: LoopState): string {
-	const lines = [`Ledger for ${state.name}`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Baseline validations: ${state.baselineValidations.length} total`];
+export function formatLedgerOverview(state: LoopState, totalsState: LoopState = state): string {
+	const lines = [`Ledger for ${state.name}`, formatCriterionCounts(totalsState.criterionLedger), `Artifacts: ${totalsState.verificationArtifacts.length} total`, `Baseline validations: ${totalsState.baselineValidations.length} total`];
 	if (state.criterionLedger.criteria.length > 0) {
 		lines.push("", "Criteria");
-		for (const criterion of state.criterionLedger.criteria.slice(0, 12)) {
+		for (const criterion of state.criterionLedger.criteria) {
 			lines.push(`- ${criterion.id} [${criterion.status}] ${compactText(criterion.description, 120)}`);
 			lines.push(`  Pass: ${compactText(criterion.passCondition, 120)}`);
 			if (criterion.evidence) lines.push(`  Evidence: ${compactText(criterion.evidence, 120)}`);
 		}
-		if (state.criterionLedger.criteria.length > 12) lines.push(`... ${state.criterionLedger.criteria.length - 12} more criteria`);
+	}
+	if (state.criterionLedger.requirementTrace.length > 0) {
+		lines.push("", "Requirement trace");
+		for (const trace of state.criterionLedger.requirementTrace) {
+			lines.push(`- ${compactText(trace.requirement, 120)} → ${trace.criterionIds.join(",")}`);
+		}
 	}
 	if (state.verificationArtifacts.length > 0) {
 		lines.push("", "Artifacts");
-		for (const artifact of state.verificationArtifacts.slice(0, 12)) {
+		for (const artifact of state.verificationArtifacts) {
 			const criteria = artifact.criterionIds?.length ? ` · criteria ${artifact.criterionIds.join(",")}` : "";
 			lines.push(`- ${artifact.id} [${artifact.kind}] ${compactText(artifact.summary, 120)}${criteria}`);
 			if (artifact.path) lines.push(`  Path: ${artifact.path}`);
 			if (artifact.command) lines.push(`  Command: ${compactText(artifact.command, 120)}`);
 		}
-		if (state.verificationArtifacts.length > 12) lines.push(`... ${state.verificationArtifacts.length - 12} more artifacts`);
 	}
 	if (state.baselineValidations.length > 0) {
 		lines.push("", "Baseline validations");
-		for (const baseline of state.baselineValidations.slice(0, 12)) {
+		for (const baseline of state.baselineValidations) {
 			const criteria = baseline.criterionIds.length ? ` · criteria ${baseline.criterionIds.join(",")}` : "";
 			lines.push(`- ${baseline.id} [${baseline.result}] ${compactText(baseline.summary, 120)}${criteria}`);
 			if (baseline.command) lines.push(`  Command: ${compactText(baseline.command, 120)}`);
 			if (baseline.artifactIds.length) lines.push(`  Artifacts: ${baseline.artifactIds.join(",")}`);
 		}
-		if (state.baselineValidations.length > 12) lines.push(`... ${state.baselineValidations.length - 12} more baseline validations`);
 	}
 	return lines.join("\n");
 }
@@ -251,6 +255,8 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 			result: Type.Optional(Type.Union([Type.Literal("passed"), Type.Literal("failed"), Type.Literal("skipped")], { description: "Baseline validation result." })),
 			artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Artifact ids linked to a baseline validation." })),
 			baselines: Type.Optional(Type.Array(baselineInputSchema, { description: "Batch baseline validation records for recordBaselines." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum items per ledger collection to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset applied independently to each ledger collection for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -262,9 +268,31 @@ export function registerLedgerTool(pi: ExtensionAPI, deps: LedgerToolDeps): void
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 
 			if (params.action === "list") {
+				const criteria = paginateItems(state.criterionLedger.criteria, params);
+				const requirementTrace = paginateItems(state.criterionLedger.requirementTrace, params);
+				const artifacts = paginateItems(state.verificationArtifacts, params);
+				const baselines = paginateItems(state.baselineValidations, params);
+				const pageState = {
+					...state,
+					criterionLedger: { criteria: criteria.items, requirementTrace: requirementTrace.items },
+					verificationArtifacts: artifacts.items,
+					baselineValidations: baselines.items,
+				};
+				const pageNotes = [
+					`Criteria ${formatPageNote(criteria.page)}`,
+					`Requirement trace ${formatPageNote(requirementTrace.page)}`,
+					`Artifacts ${formatPageNote(artifacts.page)}`,
+					`Baselines ${formatPageNote(baselines.page)}`,
+				].join("\n");
 				return {
-					content: [{ type: "text", text: formatLedgerOverview(state) }],
-					details: { loopName, criterionLedger: state.criterionLedger, verificationArtifacts: state.verificationArtifacts },
+					content: [{ type: "text", text: `${formatLedgerOverview(pageState, state)}\n${pageNotes}` }],
+					details: {
+						loopName,
+						criterionLedger: pageState.criterionLedger,
+						verificationArtifacts: artifacts.items,
+						baselineValidations: baselines.items,
+						pages: { criteria: criteria.page, requirementTrace: requirementTrace.page, artifacts: artifacts.page, baselines: baselines.page },
+					},
 				};
 			}
 

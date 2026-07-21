@@ -5,6 +5,8 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { currentBrief } from "./briefs.ts";
+import { summarizeBrief } from "./compact-loop-summary.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { finalOutput, outputRefs, runSubagentThroughBridge, type EventBus, type SubagentResponse } from "./brief-worker-run-bridge.ts";
 import { formatChangedFiles, gitStatusSnapshot } from "./brief-worker-run-git.ts";
 import { recordWorkerReport } from "./worker-reports.ts";
@@ -44,6 +46,8 @@ export interface WorkerRunParams {
 	recordResult?: boolean;
 	reportId?: string;
 	allowDirtyWorkspace?: boolean;
+	limit?: number;
+	offset?: number;
 }
 
 function selectedBrief(state: LoopState, briefId?: string): IterationBrief | undefined {
@@ -74,6 +78,46 @@ function defaultWorkerOutputPath(state: LoopState, scopeId: string, role: Stardo
 function currentModelId(ctx: ExtensionContext): string | undefined {
 	const model = ctx.model;
 	return model ? `${model.provider}/${model.id}` : undefined;
+}
+
+function compactInvocationDetails(invocation: Record<string, unknown>): Record<string, unknown> {
+	const { task, ...rest } = invocation;
+	const taskText = typeof task === "string" ? task : "";
+	return {
+		...rest,
+		task: taskText ? { characters: taskText.length, preview: compactText(taskText, 500) } : undefined,
+	};
+}
+
+function compactSubagentDetails(response: SubagentResponse): Record<string, unknown> {
+	const results = response.result.details?.results ?? [];
+	return {
+		requestId: response.requestId,
+		isError: response.isError,
+		errorText: compactText(response.errorText, 500),
+		runId: response.result.details?.runId,
+		results: results.slice(0, 4).map((result) => ({
+			agent: result.agent,
+			exitCode: result.exitCode,
+			error: compactText(result.error, 500),
+			sessionFile: result.sessionFile,
+			savedOutputPath: result.savedOutputPath,
+			outputReference: result.outputReference,
+			artifactPaths: result.artifactPaths,
+		})),
+		resultCount: results.length,
+		outputRefs: outputRefs(response),
+	};
+}
+
+function compactOutsideRequest(request: OutsideRequest | undefined): Record<string, unknown> | undefined {
+	if (!request) return undefined;
+	return {
+		id: request.id,
+		kind: request.kind,
+		status: request.status,
+		trigger: request.trigger,
+	};
 }
 
 function contentSummary(response: SubagentResponse, reportId?: string, run?: WorkerRun): string {
@@ -209,7 +253,7 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 		const updatedRun = updateWorkerRun(ctx, loopName, run.id, (item) => {
 			item.status = classifyWorkerRunStatus({ role, output: finalOutput(response), isError: response.isError, changedFiles });
 			item.completedAt = new Date().toISOString();
-			item.summary = finalOutput(response);
+			item.summary = compactText(finalOutput(response), 500) ?? "(no output)";
 			item.outputRefs = outputRefs(response);
 			item.changedFiles = changedFiles;
 			item.reportId = reportId;
@@ -217,7 +261,24 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 		if (!response.isError) markRequestAnswered(ctx, loopName, request?.id, finalOutput(response));
 		deps.updateUI(ctx);
 		const text = reportError ? `${contentSummary(response, undefined, updatedRun)}\n\nWorkerReport recording failed: ${reportError}` : contentSummary(response, reportId, updatedRun);
-		return { content: [textContent(text)], details: { loopName, role, scope, brief, outsideRequest: request, requestId, invocation, workerRun: updatedRun, subagent: response, report, outputRefs: outputRefs(response), reportError }, ...(response.isError || reportError ? { isError: true } : {}) };
+		return {
+			content: [textContent(text)],
+			details: {
+				loopName,
+				role,
+				scope,
+				brief: summarizeBrief(brief),
+				outsideRequest: compactOutsideRequest(request),
+				requestId,
+				invocation: compactInvocationDetails(invocation),
+				workerRun: updatedRun,
+				subagent: compactSubagentDetails(response),
+				report,
+				outputRefs: outputRefs(response),
+				reportError,
+			},
+			...(response.isError || reportError ? { isError: true } : {}),
+		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		const updatedRun = updateWorkerRun(ctx, loopName, run.id, (item) => {
@@ -226,7 +287,20 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 			item.summary = message;
 		}) ?? run;
 		deps.updateUI(ctx);
-		return { content: [textContent(message)], details: { loopName, role, scope, brief, outsideRequest: request, requestId, invocation, workerRun: updatedRun }, isError: true };
+		return {
+			content: [textContent(message)],
+			details: {
+				loopName,
+				role,
+				scope,
+				brief: summarizeBrief(brief),
+				outsideRequest: compactOutsideRequest(request),
+				requestId,
+				invocation: compactInvocationDetails(invocation),
+				workerRun: updatedRun,
+			},
+			isError: true,
+		};
 	}
 }
 
@@ -234,7 +308,6 @@ const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runn
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
 const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the role complexity." });
 const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
-const outputModeSchema = Type.Union([Type.Literal("inline"), Type.Literal("file-only")], { description: "Return subagent output inline or as a concise file reference. Default: file-only." });
 const outputSchema = Type.Unsafe({ anyOf: [{ type: "string" }, { type: "boolean" }], description: "Output file path for subagent findings, or false to disable saved output. Default is a .stardock/runs/<loop>/workers path." });
 
 export async function executeStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorkerToolDeps, typedParams: WorkerRunParams, signal: AbortSignal | undefined, onUpdate: ((update: { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> }) => void) | undefined, ctx: ExtensionContext) {
@@ -242,7 +315,11 @@ export async function executeStardockWorkerTool(pi: ExtensionAPI, deps: Stardock
 	if (!loopName) return { content: [textContent("No active Stardock loop.")], details: {} };
 	const state = loadState(ctx, loopName);
 	if (!state) return { content: [textContent(`Loop "${loopName}" not found.`)], details: { loopName }, isError: true };
-	if (typedParams.action === "list") return { content: [textContent(formatWorkerRunOverview(state))], details: { loopName, workerRuns: state.workerRuns } };
+	if (typedParams.action === "list") {
+		const page = paginateItems(state.workerRuns, typedParams);
+		const pageState = { ...state, workerRuns: page.items };
+		return { content: [textContent(`${formatWorkerRunOverview(pageState, page.page.total)}\n${formatPageNote(page.page)}`)], details: { loopName, workerRuns: page.items, page: page.page } };
+	}
 	if (typedParams.action === "review") return reviewWorkerRun(ctx, loopName, typedParams, deps.updateUI);
 	return runWorker(pi, deps, typedParams, signal, onUpdate, ctx, loopName, state);
 }
@@ -251,7 +328,14 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 	pi.registerTool({
 		name: "stardock_worker",
 		label: "Run Stardock Worker",
-		description: "Run a Stardock-owned worker role through pi-subagents and record WorkerRun/WorkerReport evidence, with optional model and thinking-level overrides. Use this instead of raw subagent calls for Stardock work. For non-trivial active-brief code mutation, run role=implementer before parent edit/write; explorer/test_runner/reviewer/auditor do not satisfy implementation delegation. Worker output is advisory until the parent records lifecycle evidence with Stardock tools. Implementer runs are serial and require parent review.",
+		description: "Run one bounded Stardock-owned worker role through pi-subagents and record compact WorkerRun/WorkerReport evidence. Prefer one coherent implementer per brief. Use explorers only when the implementation surface is unknown, and run reviewers/auditors only for concrete risk, uncertainty, policy gates, or required independent evidence—not automatically after every implementation. Keep file-only output for normal runs. Implementer runs are serial and require selective parent review.",
+		promptSnippet: "Run one bounded Stardock worker with file-only output and compact recorded evidence.",
+		promptGuidelines: [
+			"Keep the default file-only output for normal runs; use inline only for deliberately short output when no saved artifact is useful.",
+			"Skip explorer runs when the brief already names the exact files, symbols, tests, and validation boundary.",
+			"After an implementer, perform selective parent review and launch a reviewer or auditor only when risk, uncertainty, a policy gate, or independent-evidence requirement justifies another worker.",
+			"If one brief needs repeated unrelated implementation cycles, split it into smaller coherent briefs instead of repeatedly cold-starting workers against a mutable mega-brief.",
+		],
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review accepts or dismisses an implementer run. Run implementer before non-trivial active-brief edits unless a direct-parent-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
@@ -266,9 +350,11 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 			thinking: Type.Optional(thinkingSchema),
 			context: Type.Optional(contextSchema),
 			output: Type.Optional(outputSchema),
-			outputMode: Type.Optional(outputModeSchema),
+			outputMode: Type.Optional(Type.Union([Type.Literal("inline"), Type.Literal("file-only")], { description: "Return saved output inline or as a concise file reference. Default file-only when output is saved; keep that default for normal runs. Use inline only for deliberately short output." })),
 			recordResult: Type.Optional(Type.Boolean({ description: "Record the returned result as a compact WorkerReport. Default: true." })),
 			reportId: Type.Optional(Type.String({ description: "WorkerReport id to create/update when recordResult is true. Generated when omitted." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum WorkerRuns to return for action=list. Default 20, max 100." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a parent-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {

@@ -52,9 +52,8 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 		);
 		assert.match(createCriterion.content[0].text, /Created criterion c-build/);
 		assert.equal(createCriterion.details.criterion.status, "failed");
-		assert.deepEqual(createCriterion.details.criterionLedger.requirementTrace, [
-			{ requirement: "Validation is explicit", criterionIds: ["c-build"] },
-		]);
+		assert.equal(createCriterion.details.criterionLedger.total, 1);
+		assert.equal(createCriterion.details.criterionLedger.requirementTrace, 1);
 
 		const updateCriterion = await ledger.execute(
 			"tool-ledger-criterion-update",
@@ -124,15 +123,65 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 		assert.match(listResult.content[0].text, /bv-pre \[failed\]/);
 		assert.equal(listResult.content[0].text.includes(longSummary), false);
 
+		await ledger.execute(
+			"tool-ledger-page-criteria",
+			{
+				action: "upsertCriteria",
+				loopName: "Ledger_Loop",
+				criteria: Array.from({ length: 25 }, (_, index) => ({
+					id: `c-page-${index + 1}`,
+					requirement: `Paged requirement ${index + 1}`,
+					description: `Paged criterion ${index + 1}`,
+					passCondition: `Paged condition ${index + 1}`,
+					status: "passed",
+				})),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await ledger.execute(
+			"tool-ledger-page-artifacts",
+			{
+				action: "recordArtifacts",
+				loopName: "Ledger_Loop",
+				artifacts: Array.from({ length: 25 }, (_, index) => ({ id: `a-page-${index + 1}`, kind: "test", summary: `Paged artifact ${index + 1}` })),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		await ledger.execute(
+			"tool-ledger-page-baselines",
+			{
+				action: "recordBaselines",
+				loopName: "Ledger_Loop",
+				baselines: Array.from({ length: 25 }, (_, index) => ({ id: `bv-page-${index + 1}`, result: "passed", summary: `Paged baseline ${index + 1}` })),
+			},
+			undefined,
+			undefined,
+			ctx,
+		);
+		const pagedList = await ledger.execute("tool-ledger-list-paged", { action: "list", loopName: "Ledger_Loop" }, undefined, undefined, ctx);
+		assert.equal(pagedList.details.criterionLedger.criteria.length, 20);
+		assert.equal(pagedList.details.verificationArtifacts.length, 20);
+		assert.equal(pagedList.details.baselineValidations.length, 20);
+		assert.equal(pagedList.details.pages.criteria.nextOffset, 20);
+		assert.match(pagedList.content[0].text, /c-page-3/);
+		assert.match(pagedList.content[0].text, /Paged requirement 19/);
+		assert.match(pagedList.content[0].text, /a-page-19/);
+		assert.match(pagedList.content[0].text, /bv-page-19/);
+		assert.doesNotMatch(pagedList.content[0].text, /- c-page-4 \[/);
+
 		const summaryResult = await stateTool.execute("tool-ledger-state", { loopName: "Ledger_Loop", includeDetails: true }, undefined, undefined, ctx);
-		assert.match(summaryResult.content[0].text, /Criteria: 1 total, 1 passed/);
-		assert.match(summaryResult.content[0].text, /Verification artifacts: 1/);
-		assert.match(summaryResult.content[0].text, /Baseline validations: 1/);
-		assert.equal(summaryResult.details.loop.criteria.passed, 1);
-		assert.equal(summaryResult.details.loop.verificationArtifacts.total, 1);
+		assert.match(summaryResult.content[0].text, /Criteria: 26 total, 26 passed/);
+		assert.match(summaryResult.content[0].text, /Verification artifacts: 26/);
+		assert.match(summaryResult.content[0].text, /Baseline validations: 26/);
+		assert.equal(summaryResult.details.loop.criteria.passed, 26);
+		assert.equal(summaryResult.details.loop.verificationArtifacts.total, 26);
 		assert.equal(summaryResult.details.loop.baselineValidations.failed, 1);
 		assert.equal(summaryResult.details.loop.criterionLedger.criteria[0].id, "c-build");
-		assert.equal(summaryResult.details.loop.baselineValidations.total, 1);
+		assert.equal(summaryResult.details.loop.baselineValidations.total, 26);
 
 		const beforeDoneMessages = messages.length;
 		const doneResult = await done.execute("tool-ledger-done", {}, undefined, undefined, ctx);

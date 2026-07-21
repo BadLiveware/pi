@@ -2,8 +2,9 @@
  * Outside help and governor request slice for Stardock.
  */
 
-import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { evaluateAuditorPolicy, type PolicyFinding } from "./policy.ts";
 import { evaluateAuditorGatePolicy } from "./subagent-readiness-policy.ts";
 import { compactText, type GovernorDecision, type LoopState, type OutsideRequest, type OutsideRequestKind, type OutsideRequestTrigger, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveModeState } from "./state/core.ts";
@@ -243,6 +244,18 @@ function formatOutsideRequest(request: OutsideRequest): string {
 	return `${request.id} [${request.status}] ${request.kind} from iteration ${request.requestedByIteration}: ${request.prompt}`;
 }
 
+function formatFullOutsideRequest(request: OutsideRequest): string {
+	const lines = [formatOutsideRequest(request)];
+	if (request.answer) lines.push(`Answer: ${request.answer}`);
+	if (request.decision) {
+		lines.push(`Verdict: ${request.decision.verdict}`, `Rationale: ${request.decision.rationale}`);
+		if (request.decision.requiredNextMove) lines.push(`Required next move: ${request.decision.requiredNextMove}`);
+		if (request.decision.forbiddenNextMoves?.length) lines.push("Forbidden next moves", ...request.decision.forbiddenNextMoves.map((item) => `- ${item}`));
+		if (request.decision.evidenceGaps?.length) lines.push("Evidence gaps", ...request.decision.evidenceGaps.map((item) => `- ${item}`));
+	}
+	return lines.join("\n");
+}
+
 export function formatOutsideRequests(state: LoopState): string {
 	if (state.outsideRequests.length === 0) return `No outside requests for ${state.name}.`;
 	return state.outsideRequests
@@ -356,18 +369,28 @@ export function registerOutsideRequestTools(pi: ExtensionAPI, deps: OutsideReque
 	pi.registerTool({
 		name: "stardock_outside_requests",
 		label: "List Stardock Outside Requests",
-		description: "List pending or answered outside help/governor requests for a Stardock loop.",
+		description: "List a bounded page of pending or answered outside help/governor requests, or inspect one exact request by id.",
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
+			requestId: Type.Optional(Type.String({ description: "Exact outside request id to inspect with its full recorded decision." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum requests to return (default 20, max 100). Ignored with requestId." })),
+			offset: Type.Optional(Type.Number({ description: "Zero-based request offset. Ignored with requestId." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const loopName = params.loopName ?? deps.getCurrentLoop();
 			if (!loopName) return { content: [{ type: "text", text: "No active Stardock loop." }], details: {} };
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
+			const matchingRequests = params.requestId ? state.outsideRequests.filter((request) => request.id === params.requestId) : state.outsideRequests;
+			if (params.requestId && matchingRequests.length === 0) {
+				return { content: [{ type: "text", text: `Outside request "${params.requestId}" not found in loop "${loopName}".` }], details: { loopName, requestId: params.requestId } };
+			}
+			const page = paginateItems(matchingRequests, params.requestId ? { limit: 1, offset: 0 } : params);
+			const pageState = { ...state, outsideRequests: page.items };
+			const renderedRequests = params.requestId && page.items[0] ? formatFullOutsideRequest(page.items[0]) : formatOutsideRequests(pageState);
 			return {
-				content: [{ type: "text", text: formatOutsideRequests(state) }],
-				details: { loopName, outsideRequests: state.outsideRequests },
+				content: [{ type: "text", text: `${renderedRequests}\n${formatPageNote(page.page)}` }],
+				details: { loopName, requestId: params.requestId, outsideRequests: page.items, page: page.page },
 			};
 		},
 	});

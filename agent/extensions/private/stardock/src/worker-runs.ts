@@ -15,17 +15,16 @@ export function openMutableWorkerRun(state: LoopState): WorkerRun | undefined {
 	return state.workerRuns.find((run) => run.role === "implementer" && MUTABLE_RUN_OPEN_STATUSES.has(run.status));
 }
 
-export function formatWorkerRunOverview(state: LoopState): string {
-	const lines = [`Worker runs for ${state.name}`, `Runs: ${state.workerRuns.length} total`];
+export function formatWorkerRunOverview(state: LoopState, total = state.workerRuns.length): string {
+	const lines = [`Worker runs for ${state.name}`, `Runs: ${total} total`];
 	if (!state.workerRuns.length) return lines.join("\n");
-	for (const run of state.workerRuns.slice(0, 12)) {
+	for (const run of state.workerRuns) {
 		const scope = run.briefId ? `brief=${run.briefId}` : run.outsideRequestId ? `request=${run.outsideRequestId}` : `scope=${run.scope ?? "loop"}`;
 		lines.push(`- ${run.id} [${run.status}/${run.role}] ${scope} agent=${run.agentName}${run.model ? ` model=${run.model}` : ""}${run.thinking ? ` thinking=${run.thinking}` : ""}${run.reportId ? ` report=${run.reportId}` : ""}`);
 		if (run.summary) lines.push(`  ${compactText(run.summary, 160)}`);
 		if (run.changedFiles.length) lines.push(`  Files: ${run.changedFiles.slice(0, 4).map((file) => file.path).join(", ")}${run.changedFiles.length > 4 ? ",..." : ""}`);
 		if (run.reviewRationale) lines.push(`  Review: ${compactText(run.reviewRationale, 140)}`);
 	}
-	if (state.workerRuns.length > 12) lines.push(`... ${state.workerRuns.length - 12} more worker runs`);
 	return lines.join("\n");
 }
 

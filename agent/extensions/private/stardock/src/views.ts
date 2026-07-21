@@ -6,10 +6,23 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { currentBrief } from "./briefs.ts";
 import { formatChecklistLedgerDrift, loadChecklistLedgerDrift } from "./checklist-drift.ts";
+import {
+	governorDecisionRequiresFullInspection,
+	governorMemoryRequiresFullInspection,
+	summarizeAdvisoryHandoffs,
+	summarizeAuditorReviews,
+	summarizeBreakoutPackages,
+	summarizeBrief,
+	summarizeFinalVerificationReports,
+	summarizeGovernorDecision,
+	summarizeGovernorMemory,
+	summarizeWorkerReports,
+	summarizeWorkerRuns,
+} from "./compact-loop-summary.ts";
 import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
-import { criterionCounts,formatCriterionCounts } from "./ledger.ts";
-import { latestGovernorDecision,pendingOutsideRequests } from "./outside-requests.ts";
-import { type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
+import { criterionCounts, formatCriterionCounts } from "./ledger.ts";
+import { latestGovernorDecision, pendingOutsideRequests } from "./outside-requests.ts";
+import { compactText, type LoopState, type OutsideRequest, STATUS_ICONS } from "./state/core.ts";
 import { existingStatePath } from "./state/paths.ts";
 import { evaluateWorkflowStatus, formatWorkflowStatus } from "./workflow-status.ts";
 
@@ -19,6 +32,33 @@ export function formatLoop(l: LoopState): string {
 	return `${l.name}: ${status} (iteration ${iter})`;
 }
 
+export function governorRoutingInspection(state: LoopState, decision = latestGovernorDecision(state)): Record<string, unknown> & { requiresFullInspection: boolean; message?: string } {
+	const memoryRequiresFullInspection = governorMemoryRequiresFullInspection(state);
+	const latestDecisionRequiresFullInspection = governorDecisionRequiresFullInspection(decision);
+	const latestDecisionRequest = [...state.outsideRequests].reverse().find((request) => request.kind === "governor_review" && request.decision);
+	const actions: Array<{ tool: string; args: Record<string, unknown>; reason: string }> = [];
+	if (memoryRequiresFullInspection) {
+		actions.push({ tool: "stardock_governor_state", args: { action: "list", loopName: state.name }, reason: "Inspect full durable governor memory." });
+	}
+	if (latestDecisionRequiresFullInspection) {
+		actions.push({
+			tool: "stardock_outside_requests",
+			args: { loopName: state.name, requestId: latestDecisionRequest?.id },
+			reason: "Inspect the full latest governor decision.",
+		});
+	}
+	const requiresFullInspection = actions.length > 0;
+	const actionText = actions.map((action) => `${action.tool}(${JSON.stringify(action.args)})`).join(" and ");
+	return {
+		requiresFullInspection,
+		memoryRequiresFullInspection,
+		latestDecisionRequiresFullInspection,
+		latestDecisionRequestId: latestDecisionRequest?.id,
+		actions,
+		message: requiresFullInspection ? `Governor memory: FULL INSPECTION REQUIRED before choosing the next move. Run ${actionText}.` : undefined,
+	};
+}
+
 export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, archived = false, includeDetails = false): Record<string, unknown> {
 	const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
 	const outsideRequests = state.outsideRequests;
@@ -26,7 +66,8 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 	const latestAttempt = attempts.at(-1);
 	const activeBrief = currentBrief(state);
 	const criteria = criterionCounts(state.criterionLedger);
-	const latestFinalReport = state.finalVerificationReports.at(-1);
+	const latestDecision = latestGovernorDecision(state);
+	const governorRouting = governorRoutingInspection(state, latestDecision);
 	const checklistDrift = loadChecklistLedgerDrift(ctx, state);
 	const workflowStatus = evaluateWorkflowStatus(state);
 	const artifactsByKind = state.verificationArtifacts.reduce<Record<string, number>>((counts, artifact) => {
@@ -48,7 +89,7 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 		recursive:
 			state.modeState.kind === "recursive"
 				? {
-						objective: state.modeState.objective,
+						objective: compactText(state.modeState.objective, 500) ?? state.modeState.objective,
 						attempts: attempts.length,
 						reportedAttempts: attempts.filter((attempt) => attempt.status === "reported").length,
 						latestAttempt: latestAttempt
@@ -58,17 +99,18 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 									status: latestAttempt.status,
 									kind: latestAttempt.kind,
 									result: latestAttempt.result,
-									summary: latestAttempt.summary,
+									summary: compactText(latestAttempt.summary, 500),
 								}
 							: undefined,
 					}
 				: undefined,
-		governorState: state.governorState,
+		governorState: summarizeGovernorMemory(state),
+		governorRouting,
 		outsideRequests: {
 			total: outsideRequests.length,
 			pending: pendingRequests.length,
 			answered: outsideRequests.filter((request) => request.status === "answered").length,
-			latestGovernorDecision: latestGovernorDecision(state),
+			latestGovernorDecision: summarizeGovernorDecision(latestDecision),
 		},
 		criteria: {
 			...criteria,
@@ -84,24 +126,12 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 			failed: state.baselineValidations.filter((baseline) => baseline.result === "failed").length,
 			skipped: state.baselineValidations.filter((baseline) => baseline.result === "skipped").length,
 		},
-		finalVerificationReports: {
-			total: state.finalVerificationReports.length,
-			latest: latestFinalReport
-				? {
-						id: latestFinalReport.id,
-						status: latestFinalReport.status,
-						summary: latestFinalReport.summary,
-						criterionIds: latestFinalReport.criterionIds,
-						artifactIds: latestFinalReport.artifactIds,
-						unresolvedGaps: latestFinalReport.unresolvedGaps.length,
-					}
-				: undefined,
-		},
-		auditorReviews: state.auditorReviews,
-		advisoryHandoffs: state.advisoryHandoffs,
-		breakoutPackages: state.breakoutPackages,
-		workerReports: state.workerReports,
-		workerRuns: state.workerRuns,
+		finalVerificationReports: summarizeFinalVerificationReports(state),
+		auditorReviews: summarizeAuditorReviews(state),
+		advisoryHandoffs: summarizeAdvisoryHandoffs(state),
+		breakoutPackages: summarizeBreakoutPackages(state),
+		workerReports: summarizeWorkerReports(state),
+		workerRuns: summarizeWorkerRuns(state),
 		checklistLedgerDrift: {
 			total: checklistDrift.length,
 			items: includeDetails ? checklistDrift : checklistDrift.slice(0, 5),
@@ -109,20 +139,24 @@ export function summarizeLoopState(ctx: ExtensionContext, state: LoopState, arch
 		briefs: {
 			total: state.briefs.length,
 			currentBriefId: state.currentBriefId,
-			current: activeBrief
-				? {
-						id: activeBrief.id,
-						status: activeBrief.status,
-						source: activeBrief.source,
-						requestId: activeBrief.requestId,
-						objective: activeBrief.objective,
-						task: activeBrief.task,
-						criterionIds: activeBrief.criterionIds,
-					}
-				: undefined,
+			current: summarizeBrief(activeBrief),
 		},
 		...(includeDetails
-			? { modeState: state.modeState, requests: state.outsideRequests, criterionLedger: state.criterionLedger, artifacts: state.verificationArtifacts, baselineValidationList: state.baselineValidations, briefList: state.briefs, finalVerificationReportList: state.finalVerificationReports }
+			? {
+					modeState: state.modeState,
+					governorStateDetails: state.governorState,
+					requests: state.outsideRequests,
+					criterionLedger: state.criterionLedger,
+					artifacts: state.verificationArtifacts,
+					baselineValidationList: state.baselineValidations,
+					briefList: state.briefs,
+					finalVerificationReportList: state.finalVerificationReports,
+					auditorReviewList: state.auditorReviews,
+					advisoryHandoffList: state.advisoryHandoffs,
+					breakoutPackageList: state.breakoutPackages,
+					workerReportList: state.workerReports,
+					workerRunList: state.workerRuns,
+				}
 			: {}),
 	};
 }

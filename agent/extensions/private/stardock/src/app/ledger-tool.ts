@@ -88,7 +88,15 @@ export function runLedgerCriteriaUpsert(loopName: string, inputs: Array<Partial<
 	const contentText = batch.isBatch ? `Upserted ${batch.items.length} criteria in loop "${loopName}" (${created} created, ${batch.items.length - created} updated).` : `${created === 1 ? "Created" : "Updated"} criterion ${batch.items[0].id} in loop "${loopName}".`;
 	return {
 		contentText,
-		details: { loopName, criteria: batch.items, criterion: batch.items[0], criterionLedger: batch.lastState.criterionLedger },
+		details: {
+			loopName,
+			criteria: batch.items,
+			criterion: batch.items[0],
+			criterionLedger: {
+				total: batch.lastState.criterionLedger.criteria.length,
+				requirementTrace: batch.lastState.criterionLedger.requirementTrace.length,
+			},
+		},
 		state: batch.lastState,
 	};
 }
@@ -104,7 +112,7 @@ export function runLedgerArtifactRecord(loopName: string, inputs: Array<Partial<
 	const contentText = batch.isBatch ? `Recorded ${batch.items.length} artifacts in loop "${loopName}" (${created} created, ${batch.items.length - created} updated).` : `${created === 1 ? "Recorded" : "Updated"} artifact ${batch.items[0].id} in loop "${loopName}".`;
 	return {
 		contentText,
-		details: { loopName, artifacts: batch.items, artifact: batch.items[0], verificationArtifacts: batch.lastState.verificationArtifacts },
+		details: { loopName, artifacts: batch.items, artifact: batch.items[0], verificationArtifacts: { total: batch.lastState.verificationArtifacts.length } },
 		state: batch.lastState,
 	};
 }

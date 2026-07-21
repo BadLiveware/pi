@@ -72,7 +72,7 @@ export function hasGovernorMemory(state: LoopState): boolean {
 	return hasMemory(state.governorState);
 }
 
-export function formatGovernorState(memory: GovernorState): string {
+export function formatGovernorState(memory: GovernorState, fullRouting = false): string {
 	if (!hasMemory(memory)) return "No governor memory recorded.";
 	const lines = ["Governor memory"];
 	if (memory.objective) lines.push(`Objective: ${memory.objective}`);
@@ -88,7 +88,8 @@ export function formatGovernorState(memory: GovernorState): string {
 	for (const field of LIST_FIELDS) {
 		const values = memory[field];
 		if (!values.length) continue;
-		lines.push(labels[field], ...compactList(values).map((item) => `- ${item}`));
+		const rendered = fullRouting && field !== "completedMilestones" ? values.map((item) => compactText(item, 240) ?? item) : compactList(values);
+		lines.push(labels[field], ...rendered.map((item) => `- ${item}`));
 	}
 	if (memory.rejectedPaths.length) {
 		lines.push("Rejected paths");
@@ -160,7 +161,7 @@ export function registerGovernorStateTool(pi: ExtensionAPI, deps: GovernorStateT
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 			if (!state.governorState) state.governorState = defaultGovernorState();
-			if (params.action === "list") return { content: [{ type: "text", text: formatGovernorState(state.governorState) }], details: { loopName, governorState: state.governorState } };
+			if (params.action === "list") return { content: [{ type: "text", text: formatGovernorState(state.governorState, true) }], details: { loopName, governorState: state.governorState } };
 			if (params.action === "clear") state.governorState = clearGovernorFields(state.governorState, params.fields);
 			else state.governorState = applyGovernorParams(state.governorState, params, params.action);
 			saveState(ctx, state);

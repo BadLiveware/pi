@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runBriefActivate, runBriefClear, runBriefComplete, runBriefUpsert } from "./app/brief-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { formatGovernorState, hasGovernorMemory } from "./governor-state.ts";
 import { FollowupToolParameter, type FollowupToolRequest, withFollowupTool } from "./runtime/followups.ts";
 import { type AdvisoryHandoffRole, type BriefLifecycleAction, compactText, type Criterion, type CriterionStatus, type IterationBrief, type LoopState, nextSequentialId } from "./state/core.ts";
@@ -144,19 +145,17 @@ export function applyActiveBriefLifecycle(state: LoopState, action: BriefLifecyc
 	return brief;
 }
 
-export function formatBriefOverview(state: LoopState): string {
-	const active = currentBrief(state);
-	const lines = [`Briefs for ${state.name}`, `Current brief: ${active?.id ?? "none"}`, `Briefs: ${state.briefs.length} total`];
+export function formatBriefOverview(state: LoopState, total = state.briefs.length, active = currentBrief(state)): string {
+	const lines = [`Briefs for ${state.name}`, `Current brief: ${active?.id ?? "none"}`, `Briefs: ${total} total`];
 	if (state.briefs.length > 0) {
 		lines.push("");
-		for (const brief of state.briefs.slice(0, 12)) {
+		for (const brief of state.briefs) {
 			const current = active?.id === brief.id ? " · current" : "";
 			const source = brief.source === "governor" ? ` · governor${brief.requestId ? `:${brief.requestId}` : ""}` : "";
 			lines.push(`- ${brief.id} [${brief.status}]${current}${source} ${compactText(brief.objective, 120)}`);
 			lines.push(`  Task: ${compactText(brief.task, 120)}`);
 			if (brief.criterionIds.length) lines.push(`  Criteria: ${brief.criterionIds.join(",")}`);
 		}
-		if (state.briefs.length > 12) lines.push(`... ${state.briefs.length - 12} more briefs`);
 	}
 	return lines.join("\n");
 }
@@ -418,6 +417,8 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 			activate: Type.Optional(Type.Boolean({ description: "For upsert, activate the brief in the same call." })),
 			briefs: Type.Optional(Type.Array(briefInputSchema, { description: "Batch briefs for upsert. Single-brief fields remain compatibility sugar." })),
 			ids: Type.Optional(Type.Array(Type.String(), { description: "Batch brief ids for complete. Single id remains compatibility sugar." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			includePromptPreview: Type.Optional(Type.Boolean({ description: "Include a capped next-prompt preview in details after mutation." })),
@@ -431,9 +432,11 @@ export function registerBriefTool(pi: ExtensionAPI, deps: BriefToolDeps): void {
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 
 			if (params.action === "list") {
+				const page = paginateItems(state.briefs, params);
+				const pageState = { ...state, briefs: page.items };
 				return {
-					content: [{ type: "text", text: formatBriefOverview(state) }],
-					details: { loopName, currentBriefId: state.currentBriefId, currentBrief: currentBrief(state), briefs: state.briefs },
+					content: [{ type: "text", text: `${formatBriefOverview(pageState, page.page.total, currentBrief(state))}\n${formatPageNote(page.page)}` }],
+					details: { loopName, currentBriefId: state.currentBriefId, currentBrief: currentBrief(state), briefs: page.items, page: page.page },
 				};
 			}
 			if (params.action === "payload") {

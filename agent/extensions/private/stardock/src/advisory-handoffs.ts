@@ -5,6 +5,7 @@
 import type { ExtensionAPI,ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { runAdvisoryHandoffRecord } from "./app/advisory-handoff-tool.ts";
+import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { FollowupToolParameter, type FollowupToolRequest } from "./runtime/followups.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { type AdvisoryHandoff, compactText, type LoopState, nextSequentialId } from "./state/core.ts";
@@ -31,17 +32,16 @@ function appendSection(lines: string[], title: string, items: string[]): void {
 	lines.push("", title, ...items);
 }
 
-export function formatAdvisoryHandoffOverview(state: LoopState): string {
-	const lines = [`Advisory handoffs for ${state.name}`, `Handoffs: ${state.advisoryHandoffs.length} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Final reports: ${state.finalVerificationReports.length} total`];
+export function formatAdvisoryHandoffOverview(state: LoopState, total = state.advisoryHandoffs.length): string {
+	const lines = [`Advisory handoffs for ${state.name}`, `Handoffs: ${total} total`, formatCriterionCounts(state.criterionLedger), `Artifacts: ${state.verificationArtifacts.length} total`, `Final reports: ${state.finalVerificationReports.length} total`];
 	if (state.advisoryHandoffs.length > 0) {
 		lines.push("");
-		for (const handoff of state.advisoryHandoffs.slice(0, 10)) {
+		for (const handoff of state.advisoryHandoffs) {
 			lines.push(`- ${handoff.id} [${handoff.status}/${handoff.role}] ${compactText(handoff.summary, 140)}`);
 			lines.push(`  Objective: ${compactText(handoff.objective, 140)}`);
 			if (handoff.resultSummary) lines.push(`  Result: ${compactText(handoff.resultSummary, 140)}`);
 			if (handoff.recommendations.length) lines.push(`  Recommendations: ${compactList(handoff.recommendations, 3, 100).join("; ")}`);
 		}
-		if (state.advisoryHandoffs.length > 10) lines.push(`... ${state.advisoryHandoffs.length - 10} more handoffs`);
 	}
 	return lines.join("\n");
 }
@@ -184,6 +184,8 @@ export function registerAdvisoryHandoffTool(pi: ExtensionAPI, deps: AdvisoryHand
 			recommendations: Type.Optional(Type.Array(Type.String(), { description: "Compact recommendations returned by the assignee." })),
 			artifactRefs: Type.Optional(Type.Array(Type.String(), { description: "Paths/URLs/refs to external artifacts or transcripts." })),
 			handoffs: Type.Optional(Type.Array(advisoryHandoffInputSchema, { description: "Batch advisory handoffs for record. Single-handoff fields remain compatibility sugar." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
+			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
 			includeOverview: Type.Optional(Type.Boolean({ description: "Include text overview in details after mutation." })),
 			followupTool: FollowupToolParameter,
@@ -194,12 +196,14 @@ export function registerAdvisoryHandoffTool(pi: ExtensionAPI, deps: AdvisoryHand
 			const state = loadState(ctx, loopName);
 			if (!state) return { content: [{ type: "text", text: `Loop "${loopName}" not found.` }], details: { loopName } };
 			if (params.action === "list") {
-				return { content: [{ type: "text", text: formatAdvisoryHandoffOverview(state) }], details: { loopName, advisoryHandoffs: state.advisoryHandoffs } };
+				const page = paginateItems(state.advisoryHandoffs, params);
+				const pageState = { ...state, advisoryHandoffs: page.items };
+				return { content: [{ type: "text", text: `${formatAdvisoryHandoffOverview(pageState, page.page.total)}\n${formatPageNote(page.page)}` }], details: { loopName, advisoryHandoffs: page.items, page: page.page } };
 			}
 			if (params.action === "payload") {
 				const payload = buildAdvisoryHandoffPayload(state, params);
 				if (!payload.ok) return { content: [{ type: "text", text: payload.error }], details: { loopName } };
-				return { content: [{ type: "text", text: payload.payload }], details: { loopName, role: params.role, objective: params.objective, advisoryHandoffs: state.advisoryHandoffs } };
+				return { content: [{ type: "text", text: payload.payload }], details: { loopName, role: params.role, objective: params.objective, advisoryHandoffs: { total: state.advisoryHandoffs.length } } };
 			}
 			const response = runAdvisoryHandoffRecord(loopName, params, { record: (input) => recordAdvisoryHandoff(ctx, loopName, input) });
 			if (response.error) return { content: [{ type: "text", text: response.contentText }], details: response.details };

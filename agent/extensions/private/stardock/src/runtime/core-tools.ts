@@ -13,7 +13,7 @@ import { type BriefLifecycleAction, DEFAULT_REFLECT_INSTRUCTIONS, type LoopState
 import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
-import { formatRunOverview, formatRunTimeline, formatStateSummary, summarizeLoopState } from "../views.ts";
+import { formatRunOverview, formatRunTimeline, formatStateSummary, governorRoutingInspection, summarizeLoopState } from "../views.ts";
 import { openMutableWorkerRun } from "../worker-runs.ts";
 import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } from "../workflow-status.ts";
 import { applyActiveBriefLifecycle } from "../briefs.ts";
@@ -209,11 +209,16 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 	pi.registerTool({
 		name: "stardock_state",
 		label: "Inspect Stardock State",
-		description: "Inspect Stardock loop state or list loops without reading .stardock files directly.",
+		description: "Inspect Stardock loop state or list loops without reading .stardock files directly. Default details are compact counts plus latest-item previews; use includeDetails only for explicit exhaustive debugging because it includes full evidence collections.",
+		promptSnippet: "Inspect compact Stardock status, workflow gates, and latest evidence without expanding full history.",
+		promptGuidelines: [
+			"Use compact summary, overview, or timeline views for routine status and routing decisions.",
+			"Do not pass includeDetails for normal progress checks; use it only when exhaustive raw collections are required, or call the specific evidence tool's list action instead.",
+		],
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name to inspect. Omit to list loops." })),
 			archived: Type.Optional(Type.Boolean({ description: "Inspect archived loops instead of current runs. Default false." })),
-			includeDetails: Type.Optional(Type.Boolean({ description: "Include full mode state and outside requests in details. Default false." })),
+			includeDetails: Type.Optional(Type.Boolean({ description: "Include full mode state and complete evidence collections in details. Default false. This can be very large on long runs; use only for explicit exhaustive debugging." })),
 			view: Type.Optional(Type.Union([Type.Literal("summary"), Type.Literal("overview"), Type.Literal("timeline")], { description: "Text view to return for one loop. summary is compact; overview includes timeline; timeline returns only timeline." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -225,6 +230,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				if (!state) return { content: [{ type: "text", text: `Loop "${params.loopName}" not found.` }], details: { loopName: params.loopName, archived } };
 				const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
 				const latestDecision = latestGovernorDecision(state);
+				const governorRouting = governorRoutingInspection(state, latestDecision);
 				const activeBrief = currentBrief(state);
 				const checklistDrift = loadChecklistLedgerDrift(ctx, state);
 				const workflowStatus = evaluateWorkflowStatus(state);
@@ -251,7 +257,9 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 					activeBrief ? `Current brief task: ${activeBrief.task}` : undefined,
 					latestDecision?.requiredNextMove ? `Latest governor required next move: ${latestDecision.requiredNextMove}` : undefined,
 				].filter((line): line is string => Boolean(line));
-				const text = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : lines.join("\n");
+				const baseText = view === "overview" ? formatRunOverview(ctx, state, archived) : view === "timeline" ? formatRunTimeline(state) : lines.join("\n");
+				const governorWarning = governorRouting.message;
+				const text = governorWarning ? `${baseText}\n${governorWarning}` : baseText;
 				return { content: [{ type: "text", text }], details: { loopName: state.name, archived, view, loop: summarizeLoopState(ctx, state, archived, includeDetails) } };
 			}
 
