@@ -44,6 +44,17 @@ Preferred split layout:
 
 Do not hide mandatory implementation work in `docs/` or `design/`. Do not bury long runbooks, research notes, or deferred design debates inside execution files. Treat each execution-spine file as maximum scope, not a quota; split before execution if the slice becomes too broad.
 
+## Parallel Stardock Stage Design
+Use a parallel Stardock stage only when at least two implementation leaves can start from one frozen contract/base, have independently reviewable outcomes, and either own disjoint writes/resources or declare an explicit serial dependency. Keep single-lane work, evolving contracts, uncertain ownership, and overlapping mutations on the normal serial task/worker path.
+
+For an eligible stage, make the execution contract explicit:
+- one contract node and immutable contract/base commit
+- implementation nodes with brief ids, dependencies, reads, owned writes, resource claims, validation commands, and bounded concurrency
+- deterministic integration order plus a fan-in node with owned paths and exact validation
+- parent branch/head, unique integration branch, failure-preservation rules, and terminal lease/ownership disposition
+
+Plan the whole parent-owned lifecycle, not only worker fan-out: validate/upsert and acquire the graph, `runReady`, review every lane by explicit WorkerRun id, call `integrationPlan`, execute every returned no-ff command in order, commit and validate fan-in work, call `prepareIntegration`, execute every returned exact-parent/fast-forward command, call `recordIntegrated` with the prepared revision/token/result, then `release`. Include read-only reconcile, immutable retry, approved abandonment, and no-force preservation paths in recovery acceptance criteria.
+
 ## Purpose Anchoring
 Do not invent product or architectural purpose from terse prompts like "make a long plan". Those control format/depth, not goal or scope.
 
