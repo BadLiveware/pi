@@ -358,7 +358,7 @@ export function mutateState(
 		prepareCandidate(current, candidate, identity, options.priorOwnershipEvidence, options.releaseOwnership);
 		atomicReplaceState(ctx, candidate, false);
 		if (options.releaseOwnership) {
-			clearTerminalOwnerEvidence(ctx, name, options.releaseOwnership);
+			clearTerminalOwnerEvidence(ctx, name, options.releaseOwnership, candidate.executionGraph?.revision ?? 0);
 			removeOwnershipToken(ctx, name, options.releaseOwnership.sessionId);
 		} else {
 			syncActiveOwnerRevision(ctx, candidate);

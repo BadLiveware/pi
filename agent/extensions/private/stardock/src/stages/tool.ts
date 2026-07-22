@@ -347,7 +347,7 @@ export async function executeStageTool(
 			return textResult(`Durably prepared integration head ${result.preparedHeadCommit}. Parent must execute the returned argument-array fast-forward commands.`, { ...result });
 		}
 		if (params.action === "recordIntegrated") {
-			if (!params.graphId || !params.stageId || !params.prepareToken || !params.parentResultCommit) return textResult("recordIntegrated requires graphId, stageId, prepareToken, and parentResultCommit.", { ok: false }, true);
+			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined || !params.prepareToken || !params.parentResultCommit) return textResult("recordIntegrated requires graphId, stageId, expectedGraphRevision, prepareToken, and parentResultCommit.", { ok: false }, true);
 			const result = await recordIntegrated(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision, prepareToken: params.prepareToken, parentResultCommit: params.parentResultCommit }, signal, stageActionDependencies.gitAdapter);
 			runtime.updateUI(ctx);
 			let text = `Recorded integrated parent result ${result.parentResultCommit}.`;

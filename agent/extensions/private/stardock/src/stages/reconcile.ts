@@ -392,10 +392,7 @@ export async function releaseStage(
 		if (cleanup.graphId !== current.graph.id || cleanup.stageId !== current.stage.id) {
 			throw new Error("terminal ownership cleanup requires exact graph and stage identity evidence.");
 		}
-		if (current.graph.revision !== cleanup.stateRevision + 1) {
-			throw new Error(`terminal ownership cleanup requires graph revision ${cleanup.stateRevision + 1}, current ${current.graph.revision}.`);
-		}
-		clearTerminalOwnerEvidence(ctx, input.loopName, cleanup);
+		clearTerminalOwnerEvidence(ctx, input.loopName, cleanup, current.graph.revision);
 		removeOwnershipToken(ctx, input.loopName, cleanup.sessionId);
 		ownershipReleased = true;
 	}

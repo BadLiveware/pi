@@ -246,9 +246,13 @@ export function clearTerminalOwnerEvidence(
 	ctx: ExtensionContext,
 	loopName: string,
 	expected: { graphId: string; stageId: string; sessionId: string; pid: number; tokenDigest: string; stateRevision: number },
+	currentStateRevision: number,
 ): { removed: boolean } {
 	const record = readOwnerRecord(ctx, loopName);
 	if (!record) return { removed: false };
+	if (currentStateRevision !== expected.stateRevision + 1) {
+		throw new OwnershipProtocolError("state_mismatch", `Terminal ownership cleanup requires graph revision ${expected.stateRevision + 1}, current ${currentStateRevision}.`);
+	}
 	if (record.status !== "active"
 		|| record.graphId !== expected.graphId
 		|| record.stageId !== expected.stageId

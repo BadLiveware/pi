@@ -191,6 +191,17 @@ test("stage lifecycle actions reject incomplete identity without mutating durabl
 			assert.equal(result.details.ok, false);
 			assert.deepEqual(fs.readFileSync(statePath(cwd, loopName)), before);
 		}
+		const missingRevision = await stage.execute("record-without-revision", {
+			action: "recordIntegrated",
+			loopName,
+			graphId: graph.id,
+			stageId: "stage",
+			prepareToken: "token",
+			parentResultCommit: SHA,
+		}, undefined, undefined, harness.ctx);
+		assert.equal(missingRevision.isError, true);
+		assert.match(missingRevision.content[0].text, /expectedGraphRevision/);
+		assert.deepEqual(fs.readFileSync(statePath(cwd, loopName)), before);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

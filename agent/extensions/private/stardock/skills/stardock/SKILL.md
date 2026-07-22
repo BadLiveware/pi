@@ -34,7 +34,7 @@ Recursive mode requires an `objective` and may include `baseline`, `validationCo
    `runReady` acquires durable stage ownership, precreates lane attempts and WorkerRuns, and runs concurrent implementers only in distinct Treehouse leases while the parent owns every state mutation.
    Review every settled isolated lane with an explicit `runId`.
    After explicit lane review, call `integrationPlan` and execute its argument-array commands as the parent; it never executes Git integration itself.
-   Commit and validate fan-in work, call `prepareIntegration`, execute its argument-array fast-forward commands, then call idempotent `recordIntegrated` with the raw token and exact parent result.
+   Commit and validate fan-in work, call `prepareIntegration`, execute every returned exact-parent/fast-forward command in order, then call idempotent `recordIntegrated` with the prepared `stateRevision`, raw token, and exact parent result.
    Use read-only `reconcile` before approved takeover, retry only explicit retry-ready nodes, and release only integrated or explicitly abandoned clean leases; no normal action force-cleans work.
    Sibling runtimes stay read-only.
    Approved dead-owner reconciliation quarantines only matching file evidence and keeps prior graph ownership durable until the new owner atomically replaces that exact evidence.

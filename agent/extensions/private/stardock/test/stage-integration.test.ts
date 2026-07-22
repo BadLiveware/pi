@@ -105,9 +105,19 @@ test("integration plan, durable preparation, parent fast-forward, and idempotent
 		assert.equal(prepared.expectedParentHead, base);
 		assert.deepEqual(prepared.fastForwardCommands.map((command) => command.args.slice(2)), [
 			["switch", "main"],
-			["rev-parse", "--verify", "refs/heads/main^{commit}"],
+			["merge-base", "--is-ancestor", base, "refs/heads/main"],
+			["merge-base", "--is-ancestor", "refs/heads/main", base],
 			["merge", "--ff-only", mergeB],
 		]);
+
+		git(cwd, ["branch", "-f", "main", mergeA]);
+		git(cwd, prepared.fastForwardCommands[0].args.slice(2));
+		git(cwd, prepared.fastForwardCommands[1].args.slice(2));
+		assert.throws(() => git(cwd, prepared.fastForwardCommands[2].args.slice(2)));
+		assert.equal(git(cwd, ["rev-parse", "refs/heads/main^{commit}"]), mergeA);
+		git(cwd, ["switch", "stardock/integration-test"]);
+		git(cwd, ["branch", "-f", "main", base]);
+
 		const recovered = await reissuePreparedIntegrationToken(harness.ctx, { loopName, graphId: graph.id, stageId: "stage" });
 		assert.equal(recovered.stateRevision, 9);
 		assert.notEqual(recovered.prepareToken, prepared.prepareToken);

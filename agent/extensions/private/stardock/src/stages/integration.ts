@@ -79,7 +79,7 @@ export interface RecordIntegratedInput {
 	loopName: string;
 	graphId: string;
 	stageId: string;
-	expectedGraphRevision?: number;
+	expectedGraphRevision: number;
 	prepareToken: string;
 	parentResultCommit: string;
 }
@@ -311,14 +311,16 @@ export async function prepareIntegration(
 		prepareToken: token,
 		preparedHeadCommit: input.integrationHeadCommit,
 		expectedParentHead: stage.integrationBaseCommit,
-		fastForwardCommands: preparedFastForwardCommands(ctx, stage, input.integrationHeadCommit),
+		fastForwardCommands: preparedFastForwardCommands(ctx, stage, stage.integrationBaseCommit, input.integrationHeadCommit),
 	};
 }
 
-export function preparedFastForwardCommands(ctx: ExtensionContext, stage: ExecutionStage, head: string): ArgumentCommandPlan[] {
+export function preparedFastForwardCommands(ctx: ExtensionContext, stage: ExecutionStage, expectedParentHead: string, head: string): ArgumentCommandPlan[] {
+	const parentRef = `refs/heads/${stage.parentBranch}`;
 	return [
 		gitCommand(ctx.cwd, ["switch", stage.parentBranch]),
-		gitCommand(ctx.cwd, ["rev-parse", "--verify", `refs/heads/${stage.parentBranch}^{commit}`]),
+		gitCommand(ctx.cwd, ["merge-base", "--is-ancestor", expectedParentHead, parentRef]),
+		gitCommand(ctx.cwd, ["merge-base", "--is-ancestor", parentRef, expectedParentHead]),
 		gitCommand(ctx.cwd, ["merge", "--ff-only", head]),
 	];
 }
@@ -359,7 +361,7 @@ export async function reissuePreparedIntegrationToken(
 		prepareToken: token,
 		preparedHeadCommit: integration.integrationHeadCommit,
 		expectedParentHead: integration.expectedParentHead,
-		fastForwardCommands: preparedFastForwardCommands(ctx, stage, integration.integrationHeadCommit),
+		fastForwardCommands: preparedFastForwardCommands(ctx, stage, integration.expectedParentHead, integration.integrationHeadCommit),
 		parentAlreadyFastForwarded,
 	};
 }
