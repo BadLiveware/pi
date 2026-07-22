@@ -6,10 +6,10 @@ import { test } from "node:test";
 import { makeHarness,runDir,statePath,taskPath } from "./test-harness.ts";
 import { serialChainFixture } from "./fixtures/execution-graphs.ts";
 
-test("stardock_start writes task state and stardock_done queues next iteration", async () => {
+test("stardock_start writes task state and stardock_done queue attributed custom prompts", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
-		const { tools, messages, ctx } = makeHarness(cwd);
+		const { tools, messages, userMessages, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
 		const done = tools.get("stardock_done");
 		assert.ok(start);
@@ -30,8 +30,11 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		);
 		assert.match(startResult.content[0].text, /Started loop "Demo_Loop"/);
 		assert.equal(messages.length, 1);
+		assert.equal(messages[0].customType, "stardock");
+		assert.equal(messages[0].display, true);
 		assert.match(messages[0].content, /STARDOCK LOOP: Demo_Loop \| Iteration 1\/3/);
-		assert.deepEqual(messages[0].options, { deliverAs: "followUp" });
+		assert.deepEqual(messages[0].options, { deliverAs: "followUp", triggerTurn: true });
+		assert.deepEqual(userMessages, []);
 
 		const demoStatePath = statePath(cwd, "Demo_Loop");
 		const demoTaskPath = taskPath(cwd, "Demo_Loop");
@@ -57,7 +60,9 @@ test("stardock_start writes task state and stardock_done queues next iteration",
 		const doneResult = await done.execute("tool-2", {}, undefined, undefined, ctx);
 		assert.match(doneResult.content[0].text, /Iteration 1 complete/);
 		assert.equal(messages.length, 2);
+		assert.equal(messages[1].customType, "stardock");
 		assert.match(messages[1].content, /STARDOCK LOOP: Demo_Loop \| Iteration 2\/3/);
+		assert.deepEqual(userMessages, []);
 		const nextState = JSON.parse(fs.readFileSync(demoStatePath, "utf-8"));
 		assert.equal(nextState.iteration, 2);
 	} finally {
@@ -293,7 +298,7 @@ test("manual stop clears active brief back to draft", async () => {
 	}
 });
 
-test("stardock_complete completes loop without queuing a user message", async () => {
+test("stardock_complete completes loop without queuing another prompt", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, messages, entries, notifications, ctx } = makeHarness(cwd);
@@ -318,7 +323,7 @@ test("stardock_complete completes loop without queuing a user message", async ()
 		const result = await complete.execute("tool-complete", { includeState: true }, undefined, undefined, ctx);
 
 		assert.match(result.content[0].text, /Completed Stardock loop/);
-		assert.equal(messages.length, 1, "completion should not send a follow-up user message");
+		assert.equal(messages.length, 1, "completion should not send a follow-up prompt");
 		assert.equal(entries.at(-1)?.customType, "stardock");
 		assert.match(String((entries.at(-1)?.data as any).banner), /STARDOCK LOOP COMPLETE: Complete_Loop/);
 		assert.ok(notifications.some((message) => message.includes("STARDOCK LOOP COMPLETE: Complete_Loop")));
@@ -416,7 +421,7 @@ test("archive moves managed run folders under archive", async () => {
 test("v1 state without mode migrates to checklist mode on resume", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
-		const { commands, messages, ctx } = makeHarness(cwd);
+		const { commands, messages, userMessages, ctx } = makeHarness(cwd);
 		const loopDir = path.join(cwd, ".stardock");
 		fs.mkdirSync(loopDir, { recursive: true });
 		fs.writeFileSync(path.join(loopDir, "legacy.md"), "# Legacy task\n", "utf-8");
@@ -446,7 +451,10 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 		await stardock.handler("resume legacy", ctx);
 
 		assert.equal(messages.length, 1);
+		assert.equal(messages[0].customType, "stardock");
+		assert.equal(messages[0].display, true);
 		assert.match(messages[0].content, /STARDOCK LOOP: legacy \| Iteration 2\/5/);
+		assert.deepEqual(userMessages, []);
 		const migrated = JSON.parse(fs.readFileSync(statePath(cwd, "legacy"), "utf-8"));
 		assert.equal(migrated.schemaVersion, 3);
 		assert.equal(migrated.mode, "checklist");

@@ -11,6 +11,7 @@ import { detachOwnedStages } from "../stages/ownership.ts";
 import { cancelActiveStageRuns } from "../stages/run-ready-registry.ts";
 import { bindOwnershipContext } from "../stages/ownership-records.ts";
 import { getModeHandler } from "./prompts.ts";
+import { queueStardockPrompt } from "./prompt-delivery.ts";
 import type { StardockRuntime } from "./types.ts";
 
 type TranscriptContent = { type?: string; name?: string };
@@ -42,13 +43,13 @@ function queueContinuationPrompt(pi: ExtensionAPI, runtime: StardockRuntime, ctx
 	if (!shouldQueueContinuationPrompt(state, status, messages, ctx)) return;
 	const content = tryRead(path.resolve(ctx.cwd, state.taskFile));
 	if (!content) return;
-	pi.sendUserMessage(
+	queueStardockPrompt(
+		pi,
 		[
 			`Stardock continuation guard: loop ${state.name} is still ${status.state}; the previous turn ended without stardock_done or stardock_complete. Continue the current iteration from the Stardock prompt below, or call the appropriate Stardock lifecycle tool if the work is actually complete.`,
 			"",
 			runtime.buildPrompt(state, content, "iteration"),
 		].join("\n"),
-		{ deliverAs: "followUp" },
 	);
 }
 

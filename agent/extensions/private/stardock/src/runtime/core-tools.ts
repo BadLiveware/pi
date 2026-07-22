@@ -20,6 +20,7 @@ import { evaluateWorkflowStatus, formatWorkflowStatus, type WorkflowStatus } fro
 import { applyActiveBriefLifecycle } from "../briefs.ts";
 import { FollowupToolParameter, withFollowupTool } from "./followups.ts";
 import { buildPrompt, createModeState, getModeHandler, isImplementedMode, unsupportedModeMessage } from "./prompts.ts";
+import { queueStardockPrompt } from "./prompt-delivery.ts";
 import type { StardockRuntime } from "./types.ts";
 
 function checklistDoneShouldQueueNext(status: WorkflowStatus): boolean {
@@ -102,7 +103,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			saveState(ctx, state);
 			runtime.ref.currentLoop = loopName;
 			runtime.updateUI(ctx);
-			pi.sendUserMessage(buildPrompt(state, params.taskContent, "iteration"), { deliverAs: "followUp" });
+			queueStardockPrompt(pi, buildPrompt(state, params.taskContent, "iteration"));
 			return { content: [{ type: "text", text: `Started loop "${loopName}" (max ${state.maxIterations} iterations).` }], details: {} };
 		},
 	});
@@ -151,7 +152,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 				runtime.pauseLoop(ctx, state);
 				return { content: [{ type: "text", text: `Error: Could not read task file: ${state.taskFile}` }], details: {} };
 			}
-			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"), { deliverAs: "followUp" });
+			queueStardockPrompt(pi, buildPrompt(state, content, needsReflection ? "reflection" : "iteration"));
 			const lifecycleText = lifecycleBrief ? ` ${briefLifecycle === "complete" ? "Completed" : "Cleared"} brief ${lifecycleBrief.id}.` : "";
 			return withFollowupTool({ content: [{ type: "text", text: `Iteration ${state.iteration - 1} complete. Next iteration queued.${lifecycleText}` }], details: { briefLifecycle, brief: lifecycleBrief, auditorRequest, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, runtime.ref.currentLoop, params.followupTool, ["stardock_done"]);
 		},

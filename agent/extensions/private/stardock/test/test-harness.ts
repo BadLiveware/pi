@@ -5,7 +5,8 @@ export function makeHarness(cwd: string) {
 	const tools = new Map<string, any>();
 	const commands = new Map<string, any>();
 	const handlers = new Map<string, any[]>();
-	const messages: Array<{ content: string; options?: unknown }> = [];
+	const messages: Array<{ customType: string; content: string; display: boolean; details?: unknown; options?: unknown }> = [];
+	const userMessages: Array<{ content: string; options?: unknown }> = [];
 	const entries: Array<{ customType: string; data?: unknown }> = [];
 	const notifications: string[] = [];
 	const statuses = new Map<string, string | undefined>();
@@ -37,8 +38,11 @@ export function makeHarness(cwd: string) {
 		on(event: string, handler: any) {
 			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
 		},
+		sendMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: unknown) {
+			messages.push({ ...message, options });
+		},
 		sendUserMessage(content: string, options?: unknown) {
-			messages.push({ content, options });
+			userMessages.push({ content, options });
 		},
 		appendEntry(customType: string, data?: unknown) {
 			entries.push({ customType, data });
@@ -92,7 +96,7 @@ export function makeHarness(cwd: string) {
 		}
 		return { consumed: false, data: current };
 	};
-	return { tools, commands, handlers, messages, entries, notifications, statuses, widgets, eventHandlers, events, ctx, setIdle, dispatchTerminalInput, aborts };
+	return { tools, commands, handlers, messages, userMessages, entries, notifications, statuses, widgets, eventHandlers, events, ctx, setIdle, dispatchTerminalInput, aborts };
 }
 
 export function runDir(cwd: string, name: string, archived = false): string {

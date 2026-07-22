@@ -142,7 +142,7 @@ test("stardock_done does not queue checklist prompts for gated workflow states",
 test("agent_end queues a continuation prompt for active ungated work without stardock_done", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {
-		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const { tools, handlers, messages, userMessages, ctx } = makeHarness(cwd);
 		const start = tools.get("stardock_start");
 		const brief = tools.get("stardock_brief");
 		assert.ok(start);
@@ -160,7 +160,10 @@ test("agent_end queues a continuation prompt for active ungated work without sta
 		assert.match(messages.at(-1)?.content ?? "", /Stardock continuation guard/);
 		assert.match(messages.at(-1)?.content ?? "", /Workflow: active_work/);
 		assert.match(messages.at(-1)?.content ?? "", /Brief: b-next/);
-		assert.deepEqual(messages.at(-1)?.options, { deliverAs: "followUp" });
+		assert.equal(messages.at(-1)?.customType, "stardock");
+		assert.equal(messages.at(-1)?.display, true);
+		assert.deepEqual(messages.at(-1)?.options, { deliverAs: "followUp", triggerTurn: true });
+		assert.deepEqual(userMessages, []);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

@@ -13,6 +13,7 @@ import { destructiveOwnershipBlockReason, listLoops, loadState, mutationBlockRea
 import { formatLoop, formatRunOverview, formatRunTimeline } from "../views.ts";
 import { parseArgs, parseLoopViewArgs, selectLoopForView } from "./args.ts";
 import { buildPrompt, createModeState, isImplementedMode, unsupportedModeMessage } from "./prompts.ts";
+import { queueStardockPrompt } from "./prompt-delivery.ts";
 import type { StardockRuntime } from "./types.ts";
 
 function commandMutationTarget(command: string, rest: string, ctx: ExtensionContext, runtime: StardockRuntime): { loopNames: string[]; destructive: boolean } | null {
@@ -163,7 +164,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 				ctx.ui.notify(`Could not read task file: ${taskFile}`, "error");
 				return;
 			}
-			pi.sendUserMessage(buildPrompt(state, content, "iteration"));
+			queueStardockPrompt(pi, buildPrompt(state, content, "iteration"));
 		},
 		stop(_rest, ctx) {
 			if (!runtime.ref.currentLoop) {
@@ -207,7 +208,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 				return;
 			}
 			const needsReflection = state.reflectEvery > 0 && state.iteration > 1 && (state.iteration - 1) % state.reflectEvery === 0;
-			pi.sendUserMessage(buildPrompt(state, content, needsReflection ? "reflection" : "iteration"));
+			queueStardockPrompt(pi, buildPrompt(state, content, needsReflection ? "reflection" : "iteration"));
 		},
 		status(_rest, ctx) {
 			const loops = listLoops(ctx);
