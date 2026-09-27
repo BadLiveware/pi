@@ -77,7 +77,7 @@ test("stardock_worker_report builds payloads and records compact worker results"
 				validation: [{ command: "npm test -- worker", result: "skipped", summary: "Worker did not run tests.", artifactIds: ["a-worker-log"] }],
 				risks: ["Worker output is advisory only."],
 				openQuestions: ["Should parent inspect changed files?"],
-				suggestedNextMove: "Parent should inspect changed files and run validation.",
+				suggestedNextMove: "Governor should inspect changed files and run validation.",
 				reviewHints: ["Read worker-reports.ts before accepting."],
 				includeState: true,
 			},

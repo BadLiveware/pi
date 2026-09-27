@@ -43,7 +43,7 @@ export function reviewWorkerRun(ctx: ExtensionContext, loopName: string, params:
 	const state = loadState(ctx, loopName);
 	if (!state) return { content: [textContent(`Loop "${loopName}" not found.`)], details: { loopName }, isError: true };
 	if (!params.runId && state.workerRuns.some((item) => item.isolation === "treehouse" && item.status === "needs_review")) {
-		return { content: [textContent("Stage-associated implementer reviews require an explicit runId so reversed completion order cannot review the wrong lane.")], details: { loopName, code: "run_id_required" }, isError: true };
+		return { content: [textContent("Stage-associated implementer decisions require an explicit runId so reversed completion order cannot accept or dismiss the wrong lane.")], details: { loopName, code: "run_id_required" }, isError: true };
 	}
 	const run = params.runId ? state.workerRuns.find((item) => item.id === params.runId) : openMutableWorkerRun(state);
 	if (!run) return { content: [textContent(params.runId ? `WorkerRun "${params.runId}" not found.` : "No open implementer WorkerRun needs review.")], details: { loopName }, isError: true };
@@ -51,7 +51,7 @@ export function reviewWorkerRun(ctx: ExtensionContext, loopName: string, params:
 	if (run.status !== "needs_review") return { content: [textContent(`WorkerRun ${run.id} is ${run.status}; only needs_review runs can be accepted or dismissed.`)], details: { loopName, run }, isError: true };
 	const status = params.reviewStatus ?? "accepted";
 	run.status = status;
-	run.reviewRationale = params.reviewRationale?.trim() || `${status} by parent/governor.`;
+	run.reviewRationale = params.reviewRationale?.trim() || `${status} by governor.`;
 	run.updatedAt = new Date().toISOString();
 	if (run.isolation === "treehouse" && run.graphId && run.stageId && run.nodeId && state.executionGraph?.id === run.graphId) {
 		const graph = state.executionGraph;

@@ -5,7 +5,7 @@ import type { IterationBrief } from "../state/core.ts";
 export type ExecutionGraphStatus = "draft" | "running" | "blocked" | "completed" | "abandoned";
 export type ExecutionNodeKind = "contract" | "serial" | "implementation" | "fan_in";
 export type ExecutionNodeStatus = "blocked" | "ready" | "leased" | "running" | "detached" | "reconciling" | "needs_review" | "succeeded" | "failed" | "retry_ready" | "integrated" | "abandoned";
-export type ExecutionStageStatus = "draft" | "contracts_ready" | "running" | "awaiting_integration" | "integration_prepared" | "integrated" | "failed" | "detached" | "abandoned";
+export type ExecutionStageStatus = "draft" | "contracts_ready" | "running" | "settled" | "awaiting_integration" | "integration_prepared" | "integrated" | "failed" | "detached" | "abandoned";
 export type ValidationResult = "passed" | "failed" | "skipped";
 
 export interface ExecutionValidationRecord {
@@ -365,6 +365,7 @@ function isExecutionStage(value: unknown): value is ExecutionStage {
 	return value.status === "draft"
 		|| value.status === "contracts_ready"
 		|| value.status === "running"
+		|| value.status === "settled"
 		|| value.status === "awaiting_integration"
 		|| value.status === "integration_prepared"
 		|| value.status === "integrated"

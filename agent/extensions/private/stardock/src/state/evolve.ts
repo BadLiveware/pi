@@ -11,8 +11,8 @@ import {
 	type EvolveCandidateArtifact,
 	type EvolveCandidateArtifactKind,
 	type EvolveCandidateStatus,
-	EVOLVE_IMPLEMENTATION_GATES,
-	type EvolveImplementationGate,
+	EVOLVE_IMPLEMENTATION_REQUIREMENTS,
+	type EvolveImplementationRequirement,
 	type EvolveIsolation,
 	type EvolveMetricGoal,
 	type EvolveModeState,
@@ -37,7 +37,7 @@ export function defaultEvolveModeState(): EvolveModeState {
 		candidates: [],
 		archive: [],
 		consecutiveNonImproving: 0,
-		implementationGates: [...EVOLVE_IMPLEMENTATION_GATES],
+		implementationRequirements: [...EVOLVE_IMPLEMENTATION_REQUIREMENTS],
 	};
 }
 
@@ -165,7 +165,8 @@ export function migrateEvolveModeState(value: unknown): EvolveModeState {
 	const setup = migrateEvolveSetup(raw.setup);
 	const candidates = migrateEvolveCandidates(raw.candidates);
 	const bestCandidateId = typeof raw.bestCandidateId === "string" && candidates.some((candidate) => candidate.id === raw.bestCandidateId) ? raw.bestCandidateId : undefined;
-	const gates = normalizeStringList(raw.implementationGates).filter((gate): gate is EvolveImplementationGate => (EVOLVE_IMPLEMENTATION_GATES as string[]).includes(gate));
+	const rawRequirements = normalizeStringList(raw.implementationRequirements);
+	const requirements = rawRequirements.filter((requirement): requirement is EvolveImplementationRequirement => (EVOLVE_IMPLEMENTATION_REQUIREMENTS as string[]).includes(requirement));
 	return {
 		kind: "evolve",
 		setup,
@@ -173,6 +174,6 @@ export function migrateEvolveModeState(value: unknown): EvolveModeState {
 		bestCandidateId,
 		archive: normalizeStringList(raw.archive).map((item) => compactText(item, 240) ?? item).slice(0, setup?.archiveSize ?? DEFAULT_EVOLVE_ARCHIVE_SIZE),
 		consecutiveNonImproving: boundedNumber(raw.consecutiveNonImproving, 0, 0, MAX_EVOLVE_CANDIDATE_BUDGET),
-		implementationGates: gates.length > 0 ? gates : [...EVOLVE_IMPLEMENTATION_GATES],
+		implementationRequirements: requirements.length > 0 ? requirements : [...EVOLVE_IMPLEMENTATION_REQUIREMENTS],
 	};
 }

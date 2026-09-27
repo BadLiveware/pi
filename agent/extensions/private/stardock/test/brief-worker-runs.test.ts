@@ -111,7 +111,7 @@ test("stardock_worker runs brief and request scoped Stardock roles", async () =>
 		assert.ok(outside);
 		assert.match(worker.description, /one coherent implementer per brief/);
 		assert.ok(worker.promptGuidelines.some((guideline: string) => guideline.includes("Skip explorer")));
-		assert.ok(worker.promptGuidelines.some((guideline: string) => guideline.includes("selective parent review")));
+		assert.ok(worker.promptGuidelines.some((guideline: string) => guideline.includes("governor's accept or dismiss decision")));
 
 		await start.execute("tool-worker-tool-start", { name: "Worker Tool", mode: "recursive", taskContent: "# Worker tool task\n", objective: "Exercise Stardock worker routing.", baseline: "No workers run yet.", validationCommand: "npm test --prefix agent/extensions -- private/stardock/brief-worker-runs.test.ts", maxIterations: 3 }, undefined, undefined, ctx);
 		await ledger.execute("tool-worker-tool-criterion", { action: "upsertCriterion", loopName: "Worker_Tool", id: "c-worker-tool", description: "Stardock worker role runs.", passCondition: "WorkerRun records the role output.", status: "pending" }, undefined, undefined, ctx);
@@ -195,7 +195,7 @@ test("stardock_brief_worker runs serial implementer workers and requires review"
 		assert.ok(workerReport);
 
 		await start.execute("tool-brief-worker-start", { name: "Implementer Worker", mode: "checklist", taskContent: "# Implementer worker task\n", maxIterations: 3 }, undefined, undefined, ctx);
-		await ledger.execute("tool-brief-worker-criterion", { action: "upsertCriterion", loopName: "Implementer_Worker", id: "c-impl", description: "Implementer edits one file.", passCondition: "Parent reviews the changed file.", status: "pending" }, undefined, undefined, ctx);
+		await ledger.execute("tool-brief-worker-criterion", { action: "upsertCriterion", loopName: "Implementer_Worker", id: "c-impl", description: "Implementer edits one file.", passCondition: "Governor accepts the worker evidence.", status: "pending" }, undefined, undefined, ctx);
 		await brief.execute("tool-brief-worker-brief", { action: "upsert", loopName: "Implementer_Worker", id: "b-impl", objective: "Implement a tiny change.", task: "Create src/implemented.ts with a marker export.", criterionIds: ["c-impl"], constraints: ["One file only."], activate: true }, undefined, undefined, ctx);
 		commitCleanGit(cwd);
 

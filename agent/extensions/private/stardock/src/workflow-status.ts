@@ -8,11 +8,11 @@
 import { evaluateCompletionPolicy } from "./completion-policy.ts";
 import { criterionCounts } from "./ledger.ts";
 import { evaluateBreakoutPolicy } from "./policy.ts";
-import { evaluateAuditorGatePolicy, evaluateParentReviewPolicy } from "./subagent-readiness-policy.ts";
+import { evaluateGovernorDecisionPolicy, evaluateGovernorRiskPolicy } from "./subagent-readiness-policy.ts";
 import { compactText, type LoopState } from "./state/core.ts";
 import { evaluateExecutionGraphLifecycle } from "./stages/graph.ts";
 
-export type WorkflowState = "ready_for_work" | "active_work" | "needs_parent_review" | "needs_auditor_review" | "needs_breakout_decision" | "ready_for_final_verification" | "ready_to_complete" | "blocked" | "completed";
+export type WorkflowState = "ready_for_work" | "active_work" | "needs_governor_decision" | "needs_breakout_decision" | "ready_for_final_verification" | "ready_to_complete" | "blocked" | "completed";
 export type WorkflowSeverity = "info" | "action" | "warning" | "blocked";
 
 export interface WorkflowAction {
@@ -43,7 +43,7 @@ function action(label: string, tool: string, args: Record<string, unknown> = {})
 function blockingAuditorReasons(state: LoopState): string[] {
 	return state.auditorReviews
 		.filter((review) => review.status === "blocked" || review.requiredFollowups.length > 0)
-		.map((review) => `Auditor review ${review.id} requires follow-up before gated moves continue.`);
+		.map((review) => `Auditor evidence ${review.id} includes concerns or requested follow-up for the governor to disposition.`);
 }
 
 function openBreakoutReasons(state: LoopState): string[] {
@@ -79,22 +79,22 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 	const auditorBlockers = blockingAuditorReasons(state);
 	if (auditorBlockers.length) {
 		return {
-			state: "needs_auditor_review",
-			severity: "blocked",
-			summary: "Auditor follow-up blocks gated workflow progress.",
+			state: "needs_governor_decision",
+			severity: "warning",
+			summary: "Auditor concerns are advisory evidence for a governor decision.",
 			reasons: compactReasons(auditorBlockers),
-			recommendedActions: [action("Inspect auditor gate policy", "stardock_policy", { action: "auditorGate", loopName: state.name }), action("Record or update auditor review", "stardock_auditor", { action: "payload", loopName: state.name })],
+			recommendedActions: [action("Inspect advisory risk findings", "stardock_policy", { action: "governorRisk", loopName: state.name }), action("Optionally update auditor evidence", "stardock_auditor", { action: "payload", loopName: state.name })],
 		};
 	}
 
 	const auditorRequests = pendingAuditorRequests(state);
 	if (auditorRequests.length) {
 		return {
-			state: "needs_auditor_review",
-			severity: "warning",
-			summary: "An auditor review request is pending before gated workflow progress continues.",
+			state: "needs_governor_decision",
+			severity: "action",
+			summary: "Optional auditor evidence is pending; the governor may use, dismiss, or defer it.",
 			reasons: compactReasons(auditorRequests.map((request) => `Auditor request ${request.id} is ${request.status} (${request.trigger}).`)),
-			recommendedActions: [action("Build auditor outside-request payload", "stardock_outside_payload", { loopName: state.name, requestId: auditorRequests[0].id }), action("Record auditor review", "stardock_auditor", { action: "record", loopName: state.name })],
+			recommendedActions: [action("Inspect optional auditor request", "stardock_outside_payload", { loopName: state.name, requestId: auditorRequests[0].id }), action("Optionally record auditor evidence", "stardock_auditor", { action: "record", loopName: state.name })],
 		};
 	}
 
@@ -111,25 +111,25 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 		};
 	}
 
-	const auditorGate = evaluateAuditorGatePolicy(state);
-	if (auditorGate.recommended) {
+	const governorRisk = evaluateGovernorRiskPolicy(state);
+	if (governorRisk.recommended) {
 		return {
-			state: "needs_auditor_review",
-			severity: auditorGate.status === "gate_review_required" ? "warning" : "action",
-			summary: auditorGate.summary,
-			reasons: compactReasons(auditorGate.findings.filter((finding) => finding.recommendation === "gate_decision").map((finding) => finding.rationale)),
-			recommendedActions: [action("Inspect auditor gate policy", "stardock_policy", { action: "auditorGate", loopName: state.name }), action("Build auditor review payload", "stardock_auditor", { action: "payload", loopName: state.name })],
+			state: "needs_governor_decision",
+			severity: governorRisk.status === "governor_risk_decision_required" ? "warning" : "action",
+			summary: "Automation and evidence risks are advisory inputs for a governor decision.",
+			reasons: compactReasons(governorRisk.findings.filter((finding) => finding.recommendation === "governor_risk_decision").map((finding) => finding.rationale)),
+			recommendedActions: [action("Inspect advisory risk findings", "stardock_policy", { action: "governorRisk", loopName: state.name }), action("Optionally build auditor evidence", "stardock_auditor", { action: "payload", loopName: state.name })],
 		};
 	}
 
-	const parentReview = evaluateParentReviewPolicy(state);
-	if (parentReview.recommended) {
+	const governorDecision = evaluateGovernorDecisionPolicy(state);
+	if (governorDecision.recommended) {
 		return {
-			state: "needs_parent_review",
-			severity: parentReview.status === "parent_review_required" ? "blocked" : "action",
-			summary: parentReview.summary,
-			reasons: compactReasons(parentReview.findings.filter((finding) => finding.recommendation === "parent_review").map((finding) => finding.rationale)),
-			recommendedActions: [action("Inspect parent review policy", "stardock_policy", { action: "parentReview", loopName: state.name })],
+			state: "needs_governor_decision",
+			severity: governorDecision.status === "governor_decision_required" ? "warning" : "action",
+			summary: governorDecision.summary,
+			reasons: compactReasons(governorDecision.findings.filter((finding) => finding.recommendation === "governor_decision").map((finding) => finding.rationale)),
+			recommendedActions: [action("Inspect governor decision evidence", "stardock_policy", { action: "governorDecision", loopName: state.name })],
 		};
 	}
 
@@ -168,7 +168,7 @@ export function evaluateWorkflowStatus(state: LoopState): WorkflowStatus {
 	return {
 		state: "ready_for_work",
 		severity: "info",
-		summary: "No workflow gate is currently active.",
+		summary: "No workflow decision is currently pending.",
 		reasons: [],
 		recommendedActions: [action("Create or activate an iteration brief", "stardock_brief", { action: "upsert", loopName: state.name, activate: true })],
 	};

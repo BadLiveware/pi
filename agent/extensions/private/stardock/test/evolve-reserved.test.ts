@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
-import { EVOLVE_IMPLEMENTATION_GATES } from "../src/state/core.ts";
+import { EVOLVE_IMPLEMENTATION_REQUIREMENTS } from "../src/state/core.ts";
 import { MAX_EVOLVE_ARCHIVE_SIZE, MAX_EVOLVE_CANDIDATE_BUDGET, MAX_EVOLVE_OUTPUT_BYTES, MAX_EVOLVE_PROMPT_CANDIDATES, MAX_EVOLVE_TIMEOUT_MS } from "../src/state/evolve.ts";
 import { migrateState } from "../src/state/migration.ts";
 import { makeHarness,statePath } from "./test-harness.ts";
@@ -45,7 +45,7 @@ test("evolve mode state normalizes future candidate metadata without enabling ex
 			bestCandidateId: "best-1",
 			archive: Array.from({ length: 80 }, (_, index) => `archive ${index}`),
 			consecutiveNonImproving: 999,
-			implementationGates: ["evaluator_contract", "unknown_gate"],
+			implementationRequirements: ["evaluator_contract", "governor_decision", "unknown_requirement"],
 		},
 	} as any);
 
@@ -65,7 +65,7 @@ test("evolve mode state normalizes future candidate metadata without enabling ex
 	assert.equal(migrated.modeState.candidates[0].verificationArtifacts[0].summary.length, 500);
 	assert.equal(migrated.modeState.archive.length, MAX_EVOLVE_ARCHIVE_SIZE);
 	assert.equal(migrated.modeState.consecutiveNonImproving, MAX_EVOLVE_CANDIDATE_BUDGET);
-	assert.deepEqual(migrated.modeState.implementationGates, ["evaluator_contract"]);
+	assert.deepEqual(migrated.modeState.implementationRequirements, ["evaluator_contract", "governor_decision"]);
 });
 
 test("evolve startup remains reserved and does not write loop state", async () => {
@@ -77,7 +77,7 @@ test("evolve startup remains reserved and does not write loop state", async () =
 
 		const toolResult = await start.execute("tool-evolve-reserved", { name: "Evolve Reserved", mode: "evolve", taskContent: "# Task\n" }, undefined, undefined, ctx);
 		assert.match(toolResult.content[0].text, /planned but not implemented yet/);
-		for (const gate of EVOLVE_IMPLEMENTATION_GATES) assert.match(toolResult.content[0].text, new RegExp(gate));
+		for (const requirement of EVOLVE_IMPLEMENTATION_REQUIREMENTS) assert.match(toolResult.content[0].text, new RegExp(requirement));
 		assert.equal(messages.length, 0);
 		assert.equal(fs.existsSync(statePath(cwd, "Evolve_Reserved")), false);
 

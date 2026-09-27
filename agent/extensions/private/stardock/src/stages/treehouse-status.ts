@@ -51,13 +51,22 @@ function parseTreehouseStatusEntries(stdout: string, cwd: string): ParsedTreehou
 	const entries: TreehouseStatusEntry[] = [];
 	const unrecognizedLines: string[] = [];
 	let emptyPool = false;
+	let processDetailsExpected = false;
 	for (const rawLine of stdout.split(/\r?\n/)) {
 		const line = rawLine.trim();
 		if (!line) continue;
+		if (/^base\s+\S+\s+\(repository default\)$/i.test(line)) continue;
 		if (/no worktrees in pool/i.test(line)) {
 			emptyPool = true;
 			continue;
 		}
+		// Treehouse v3 prints process details on an indented continuation line.
+		// Accept only a PID list following an in-use/current-worktree row.
+		if (processDetailsExpected && /^\s{2,}[^,\n]+\(\d+\)(?:,\s*[^,\n]+\(\d+\))*\s*$/.test(rawLine)) {
+			processDetailsExpected = false;
+			continue;
+		}
+		processDetailsExpected = false;
 		const prefixed = line.match(/^(leased|available):\s+(.+)$/i);
 		if (prefixed) {
 			const worktreePath = normalizeStatusPath(cwd, prefixed[2]);
@@ -69,16 +78,22 @@ function parseTreehouseStatusEntries(stdout: string, cwd: string): ParsedTreehou
 			});
 			continue;
 		}
-		const table = line.match(/^\d+\s+(leased|available)\s+(.+?)(?:\s+\(held by (.+)\))?$/i);
+		const table = line.match(/^\d+\s+(leased|available|dirty|in-use|you're here)\s+(.+?)(?:\s+\(held by (.+)\))?$/i);
 		if (table) {
-			const worktreePath = normalizeStatusPath(cwd, table[2]);
+			const status = table[1].toLowerCase();
+			// v3 adds a branch label (or detached marker) after the worktree path.
+			// Keep legacy paths containing spaces intact by requiring the v3
+			// column separator before removing that suffix.
+			const rawPath = table[2].replace(/\s{2,}(?:\[[^\]]*\]|\(detached\))$/, "");
+			const worktreePath = normalizeStatusPath(cwd, rawPath);
 			entries.push({
-				status: table[1].toLowerCase() as TreehouseStatusEntry["status"],
+				status: status === "leased" || status === "available" ? status : "unknown",
 				worktreePath,
 				poolPath: poolPathFromWorktreePath(worktreePath),
 				leaseHolder: table[3]?.trim(),
 				rawLine,
 			});
+			processDetailsExpected = status === "in-use" || status === "you're here";
 			continue;
 		}
 		const inline = line.match(/^(leased|available)\s+holder=([^\s]+)\s+(.+)$/i);
@@ -164,7 +179,7 @@ export function inspectLeaseReservationStatus(lease: PartialTreehouseLease, stat
 				statusStdout,
 			};
 		}
-		const holderlessLeasedEntries = entries.filter((entry) => entry.status === "leased" && !entry.leaseHolder);
+		const holderlessLeasedEntries = entries.filter((entry) => entry.status !== "available" && !entry.leaseHolder);
 		if (holderlessLeasedEntries.length > 0) {
 			return {
 				state: "ambiguous",
@@ -193,6 +208,9 @@ export function inspectLeaseReservationStatus(lease: PartialTreehouseLease, stat
 				return { state: "ambiguous", poolPath, reason: `Treehouse pool "${poolPath}" still reports lease holder "${lease.leaseHolder}" on a different worktree path.`, entries, exactPathEntry, holderEntries, statusStdout };
 			}
 			return { state: "absent", poolPath, reason: `Treehouse pool "${poolPath}" reports worktree path "${worktreePath}" as available, not leased.`, entries, exactPathEntry, holderEntries, statusStdout };
+		}
+		if (exactPathEntry.status === "unknown") {
+			return { state: "ambiguous", poolPath, reason: `Treehouse pool "${poolPath}" reports worktree path "${worktreePath}" as dirty or in-use; lease absence is not proven.`, entries, exactPathEntry, holderEntries, statusStdout };
 		}
 		if (lease.leaseHolder && exactPathEntry.leaseHolder && exactPathEntry.leaseHolder !== lease.leaseHolder) {
 			return { state: "ambiguous", poolPath, reason: `Treehouse pool "${poolPath}" reports worktree path "${worktreePath}" with holder "${exactPathEntry.leaseHolder}", not expected "${lease.leaseHolder}".`, entries, exactPathEntry, holderEntries, statusStdout };

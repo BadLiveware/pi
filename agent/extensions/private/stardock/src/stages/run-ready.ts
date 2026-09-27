@@ -149,7 +149,7 @@ function changedFileReports(paths: string[]): ChangedFileReport[] {
 	return paths.map((filePath) => ({
 		path: filePath,
 		summary: "Committed change recorded from the isolated stage lane.",
-		reviewReason: "Parent must review this lane by explicit WorkerRun id before fan-in.",
+		reviewReason: "Governor must accept or dismiss this lane by explicit WorkerRun id before fan-in.",
 	}));
 }
 
@@ -222,10 +222,11 @@ async function runLane(
 	const validation: ExecutionValidationRecord[] = validationEvidence.map((record) => ({ command: record.command, result: record.result, summary: record.summary }));
 	let violations = [inspectionError ?? "Lane completion evidence was unavailable."];
 	if (completion) violations = validateLaneResult(ctx, node, attempt, stage.contractCommit, stage.contractDigest, lane.lease, completion, validation);
-	if (workerError) violations.push(workerError);
-	let status: RunReadyLaneResult["status"] = "needs_review";
-	if (violations.length > 0) status = "failed";
-	if (signal.aborted) status = "detached";
+	if (workerError) violations.push(`Worker transport warning: ${workerError}`);
+	if (signal.aborted) violations.push(`Execution phase ended after evidence collection: ${errorMessage(signal.reason ?? new Error("cancelled"))}`);
+	// Every settled node is returned to the governor. Transport, validation, and
+	// mutation-telemetry concerns are evidence, not semantic vetoes.
+	const status: RunReadyLaneResult["status"] = "needs_review";
 	const now = (deps.now ?? (() => new Date().toISOString()))();
 	mutatePreparedLanes(ctx, request, [lane], (currentNode, attempt, run, report) => {
 		attempt.status = status;
@@ -243,9 +244,7 @@ async function runLane(
 		const bridgeRunId = worker?.response.result.details?.runId;
 		if (bridgeRunId) attempt.bridgeRunId = bridgeRunId;
 		currentNode.status = status;
-		run.status = "failed";
-		if (status === "needs_review") run.status = "needs_review";
-		else if (status === "detached") run.status = "cancelled";
+		run.status = "needs_review";
 		let workerSummary = workerError;
 		if (worker) workerSummary = finalOutput(worker.response);
 		let fallbackSummary = "Lane failed.";
@@ -256,7 +255,7 @@ async function runLane(
 		run.completedAt = now;
 		run.updatedAt = now;
 		report.status = "needs_review";
-		report.summary = workerError ?? "Lane failed before worker output was available.";
+		report.summary = workerError ?? "Node settled without worker narrative output; inspect durable evidence and decide.";
 		if (worker) report.summary = finalOutput(worker.response);
 		report.changedFiles = run.changedFiles;
 		report.validation = validation.map((record) => ({ command: record.command, result: record.result, summary: record.summary }));
@@ -270,11 +269,11 @@ async function runLane(
 
 function settleCancelledLane(ctx: ExtensionContext, request: RunReadyRequest, lane: PreparedLane, message: string, now: string): RunReadyLaneResult {
 	mutatePreparedLanes(ctx, request, [lane], (node, attempt, run, report) => {
-		attempt.status = "detached";
-		(attempt.violations ??= []).push(message);
+		attempt.status = "needs_review";
+		(attempt.violations ??= []).push(`Cancellation warning: ${message}`);
 		attempt.completedAt = now;
-		node.status = "detached";
-		run.status = "cancelled";
+		node.status = "needs_review";
+		run.status = "needs_review";
 		run.summary = message;
 		run.completedAt = now;
 		run.updatedAt = now;
@@ -283,16 +282,16 @@ function settleCancelledLane(ctx: ExtensionContext, request: RunReadyRequest, la
 		report.risks = [message];
 		report.updatedAt = now;
 	});
-	return { nodeId: lane.nodeId, attemptId: lane.attemptId, workerRunId: lane.workerRunId, status: "detached", violations: [message], error: message };
+	return { nodeId: lane.nodeId, attemptId: lane.attemptId, workerRunId: lane.workerRunId, status: "needs_review", violations: [message], error: message };
 }
 
 function settleUnexpectedLaneFailure(ctx: ExtensionContext, request: RunReadyRequest, lane: PreparedLane, message: string, now: string): RunReadyLaneResult {
 	mutatePreparedLanes(ctx, request, [lane], (node, attempt, run, report) => {
-		attempt.status = "failed";
-		(attempt.violations ??= []).push(message);
+		attempt.status = "needs_review";
+		(attempt.violations ??= []).push(`Execution warning: ${message}`);
 		attempt.completedAt = now;
-		node.status = "failed";
-		run.status = "failed";
+		node.status = "needs_review";
+		run.status = "needs_review";
 		run.summary = message;
 		run.completedAt = now;
 		run.updatedAt = now;
@@ -301,7 +300,7 @@ function settleUnexpectedLaneFailure(ctx: ExtensionContext, request: RunReadyReq
 		report.risks = [message];
 		report.updatedAt = now;
 	});
-	return { nodeId: lane.nodeId, attemptId: lane.attemptId, workerRunId: lane.workerRunId, status: "failed", violations: [message], error: message };
+	return { nodeId: lane.nodeId, attemptId: lane.attemptId, workerRunId: lane.workerRunId, status: "needs_review", violations: [message], error: message };
 }
 
 export async function runReadyStage(

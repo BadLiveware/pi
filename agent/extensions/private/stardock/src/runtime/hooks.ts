@@ -10,18 +10,38 @@ import { evaluateWorkflowStatus, type WorkflowStatus } from "../workflow-status.
 import { detachOwnedStages } from "../stages/ownership.ts";
 import { cancelActiveStageRuns } from "../stages/run-ready-registry.ts";
 import { bindOwnershipContext } from "../stages/ownership-records.ts";
-import { getModeHandler } from "./prompts.ts";
+import { buildSystemInstructions } from "./prompts.ts";
 import { queueStardockPrompt } from "./prompt-delivery.ts";
 import type { StardockRuntime } from "./types.ts";
 
 type TranscriptContent = { type?: string; name?: string };
-type TranscriptMessage = { role?: string; toolName?: string; content?: TranscriptContent[] };
+type TranscriptMessage = { role?: string; toolName?: string; content?: TranscriptContent[]; stopReason?: string; errorMessage?: string };
 
-const PROMPT_QUEUEING_TOOLS = new Set(["stardock_start", "stardock_done", "stardock_complete"]);
+const PROMPT_QUEUEING_TOOLS = new Set(["stardock_start", "stardock_done", "stardock_complete", "stardock_plan", "stardock_run", "stardock_review", "stardock_integrate", "stardock_status", "stardock_recover"]);
 const CONTINUATION_WORKFLOW_STATES = new Set<WorkflowStatus["state"]>(["ready_for_work", "active_work", "ready_for_final_verification", "ready_to_complete"]);
 
 function transcriptMessages(messages: unknown): TranscriptMessage[] {
 	return Array.isArray(messages) ? messages.filter((message): message is TranscriptMessage => typeof message === "object" && message !== null) : [];
+}
+
+/**
+ * Detect a provider error or user abort from the final assistant message.
+ *
+ * `agent_end` fires for every low-level run, including failed and aborted
+ * ones. Re-queueing the continuation prompt after a failure turns a single
+ * provider error into an unbounded prompt loop, and re-queueing after an abort
+ * immediately undoes the user's ESC. Return the reason so the caller can skip
+ * continuation and tell the user once.
+ */
+function nonContinuableOutcome(messages: TranscriptMessage[]): string | undefined {
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (message.role !== "assistant") continue;
+		if (message.stopReason === "error") return message.errorMessage?.trim() || "the previous turn ended with a provider error";
+		if (message.stopReason === "aborted") return "the previous turn was interrupted";
+		return undefined;
+	}
+	return undefined;
 }
 
 function usedAnyTool(messages: TranscriptMessage[], toolNames: Set<string>): boolean {
@@ -33,7 +53,9 @@ function usedAnyTool(messages: TranscriptMessage[], toolNames: Set<string>): boo
 
 function shouldQueueContinuationPrompt(state: LoopState, status: WorkflowStatus, messages: TranscriptMessage[], ctx: { hasPendingMessages(): boolean }): boolean {
 	if (state.status !== "active") return false;
-	if (!CONTINUATION_WORKFLOW_STATES.has(status.state)) return false;
+	if (state.executionPlan?.status === "completed" || state.executionPlan?.status === "superseded") return false;
+	if (nonContinuableOutcome(messages)) return false;
+	if (!state.executionPlan && !CONTINUATION_WORKFLOW_STATES.has(status.state)) return false;
 	if (usedAnyTool(messages, PROMPT_QUEUEING_TOOLS)) return false;
 	if (ctx.hasPendingMessages()) return false;
 	return true;
@@ -61,7 +83,7 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 		const state = loadState(ctx, runtime.ref.currentLoop);
 		if (!state || state.status !== "active") return;
 		const iterStr = `${state.iteration}${state.maxIterations > 0 ? `/${state.maxIterations}` : ""}`;
-		const instructions = getModeHandler(state.mode).buildSystemInstructions(state);
+		const instructions = buildSystemInstructions(state);
 		return { systemPrompt: event.systemPrompt + `\n[STARDOCK LOOP - ${state.name} - Iteration ${iterStr}]\n\n${instructions}` };
 	});
 
@@ -70,6 +92,16 @@ export function registerLifecycleHooks(pi: ExtensionAPI, runtime: StardockRuntim
 		const state = loadState(ctx, runtime.ref.currentLoop);
 		if (!state || state.status !== "active") return;
 		const messages = transcriptMessages(event.messages);
+
+		// Pi retries some failed runs automatically; let it own that recovery
+		// instead of layering a continuation prompt on top of the retry.
+		if ((event as { willRetry?: boolean }).willRetry === true) return;
+
+		const nonContinuable = nonContinuableOutcome(messages);
+		if (nonContinuable) {
+			if (ctx.hasUI) ctx.ui.notify(`Stardock continuation paused for loop ${state.name}: ${nonContinuable}. The loop stays active; run /stardock-stop to stop it or resume after fixing the error.`, "warning");
+			return;
+		}
 
 		if (state.maxIterations > 0 && state.iteration >= state.maxIterations) {
 			if (mutationBlockReason(ctx, state.name)) return;

@@ -61,6 +61,7 @@ test("runReady precreates five durable lanes and observes bounded distinct-workt
 		assert.notDeepEqual(completionOrder, harness.graph.stages[0].implementationNodeIds);
 		const state = loadState(harness.ctx, harness.loopName);
 		assert.equal(state?.workerRuns.filter((run) => run.isolation === "treehouse" && run.status === "needs_review").length, 5);
+		assert.ok(state?.workerRuns.filter((run) => run.isolation === "treehouse").every((run) => run.expectedMutation === false));
 		assert.equal(state?.workerReports.length, 5);
 		for (const nodeId of harness.graph.stages[0].implementationNodeIds) {
 			const node: ExecutionNode | undefined = state?.executionGraph?.nodes.find((candidate) => candidate.id === nodeId);
@@ -85,7 +86,7 @@ test("runReady precreates five durable lanes and observes bounded distinct-workt
 	}
 });
 
-test("lane validation rejects dirty, uncommitted, contract, branch, write, resource, and validation violations", () => {
+test("lane validation allows no-op evidence while reporting mechanical and validation concerns", () => {
 	const graph = fiveNodeWaveFixture();
 	const node = graph.nodes.find((candidate) => candidate.kind === "implementation");
 	assert.ok(node);
@@ -113,12 +114,12 @@ test("lane validation rejects dirty, uncommitted, contract, branch, write, resou
 	}, [{ command: "npm test", result: "failed", summary: "failed" }]);
 	assert.ok(violations.some((value) => value.includes("dirty")));
 	assert.ok(violations.some((value) => value.includes("not an ancestor")));
-	assert.ok(violations.some((value) => value.includes("no commit")));
+	assert.equal(violations.some((value) => value.includes("no commit")), false);
 	assert.ok(violations.some((value) => value.includes("outside node write")));
 	assert.ok(violations.some((value) => value.includes("contract commit")));
 	assert.ok(violations.some((value) => value.includes("lane branch")));
 	assert.ok(violations.some((value) => value.includes("resource claims")));
-	assert.ok(violations.some((value) => value.includes("validation")));
+	assert.ok(violations.some((value) => /validation/i.test(value)));
 });
 
 test("runReady remains blocked by an open current-workspace implementer", async () => {
@@ -159,7 +160,7 @@ test("runReady remains blocked by an open current-workspace implementer", async 
 	}
 });
 
-test("runReady preserves successful siblings when one worker fails", async () => {
+test("runReady returns worker transport failures to governor review", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stage-run-ready-worker-failure-"));
 	try {
 		const harness = await startFiveLane(cwd);
@@ -187,8 +188,10 @@ test("runReady preserves successful siblings when one worker fails", async () =>
 				return { response: { requestId: node.id, result: { details: { results: [{ finalOutput }] } }, isError: failed, errorText } };
 			},
 		});
-		assert.equal(result.counts.failed, 1);
-		assert.equal(result.counts.needs_review, 4);
+		assert.equal(result.counts.failed, 0);
+		assert.equal(result.counts.needs_review, 5);
+		const failedAttempt = loadState(harness.ctx, harness.loopName)?.executionGraph?.nodes.flatMap((node) => node.attempts).find((attempt) => attempt.violations?.some((warning) => warning.includes("fake worker failure")));
+		assert.ok(failedAttempt, "worker error should remain visible as advisory evidence");
 		assert.equal(calls, 5);
 		detachOwnedStages(harness.ctx, "run-ready-worker-failure-test");
 	} finally {
@@ -196,7 +199,7 @@ test("runReady preserves successful siblings when one worker fails", async () =>
 	}
 });
 
-test("runReady timeout cancels owned workers and settles every precreated lane as detached", async () => {
+test("runReady timeout returns every precreated lane to governor review", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stage-run-ready-timeout-"));
 	try {
 		const harness = await startFiveLane(cwd);
@@ -222,10 +225,11 @@ test("runReady timeout cancels owned workers and settles every precreated lane a
 		assert.equal(result.ok, false);
 		assert.equal(result.timedOut, true);
 		assert.equal(result.cancelled, true);
-		assert.equal(result.counts.detached, 5);
+		assert.equal(result.counts.detached, 0);
+		assert.equal(result.counts.needs_review, 5);
 		assert.equal(invoked, 2);
 		const state = loadState(harness.ctx, harness.loopName);
-		assert.equal(state?.executionGraph?.stages[0].status, "detached");
+		assert.equal(state?.executionGraph?.stages[0].status, "running");
 		detachOwnedStages(harness.ctx, "run-ready-timeout-test");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });

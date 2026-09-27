@@ -335,7 +335,7 @@ test("stardock_complete completes loop without queuing another prompt", async ()
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
-test("stardock_complete is blocked by unreviewed implementer WorkerRun", async () => {
+test("stardock_complete records an unreviewed implementer WorkerRun as advisory", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, ctx } = makeHarness(cwd);
@@ -352,15 +352,15 @@ test("stardock_complete is blocked by unreviewed implementer WorkerRun", async (
 		const result = await complete.execute("tool-complete-blocked-result", {}, undefined, undefined, ctx);
 
 		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Blocked"), "utf-8"));
-		assert.equal(state.status, "active");
-		assert.match(result.content[0].text, /completion blocked/);
-		assert.match(result.content[0].text, /stardock_worker/);
+		assert.equal(state.status, "completed");
+		assert.match(result.content[0].text, /Completed Stardock loop.*by governor decision/);
+		assert.match(result.content[0].text, /WorkerRun run1 is still needs_review/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("stardock_complete blocks on a nonterminal execution graph with the exact next action", async () => {
+test("stardock_complete preserves a nonterminal graph action as advisory", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, ctx } = makeHarness(cwd);
@@ -376,7 +376,7 @@ test("stardock_complete blocks on a nonterminal execution graph with the exact n
 
 		const result = await complete.execute("graph-complete", {}, undefined, undefined, ctx);
 		assert.match(result.content[0].text, /Run ready execution node "serial-a"\./);
-		assert.equal(JSON.parse(fs.readFileSync(filePath, "utf-8")).status, "active");
+		assert.equal(JSON.parse(fs.readFileSync(filePath, "utf-8")).status, "completed");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -468,6 +468,29 @@ test("v1 state without mode migrates to checklist mode on resume", async () => {
 		assert.equal(migrated.iteration, 2);
 		assert.equal(migrated.status, "active");
 		assert.equal(migrated.active, true);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock-stop force-stops a busy loop and aborts the running turn", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
+	try {
+		const { tools, commands, notifications, setIdle, aborts, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const stop = commands.get("stardock-stop");
+		assert.ok(start);
+		assert.ok(stop);
+
+		await start.execute("tool-force-stop-busy", { name: "Force Stop Busy", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
+		setIdle(false);
+		await stop.handler("", ctx);
+
+		assert.deepEqual(aborts, ["abort"]);
+		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Force_Stop_Busy"), "utf-8"));
+		assert.equal(state.status, "completed");
+		assert.equal(state.active, false);
+		assert.ok(notifications.some((message) => message.includes("Stopped Stardock loop")));
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

@@ -140,7 +140,7 @@ test("stardock_policy recommends auditor review for risky worker reports", async
 		assert.ok(ledger);
 		assert.ok(worker);
 		assert.ok(policy);
-		await ledger.execute("criteria", { action: "upsertCriterion", loopName: "Policy_Worker_Auditor", id: "c-worker", description: "Worker result needs review.", passCondition: "Parent reviews hinted file.", status: "passed" }, undefined, undefined, ctx);
+		await ledger.execute("criteria", { action: "upsertCriterion", loopName: "Policy_Worker_Auditor", id: "c-worker", description: "Worker result needs review.", passCondition: "Governor inspects hinted evidence.", status: "passed" }, undefined, undefined, ctx);
 		await ledger.execute("artifact", { action: "recordArtifact", loopName: "Policy_Worker_Auditor", id: "a-worker", kind: "log", summary: "Worker transcript path.", criterionIds: ["c-worker"] }, undefined, undefined, ctx);
 		await worker.execute("worker", { action: "record", loopName: "Policy_Worker_Auditor", id: "wr-risk", status: "needs_review", role: "reviewer", objective: "Review risky change.", summary: "Worker found a risk.", evaluatedCriterionIds: ["c-worker"], artifactIds: ["a-worker"], validation: [{ result: "skipped", summary: "Worker skipped validation.", artifactIds: ["a-worker"] }], risks: ["Potential contract drift."], openQuestions: ["Should parent inspect file?"], reviewHints: ["Read changed file before accepting."] }, undefined, undefined, ctx);
 
@@ -159,8 +159,8 @@ test("stardock_policy recommends auditor review for risky worker reports", async
 	}
 });
 
-test("stardock_policy recommends selective parent review for worker and handoff outputs", async () => {
-	const { cwd, tools, ctx } = await startLoop("Policy Parent Review");
+test("stardock_policy recommends a governor decision for worker and handoff outputs", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Governor Decision");
 	try {
 		const worker = tools.get("stardock_worker_report");
 		const handoff = tools.get("stardock_handoff");
@@ -168,42 +168,42 @@ test("stardock_policy recommends selective parent review for worker and handoff 
 		assert.ok(worker);
 		assert.ok(handoff);
 		assert.ok(policy);
-		await worker.execute("worker", { action: "record", loopName: "Policy_Parent_Review", id: "wr-files", status: "needs_review", role: "reviewer", summary: "Worker returned file hints and risks.", changedFiles: [{ path: "src/example.ts", summary: "Touched public API", reviewReason: "Public contract changed." }], validation: [{ result: "failed", summary: "Focused validation failed." }], risks: ["Contract drift"] }, undefined, undefined, ctx);
-		await handoff.execute("handoff", { action: "record", loopName: "Policy_Parent_Review", id: "ah-impl", role: "implementer", status: "answered", objective: "Apply risky edit.", summary: "Provider returned a patch." }, undefined, undefined, ctx);
-		const rawState = JSON.parse(fs.readFileSync(statePath(cwd, "Policy_Parent_Review"), "utf-8"));
+		await worker.execute("worker", { action: "record", loopName: "Policy_Governor_Decision", id: "wr-files", status: "needs_review", role: "reviewer", summary: "Worker returned file hints and risks.", changedFiles: [{ path: "src/example.ts", summary: "Touched public API", reviewReason: "Public contract changed." }], validation: [{ result: "failed", summary: "Focused validation failed." }], risks: ["Contract drift"] }, undefined, undefined, ctx);
+		await handoff.execute("handoff", { action: "record", loopName: "Policy_Governor_Decision", id: "ah-impl", role: "implementer", status: "answered", objective: "Apply risky edit.", summary: "Provider returned a patch." }, undefined, undefined, ctx);
+		const rawState = JSON.parse(fs.readFileSync(statePath(cwd, "Policy_Governor_Decision"), "utf-8"));
 		rawState.workerRuns = [{ id: "run1", role: "implementer", status: "needs_review", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }];
-		fs.writeFileSync(statePath(cwd, "Policy_Parent_Review"), JSON.stringify(rawState, null, 2));
+		fs.writeFileSync(statePath(cwd, "Policy_Governor_Decision"), JSON.stringify(rawState, null, 2));
 
-		const result = await policy.execute("policy", { action: "parentReview", loopName: "Policy_Parent_Review" }, undefined, undefined, ctx);
+		const result = await policy.execute("policy", { action: "governorDecision", loopName: "Policy_Governor_Decision" }, undefined, undefined, ctx);
 		assert.equal(result.details.policy.recommended, true);
-		assert.equal(result.details.policy.status, "parent_review_required");
-		assert.match(result.content[0].text, /implementer-worker-run-review/);
-		assert.match(result.content[0].text, /risky-worker-parent-review/);
-		assert.match(result.content[0].text, /changed-file-parent-review/);
-		assert.match(result.content[0].text, /implementer-handoff-parent-review/);
+		assert.equal(result.details.policy.status, "governor_decision_required");
+		assert.match(result.content[0].text, /implementer-worker-run-decision/);
+		assert.match(result.content[0].text, /risky-worker-governor-decision/);
+		assert.match(result.content[0].text, /changed-file-governor-inspection/);
+		assert.match(result.content[0].text, /implementer-handoff-governor-decision/);
 		assert.match(result.content[0].text, /does not inspect files/);
-		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "risky-worker-parent-review").workerReportIds, ["wr-files"]);
-		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "implementer-handoff-parent-review").advisoryHandoffIds, ["ah-impl"]);
+		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "risky-worker-governor-decision").workerReportIds, ["wr-files"]);
+		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "implementer-handoff-governor-decision").advisoryHandoffIds, ["ah-impl"]);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("stardock_policy reports no parent review trigger for clean evidence", async () => {
-	const { cwd, tools, ctx } = await startLoop("Policy Parent Clean");
+test("stardock_policy reports no governor decision trigger for clean evidence", async () => {
+	const { cwd, tools, ctx } = await startLoop("Policy Governor Clean");
 	try {
 		const policy = tools.get("stardock_policy");
 		assert.ok(policy);
-		const result = await policy.execute("policy", { action: "parentReview", loopName: "Policy_Parent_Clean" }, undefined, undefined, ctx);
+		const result = await policy.execute("policy", { action: "governorDecision", loopName: "Policy_Governor_Clean" }, undefined, undefined, ctx);
 		assert.equal(result.details.policy.recommended, false);
-		assert.equal(result.details.policy.status, "no_parent_review_needed");
-		assert.match(result.content[0].text, /no-parent-review-trigger/);
+		assert.equal(result.details.policy.status, "no_governor_decision_needed");
+		assert.match(result.content[0].text, /no-governor-decision-trigger/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("stardock_policy requires auditor gate decisions for blockers and automation", async () => {
+test("stardock_policy returns advisory risk evidence for governor decisions", async () => {
 	const { cwd, tools, ctx } = await startLoop("Policy Auditor Gate");
 	try {
 		const ledger = tools.get("stardock_ledger");
@@ -221,20 +221,20 @@ test("stardock_policy requires auditor gate decisions for blockers and automatio
 		await handoff.execute("handoff", { action: "record", loopName: "Policy_Auditor_Gate", id: "ah-impl", role: "implementer", status: "requested", objective: "Run edit provider.", summary: "Editing provider requested." }, undefined, undefined, ctx);
 		await breakout.execute("breakout", { action: "record", loopName: "Policy_Auditor_Gate", id: "bp-open", status: "open", summary: "Need user decision.", requestedDecision: "Continue or stop?" }, undefined, undefined, ctx);
 
-		const result = await policy.execute("policy", { action: "auditorGate", loopName: "Policy_Auditor_Gate" }, undefined, undefined, ctx);
+		const result = await policy.execute("policy", { action: "governorRisk", loopName: "Policy_Auditor_Gate" }, undefined, undefined, ctx);
 		assert.equal(result.details.policy.recommended, true);
-		assert.equal(result.details.policy.status, "gate_review_required");
-		assert.match(result.content[0].text, /auditor-blocker-followup/);
-		assert.match(result.content[0].text, /editing-subagent-gate/);
-		assert.match(result.content[0].text, /unresolved-completion-gate/);
-		assert.match(result.content[0].text, /does not enforce gates/);
-		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "auditor-blocker-followup").auditorReviewIds, ["ar-block"]);
+		assert.equal(result.details.policy.status, "governor_risk_decision_required");
+		assert.match(result.content[0].text, /auditor-concern-disposition/);
+		assert.match(result.content[0].text, /editing-subagent-risk/);
+		assert.match(result.content[0].text, /unresolved-completion-risk/);
+		assert.match(result.content[0].text, /does not .*override the governor/);
+		assert.deepEqual(result.details.policy.findings.find((item: any) => item.id === "auditor-concern-disposition").auditorReviewIds, ["ar-block"]);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("stardock_policy recommends auditor review for automation and breakout gates", async () => {
+test("stardock_policy recommends optional auditor evidence for automation and breakout risks", async () => {
 	const { cwd, tools, ctx } = await startLoop("Policy Gate Auditor");
 	try {
 		const handoff = tools.get("stardock_handoff");
@@ -249,7 +249,7 @@ test("stardock_policy recommends auditor review for automation and breakout gate
 		const result = await policy.execute("policy", { action: "auditor", loopName: "Policy_Gate_Auditor" }, undefined, undefined, ctx);
 		assert.equal(result.details.policy.recommended, true);
 		assert.equal(result.details.policy.status, "review_strongly_recommended");
-		assert.match(result.content[0].text, /automation-gate-review/);
+		assert.match(result.content[0].text, /automation-risk-evidence/);
 		assert.match(result.content[0].text, /open-breakout-review/);
 		assert.match(result.content[0].text, /advisoryHandoffs=ah-impl/);
 		assert.match(result.content[0].text, /breakoutPackages=bp-open/);

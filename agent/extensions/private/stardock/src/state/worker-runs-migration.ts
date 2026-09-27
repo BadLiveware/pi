@@ -35,7 +35,7 @@ function migrateChangedFileReports(value: unknown): ChangedFileReport[] {
 			const file = item as Partial<ChangedFileReport> & Record<string, unknown>;
 			const filePath = typeof file.path === "string" ? file.path.trim() : "";
 			if (!filePath) return null;
-			const summary = typeof file.summary === "string" && file.summary.trim() ? file.summary.trim() : "Changed file requires parent review if relevant.";
+			const summary = typeof file.summary === "string" && file.summary.trim() ? file.summary.trim() : "Changed file is available for selective governor inspection if relevant.";
 			return {
 				path: compactText(filePath, 240) ?? filePath,
 				summary: compactText(summary, 240) ?? summary,

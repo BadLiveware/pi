@@ -244,8 +244,8 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 				changedFiles,
 				reviewHints: [
 					...(refs.length ? [`Worker output refs: ${refs.slice(0, 4).join(", ")}`] : []),
-					...(role === "implementer" ? ["Mutable implementer run requires parent/governor review before another implementer run or completion."] : []),
-					...(request ? [`Worker answered outside request ${request.id}; parent should inspect and record structured follow-up if needed.`] : []),
+					...(role === "implementer" ? ["Mutable implementer run awaits a governor accept or dismiss decision before another implementer run; it does not veto completion."] : []),
+					...(request ? [`Worker answered outside request ${request.id}; the governor should inspect and record structured follow-up if needed.`] : []),
 					...(response.isError ? ["Subagent run returned an error; inspect output before continuing."] : []),
 				],
 			});
@@ -307,7 +307,7 @@ async function runWorker(pi: ExtensionAPI, deps: StardockWorkerToolDeps, params:
 	}
 }
 
-const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("researcher"), Type.Literal("reviewer")], { description: "Worker role. For non-trivial active-brief implementation, pass implementer before parent edit/write. explorer/test_runner/reviewer/auditor are mapping/validation/review roles and do not satisfy implementation delegation. Roles are Stardock-owned prompt/output contracts; pi-subagents is only the execution transport." });
+const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer"), Type.Literal("governor"), Type.Literal("auditor"), Type.Literal("researcher"), Type.Literal("reviewer")], { description: "Worker role. For non-trivial active-brief implementation, pass implementer before governor edit/write. explorer/test_runner/reviewer/auditor are mapping/validation/review roles and do not satisfy implementation delegation. Roles are Stardock-owned prompt/output contracts; pi-subagents is only the execution transport." });
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
 const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the role complexity." });
 const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
@@ -331,23 +331,23 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 	pi.registerTool({
 		name: "stardock_worker",
 		label: "Run Stardock Worker",
-		description: "Run one bounded Stardock-owned worker role through pi-subagents and record compact WorkerRun/WorkerReport evidence. Prefer one coherent implementer per brief. Use explorers only when the implementation surface is unknown, and run reviewers/auditors only for concrete risk, uncertainty, policy gates, or required independent evidence—not automatically after every implementation. Keep file-only output for normal runs. Implementer runs are serial and require selective parent review.",
+		description: "Run one bounded Stardock-owned worker role through pi-subagents and record compact WorkerRun/WorkerReport evidence. Prefer one coherent implementer per brief. Use explorers only when the implementation surface is unknown, and run reviewers/auditors only for concrete risk, uncertainty, policy signals, or required independent evidence—not automatically after every implementation. Keep file-only output for normal runs. Implementer runs are serial and await a governor accept or dismiss decision before another implementer starts.",
 		promptSnippet: "Run one bounded Stardock worker with file-only output and compact recorded evidence.",
 		promptGuidelines: [
 			"Keep the default file-only output for normal runs; use inline only for deliberately short output when no saved artifact is useful.",
 			"Skip explorer runs when the brief already names the exact files, symbols, tests, and validation boundary.",
-			"After an implementer, perform selective parent review and launch a reviewer or auditor only when risk, uncertainty, a policy gate, or independent-evidence requirement justifies another worker.",
+			"After an implementer, inspect only the evidence needed for the governor's accept or dismiss decision. Launch a reviewer or auditor only when concrete risk, uncertainty, or an independent-evidence requirement justifies another worker; never as a mandatory ritual.",
 			"If one brief needs repeated unrelated implementation cycles, split it into smaller coherent briefs instead of repeatedly cold-starting workers against a mutable mega-brief.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review accepts or dismisses an implementer run. Run implementer before non-trivial active-brief edits unless a direct-parent-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
+			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit Stardock role worker; review records the governor's accept or dismiss decision for an implementer run. Run implementer before non-trivial active-brief edits unless a direct-governor-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			role: Type.Optional(roleSchema),
 			briefId: Type.Optional(Type.String({ description: "Brief id. Defaults to the active brief for brief-scoped roles." })),
 			requestId: Type.Optional(Type.String({ description: "Outside request id for governor/auditor/researcher/reviewer request-scoped workers." })),
 			runId: Type.Optional(Type.String({ description: "WorkerRun id for review. Defaults to the open implementer run." })),
 			reviewStatus: Type.Optional(Type.Union([Type.Literal("accepted"), Type.Literal("dismissed")], { description: "Review outcome for an implementer WorkerRun. Default: accepted." })),
-			reviewRationale: Type.Optional(Type.String({ description: "Parent/governor rationale when accepting or dismissing an implementer WorkerRun." })),
+			reviewRationale: Type.Optional(Type.String({ description: "Governor rationale when accepting or dismissing an implementer WorkerRun." })),
 			agentName: Type.Optional(Type.String({ description: "Transport subagent name. Defaults to Stardock's current transport agent for the role." })),
 			model: Type.Optional(modelSchema),
 			thinking: Type.Optional(thinkingSchema),
@@ -358,7 +358,7 @@ export function registerStardockWorkerTool(pi: ExtensionAPI, deps: StardockWorke
 			reportId: Type.Optional(Type.String({ description: "WorkerReport id to create/update when recordResult is true. Generated when omitted." })),
 			limit: Type.Optional(Type.Number({ description: "Maximum WorkerRuns to return for action=list. Default 20, max 100." })),
 			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
-			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a parent-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
+			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a governor-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
 			return executeStardockWorkerTool(pi, deps, params as WorkerRunParams, signal, onUpdate, ctx);

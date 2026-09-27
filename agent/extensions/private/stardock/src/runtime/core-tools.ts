@@ -7,11 +7,11 @@ import { Type } from "typebox";
 import { currentBrief } from "../briefs.ts";
 import { loadChecklistLedgerDrift } from "../checklist-drift.ts";
 import { hasGovernorMemory } from "../governor-state.ts";
+import { pendingResourceCleanup } from "../execution-plan/resource-cleanup.ts";
 import { formatCriterionCounts } from "../ledger.ts";
 import { latestGovernorDecision, maybeCreateAutomaticAuditorRequest, pendingOutsideRequests } from "../outside-requests.ts";
-import { type BriefLifecycleAction, DEFAULT_REFLECT_INSTRUCTIONS, type LoopState, type StateView } from "../state/core.ts";
-import { createEmptyExecutionGraph } from "../stages/contracts.ts";
-import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
+import { type BriefLifecycleAction, type LoopState, type StateView } from "../state/core.ts";
+import { createLoopState } from "../state/factory.ts";
 import { defaultTaskFile, ensureDir, existingStatePath, sanitize, tryRead } from "../state/paths.ts";
 import { listLoops, loadState, saveState } from "../state/store.ts";
 import { formatRunOverview, formatRunTimeline, formatStateSummary, governorRoutingInspection, summarizeLoopState } from "../views.ts";
@@ -23,11 +23,9 @@ import { buildPrompt, createModeState, getModeHandler, isImplementedMode, unsupp
 import { queueStardockPrompt } from "./prompt-delivery.ts";
 import type { StardockRuntime } from "./types.ts";
 
-function checklistDoneShouldQueueNext(status: WorkflowStatus): boolean {
-	return status.state === "ready_for_work" || status.state === "active_work";
+function checklistDoneShouldQueueNext(_status: WorkflowStatus): boolean {
+	return true;
 }
-
-const COMPLETION_BLOCKED_WORKFLOW_STATES = new Set<WorkflowStatus["state"]>(["active_work", "needs_parent_review", "needs_auditor_review", "needs_breakout_decision", "ready_for_final_verification", "blocked"]);
 
 export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
 	pi.registerTool({
@@ -70,35 +68,15 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			ensureDir(fullPath);
 			fs.writeFileSync(fullPath, params.taskContent, "utf-8");
 
-			const state: LoopState = {
-				schemaVersion: 3,
+			const state = createLoopState({
 				name: loopName,
 				taskFile,
 				mode,
-				iteration: 1,
-				maxIterations: params.maxIterations ?? 50,
-				itemsPerIteration: params.itemsPerIteration ?? 0,
-				reflectEvery: params.reflectEvery ?? 0,
-				reflectInstructions: DEFAULT_REFLECT_INSTRUCTIONS,
-				active: true,
-				status: "active",
-				startedAt: new Date().toISOString(),
-				lastReflectionAt: 0,
 				modeState: modeResult.modeState,
-				governorState: defaultGovernorState(),
-				outsideRequests: [],
-				criterionLedger: defaultCriterionLedger(),
-				verificationArtifacts: [],
-				baselineValidations: [],
-				briefs: [],
-				finalVerificationReports: [],
-				auditorReviews: [],
-				advisoryHandoffs: [],
-				breakoutPackages: [],
-				workerReports: [],
-				workerRuns: [],
-				executionGraph: createEmptyExecutionGraph(`${loopName}:execution`, new Date().toISOString()),
-			};
+				maxIterations: params.maxIterations,
+				itemsPerIteration: params.itemsPerIteration,
+				reflectEvery: params.reflectEvery,
+			});
 
 			saveState(ctx, state);
 			runtime.ref.currentLoop = loopName;
@@ -161,9 +139,9 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 	pi.registerTool({
 		name: "stardock_complete",
 		label: "Complete Stardock Loop",
-		description: "Complete an active Stardock loop after readiness gates are clear. This is the canonical whole-loop completion path.",
-		promptSnippet: "Complete an active Stardock loop after validation and readiness evidence are recorded.",
-		promptGuidelines: ["Use this only when the whole loop is ready to finish, not for normal iteration advancement.", "If completion is blocked, inspect the returned workflow status and resolve the gate instead of forcing completion."],
+		description: "Record the governor's decision to complete an active Stardock loop. Auditor, validation, worker, breakout, and completion-policy results are returned as advisory warnings and never veto completion.",
+		promptSnippet: "Complete an active Stardock loop by governor decision and retain unresolved advice as warnings.",
+		promptGuidelines: ["Use this when the governor judges the loop complete.", "Review returned warnings as evidence; no auditor or policy ritual is required before completion."],
 		parameters: Type.Object({
 			activeBriefLifecycle: Type.Optional(Type.Union([Type.Literal("complete"), Type.Literal("clear"), Type.Literal("keep")], { description: "How to handle an active brief on successful completion. Default complete." })),
 			includeState: Type.Optional(Type.Boolean({ description: "Include compact loop summary in details after mutation." })),
@@ -175,37 +153,21 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 			if (!state || state.status !== "active") return { content: [{ type: "text", text: "Stardock loop is not active." }], details: {} };
 
 			const openRun = openMutableWorkerRun(state);
-			if (openRun) {
-				return {
-					content: [{ type: "text", text: `Stardock completion blocked: implementer WorkerRun ${openRun.id} is ${openRun.status}. Review it with stardock_worker({ action: "review", runId: "${openRun.id}" }) or dismiss it before completing.` }],
-					details: { loopName: state.name, workerRun: openRun, blocked: true },
-				};
-			}
-
-			const auditorRequest = maybeCreateAutomaticAuditorRequest(state);
-			if (auditorRequest) {
-				saveState(ctx, state);
-				runtime.updateUI(ctx);
-				return {
-					content: [{ type: "text", text: `Stardock completion blocked: auditor request ${auditorRequest.id} is ${auditorRequest.status}. Build the payload with stardock_outside_payload({ requestId: "${auditorRequest.id}" }), record the review with stardock_auditor, or escalate to the user before completing.` }],
-					details: { loopName: state.name, auditorRequest, blocked: true, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) },
-				};
-			}
-
 			const workflowStatus = evaluateWorkflowStatus(state);
-			if (COMPLETION_BLOCKED_WORKFLOW_STATES.has(workflowStatus.state)) {
-				return {
-					content: [{ type: "text", text: `Stardock completion blocked: workflow is ${workflowStatus.state}.\n\n${formatWorkflowStatus(workflowStatus)}` }],
-					details: { loopName: state.name, workflowStatus, blocked: true, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) },
-				};
-			}
-
+			const warnings = [
+				...(openRun ? [`WorkerRun ${openRun.id} is still ${openRun.status}; its eventual output is not part of this completion decision.`] : []),
+				...(!["ready_to_complete", "completed"].includes(workflowStatus.state) ? [workflowStatus.summary] : []),
+				...workflowStatus.reasons,
+			];
 			const loopName = state.name;
 			const activeBriefLifecycle = (params.activeBriefLifecycle ?? "complete") as BriefLifecycleAction;
 			runtime.completeLoop(ctx, state, `───────────────────────────────────────────────────────────────────────
 ✅ STARDOCK LOOP COMPLETE: ${state.name} | ${state.iteration} iterations
-───────────────────────────────────────────────────────────────────────`, activeBriefLifecycle);
-			return withFollowupTool({ content: [{ type: "text", text: `Completed Stardock loop "${state.name}".` }], details: { loopName: state.name, activeBriefLifecycle, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, loopName, params.followupTool, ["stardock_complete"]);
+───────────────────────────────────────────────────────────────────────`, activeBriefLifecycle, true);
+			const cleanup = pendingResourceCleanup(state);
+			if (cleanup) warnings.unshift(cleanup.warning);
+			const warningText = warnings.length ? `\nAdvisory warnings:\n- ${warnings.join("\n- ")}` : "";
+			return withFollowupTool({ content: [{ type: "text", text: `Completed Stardock loop "${state.name}" by governor decision.${warningText}` }], details: { loopName: state.name, activeBriefLifecycle, workflowStatus, warnings, ...(params.includeState ? { loop: summarizeLoopState(ctx, state, false, false) } : {}) } }, ctx, loopName, params.followupTool, ["stardock_complete"]);
 		},
 	});
 
@@ -213,7 +175,7 @@ export function registerCoreTools(pi: ExtensionAPI, runtime: StardockRuntime): v
 		name: "stardock_state",
 		label: "Inspect Stardock State",
 		description: "Inspect Stardock loop state or list loops without reading .stardock files directly. Default details are compact counts plus latest-item previews; use includeDetails only for explicit exhaustive debugging because it includes full evidence collections.",
-		promptSnippet: "Inspect compact Stardock status, workflow gates, and latest evidence without expanding full history.",
+		promptSnippet: "Inspect compact Stardock status, pending governor decisions, mechanical constraints, and latest evidence without expanding full history.",
 		promptGuidelines: [
 			"Use compact summary, overview, or timeline views for routine status and routing decisions.",
 			"Do not pass includeDetails for normal progress checks; use it only when exhaustive raw collections are required, or call the specific evidence tool's list action instead.",

@@ -369,6 +369,32 @@ test("lease reservation inspection detects conflicting literal holder and path e
 	assert.match(inspection.reason, /still reports holder/);
 });
 
+test("lease reservation inspection understands Treehouse v3 status with branch, holder, and in-use rows", async () => {
+	const fake = new FakeProcess();
+	fake.statusStdout = [
+		"base  main  (repository default)",
+		`1     leased       ${HOME_LEASE_PATH}  [stardock/feature]  (held by exact-holder)`,
+		"2     dirty        ~/.treehouse/status-pool/2/other-repo  [other-feature]",
+		"3     in-use       ~/.treehouse/status-pool/3/other-repo  [active]",
+		"                   zsh (51735), pi (2275793)",
+		"4     you're here  ~/.treehouse/status-pool/4/other-repo  (detached)",
+		"                   bash (2616164)",
+	].join("\n");
+	const adapter = adapterFor(fake);
+	const held = await adapter.inspectLeaseReservation({ worktreePath: HOME_LEASE_PATH, contractCommit: SHA, leaseHolder: "exact-holder" });
+	assert.equal(held.state, "held");
+	assert.equal(held.exactPathEntry?.worktreePath, HOME_LEASE_PATH);
+	assert.equal(held.exactPathEntry?.leaseHolder, "exact-holder");
+
+	fake.statusStdout = fake.statusStdout.replace("leased       ", "available    ").replace("  (held by exact-holder)", "");
+	const absent = await adapter.inspectLeaseReservation({ worktreePath: HOME_LEASE_PATH, contractCommit: SHA, leaseHolder: "exact-holder" });
+	assert.equal(absent.state, "absent");
+
+	fake.statusStdout = fake.statusStdout.replace("available    ", "dirty        ");
+	const dirty = await adapter.inspectLeaseReservation({ worktreePath: HOME_LEASE_PATH, contractCommit: SHA, leaseHolder: "exact-holder" });
+	assert.equal(dirty.state, "ambiguous", "dirty worktree rows do not prove a lease was returned");
+});
+
 test("lease reservation inspection treats unrecognized nonempty stdout as ambiguous", async () => {
 	const fake = new FakeProcess();
 	fake.statusStdout = "pool summary unavailable\n";

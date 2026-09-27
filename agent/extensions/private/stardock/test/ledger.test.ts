@@ -185,8 +185,8 @@ test("stardock_ledger records criteria and compact artifact refs", async () => {
 
 		const beforeDoneMessages = messages.length;
 		const doneResult = await done.execute("tool-ledger-done", {}, undefined, undefined, ctx);
-		assert.equal(messages.length, beforeDoneMessages);
-		assert.match(doneResult.content[0].text, /No next checklist prompt queued because workflow is ready_for_final_verification/);
+		assert.equal(messages.length, beforeDoneMessages + 1);
+		assert.match(doneResult.content[0].text, /Next iteration queued/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

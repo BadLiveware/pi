@@ -9,7 +9,7 @@ export interface BriefWorkerRunDeps {
 	updateUI(ctx: ExtensionContext): void;
 }
 
-const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer")], { description: "Worker role. For non-trivial active-brief implementation, pass implementer before parent edit/write. explorer maps context and test_runner validates; those roles do not satisfy implementation delegation. Default: explorer for compatibility only." });
+const roleSchema = Type.Union([Type.Literal("explorer"), Type.Literal("test_runner"), Type.Literal("implementer")], { description: "Worker role. For non-trivial active-brief implementation, pass implementer before governor edit/write. explorer maps context and test_runner validates; those roles do not satisfy implementation delegation. Default: explorer for compatibility only." });
 const contextSchema = Type.Union([Type.Literal("fresh"), Type.Literal("fork")], { description: "Subagent context mode. Default: fresh." });
 const modelSchema = Type.String({ description: "Optional subagent model override. When choosing a non-default model, use list_pi_models and pick an enabled/supported model whose capability, cost, and thinkingLevels fit the brief complexity." });
 const thinkingSchema = Type.String({ description: "Optional Pi thinking level such as off, minimal, low, medium, high, or xhigh. Use list_pi_models to inspect the selected model's thinkingLevels first; provider 'none' is exposed as Pi 'off'. Stardock applies this as a model suffix for pi-subagents." });
@@ -20,7 +20,7 @@ export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRu
 	pi.registerTool({
 		name: "stardock_brief_worker",
 		label: "Run Stardock Brief Worker",
-		description: "Compatibility wrapper for one bounded brief-scoped Stardock worker. Prefer stardock_worker for new workflows. Keep file-only output, skip explorers when exact implementation targets are already known, and avoid automatic reviewer-style churn around every implementation. Implementer runs are serial, mutable, and require selective parent review before another implementer can run.",
+		description: "Compatibility wrapper for one bounded brief-scoped Stardock worker. Prefer stardock_worker for new workflows. Keep file-only output, skip explorers when exact implementation targets are already known, and avoid automatic reviewer-style churn around every implementation. Implementer runs are serial and await a governor accept or dismiss decision before another implementer can run.",
 		promptSnippet: "Run one bounded brief worker with file-only output and compact evidence.",
 		promptGuidelines: [
 			"Keep file-only output for normal runs.",
@@ -28,13 +28,13 @@ export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRu
 			"Prefer one coherent implementer per brief; split mutable mega-briefs before repeatedly cold-starting workers.",
 		],
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit brief-scoped subagent; review accepts or dismisses an implementer run. Run implementer before non-trivial active-brief edits unless a direct-parent-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
+			action: Type.Union([Type.Literal("run"), Type.Literal("list"), Type.Literal("review")], { description: "list inspects WorkerRuns; run starts one explicit brief-scoped subagent; review records the governor's accept or dismiss decision for an implementer run. Run implementer before non-trivial active-brief edits unless a direct-governor-edit exception is explicit; trivial/surgical means single-file, <=2 localized hunks, no new files/contracts/config/runtime behavior changes." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			role: Type.Optional(roleSchema),
 			briefId: Type.Optional(Type.String({ description: "Brief id. Defaults to the active brief." })),
 			runId: Type.Optional(Type.String({ description: "WorkerRun id for review. Defaults to the open implementer run." })),
 			reviewStatus: Type.Optional(Type.Union([Type.Literal("accepted"), Type.Literal("dismissed")], { description: "Review outcome for an implementer WorkerRun. Default: accepted." })),
-			reviewRationale: Type.Optional(Type.String({ description: "Parent/governor rationale when accepting or dismissing an implementer WorkerRun." })),
+			reviewRationale: Type.Optional(Type.String({ description: "Governor rationale when accepting or dismissing an implementer WorkerRun." })),
 			agentName: Type.Optional(Type.String({ description: "Subagent name. Defaults to Stardock's current transport agent for the role." })),
 			model: Type.Optional(modelSchema),
 			thinking: Type.Optional(thinkingSchema),
@@ -45,7 +45,7 @@ export function registerBriefWorkerRunTool(pi: ExtensionAPI, deps: BriefWorkerRu
 			reportId: Type.Optional(Type.String({ description: "WorkerReport id to create/update when recordResult is true. Generated when omitted." })),
 			limit: Type.Optional(Type.Number({ description: "Maximum WorkerRuns to return for action=list. Default 20, max 100." })),
 			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
-			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a parent-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
+			allowDirtyWorkspace: Type.Optional(Type.Boolean({ description: "Allow mutable implementer runs when git workspace is dirty or cleanliness cannot be verified. Default false. Do not use a governor-created dirty workspace as a reason to bypass implementer delegation; restore clean state, accept this risk explicitly, or record a direct-edit exception." })),
 		}),
 		async execute(_toolCallId, params, signal, onUpdate, ctx: ExtensionContext) {
 			return executeStardockWorkerTool(pi, deps, params as WorkerRunParams, signal, onUpdate, ctx);

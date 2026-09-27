@@ -53,7 +53,7 @@ test("session shutdown waits for every started bridge cancellation acknowledgeme
 		const [cancelled, result] = await Promise.all([shutdown, run]);
 		assert.deepEqual(cancelled, [harness.loopName]);
 		assert.deepEqual(new Set(acknowledgedIds), new Set(startedIds));
-		assert.equal(result.counts.detached, 5);
+		assert.equal(result.counts.needs_review, 5);
 		detachOwnedStages(harness.ctx, sessionId);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });

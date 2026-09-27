@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { makeHarness, statePath } from "./test-harness.ts";
 
-test("stardock_complete creates auditor request when auditor gate is active", async () => {
+test("stardock_complete preserves advisory risk concerns as warnings", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-auditor-trigger-test-"));
 	try {
 		const { tools, ctx } = makeHarness(cwd);
@@ -21,11 +21,12 @@ test("stardock_complete creates auditor request when auditor gate is active", as
 
 		const result = await complete.execute("tool-complete-audit-blocked", {}, undefined, undefined, ctx);
 
-		assert.match(result.content[0].text, /completion blocked: auditor request auditor-1/);
+		assert.match(result.content[0].text, /Completed Stardock loop.*by governor decision/);
+		assert.match(result.content[0].text, /Advisory warnings/);
+		assert.match(result.content[0].text, /governor decision|advisory/i);
 		const state = JSON.parse(fs.readFileSync(statePath(cwd, "Complete_Audit_Loop"), "utf-8"));
-		assert.equal(state.status, "active");
-		assert.equal(state.outsideRequests[0].kind, "auditor_review");
-		assert.equal(state.outsideRequests[0].status, "requested");
+		assert.equal(state.status, "completed");
+		assert.equal(state.outsideRequests.length, 0);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

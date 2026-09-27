@@ -4,10 +4,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
 import { buildPrompt } from "../src/runtime/prompts.ts";
-import { loadState } from "../src/state/store.ts";
+import { loadState, mutateState } from "../src/state/store.ts";
+import { fanoutPlan } from "./execution-plan-fixtures.ts";
 import { makeHarness } from "./test-harness.ts";
 
-test("workflow status gates appear in queued prompts when a gate already exists", async () => {
+test("workflow recommendations appear without hard gate instructions", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
@@ -17,14 +18,14 @@ test("workflow status gates appear in queued prompts when a gate already exists"
 		assert.ok(worker);
 
 		await start.execute("tool-workflow-prompt-start", { name: "Workflow Prompt", mode: "checklist", taskContent: "# Workflow prompt\n", maxIterations: 3 }, undefined, undefined, ctx);
-		await worker.execute("tool-workflow-prompt-worker", { action: "record", loopName: "Workflow_Prompt", id: "wr-prompt", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Parent should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
+		await worker.execute("tool-workflow-prompt-worker", { action: "record", loopName: "Workflow_Prompt", id: "wr-prompt", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Governor should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
 		const state = loadState(ctx, "Workflow_Prompt");
 		assert.ok(state);
 
 		const prompt = buildPrompt(state, "# Workflow prompt\n", "iteration");
 		assert.match(prompt, /## Workflow Status/);
-		assert.match(prompt, /Workflow: needs_parent_review \[blocked\]/);
-		assert.match(prompt, /Gate: Do not continue implementation until parent review is addressed or explicitly rejected with rationale\./);
+		assert.match(prompt, /Workflow: needs_governor_decision \[action\]/);
+		assert.doesNotMatch(prompt, /Gate: Do not continue implementation/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -42,18 +43,18 @@ test("workflow transitions notify once for actionable status changes", async () 
 		await start.execute("tool-workflow-notify-start", { name: "Workflow Notify", mode: "checklist", taskContent: "# Workflow notify\n", maxIterations: 3 }, undefined, undefined, ctx);
 		assert.equal(notifications.length, 0, "initial non-actionable status should not notify");
 
-		await worker.execute("tool-workflow-notify-worker", { action: "record", loopName: "Workflow_Notify", id: "wr-notify", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Parent should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
+		await worker.execute("tool-workflow-notify-worker", { action: "record", loopName: "Workflow_Notify", id: "wr-notify", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Governor should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
 		assert.equal(notifications.length, 1);
-		assert.match(notifications[0], /stardock Workflow_Notify: needs_parent_review/);
+		assert.match(notifications[0], /stardock Workflow_Notify: needs_governor_decision/);
 
-		await worker.execute("tool-workflow-notify-worker-repeat", { action: "record", loopName: "Workflow_Notify", id: "wr-notify", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Parent should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
+		await worker.execute("tool-workflow-notify-worker-repeat", { action: "record", loopName: "Workflow_Notify", id: "wr-notify", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Governor should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
 		assert.equal(notifications.length, 1, "same workflow state and reasons should not re-notify");
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("stardock_done does not queue checklist prompts for ready-to-complete workflow", async () => {
+test("stardock_done may continue despite ready-to-complete advice", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
@@ -72,15 +73,14 @@ test("stardock_done does not queue checklist prompts for ready-to-complete workf
 		const beforeDoneMessages = messages.length;
 		const doneResult = await done.execute("tool-workflow-complete-done", {}, undefined, undefined, ctx);
 
-		assert.equal(messages.length, beforeDoneMessages);
-		assert.match(doneResult.content[0].text, /No next checklist prompt queued because workflow is ready_to_complete/);
-		assert.equal(doneResult.details.workflowStatus.state, "ready_to_complete");
+		assert.equal(messages.length, beforeDoneMessages + 1);
+		assert.match(doneResult.content[0].text, /Next iteration queued/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("stardock_done creates auditor requests for auditor gates", async () => {
+test("stardock_done keeps auditor requests advisory while continuing", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
@@ -98,14 +98,12 @@ test("stardock_done creates auditor requests for auditor gates", async () => {
 		const beforeDoneMessages = messages.length;
 		const doneResult = await done.execute("tool-workflow-audit-done", {}, undefined, undefined, ctx);
 
-		assert.equal(messages.length, beforeDoneMessages);
-		assert.match(doneResult.content[0].text, /No next checklist prompt queued because workflow is needs_auditor_review/);
-		assert.match(doneResult.content[0].text, /Auditor request auditor-1 is pending/);
-		assert.equal(doneResult.details.workflowStatus.state, "needs_auditor_review");
+		assert.equal(messages.length, beforeDoneMessages + 1);
+		assert.match(doneResult.content[0].text, /Next iteration queued/);
 		assert.equal(doneResult.details.auditorRequest.kind, "auditor_review");
 		assert.equal(doneResult.details.auditorRequest.trigger, "pre_completion");
 		assert.match(doneResult.details.auditorRequest.prompt, /Policy findings:/);
-		assert.match(doneResult.details.auditorRequest.prompt, /unresolved-completion-gate|criteria-risk-review/);
+		assert.match(doneResult.details.auditorRequest.prompt, /unresolved-completion-risk|criteria-risk-review/);
 
 		const payloadResult = await payload.execute("tool-workflow-audit-payload", { loopName: "Workflow_Audit", requestId: "auditor-1" }, undefined, undefined, ctx);
 		assert.match(payloadResult.content[0].text, /Auditor task:/);
@@ -115,7 +113,7 @@ test("stardock_done creates auditor requests for auditor gates", async () => {
 	}
 });
 
-test("stardock_done does not queue checklist prompts for gated workflow states", async () => {
+test("stardock_done continues through advisory workflow states", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {
 		const { tools, messages, ctx } = makeHarness(cwd);
@@ -127,13 +125,12 @@ test("stardock_done does not queue checklist prompts for gated workflow states",
 		assert.ok(done);
 
 		await start.execute("tool-workflow-gate-start", { name: "Workflow Gate", mode: "checklist", taskContent: "# Workflow gate\n", maxIterations: 3 }, undefined, undefined, ctx);
-		await worker.execute("tool-workflow-gate-worker", { action: "record", loopName: "Workflow_Gate", id: "wr-gate", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Parent should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
+		await worker.execute("tool-workflow-gate-worker", { action: "record", loopName: "Workflow_Gate", id: "wr-gate", role: "explorer", status: "needs_review", objective: "Map risky files.", summary: "Found a risky path.", risks: ["Governor should inspect reported risk."], reviewHints: ["Inspect src/example.ts"] }, undefined, undefined, ctx);
 		const beforeDoneMessages = messages.length;
 		const doneResult = await done.execute("tool-workflow-gate-done", {}, undefined, undefined, ctx);
 
-		assert.equal(messages.length, beforeDoneMessages);
-		assert.match(doneResult.content[0].text, /No next checklist prompt queued because workflow is needs_parent_review/);
-		assert.equal(doneResult.details.workflowStatus.state, "needs_parent_review");
+		assert.equal(messages.length, beforeDoneMessages + 1);
+		assert.match(doneResult.content[0].text, /Next iteration queued/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}
@@ -169,7 +166,80 @@ test("agent_end queues a continuation prompt for active ungated work without sta
 	}
 });
 
-test("stardock_complete blocks while active work remains", async () => {
+test("agent_end does not re-queue a continuation prompt after a provider error", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-error-"));
+	try {
+		const { tools, handlers, messages, notifications, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		assert.ok(start);
+		assert.ok(brief);
+
+		await start.execute("tool-workflow-error-start", { name: "Workflow Error", mode: "checklist", taskContent: "# Workflow error\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await brief.execute("tool-workflow-error-brief", { action: "upsert", loopName: "Workflow_Error", id: "b-error", objective: "Continue active work.", task: "Do the next bounded task.", activate: true }, undefined, undefined, ctx);
+		const before = messages.length;
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+
+		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "" }], stopReason: "error", errorMessage: "Incorrect API key provided" }] }, ctx);
+
+		assert.equal(messages.length, before, "a provider error must not queue another Stardock prompt");
+		assert.ok(notifications.some((message) => message.includes("continuation paused")));
+		assert.ok(notifications.some((message) => message.includes("Incorrect API key provided")));
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("agent_end does not re-queue a continuation prompt after an abort", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-abort-"));
+	try {
+		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const start = tools.get("stardock_start");
+		const brief = tools.get("stardock_brief");
+		assert.ok(start);
+		assert.ok(brief);
+
+		await start.execute("tool-workflow-abort-start", { name: "Workflow Abort", mode: "checklist", taskContent: "# Workflow abort\n", maxIterations: 3 }, undefined, undefined, ctx);
+		await brief.execute("tool-workflow-abort-brief", { action: "upsert", loopName: "Workflow_Abort", id: "b-abort", objective: "Continue active work.", task: "Do the next bounded task.", activate: true }, undefined, undefined, ctx);
+		const before = messages.length;
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+
+		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "" }], stopReason: "aborted" }] }, ctx);
+
+		assert.equal(messages.length, before, "an aborted turn must not undo ESC with another Stardock prompt");
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("agent_end does not continue a superseded execution plan", async () => {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-superseded-"));
+	try {
+		const { tools, handlers, messages, ctx } = makeHarness(cwd);
+		const planTool = tools.get("stardock_plan");
+		assert.ok(planTool);
+
+		const { id: _id, ...input } = fanoutPlan();
+		await planTool.execute("tool-workflow-superseded-plan", { ...input, name: "Workflow Superseded" }, undefined, undefined, ctx);
+		mutateState(ctx, "Workflow_Superseded", (state) => {
+			state.executionPlan!.status = "superseded";
+			state.executionPlan!.supersededBy = "Workflow Superseded v2";
+		});
+		const before = messages.length;
+		const agentEnd = handlers.get("agent_end")?.[0];
+		assert.ok(agentEnd);
+
+		await agentEnd({ messages: [{ role: "assistant", content: [{ type: "text", text: "Done for now." }] }] }, ctx);
+
+		assert.equal(messages.length, before, "a superseded plan generation must not queue continuation work");
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test("stardock_complete records governor completion with unresolved advice", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-workflow-test-"));
 	try {
 		const { tools, ctx } = makeHarness(cwd);
@@ -186,9 +256,9 @@ test("stardock_complete blocks while active work remains", async () => {
 		const result = await complete.execute("tool-workflow-complete-block", {}, undefined, undefined, ctx);
 
 		const state = loadState(ctx, "Workflow_Complete_Block");
-		assert.equal(state?.status, "active");
-		assert.match(result.content[0].text, /completion blocked/);
-		assert.match(result.content[0].text, /workflow is active_work/);
+		assert.equal(state?.status, "completed");
+		assert.match(result.content[0].text, /Completed Stardock loop.*governor decision/);
+		assert.match(result.content[0].text, /Advisory warnings/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

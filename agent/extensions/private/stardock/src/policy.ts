@@ -9,8 +9,8 @@ export { evaluateCompletionPolicy } from "./completion-policy.ts";
 import { formatCriterionCounts } from "./ledger.ts";
 import { compactText, type Criterion, type LoopState } from "./state/core.ts";
 import { loadState } from "./state/store.ts";
-import { evaluateAuditorGatePolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatParentReviewPolicy } from "./subagent-readiness-policy.ts";
-export { evaluateAuditorGatePolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatParentReviewPolicy } from "./subagent-readiness-policy.ts";
+import { evaluateGovernorDecisionPolicy, evaluateGovernorRiskPolicy, formatGovernorDecisionPolicy, formatGovernorRiskPolicy } from "./subagent-readiness-policy.ts";
+export { evaluateGovernorDecisionPolicy, evaluateGovernorRiskPolicy, formatGovernorDecisionPolicy, formatGovernorRiskPolicy } from "./subagent-readiness-policy.ts";
 
 export interface PolicyToolDeps {
 	getCurrentLoop(): string | null;
@@ -21,7 +21,7 @@ export type PolicySeverity = "info" | "recommend" | "warning" | "blocker";
 export interface PolicyFinding {
 	id: string;
 	severity: PolicySeverity;
-	recommendation: "final_report" | "auditor_review" | "breakout_package" | "worker_report" | "parent_review" | "gate_decision" | "ready";
+	recommendation: "final_report" | "auditor_review" | "breakout_package" | "worker_report" | "governor_decision" | "governor_risk_decision" | "ready";
 	rationale: string;
 	criterionIds: string[];
 	artifactIds: string[];
@@ -119,7 +119,7 @@ export function evaluateAuditorPolicy(state: LoopState): AuditorPolicyResult {
 				id: "criteria-risk-review",
 				severity: failedOrBlocked.length > 0 ? "warning" : "recommend",
 				recommendation: "auditor_review",
-				rationale: "Failed, blocked, or skipped criteria are high-risk governance points that should receive explicit auditor review before completion or scope relaxation.",
+				rationale: "Failed, blocked, or skipped criteria are high-risk advisory evidence. The governor decides whether to remediate, defer, accept the gap, or complete with the warning recorded.",
 				criterionIds: [...failedOrBlocked, ...skipped].map((criterion) => criterion.id),
 				suggestedTool: "stardock_auditor",
 			}),
@@ -156,10 +156,10 @@ export function evaluateAuditorPolicy(state: LoopState): AuditorPolicyResult {
 	if (implementerHandoffs.length > 0) {
 		findings.push(
 			finding({
-				id: "automation-gate-review",
+				id: "automation-risk-evidence",
 				severity: "recommend",
 				recommendation: "auditor_review",
-				rationale: "Implementer handoffs are automation/edit-ownership gates; an auditor should review evidence and authority boundaries before relying on their output.",
+				rationale: "Implementer handoffs cross automation and edit-ownership boundaries. The governor should inspect the relevant evidence before accepting, dismissing, or deferring their output.",
 				advisoryHandoffIds: implementerHandoffs.map((handoff) => handoff.id),
 				suggestedTool: "stardock_auditor",
 			}),
@@ -370,7 +370,7 @@ export function formatAuditorPolicy(state: LoopState): string {
 		"Findings",
 		...result.findings.flatMap(formatFinding),
 		"",
-		"Policy note: recommendations are advisory. Stardock does not create auditor reviews, call models, spawn agents, run providers/processes, or enforce gates from this policy surface.",
+		"Policy note: recommendations are advisory. Stardock does not create auditor reviews, call models, spawn agents, run providers/processes, or override governor decisions from this policy surface.",
 	];
 	return lines.join("\n");
 }
@@ -388,7 +388,7 @@ export function formatBreakoutPolicy(state: LoopState): string {
 		"Findings",
 		...result.findings.flatMap(formatFinding),
 		"",
-		"Policy note: recommendations are advisory. Stardock does not create breakout packages, stop loops, call models, spawn agents, run providers/processes, or enforce gates from this policy surface.",
+		"Policy note: recommendations are advisory. Stardock does not create breakout packages, stop loops, call models, spawn agents, run providers/processes, or override governor decisions from this policy surface.",
 	];
 	return lines.join("\n");
 }
@@ -397,9 +397,9 @@ export function registerPolicyTool(pi: ExtensionAPI, deps: PolicyToolDeps): void
 	pi.registerTool({
 		name: "stardock_policy",
 		label: "Inspect Stardock Governance Policy",
-		description: "Read-only governance policy recommendations for Stardock loops. Supports completion readiness, auditor trigger, breakout trigger, parent review, and gate checks without enforcing gates.",
+		description: "Read-only governance policy recommendations for Stardock loops. Supports completion readiness, optional auditor and breakout evidence, governor decisions, and advisory risk checks.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("completion"), Type.Literal("auditor"), Type.Literal("breakout"), Type.Literal("parentReview"), Type.Literal("auditorGate")], { description: "completion returns readiness findings; auditor returns auditor-trigger recommendations; breakout returns breakout-package trigger recommendations; parentReview returns selective parent-review guidance; auditorGate returns high-risk gate guidance." }),
+			action: Type.Union([Type.Literal("completion"), Type.Literal("auditor"), Type.Literal("breakout"), Type.Literal("governorDecision"), Type.Literal("governorRisk")], { description: "completion returns readiness findings; auditor returns optional auditor-evidence recommendations; breakout returns breakout-package recommendations; governorDecision returns selective worker/handoff evidence; governorRisk returns advisory automation, audit, and unresolved-gap evidence for a governor decision." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -415,13 +415,13 @@ export function registerPolicyTool(pi: ExtensionAPI, deps: PolicyToolDeps): void
 				const result = evaluateBreakoutPolicy(state);
 				return { content: [{ type: "text", text: formatBreakoutPolicy(state) }], details: { loopName, policy: result } };
 			}
-			if (params.action === "parentReview") {
-				const result = evaluateParentReviewPolicy(state);
-				return { content: [{ type: "text", text: formatParentReviewPolicy(state) }], details: { loopName, policy: result } };
+			if (params.action === "governorDecision") {
+				const result = evaluateGovernorDecisionPolicy(state);
+				return { content: [{ type: "text", text: formatGovernorDecisionPolicy(state) }], details: { loopName, policy: result } };
 			}
-			if (params.action === "auditorGate") {
-				const result = evaluateAuditorGatePolicy(state);
-				return { content: [{ type: "text", text: formatAuditorGatePolicy(state) }], details: { loopName, policy: result } };
+			if (params.action === "governorRisk") {
+				const result = evaluateGovernorRiskPolicy(state);
+				return { content: [{ type: "text", text: formatGovernorRiskPolicy(state) }], details: { loopName, policy: result } };
 			}
 			const result = evaluateCompletionPolicy(state);
 			return { content: [{ type: "text", text: formatCompletionPolicy(state) }], details: { loopName, policy: result } };

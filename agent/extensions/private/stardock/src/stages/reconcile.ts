@@ -2,6 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { WorkerRun } from "../state/core.ts";
 import { loadState, mutateState } from "../state/store.ts";
 import { clearTerminalOwnerEvidence, removeOwnershipToken } from "./ownership-records.ts";
+import { assertNoActiveStageWork, assertStageReviewDecided } from "./active-work.ts";
 import type { ExecutionAttempt, ExecutionNode, ExecutionStage } from "./contracts.ts";
 import type { RunReadyAdapter } from "./run-ready.ts";
 import { TreehouseAdapter, type PartialTreehouseLease, type TreehouseLease } from "./treehouse-adapter.ts";
@@ -130,7 +131,7 @@ async function classifyAttempt(ctx: ExtensionContext, adapter: RunReadyAdapter, 
 	if (!evidence.clean) return { nodeId: node.id, attemptId: attempt.id, classification: "detached", reason: "Lease is dirty and must be preserved for inspection.", headCommit: evidence.headCommit, clean: false, workerRunStatus: run?.status };
 	if (evidence.headCommit === attempt.baseCommit) return { nodeId: node.id, attemptId: attempt.id, classification: "retry_ready", reason: "Lease is clean and unchanged from its immutable base.", headCommit: evidence.headCommit, clean: true, workerRunStatus: run?.status };
 	if (run?.status === "accepted") return { nodeId: node.id, attemptId: attempt.id, classification: "accepted", reason: "Clean committed work retains its explicit accepted WorkerRun evidence.", headCommit: evidence.headCommit, clean: true, workerRunStatus: run.status };
-	return { nodeId: node.id, attemptId: attempt.id, classification: "needs_review", reason: "Lease contains clean committed work that requires explicit review.", headCommit: evidence.headCommit, clean: true, workerRunStatus: run?.status };
+	return { nodeId: node.id, attemptId: attempt.id, classification: "needs_review", reason: "Lease contains clean committed work awaiting an explicit governor accept or dismiss decision.", headCommit: evidence.headCommit, clean: true, workerRunStatus: run?.status };
 }
 
 function applyClassification(node: ExecutionNode, attempt: ExecutionAttempt, result: ReconciledAttempt, stage: ExecutionStage): void {
@@ -233,7 +234,7 @@ export async function abandonStage(
 	const { state, graph, stage, nodes } = stageAndNodes(ctx, input.loopName, input.graphId, input.stageId);
 	if (graph.revision !== input.expectedGraphRevision) throw new Error(`Stale execution graph revision: expected ${input.expectedGraphRevision}, current ${graph.revision}.`);
 	if (!input.rationale.trim()) throw new Error("Abandon requires a nonblank rationale.");
-	if (!input.approvalRef.trim()) throw new Error("Abandon requires a nonblank approvalRef.");
+	if (!input.approvalRef.trim()) throw new Error("Abandon requires a nonblank governor authorization reference in approvalRef.");
 	if (stage.status === "integrated") throw new Error("Integrated stages cannot be abandoned.");
 	if (stage.abandonment) {
 		const rationale = input.rationale.trim();
@@ -295,12 +296,16 @@ export async function releaseStage(
 ): Promise<{ ok: boolean; graphId: string; stageId: string; stateRevision: number; releasedAttemptIds: string[]; preserved: Array<{ attemptId: string; reason: string }>; ownershipReleased: boolean }> {
 	let current = stageAndNodes(ctx, input.loopName, input.graphId, input.stageId);
 	if (current.graph.revision !== input.expectedGraphRevision) throw new Error(`Stale execution graph revision: expected ${input.expectedGraphRevision}, current ${current.graph.revision}.`);
-	if (current.stage.status !== "integrated" && current.stage.status !== "abandoned") throw new Error(`Release requires an integrated or explicitly abandoned stage; current status is "${current.stage.status}".`);
+	if (!["contracts_ready", "settled", "integrated", "failed", "abandoned"].includes(current.stage.status)) throw new Error(`Release requires an inactive decided stage; current status is "${current.stage.status}".`);
+	assertNoActiveStageWork(current.state, current.graph.id, current.stage.id);
+	assertStageReviewDecided(current.state, current.stage.id);
 	const releasedAttemptIds: string[] = [];
 	const preserved: Array<{ attemptId: string; reason: string }> = [];
 	const attemptIds = trackedAttemptIds(current);
 	for (const attemptId of attemptIds) {
 		current = stageAndNodes(ctx, input.loopName, input.graphId, input.stageId);
+		assertNoActiveStageWork(current.state, current.graph.id, current.stage.id);
+		assertStageReviewDecided(current.state, current.stage.id);
 		const attempt = current.nodes.flatMap((node) => node.attempts).find((value) => value.id === attemptId);
 		if (!attempt || attempt.leaseDisposition === "released" || !attemptTracksLease(attempt)) continue;
 		const recovered = await recoverReleasedLeaseIfAbsent(ctx, adapter, attempt, signal);
@@ -346,6 +351,8 @@ export async function releaseStage(
 			continue;
 		}
 		const pending = mutateState(ctx, input.loopName, (candidate) => {
+			assertNoActiveStageWork(candidate, input.graphId, input.stageId);
+			assertStageReviewDecided(candidate, input.stageId);
 			const target = candidate.executionGraph?.nodes.flatMap((node) => node.attempts).find((value) => value.id === attemptId);
 			if (!target || target.leaseDisposition === "released") throw new Error(`Attempt "${attemptId}" changed before lease return.`);
 			target.leaseDisposition = "release_pending";
@@ -378,7 +385,7 @@ export async function releaseStage(
 			if (!graph || !stage) throw new Error("Execution graph disappeared during terminal release.");
 			stage.terminalOwnershipCleanup = structuredClone(ownership);
 			delete graph.ownership;
-			const allTerminal = graph.stages.every((item) => item.status === "integrated" || item.status === "abandoned");
+			const allTerminal = graph.stages.every((item) => item.status === "settled" || item.status === "integrated" || item.status === "abandoned");
 			if (allTerminal) {
 				graph.status = "completed";
 				if (graph.stages.some((item) => item.status === "abandoned")) graph.status = "abandoned";
@@ -395,6 +402,18 @@ export async function releaseStage(
 		clearTerminalOwnerEvidence(ctx, input.loopName, cleanup, current.graph.revision);
 		removeOwnershipToken(ctx, input.loopName, cleanup.sessionId);
 		ownershipReleased = true;
+		// A governor can complete a settled plan before Treehouse proves every
+		// lease was returned. When cleanup eventually succeeds without a graph
+		// owner, converge the mechanical graph to its terminal state too.
+		if (current.graph.stages.every((stage) => ["settled", "integrated", "abandoned"].includes(stage.status))) {
+			const terminalStatus = current.graph.stages.some((stage) => stage.status === "abandoned") ? "abandoned" : "completed";
+			if (current.graph.status !== terminalStatus) {
+				const saved = mutateState(ctx, input.loopName, (candidate) => {
+					candidate.executionGraph!.status = terminalStatus;
+				}, { expectedGraphRevision: current.graph.revision });
+				stateRevision = saved.executionGraph!.revision;
+			}
+		}
 	}
 	return { ok: preserved.length === 0, graphId: input.graphId, stageId: input.stageId, stateRevision, releasedAttemptIds, preserved, ownershipReleased };
 }

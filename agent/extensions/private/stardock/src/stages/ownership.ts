@@ -1,9 +1,11 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
-import type { LoopState } from "../state/core.ts";
+import { randomUUID } from "node:crypto";
+import type { LoopState, StardockRecoveryEvent } from "../state/core.ts";
 import { loadState, mutateState } from "../state/store.ts";
 import { stageOwnerPath } from "../state/paths.ts";
 import { readyExecutionNodeIds, validateExecutionGraph } from "./graph.ts";
+import { assertNoActiveStageWork } from "./active-work.ts";
 import type { ExecutionGraph, ExecutionStageOwnership } from "./contracts.ts";
 import {
 	acquireMutationMutex,
@@ -36,6 +38,7 @@ export interface AcquireStageOwnershipRequest {
 	expectedGraphRevision: number;
 	sessionId: string;
 	priorOwnershipEvidence?: ExecutionStageOwnership;
+	recoveryEvent?: StardockRecoveryEvent;
 }
 
 export interface OwnershipAcquisition {
@@ -197,7 +200,9 @@ export function acquireStageOwnership(ctx: ExtensionContext, request: AcquireSta
 			assertStageAcquirable(graph, request.stageId, ctx.cwd, priorOwnership !== undefined);
 			const stage = graph.stages.find((value) => value.id === request.stageId);
 			if (!stage) throw new OwnershipProtocolError("stage_missing", `Execution stage "${request.stageId}" disappeared during ownership acquisition.`);
+			if (request.recoveryEvent) assertNoActiveStageWork(candidate, graph.id, stage.id);
 			if (!priorOwnership) stage.status = "running";
+			if (request.recoveryEvent) (candidate.recoveryEvents ??= []).push(request.recoveryEvent);
 			graph.ownership = {
 				graphId: request.graphId,
 				stageId: request.stageId,
@@ -349,10 +354,10 @@ export function inspectStageOwnership(ctx: ExtensionContext, loopName: string): 
 }
 
 function requireTakeoverEvidence(request: ReconcileOwnershipRequest): void {
-	if (!request.rationale?.trim()) throw new OwnershipProtocolError("rationale_required", "Approved takeover requires a nonblank rationale.");
-	if (!request.approvalRef?.trim()) throw new OwnershipProtocolError("approval_required", "Approved takeover requires an explicit approval reference.");
-	if (!request.classification?.trim()) throw new OwnershipProtocolError("classification_required", "Approved takeover requires worker and Treehouse ownership classification evidence.");
-	if (!request.sessionId?.trim()) throw new OwnershipProtocolError("session_required", "Approved takeover requires the new runtime session id.");
+	if (!request.rationale?.trim()) throw new OwnershipProtocolError("rationale_required", "Governor-authorized takeover requires a nonblank rationale.");
+	if (!request.approvalRef?.trim()) throw new OwnershipProtocolError("approval_required", "Governor-authorized takeover requires an explicit authorization reference in approvalRef.");
+	if (!request.classification?.trim()) throw new OwnershipProtocolError("classification_required", "Governor-authorized takeover requires worker and Treehouse ownership classification evidence.");
+	if (!request.sessionId?.trim()) throw new OwnershipProtocolError("session_required", "Governor-authorized takeover requires the new runtime session id.");
 }
 
 function mutationMatchesOwnership(mutex: NonNullable<OwnershipInspection["mutex"]>, ownership: ExecutionStageOwnership): boolean {
@@ -378,6 +383,7 @@ function reacquireAfterReconciliation(
 	graphId: string,
 	stageId: string,
 	priorOwnershipEvidence?: ExecutionStageOwnership,
+	previousOwnerSessionId = priorOwnershipEvidence?.sessionId,
 ): OwnershipAcquisition {
 	const revision = loadState(ctx, request.loopName)?.executionGraph?.revision;
 	if (revision === undefined) throw new OwnershipProtocolError("graph_missing", "Execution graph disappeared during takeover.");
@@ -388,6 +394,10 @@ function reacquireAfterReconciliation(
 		expectedGraphRevision: revision,
 		sessionId: request.sessionId as string,
 		priorOwnershipEvidence,
+		recoveryEvent: {
+			id: randomUUID(), action: "takeover", at: new Date().toISOString(), graphId, stageId,
+			previousOwnerSessionId: previousOwnerSessionId ?? "unknown", rationale: request.rationale!.trim(), approvalRef: request.approvalRef!.trim(),
+		},
 	});
 }
 
@@ -395,6 +405,9 @@ export function reconcileStageOwnership(ctx: ExtensionContext, request: Reconcil
 	const inspection = inspectStageOwnership(ctx, request.loopName);
 	if (request.takeOwnership !== true) return inspection;
 	requireTakeoverEvidence(request);
+	const priorState = loadState(ctx, request.loopName);
+	const priorStageId = inspection.owner?.stageId ?? inspection.stateOwnership?.stageId ?? request.stageId;
+	if (priorState?.executionGraph && priorStageId) assertNoActiveStageWork(priorState, priorState.executionGraph.id, priorStageId);
 	const owner = inspection.owner;
 	if (owner) {
 		if (inspection.ownerProcess === "live") throw new OwnershipProtocolError("owner_live", `Takeover refused: owner pid ${owner.pid} is live. Heartbeat expiry alone never permits takeover.`);
@@ -411,7 +424,7 @@ export function reconcileStageOwnership(ctx: ExtensionContext, request: Reconcil
 		if (request.stageId && request.stageId !== owner.stageId) throw new OwnershipProtocolError("stage_mismatch", "Requested takeover stage does not match durable owner evidence.");
 		if (inspection.mutex) quarantineOwnershipFile(ctx, request.loopName, "mutex", owner.tokenDigest);
 		quarantineOwnershipFile(ctx, request.loopName, "owner", owner.tokenDigest);
-		return reacquireAfterReconciliation(ctx, request, owner.graphId, owner.stageId, inspection.stateOwnership ?? undefined);
+		return reacquireAfterReconciliation(ctx, request, owner.graphId, owner.stageId, inspection.stateOwnership ?? undefined, owner.sessionId);
 	}
 
 	const ownership = inspection.stateOwnership;
@@ -433,7 +446,7 @@ export function reconcileStageOwnership(ctx: ExtensionContext, request: Reconcil
 	if (!request.stageId) throw new OwnershipProtocolError("stage_required", "Standalone mutex recovery requires the intended stageId.");
 	if (mutex.stageId && mutex.stageId !== request.stageId) throw new OwnershipProtocolError("stage_mismatch", "Standalone mutex stage does not match the requested takeover stage.");
 	quarantineOwnershipFile(ctx, request.loopName, "mutex", mutex.tokenDigest);
-	return reacquireAfterReconciliation(ctx, request, request.graphId, request.stageId);
+	return reacquireAfterReconciliation(ctx, request, request.graphId, request.stageId, undefined, mutex.sessionId);
 }
 
 export function markOwnershipDetachedCandidate(state: LoopState): boolean {

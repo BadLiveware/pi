@@ -6,7 +6,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import { formatPageNote, paginateItems } from "./app/pagination.ts";
 import { evaluateAuditorPolicy, type PolicyFinding } from "./policy.ts";
-import { evaluateAuditorGatePolicy } from "./subagent-readiness-policy.ts";
+import { evaluateGovernorRiskPolicy } from "./subagent-readiness-policy.ts";
 import { compactText, type GovernorDecision, type LoopState, type OutsideRequest, type OutsideRequestKind, type OutsideRequestTrigger, type RecursiveAttempt, type RecursiveAttemptKind, type RecursiveModeState } from "./state/core.ts";
 import { loadState, saveState } from "./state/store.ts";
 
@@ -94,7 +94,7 @@ function formatFindingsForPrompt(findings: PolicyFinding[]): string {
 
 function auditorTriggerFromFindings(findings: PolicyFinding[]): OutsideRequestTrigger {
 	const ids = new Set(findings.map((finding) => finding.id));
-	if ([...ids].some((id) => id.includes("subagent") || id.includes("automation") || id.includes("worker") || id.includes("evolve"))) return "automation_gate";
+	if ([...ids].some((id) => id.includes("subagent") || id.includes("automation") || id.includes("worker") || id.includes("evolve"))) return "automation_risk";
 	if ([...ids].some((id) => id.includes("completion") || id.includes("final") || id.includes("criteria") || id.includes("gap"))) return "pre_completion";
 	if ([...ids].some((id) => id.includes("breakout"))) return "stagnation";
 	return "periodic_audit";
@@ -118,17 +118,17 @@ function buildAuditorPrompt(state: LoopState, trigger: OutsideRequestTrigger, su
 		"Policy findings:",
 		formatFindingsForPrompt(findings) || "- No non-ready findings were selected.",
 		"",
-		"Auditor task: review whether the governor direction, evidence, criteria, context routing, and automation gates remain aligned and safe. Do not mutate state or implementation. Return a compact review with status, concerns, recommendations, and required follow-ups. The parent should record the result with stardock_auditor.",
+		"Auditor task: review whether the governor direction, evidence, criteria, context routing, and automation signals remain aligned and safe. Do not mutate state or implementation. Return compact advisory evidence with status, concerns, recommendations, and follow-ups. The governor may record the result with stardock_auditor.",
 	].filter((line): line is string => line !== undefined).join("\n");
 }
 
 export function maybeCreateAutomaticAuditorRequest(state: LoopState): OutsideRequest | undefined {
 	const existing = openAuditorRequest(state);
 	if (existing) return existing;
-	const gate = evaluateAuditorGatePolicy(state);
+	const risk = evaluateGovernorRiskPolicy(state);
 	const auditor = evaluateAuditorPolicy(state);
-	const auditorFindings = auditor.findings.filter((finding) => ["criteria-risk-review", "final-report-gap-review", "automation-gate-review"].includes(finding.id));
-	const findings = gate.recommended ? gate.findings.filter((finding) => finding.recommendation === "gate_decision") : auditorFindings;
+	const auditorFindings = auditor.findings.filter((finding) => ["criteria-risk-review", "final-report-gap-review", "automation-risk-evidence"].includes(finding.id));
+	const findings = risk.recommended ? risk.findings.filter((finding) => finding.recommendation === "governor_risk_decision") : auditorFindings;
 	if (!findings.length) return undefined;
 	const trigger = auditorTriggerFromFindings(findings);
 	let id = `auditor-${state.iteration}`;
@@ -139,7 +139,7 @@ export function maybeCreateAutomaticAuditorRequest(state: LoopState): OutsideReq
 		kind: "auditor_review",
 		requestedByIteration: state.iteration,
 		trigger,
-		prompt: buildAuditorPrompt(state, trigger, gate.recommended ? gate.summary : auditor.summary, findings),
+		prompt: buildAuditorPrompt(state, trigger, risk.recommended ? risk.summary : auditor.summary, findings),
 	});
 }
 
@@ -226,7 +226,7 @@ export function buildOutsideRequestPayload(state: LoopState, request: OutsideReq
 	}
 
 	if (request.kind === "auditor_review") {
-		return `${common}\n\nAuditor task:\nReview the control loop, not implementation minutiae. Check objective alignment, criteria integrity, evidence sufficiency, context routing, governor memory, scope drift, and automation safety. Do not mutate Stardock state or code. Return a compact review that the parent can record with stardock_auditor:\n- status: passed | concerns | blocked\n- summary\n- concerns, if any\n- recommendations\n- requiredFollowups, if gated work should remain blocked`;
+		return `${common}\n\nAuditor task:\nReview the control loop, not implementation minutiae. Check objective alignment, criteria integrity, evidence sufficiency, context routing, governor memory, scope drift, and automation safety. Do not mutate Stardock state or code. Return compact advisory evidence that the governor may record with stardock_auditor:\n- status: passed | concerns | blocked\n- summary\n- concerns, if any\n- recommendations\n- requiredFollowups, if any`;
 	}
 
 	const researcherTasks: Record<OutsideRequestKind, string> = {
@@ -402,7 +402,7 @@ export function registerOutsideRequestTools(pi: ExtensionAPI, deps: OutsideReque
 		parameters: Type.Object({
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			requestId: Type.String({ description: "Outside request id to answer." }),
-			answer: Type.String({ description: "Answer text from governor, researcher, or manual review." }),
+			answer: Type.String({ description: "Answer text from a governor, researcher, auditor, or other evidence source." }),
 			verdict: Type.Optional(Type.Union([Type.Literal("continue"), Type.Literal("pivot"), Type.Literal("stop"), Type.Literal("measure"), Type.Literal("exploit_scaffold"), Type.Literal("ask_user")])),
 			rationale: Type.Optional(Type.String({ description: "Governor rationale. Required to store a structured decision." })),
 			requiredNextMove: Type.Optional(Type.String({ description: "Governor-required next move." })),

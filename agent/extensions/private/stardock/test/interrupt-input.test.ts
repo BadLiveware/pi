@@ -13,9 +13,9 @@ test("session escape input aborts a busy Stardock turn", async () => {
 		assert.ok(start);
 
 		await start.execute("tool-escape-start", { name: "Escape Loop", taskContent: "# Task\n", maxIterations: 3 }, undefined, undefined, ctx);
-		const sessionStart = handlers.get("session_start")?.[0];
-		assert.ok(sessionStart);
-		await sessionStart({}, ctx);
+		const sessionStarts = handlers.get("session_start") ?? [];
+		assert.ok(sessionStarts.length > 0);
+		for (const sessionStart of sessionStarts) await sessionStart({}, ctx);
 
 		setIdle(false);
 		const busyResult = dispatchTerminalInput("\x1b");

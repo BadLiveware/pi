@@ -25,7 +25,7 @@ export function gitStatusSnapshot(cwd: string): GitStatusSnapshot {
 				const filePath = parsePorcelainPath(line);
 				if (!filePath || filePath.startsWith(".stardock/")) return null;
 				const code = line.slice(0, 2).trim() || "modified";
-				return { path: filePath, summary: `Git status ${code} after worker run.`, reviewReason: "Mutable worker touched this path; parent review required before accepting." };
+				return { path: filePath, summary: `Git status ${code} after worker run.`, reviewReason: "Mutable worker touched this path; governor should inspect it before accepting the worker result." };
 			})
 			.filter((file): file is ChangedFileReport => file !== null);
 		return { ok: true, dirty: files.length > 0, files };

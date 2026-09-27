@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { test } from "node:test";
 import { makeHarness,statePath } from "./test-harness.ts";
 
-test("stardock_auditor builds payloads and records compact manual reviews", async () => {
+test("stardock_auditor builds payloads and records compact advisory reviews", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stardock-loop-test-"));
 	try {
 		const { tools, ctx } = makeHarness(cwd);

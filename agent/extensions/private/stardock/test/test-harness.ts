@@ -3,6 +3,7 @@ import stardockLoop from "../index.ts";
 
 export function makeHarness(cwd: string) {
 	const tools = new Map<string, any>();
+	const activeTools = new Set<string>();
 	const commands = new Map<string, any>();
 	const handlers = new Map<string, any[]>();
 	const messages: Array<{ customType: string; content: string; display: boolean; details?: unknown; options?: unknown }> = [];
@@ -31,6 +32,14 @@ export function makeHarness(cwd: string) {
 	const pi = {
 		registerTool(tool: any) {
 			tools.set(tool.name, tool);
+			activeTools.add(tool.name);
+		},
+		getActiveTools() {
+			return [...activeTools];
+		},
+		setActiveTools(names: string[]) {
+			activeTools.clear();
+			for (const name of names) activeTools.add(name);
 		},
 		registerCommand(name: string, options: any) {
 			commands.set(name, options);
@@ -96,7 +105,7 @@ export function makeHarness(cwd: string) {
 		}
 		return { consumed: false, data: current };
 	};
-	return { tools, commands, handlers, messages, userMessages, entries, notifications, statuses, widgets, eventHandlers, events, ctx, setIdle, dispatchTerminalInput, aborts };
+	return { pi, tools, activeTools, commands, handlers, messages, userMessages, entries, notifications, statuses, widgets, eventHandlers, events, ctx, setIdle, dispatchTerminalInput, aborts };
 }
 
 export function runDir(cwd: string, name: string, archived = false): string {

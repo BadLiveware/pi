@@ -3,6 +3,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { syncExecutionPlanSurface } from "../execution-plan/surface.ts";
+import { requestActiveStageRunCancellation } from "../stages/run-ready-registry.ts";
+import { formatExecutionPlanDetail } from "../execution-plan/widget.ts";
 import { answerOutsideRequest, createManualGovernorPayload, formatOutsideRequests, getOutsideRequestPayload } from "../outside-requests.ts";
 import { DEFAULT_TEMPLATE, type LoopState } from "../state/core.ts";
 import { defaultCriterionLedger, defaultGovernorState } from "../state/migration.ts";
@@ -79,7 +82,7 @@ Commands:
   /stardock outside answer <loop> <id> <answer>
                                       Record outside request answer
   /stardock nuke [--yes]                 Delete all .stardock data
-  /stardock-stop                         Stop active loop (idle only)
+  /stardock-stop [loop]                  Interrupt loop; active custody may remain pending
 
 Options:
   --items-per-iteration N  Suggest N items per turn (prompt hint)
@@ -89,7 +92,7 @@ Options:
                             Select loop mode
   --objective TEXT         Required for recursive mode
 
-To stop: press ESC to interrupt, then run /stardock-stop when idle
+To stop: run /stardock-stop at any time; retry after worker settlement if custody remains
 
 Examples:
   /stardock start my-feature
@@ -158,6 +161,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 			};
 			saveState(ctx, state);
 			runtime.ref.currentLoop = loopName;
+			syncExecutionPlanSurface(pi, state);
 			runtime.updateUI(ctx);
 			const content = tryRead(fullPath);
 			if (!content) {
@@ -200,6 +204,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 			state.iteration++;
 			saveState(ctx, state);
 			runtime.ref.currentLoop = loopName;
+			syncExecutionPlanSurface(pi, state);
 			runtime.updateUI(ctx);
 			ctx.ui.notify(`Resumed: ${loopName} (iteration ${state.iteration})`, "info");
 			const content = tryRead(path.resolve(ctx.cwd, state.taskFile));
@@ -217,7 +222,8 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 		view(rest, ctx) {
 			const args = parseLoopViewArgs(rest);
 			const state = selectLoopForView(ctx, runtime.ref.currentLoop, args.loopName, args.archived);
-			ctx.ui.notify(state ? formatRunOverview(ctx, state, args.archived) : args.loopName ? `Loop "${args.loopName}" not found.` : "No Stardock loops found.", state ? "info" : "warning");
+			const content = state?.executionPlan ? formatExecutionPlanDetail(state, runtime.executionActivity) : state ? formatRunOverview(ctx, state, args.archived) : args.loopName ? `Loop "${args.loopName}" not found.` : "No Stardock loops found.";
+			ctx.ui.notify(content, state ? "info" : "warning");
 		},
 		timeline(rest, ctx) {
 			const args = parseLoopViewArgs(rest);
@@ -348,32 +354,28 @@ export function registerCommands(pi: ExtensionAPI, runtime: StardockRuntime): vo
 	});
 
 	pi.registerCommand("stardock-stop", {
-		description: "Stop active Stardock loop (idle only)",
-		handler: async (_args, ctx) => {
+		description: "Interrupt the active or named loop; preserve worker custody until it is safe to release",
+		handler: async (args, ctx) => {
 			bindOwnershipContext(ctx, runtime.ref.sessionId);
-			if (!ctx.isIdle()) {
-				if (ctx.hasUI) ctx.ui.notify("Agent is busy. Press ESC to interrupt, then run /stardock-stop.", "warning");
-				return;
-			}
-			let state = runtime.ref.currentLoop ? loadState(ctx, runtime.ref.currentLoop) : null;
-			if (!state) {
+			// Always interrupt the current turn, but preserve durable custody if
+			// a worker or another session may still be using the stage.
+			if (!ctx.isIdle()) ctx.abort();
+			const selected = args.trim() || runtime.ref.pendingStopLoop || runtime.ref.currentLoop;
+			let state = selected ? loadState(ctx, selected) : null;
+			if (!selected && (!state || state.status !== "active")) {
 				const active = listLoops(ctx).find((l) => l.status === "active");
-				if (!active) {
-					if (ctx.hasUI) ctx.ui.notify("No active Stardock loop", "warning");
-					return;
-				}
-				state = active;
+				if (active) state = active;
+			}
+			if (!state) {
+				if (ctx.hasUI) ctx.ui.notify(selected ? `Loop "${selected}" not found` : "No Stardock loop found", "warning");
+				return;
 			}
 			if (state.status !== "active") {
 				if (ctx.hasUI) ctx.ui.notify(`Loop "${state.name}" is not active`, "warning");
 				return;
 			}
-			const blocked = mutationBlockReason(ctx, state.name);
-			if (blocked) {
-				if (ctx.hasUI) ctx.ui.notify(blocked, "warning");
-				return;
-			}
-			runtime.stopLoop(ctx, state, `Stopped Stardock loop: ${state.name} (iteration ${state.iteration})`);
+			const localRunCancellationRequested = requestActiveStageRunCancellation(runtime.ref.sessionId, state.name);
+			runtime.forceStopLoop(ctx, state, `Stopped Stardock loop: ${state.name} (iteration ${state.iteration})`, localRunCancellationRequested);
 		},
 	});
 }

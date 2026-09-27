@@ -13,6 +13,11 @@ test("stardock registers tools and commands", () => {
 		assert.ok(tools.has("stardock_done"));
 		assert.ok(tools.has("stardock_complete"));
 		assert.ok(tools.has("stardock_state"));
+		assert.ok(tools.has("stardock_plan"));
+		assert.ok(tools.has("stardock_run"));
+		assert.ok(tools.has("stardock_review"));
+		assert.ok(tools.has("stardock_integrate"));
+		assert.ok(tools.has("stardock_status"));
 		assert.ok(tools.has("stardock_ledger"));
 		assert.ok(tools.has("stardock_brief"));
 		assert.ok(tools.has("stardock_final_report"));
@@ -30,6 +35,7 @@ test("stardock registers tools and commands", () => {
 		assert.ok(tools.has("stardock_outside_answer"));
 		assert.ok(commands.has("stardock"));
 		assert.ok(commands.has("stardock-stop"));
+		assert.ok(commands.has("stardock-legacy"));
 		assert.ok((handlers.get("before_agent_start") ?? []).length > 0);
 		assert.ok((handlers.get("agent_end") ?? []).length > 0);
 	} finally {

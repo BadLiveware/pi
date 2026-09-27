@@ -207,7 +207,7 @@ test("stage lifecycle actions reject incomplete identity without mutating durabl
 	}
 });
 
-test("abandon requires nonblank rationale and approvalRef without mutating durable state", async () => {
+test("abandon requires rationale and a governor authorization reference without mutating durable state", async () => {
 	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-stage-abandon-tool-"));
 	try {
 		const harness = makeHarness(cwd);
@@ -223,7 +223,7 @@ test("abandon requires nonblank rationale and approvalRef without mutating durab
 		const before = fs.readFileSync(statePath(cwd, loopName));
 		const missing = await stage.execute("abandon-missing", { action: "abandon", loopName, graphId: graph.id, stageId: "stage", expectedGraphRevision: 1 }, undefined, undefined, harness.ctx);
 		assert.equal(missing.isError, true);
-		assert.match(missing.content[0].text, /rationale and approvalRef/);
+		assert.match(missing.content[0].text, /rationale and governor authorization reference/);
 		assert.deepEqual(fs.readFileSync(statePath(cwd, loopName)), before);
 		const blank = await stage.execute("abandon-blank", { action: "abandon", loopName, graphId: graph.id, stageId: "stage", expectedGraphRevision: 1, rationale: " ", approvalRef: "  " }, undefined, undefined, harness.ctx);
 		assert.equal(blank.isError, true);

@@ -36,11 +36,12 @@ export function validateLaneResult(
 	if (completion.branchRef !== `refs/heads/${lease.branchRef}`) violations.push(`Recorded lane branch mismatch: expected refs/heads/${lease.branchRef}, received ${completion.branchRef ?? "detached HEAD"}.`);
 	if (!completion.clean) violations.push("Lane worktree is dirty.");
 	if (!completion.baseIsAncestor) violations.push("Frozen contract base is not an ancestor of the lane head commit.");
-	if (completion.laneCommits.length === 0 || completion.headCommit === stageCommit) violations.push("Lane produced no commit after the frozen contract base.");
+	// Nodes may be evidence-only or use throw-away filesystem changes. An
+	// unchanged HEAD is a valid outcome for the governor to assess.
 	if (completion.laneCommits.length > 0 && completion.laneCommits.at(-1) !== completion.headCommit) violations.push("Ordered lane commits do not end at the recorded head commit.");
 	for (const filePath of pathsOutsideOwnership(ctx.cwd, completion.changedPaths, attempt.writes ?? [])) violations.push(`Changed path "${filePath}" is outside node write ownership.`);
 	if (validation.length !== (attempt.validationCommands ?? []).length || validation.some((record, index) => record.command !== attempt.validationCommands?.[index] || record.result !== "passed")) {
-		violations.push("One or more required validation commands did not pass exactly as durably recorded.");
+		violations.push("Validation warning: one or more declared commands did not pass exactly as durably recorded.");
 	}
 	return violations;
 }

@@ -358,7 +358,7 @@ export async function executeStageTool(
 			if (!params.graphId || !params.stageId || params.expectedGraphRevision === undefined) return textResult(`${params.action} requires exact graphId, stageId, and expectedGraphRevision.`, { ok: false }, true);
 			let result;
 			if (params.action === "abandon") {
-				if (!params.rationale?.trim() || !params.approvalRef?.trim()) return textResult("abandon requires nonblank rationale and approvalRef.", { ok: false }, true);
+				if (!params.rationale?.trim() || !params.approvalRef?.trim()) return textResult("abandon requires a nonblank rationale and governor authorization reference in approvalRef.", { ok: false }, true);
 				result = await abandonStage(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision, rationale: params.rationale, approvalRef: params.approvalRef }, signal, stageActionDependencies.lifecycleAdapter);
 			} else result = await releaseStage(ctx, { loopName, graphId: params.graphId, stageId: params.stageId, expectedGraphRevision: params.expectedGraphRevision }, signal, stageActionDependencies.lifecycleAdapter);
 			runtime.updateUI(ctx);
@@ -375,12 +375,12 @@ export function registerStageTool(pi: ExtensionAPI, runtime: StardockRuntime): v
 		name: "stardock_stage",
 		label: "Stardock Execution Stage",
 		description: "Run the parent-owned execution-stage lifecycle: isolated lanes, deterministic no-ff integration planning, durable prepare/finalize, reconciliation, immutable retry, abandonment, and safe lease release.",
-		promptSnippet: "Run isolated lanes, review exact WorkerRun ids, then plan/prepare/finalize parent-controlled integration and release clean terminal leases.",
+		promptSnippet: "Run isolated lanes, record governor decisions for exact WorkerRun ids, then plan/prepare/finalize parent-controlled integration and release clean terminal leases.",
 		promptGuidelines: [
 			"Use upsert with a canonical graph and brief digests; creation omits expectedGraphRevision and every update must compare-and-swap the current revision.",
 			"Use runReady only for validated ready implementation nodes. It owns all lifecycle state while children work only inside distinct Treehouse leases.",
-			"Review every stage WorkerRun with an explicit runId. integrationPlan returns argument arrays only; execute them as parent, then prepare, fast-forward, recordIntegrated, and release.",
-			"Use reconcile read-only first. Takeover requires confirmed owner death plus rationale, approval, and classification. Retry creates a new attempt and never overwrites prior refs.",
+			"Accept or dismiss every stage WorkerRun by explicit runId as a governor decision. integrationPlan returns argument arrays only; execute them from the parent checkout, then prepare, fast-forward, recordIntegrated, and release.",
+			"Use reconcile read-only first. Takeover requires confirmed owner death plus rationale, a governor authorization reference, and classification. Retry creates a new attempt and never overwrites prior refs.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["upsert", "list", "runReady", "acquire", "heartbeat", "reconcile", "integrationPlan", "prepareIntegration", "recordIntegrated", "retry", "abandon", "release"] as const),
@@ -392,7 +392,7 @@ export function registerStageTool(pi: ExtensionAPI, runtime: StardockRuntime): v
 			graph: Type.Optional(Type.Any()),
 			takeOwnership: Type.Optional(Type.Boolean()),
 			rationale: Type.Optional(Type.String()),
-			approvalRef: Type.Optional(Type.String()),
+			approvalRef: Type.Optional(Type.String({ description: "Governor authorization reference for takeover or abandonment." })),
 			classification: Type.Optional(Type.String()),
 			limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_LIMIT })),
 			offset: Type.Optional(Type.Integer({ minimum: 0 })),

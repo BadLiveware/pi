@@ -104,10 +104,8 @@ test("non-owner tools reject mutations while read-only state remains available a
 		assert.equal(inspectStageOwnership(ownerHarness.ctx, ownerHarness.name).stateMatchesOwner, true);
 
 		const command = sibling.commands.get("stardock");
-		const legacyStop = sibling.commands.get("stardock-stop");
 		await command.handler(`cancel ${ownerHarness.name}`, sibling.ctx);
 		await command.handler("nuke --yes", sibling.ctx);
-		await legacyStop.handler("", sibling.ctx);
 		assert.equal(fs.existsSync(statePath(cwd, ownerHarness.name)), true);
 		assert.ok(sibling.notifications.some((message) => message.includes("rejected")));
 

@@ -9,6 +9,7 @@ import * as path from "node:path";
 import type { LoopState } from "./core.ts";
 import { digestExecutionNodeContract, digestExecutionStageContract, type ExecutionAttempt, type ExecutionStageOwnership, type LeaseDisposition } from "../stages/contracts.ts";
 import { migrateState } from "./migration.ts";
+import { assertSettledRecoveryEvidence, type SettledRecoveryAuthority } from "./recovery-ownership.ts";
 import { archiveDir, ensureDir, existingStatePath, runsDir, stageOwnerPath, stardockDir, statePath, tryRead } from "./paths.ts";
 import {
 	acquireMutationMutex,
@@ -32,6 +33,7 @@ export interface StateMutationOptions {
 	mutexWaitMs?: number;
 	afterCommit?: (state: LoopState) => void;
 	releaseOwnership?: ExecutionStageOwnership;
+	recoverSettledOwnership?: SettledRecoveryAuthority;
 }
 
 export function readStateFile(filePath: string): LoopState | null {
@@ -88,6 +90,13 @@ function assertAttemptPreserved(current: ExecutionAttempt, candidate: ExecutionA
 }
 
 function assertPriorAttemptsPreserved(current: LoopState, candidate: LoopState): void {
+	if (JSON.stringify(current.recoveryEventsUnparsed) !== JSON.stringify(candidate.recoveryEventsUnparsed)) {
+		throw new OwnershipProtocolError("recovery_history_immutable", "Unparsed recovery evidence must be preserved for explicit repair.");
+	}
+	const recoveryEvents = current.recoveryEvents ?? [];
+	if (JSON.stringify(recoveryEvents) !== JSON.stringify((candidate.recoveryEvents ?? []).slice(0, recoveryEvents.length))) {
+		throw new OwnershipProtocolError("recovery_history_immutable", "Recovery events are append-only.");
+	}
 	const currentGraph = current.executionGraph;
 	if (!currentGraph) return;
 	const candidateGraph = candidate.executionGraph;
@@ -182,7 +191,10 @@ function assertPriorOwnershipCurrent(state: LoopState, expected: ExecutionStageO
 function mutationIdentity(ctx: ExtensionContext, state: LoopState, options: StateMutationOptions): { record: StateMutationRecord; authorizedOwner: boolean } {
 	const owner = readOwnerRecord(ctx, state.name);
 	if (owner) {
-		if (owner.status === "active") assertActiveOwnerEvidence(ctx, state, owner);
+		if (owner.status === "active") {
+			if (options.recoverSettledOwnership) assertSettledRecoveryEvidence(state, owner, options.releaseOwnership, options.recoverSettledOwnership, options.expectedGraphRevision);
+			else assertActiveOwnerEvidence(ctx, state, owner);
+		}
 		if (owner.status === "acquiring") {
 			const entry = ownershipTokenForContext(ctx, state.name);
 			if (!entry || entry.tokenDigest !== owner.tokenDigest || entry.sessionId !== owner.sessionId || digestOwnershipToken(entry.token) !== owner.tokenDigest) {
@@ -241,7 +253,10 @@ function assertMutationIdentityCurrent(
 		throw new OwnershipProtocolError("owner_acquiring", `Stage ownership for graph "${owner.graphId}" stage "${owner.stageId}" is still acquiring. Reconcile before mutating.`);
 	}
 	if (owner.status === "acquiring") assertPriorOwnershipCurrent(state, options.priorOwnershipEvidence);
-	if (owner.status === "active") assertActiveOwnerEvidence(ctx, state, owner);
+	if (owner.status === "active") {
+		if (options.recoverSettledOwnership) assertSettledRecoveryEvidence(state, owner, options.releaseOwnership, options.recoverSettledOwnership, options.expectedGraphRevision);
+		else assertActiveOwnerEvidence(ctx, state, owner);
+	}
 }
 
 function compareGraphRevision(current: LoopState, expected: number | undefined): void {
@@ -407,7 +422,7 @@ export function saveState(ctx: ExtensionContext, state: LoopState, archived = fa
 }
 
 export function ownerMutationGuidance(graphId: string, stageId: string, sessionId: string): string {
-	return `Mutation rejected: graph "${graphId}" stage "${stageId}" is owned by session "${sessionId}". Read-only state, policy, and status remain available. Use stardock_stage reconcile for bounded evidence; takeover requires confirmed owner death plus explicit rationale and approval.`;
+	return `Mutation rejected: graph "${graphId}" stage "${stageId}" is owned by session "${sessionId}". Read-only state, policy, and status remain available. Use stardock_stage reconcile for bounded evidence; takeover requires confirmed owner death, explicit rationale, and a governor authorization reference.`;
 }
 
 function ownershipEvidenceFailureGuidance(error: unknown, action: "mutation" | "destruction"): string {

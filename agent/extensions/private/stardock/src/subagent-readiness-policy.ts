@@ -4,18 +4,18 @@ import { formatCriterionCounts } from "./ledger.ts";
 import { compactText, type Criterion, type LoopState } from "./state/core.ts";
 import type { PolicyFinding, PolicySeverity } from "./policy.ts";
 
-export interface ParentReviewPolicyResult {
+export interface GovernorDecisionPolicyResult {
 	loopName: string;
 	recommended: boolean;
-	status: "no_parent_review_needed" | "parent_review_recommended" | "parent_review_required";
+	status: "no_governor_decision_needed" | "governor_decision_recommended" | "governor_decision_required";
 	summary: string;
 	findings: PolicyFinding[];
 }
 
-export interface AuditorGatePolicyResult {
+export interface GovernorRiskPolicyResult {
 	loopName: string;
 	recommended: boolean;
-	status: "no_gate_needed" | "gate_review_recommended" | "gate_review_required";
+	status: "no_governor_risk_decision_needed" | "governor_risk_decision_recommended" | "governor_risk_decision_required";
 	summary: string;
 	findings: PolicyFinding[];
 }
@@ -67,44 +67,44 @@ function statusFrom(findings: PolicyFinding[], soft: string, hard: string, none:
 	return none;
 }
 
-export function evaluateParentReviewPolicy(state: LoopState): ParentReviewPolicyResult {
+export function evaluateGovernorDecisionPolicy(state: LoopState): GovernorDecisionPolicyResult {
 	const findings: PolicyFinding[] = [];
 	const riskyReports = state.workerReports.filter((report) => report.status === "needs_review" || report.risks.length > 0 || report.openQuestions.length > 0 || report.reviewHints.length > 0 || report.validation.some((record) => record.result !== "passed"));
 	const changedReports = state.workerReports.filter((report) => report.changedFiles.length > 0);
 	const implementerHandoffs = state.advisoryHandoffs.filter((handoff) => handoff.role === "implementer" && (handoff.status === "answered" || handoff.status === "requested"));
 	const openImplementerRuns = state.workerRuns.filter((run) => run.role === "implementer" && (run.status === "running" || run.status === "needs_review"));
-	if (openImplementerRuns.length > 0) findings.push(finding({ id: "implementer-worker-run-review", severity: "blocker", recommendation: "parent_review", rationale: `Implementer WorkerRun(s) ${openImplementerRuns.map((run) => `${run.id}:${run.status}`).join(", ")} require parent/governor review before another mutable worker or completion.`, suggestedTool: "stardock_brief_worker" }));
-	if (riskyReports.length > 0) findings.push(finding({ id: "risky-worker-parent-review", severity: riskyReports.some((report) => report.validation.some((record) => record.result === "failed")) ? "blocker" : "warning", recommendation: "parent_review", rationale: "WorkerReports with risks, open questions, review hints, or non-passing validation require parent/governor review before relying on the worker output.", workerReportIds: riskyReports.map((report) => report.id), artifactIds: riskyReports.flatMap((report) => report.artifactIds), suggestedTool: "stardock_worker_report" }));
-	if (changedReports.length > 0) findings.push(finding({ id: "changed-file-parent-review", severity: "recommend" as PolicySeverity, recommendation: "parent_review", rationale: "WorkerReports that name changed files should drive selective file inspection for risky, ambiguous, failed-validation, public-contract, or explicitly hinted areas rather than a blind reread of every file.", workerReportIds: changedReports.map((report) => report.id) }));
-	if (implementerHandoffs.length > 0) findings.push(finding({ id: "implementer-handoff-parent-review", severity: "warning", recommendation: "parent_review", rationale: "Implementer handoffs cross the edit-ownership boundary; parent/governor review should inspect the returned evidence and any touched files before accepting the result.", advisoryHandoffIds: implementerHandoffs.map((handoff) => handoff.id), suggestedTool: "stardock_handoff" }));
-	if (findings.length === 0) findings.push(finding({ id: "no-parent-review-trigger", severity: "info", recommendation: "ready", rationale: "No worker or handoff evidence currently requires selective parent review. This does not replace judgment for high-risk changes." }));
-	const recommended = findings.some((item) => item.recommendation === "parent_review");
-	const status = statusFrom(findings, "parent_review_recommended", "parent_review_required", "no_parent_review_needed") as ParentReviewPolicyResult["status"];
-	return { loopName: state.name, recommended, status, summary: recommended ? "Parent review policy recommends selective inspection before relying on worker or handoff output." : "Parent review policy found no obvious selective-review trigger.", findings };
+	if (openImplementerRuns.length > 0) findings.push(finding({ id: "implementer-worker-run-decision", severity: "warning", recommendation: "governor_decision", rationale: `Implementer WorkerRun(s) ${openImplementerRuns.map((run) => `${run.id}:${run.status}`).join(", ")} await a governor accept or dismiss decision before another mutable worker starts; they do not veto loop completion.`, suggestedTool: "stardock_worker" }));
+	if (riskyReports.length > 0) findings.push(finding({ id: "risky-worker-governor-decision", severity: riskyReports.some((report) => report.validation.some((record) => record.result === "failed")) ? "warning" : "recommend", recommendation: "governor_decision", rationale: "WorkerReports with risks, open questions, review hints, or non-passing validation are advisory evidence for the governor to inspect before relying on the worker output.", workerReportIds: riskyReports.map((report) => report.id), artifactIds: riskyReports.flatMap((report) => report.artifactIds), suggestedTool: "stardock_worker_report" }));
+	if (changedReports.length > 0) findings.push(finding({ id: "changed-file-governor-inspection", severity: "recommend" as PolicySeverity, recommendation: "governor_decision", rationale: "WorkerReports that name changed files should drive selective governor inspection for risky, ambiguous, failed-validation, public-contract, or explicitly hinted areas rather than a blind reread of every file.", workerReportIds: changedReports.map((report) => report.id) }));
+	if (implementerHandoffs.length > 0) findings.push(finding({ id: "implementer-handoff-governor-decision", severity: "warning", recommendation: "governor_decision", rationale: "Implementer handoffs cross the edit-ownership boundary; the governor should inspect returned evidence and touched files before accepting or dismissing the result.", advisoryHandoffIds: implementerHandoffs.map((handoff) => handoff.id), suggestedTool: "stardock_handoff" }));
+	if (findings.length === 0) findings.push(finding({ id: "no-governor-decision-trigger", severity: "info", recommendation: "ready", rationale: "No worker or handoff evidence currently calls for a selective governor decision. This does not replace judgment for high-risk changes." }));
+	const recommended = findings.some((item) => item.recommendation === "governor_decision");
+	const status = statusFrom(findings, "governor_decision_recommended", "governor_decision_required", "no_governor_decision_needed") as GovernorDecisionPolicyResult["status"];
+	return { loopName: state.name, recommended, status, summary: recommended ? "Governor decision policy recommends selective evidence inspection before relying on worker or handoff output." : "Governor decision policy found no obvious decision trigger.", findings };
 }
 
-export function evaluateAuditorGatePolicy(state: LoopState): AuditorGatePolicyResult {
+export function evaluateGovernorRiskPolicy(state: LoopState): GovernorRiskPolicyResult {
 	const findings: PolicyFinding[] = [];
 	const blockingAudits = state.auditorReviews.filter((review) => review.status === "blocked" || review.requiredFollowups.length > 0);
 	const implementerHandoffs = state.advisoryHandoffs.filter((handoff) => handoff.role === "implementer" && (handoff.status === "answered" || handoff.status === "requested"));
 	const openBreakouts = state.breakoutPackages.filter((breakout) => breakout.status === "open" || breakout.status === "draft");
 	const unresolvedCriteria = criteriaByStatus(state, new Set(["failed", "blocked", "skipped"]));
-	if (blockingAudits.length > 0) findings.push(finding({ id: "auditor-blocker-followup", severity: "blocker", recommendation: "gate_decision", rationale: "Blocking auditor reviews or required follow-ups must be complied with, explicitly rejected with rationale, or escalated to the user before gated moves continue.", auditorReviewIds: blockingAudits.map((review) => review.id), suggestedTool: "stardock_auditor" }));
-	if (implementerHandoffs.length > 0) findings.push(finding({ id: "editing-subagent-gate", severity: "warning", recommendation: "gate_decision", rationale: "Implementer handoffs are an automation gate; require auditor review or explicit user approval before treating provider-produced edits as accepted.", advisoryHandoffIds: implementerHandoffs.map((handoff) => handoff.id), suggestedTool: "stardock_auditor" }));
-	if (openBreakouts.length > 0 || unresolvedCriteria.length > 0) findings.push(finding({ id: "unresolved-completion-gate", severity: "warning", recommendation: "gate_decision", rationale: "Open breakout packages or unresolved criteria require an explicit decision before relaxing scope, applying automation, or completing with gaps.", breakoutPackageIds: openBreakouts.map((breakout) => breakout.id), criterionIds: unresolvedCriteria.map((criterion) => criterion.id), suggestedTool: "stardock_breakout" }));
-	if (state.modeState.kind === "evolve") findings.push(finding({ id: "evolve-execution-gate", severity: "warning", recommendation: "gate_decision", rationale: "Evolve execution requires evaluator bounds, candidate isolation, artifact handling, and auditor/user approval before running candidate search or applying patches.", suggestedTool: "stardock_auditor" }));
-	if (findings.length === 0) findings.push(finding({ id: "no-auditor-gate-trigger", severity: "info", recommendation: "ready", rationale: "No obvious auditor gate is currently active. Direct provider execution still requires a separate approved adapter design." }));
-	const recommended = findings.some((item) => item.recommendation === "gate_decision");
-	const status = statusFrom(findings, "gate_review_recommended", "gate_review_required", "no_gate_needed") as AuditorGatePolicyResult["status"];
-	return { loopName: state.name, recommended, status, summary: recommended ? "Auditor gate policy requires an explicit decision before high-risk automation or completion moves." : "Auditor gate policy found no active gate trigger.", findings };
+	if (blockingAudits.length > 0) findings.push(finding({ id: "auditor-concern-disposition", severity: "warning", recommendation: "governor_risk_decision", rationale: "Auditor concerns and requested follow-ups are advisory evidence. The governor may comply, reject them with rationale, defer them, or complete with the warning recorded.", auditorReviewIds: blockingAudits.map((review) => review.id), suggestedTool: "stardock_auditor" }));
+	if (implementerHandoffs.length > 0) findings.push(finding({ id: "editing-subagent-risk", severity: "warning", recommendation: "governor_risk_decision", rationale: "Implementer handoffs are advisory automation evidence; the governor explicitly accepts, dismisses, or defers them before treating provider-produced edits as accepted.", advisoryHandoffIds: implementerHandoffs.map((handoff) => handoff.id), suggestedTool: "stardock_handoff" }));
+	if (openBreakouts.length > 0 || unresolvedCriteria.length > 0) findings.push(finding({ id: "unresolved-completion-risk", severity: "warning", recommendation: "governor_risk_decision", rationale: "Open breakout packages or unresolved criteria call for an explicit governor decision before relaxing scope, applying automation, or completing with gaps.", breakoutPackageIds: openBreakouts.map((breakout) => breakout.id), criterionIds: unresolvedCriteria.map((criterion) => criterion.id), suggestedTool: "stardock_breakout" }));
+	if (state.modeState.kind === "evolve") findings.push(finding({ id: "evolve-execution-risk", severity: "warning", recommendation: "governor_risk_decision", rationale: "Evolve execution requires evaluator bounds, candidate isolation, artifact handling, and an explicit governor decision before running candidate search or applying patches.", suggestedTool: "stardock_governor_state" }));
+	if (findings.length === 0) findings.push(finding({ id: "no-governor-risk-trigger", severity: "info", recommendation: "ready", rationale: "No obvious governor risk decision is currently pending. Direct provider execution still requires a separately designed adapter." }));
+	const recommended = findings.some((item) => item.recommendation === "governor_risk_decision");
+	const status = statusFrom(findings, "governor_risk_decision_recommended", "governor_risk_decision_required", "no_governor_risk_decision_needed") as GovernorRiskPolicyResult["status"];
+	return { loopName: state.name, recommended, status, summary: recommended ? "Risk policy surfaces advisory evidence for an explicit governor decision." : "Risk policy found no active governor-decision trigger.", findings };
 }
 
-export function formatParentReviewPolicy(state: LoopState): string {
-	const result = evaluateParentReviewPolicy(state);
-	return [`Parent review policy for ${state.name}`, `Recommended: ${result.recommended ? "yes" : "no"}`, `Status: ${result.status}`, ...formatPolicyHeader(state), "", result.summary, "", "Findings", ...result.findings.flatMap(formatFinding), "", "Policy note: recommendations are advisory. Stardock does not inspect files, accept worker output, call models, spawn agents, run providers/processes, or apply edits from this policy surface."].join("\n");
+export function formatGovernorDecisionPolicy(state: LoopState): string {
+	const result = evaluateGovernorDecisionPolicy(state);
+	return [`Governor decision policy for ${state.name}`, `Recommended: ${result.recommended ? "yes" : "no"}`, `Status: ${result.status}`, ...formatPolicyHeader(state), "", result.summary, "", "Findings", ...result.findings.flatMap(formatFinding), "", "Policy note: findings are advisory evidence for the governor. Stardock does not inspect files, accept worker output, call models, spawn agents, run providers/processes, or apply edits from this policy surface."].join("\n");
 }
 
-export function formatAuditorGatePolicy(state: LoopState): string {
-	const result = evaluateAuditorGatePolicy(state);
-	return [`Auditor gate policy for ${state.name}`, `Recommended: ${result.recommended ? "yes" : "no"}`, `Status: ${result.status}`, ...formatPolicyHeader(state), "", result.summary, "", "Findings", ...result.findings.flatMap(formatFinding), "", "Policy note: recommendations are advisory. Stardock does not enforce gates, call models, spawn agents, run providers/processes, or apply edits from this policy surface."].join("\n");
+export function formatGovernorRiskPolicy(state: LoopState): string {
+	const result = evaluateGovernorRiskPolicy(state);
+	return [`Governor risk policy for ${state.name}`, `Recommended: ${result.recommended ? "yes" : "no"}`, `Status: ${result.status}`, ...formatPolicyHeader(state), "", result.summary, "", "Findings", ...result.findings.flatMap(formatFinding), "", "Policy note: findings are advisory. Stardock does not call models, spawn agents, run providers/processes, apply edits, or override the governor from this policy surface."].join("\n");
 }

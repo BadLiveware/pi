@@ -11,7 +11,7 @@ import { currentBrief, formatBriefOverview } from "../briefs.ts";
 import { formatFinalReportOverview } from "../final-reports.ts";
 import { formatCriterionCounts, formatLedgerOverview } from "../ledger.ts";
 import { latestGovernorDecision } from "../outside-requests.ts";
-import { evaluateAuditorGatePolicy, evaluateAuditorPolicy, evaluateBreakoutPolicy, evaluateCompletionPolicy, evaluateParentReviewPolicy, formatAuditorGatePolicy, formatAuditorPolicy, formatBreakoutPolicy, formatCompletionPolicy, formatParentReviewPolicy } from "../policy.ts";
+import { evaluateAuditorPolicy, evaluateBreakoutPolicy, evaluateCompletionPolicy, evaluateGovernorDecisionPolicy, evaluateGovernorRiskPolicy, formatAuditorPolicy, formatBreakoutPolicy, formatCompletionPolicy, formatGovernorDecisionPolicy, formatGovernorRiskPolicy } from "../policy.ts";
 import { formatWorkerReportOverview } from "../worker-reports.ts";
 import { formatWorkerRunOverview } from "../worker-runs.ts";
 import { existingStatePath } from "../state/paths.ts";
@@ -110,8 +110,8 @@ function runPolicyFollowup(ctx: ExtensionContext, currentLoop: string | null, ar
 	const action = stringArg(args, "action") ?? "completion";
 	if (action === "auditor") return { name: "stardock_policy", args, content: formatAuditorPolicy(state), details: { loopName, policy: evaluateAuditorPolicy(state) } };
 	if (action === "breakout") return { name: "stardock_policy", args, content: formatBreakoutPolicy(state), details: { loopName, policy: evaluateBreakoutPolicy(state) } };
-	if (action === "parentReview") return { name: "stardock_policy", args, content: formatParentReviewPolicy(state), details: { loopName, policy: evaluateParentReviewPolicy(state) } };
-	if (action === "auditorGate") return { name: "stardock_policy", args, content: formatAuditorGatePolicy(state), details: { loopName, policy: evaluateAuditorGatePolicy(state) } };
+	if (action === "governorDecision") return { name: "stardock_policy", args, content: formatGovernorDecisionPolicy(state), details: { loopName, policy: evaluateGovernorDecisionPolicy(state) } };
+	if (action === "governorRisk") return { name: "stardock_policy", args, content: formatGovernorRiskPolicy(state), details: { loopName, policy: evaluateGovernorRiskPolicy(state) } };
 	return { name: "stardock_policy", args, content: formatCompletionPolicy(state), details: { loopName, policy: evaluateCompletionPolicy(state) } };
 }
 

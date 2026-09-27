@@ -15,7 +15,7 @@ const SATISFIED_NODE_STATUSES = new Set<ExecutionNodeStatus>(["succeeded", "inte
 const ACTIVE_NODE_STATUSES = new Set<ExecutionNodeStatus>(["leased", "running"]);
 const RECONCILE_NODE_STATUSES = new Set<ExecutionNodeStatus>(["detached", "reconciling"]);
 const TERMINAL_NODE_STATUSES = new Set<ExecutionNodeStatus>(["succeeded", "integrated", "abandoned"]);
-const TERMINAL_STAGE_STATUSES = new Set<ExecutionStage["status"]>(["integrated", "abandoned"]);
+const TERMINAL_STAGE_STATUSES = new Set<ExecutionStage["status"]>(["settled", "integrated", "abandoned"]);
 
 export interface ExecutionGraphValidation {
 	ok: boolean;
@@ -194,7 +194,6 @@ function validateNodeIdentity(graph: ExecutionGraph, errors: string[]): void {
 		if (node.kind === "implementation") {
 			if (!node.briefId?.trim()) addError(errors, `Implementation node "${node.id}" must name a briefId.`);
 			if (!node.briefDigest || !DIGEST_PATTERN.test(node.briefDigest)) addError(errors, `Implementation node "${node.id}" must record a canonical 64-character briefDigest.`);
-			if (node.validationCommands.length === 0) addError(errors, `Implementation node "${node.id}" must declare at least one validation command.`);
 		}
 	}
 }

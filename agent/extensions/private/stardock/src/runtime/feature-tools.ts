@@ -8,6 +8,10 @@ import { registerAuditorTool } from "../auditor-reviews.ts";
 import { registerBreakoutTool } from "../breakout-packages.ts";
 import { registerBriefTool } from "../briefs.ts";
 import { registerBriefWorkerRunTool } from "../brief-worker-runs.ts";
+import { registerExecutionPlanIntegrateTool } from "../execution-plan/integrate-tool.ts";
+import { registerExecutionPlanReviewTool } from "../execution-plan/review-tool.ts";
+import { registerExecutionPlanRunTool } from "../execution-plan/run-tool.ts";
+import { registerExecutionPlanTools } from "../execution-plan/tools.ts";
 import { registerFinalReportTool } from "../final-reports.ts";
 import { registerGovernorStateTool } from "../governor-state.ts";
 import { formatCriterionCounts, registerLedgerTool } from "../ledger.ts";
@@ -19,6 +23,10 @@ import { registerStageTool } from "../stages/tool.ts";
 import type { StardockRuntime } from "./types.ts";
 
 export function registerFeatureTools(pi: ExtensionAPI, runtime: StardockRuntime): void {
+	registerExecutionPlanTools(pi, runtime);
+	registerExecutionPlanRunTool(pi, runtime);
+	registerExecutionPlanReviewTool(pi, runtime);
+	registerExecutionPlanIntegrateTool(pi, runtime);
 	registerBriefTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI, optionalLoopDetails: runtime.optionalLoopDetails });
 	registerBriefWorkerRunTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });
 	registerStardockWorkerTool(pi, { getCurrentLoop: () => runtime.ref.currentLoop, updateUI: runtime.updateUI });

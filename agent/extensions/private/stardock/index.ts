@@ -5,12 +5,14 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
+import { registerExecutionPlanSurface } from "./src/execution-plan/surface.ts";
+import { registerRecoveryTool } from "./src/recovery/tool.ts";
 import { registerCommands } from "./src/runtime/commands.ts";
 import { registerCoreTools } from "./src/runtime/core-tools.ts";
 import { registerFeatureTools } from "./src/runtime/feature-tools.ts";
 import { runFollowupTool, type FollowupToolRequest } from "./src/runtime/followups.ts";
 import { registerLifecycleHooks } from "./src/runtime/hooks.ts";
-import { completeLoop, type LoopRuntimeRef, pauseLoop, stopLoop } from "./src/runtime/lifecycle.ts";
+import { completeLoop, forceStopLoop, type LoopRuntimeRef, pauseLoop, stopLoop } from "./src/runtime/lifecycle.ts";
 import { ownershipGuardedApi } from "./src/runtime/ownership-guards.ts";
 import { buildPrompt } from "./src/runtime/prompts.ts";
 import type { StardockRuntime } from "./src/runtime/types.ts";
@@ -27,13 +29,14 @@ export default function (pi: ExtensionAPI) {
 
 	const runtime: StardockRuntime = {
 		ref,
+		executionActivity: new Map(),
 		updateUI(ctx: ExtensionContext): void {
 			if (ref.currentLoop) {
 				// Transition notifications are derived from current state only and never mutate loop state.
 				const state = loadState(ctx, ref.currentLoop);
 				if (state) notifyWorkflowTransition(ctx, state, workflowNotifications);
 			}
-			updateStardockUI(ctx, ref.currentLoop);
+			updateStardockUI(ctx, ref.currentLoop, runtime.executionActivity);
 		},
 		buildPrompt,
 		optionalLoopDetails(ctx: ExtensionContext, state: LoopState, options: { includeState?: boolean; includeOverview?: boolean; includePromptPreview?: boolean; followupTool?: FollowupToolRequest }): Record<string, unknown> {
@@ -49,11 +52,14 @@ export default function (pi: ExtensionAPI) {
 		pauseLoop(ctx: ExtensionContext, state: LoopState, message?: string): void {
 			pauseLoop(ctx, ref, runtime.updateUI, state, message);
 		},
-		completeLoop(ctx: ExtensionContext, state: LoopState, banner: string, activeBriefLifecycle?: BriefLifecycleAction): void {
-			completeLoop(pi, ctx, ref, runtime.updateUI, state, banner, activeBriefLifecycle);
+		completeLoop(ctx: ExtensionContext, state: LoopState, banner: string, activeBriefLifecycle?: BriefLifecycleAction, allowRetainedOwnership?: boolean): void {
+			completeLoop(pi, ctx, ref, runtime.updateUI, state, banner, activeBriefLifecycle, allowRetainedOwnership);
 		},
 		stopLoop(ctx: ExtensionContext, state: LoopState, message?: string): void {
 			stopLoop(ctx, ref, runtime.updateUI, state, message);
+		},
+		forceStopLoop(ctx: ExtensionContext, state: LoopState, message?: string, localRunCancellationRequested?: boolean): void {
+			forceStopLoop(ctx, ref, runtime.updateUI, state, message, localRunCancellationRequested);
 		},
 	};
 
@@ -62,4 +68,6 @@ export default function (pi: ExtensionAPI) {
 	registerCoreTools(guardedPi, runtime);
 	registerFeatureTools(guardedPi, runtime);
 	registerLifecycleHooks(pi, runtime);
+	registerRecoveryTool(pi, runtime);
+	registerExecutionPlanSurface(pi, runtime);
 }

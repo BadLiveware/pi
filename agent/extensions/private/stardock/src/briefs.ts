@@ -237,8 +237,8 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 		"",
 		"Provider-neutral contract:",
 		isImplementer
-			? "Run this as a parent/governor-approved mutable implementer task. Edit only within the brief scope, do not mutate Stardock state, do not spawn hidden agents, and do not declare loop completion."
-			: "Run this as a parent/orchestrator-invoked advisory task. Do not let Stardock or the worker spawn hidden agents, mutate Stardock state, apply patches, or edit files unless the parent separately approves an edit policy.",
+			? "Run this as a governor-assigned job with permission to edit only when the task requires durable changes. Stay within the brief scope, do not mutate Stardock state, do not spawn hidden agents, and do not declare loop completion."
+			: "Run this as a governor-invoked advisory task. Do not let Stardock or the worker spawn hidden agents, mutate Stardock state, apply patches, or edit files unless the governor's job contract explicitly permits edits.",
 	];
 	const criteria = selectedCriteria(state, brief);
 	if (brief.criterionIds.length) {
@@ -265,7 +265,7 @@ export function buildBriefWorkerPayload(state: LoopState, input: { briefId?: str
 	];
 	for (const [title, items] of sections) if (items.length) lines.push("", title, ...compactList(items).map((item) => `- ${item}`));
 	lines.push("", "Requested output", compactText(input.requestedOutput?.trim() || brief.outputContract || "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.", 500) ?? "Return a compact WorkerReport with evidence, risks, review hints, and suggested next move.");
-	lines.push("", "Parent recording options:", "- Parent may use stardock_worker_report record for worker-style results", "- Parent may use stardock_handoff record for advisory handoff results", `- ${WORKER_EVIDENCE_PROMOTION_NOTE}`, isImplementer ? "The parent/governor must review and accept or dismiss the implementer WorkerRun before another mutable worker or completion." : "The worker should not mutate Stardock state unless the parent separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when parent inspection is warranted. Advisory explorer/test_runner/reviewer/auditor output does not satisfy implementation delegation for non-trivial code edits; the parent should run an implementer worker or record a direct-edit exception before editing.");
+	lines.push("", "Governor recording options:", "- The governor may use stardock_worker_report record for worker-style results", "- The governor may use stardock_handoff record for advisory handoff results", `- ${WORKER_EVIDENCE_PROMOTION_NOTE}`, isImplementer ? "The governor must accept or dismiss the implementer WorkerRun before another mutable worker starts; an undecided run remains advisory and does not veto loop completion." : "The worker should not mutate Stardock state unless the governor separately instructs it to. Include changed files only if you actually inspected or changed them; include review hints when governor inspection is warranted. Advisory explorer/test_runner/reviewer/auditor output does not satisfy implementation delegation for non-trivial code edits; the governor should run an implementer worker or record a direct-edit exception before editing.");
 	return { ok: true, payload: lines.join("\n"), brief };
 }
 
@@ -295,7 +295,7 @@ export function appendRecordedWorkerContextSection(parts: string[], state: LoopS
 		if (report.reviewHints.length) parts.push(`  Review hints: ${compactList(report.reviewHints, 3, 100).join("; ")}`);
 		if (report.suggestedNextMove) parts.push(`  Suggested next move: ${compactText(report.suggestedNextMove, 140)}`);
 	}
-	parts.push("Use stardock_policy({ action: \"parentReview\" }) before relying on risky worker output.");
+	parts.push("Use stardock_policy({ action: \"governorDecision\" }) to inspect risky worker evidence before the governor accepts, dismisses, or defers it.");
 	parts.push(WORKER_EVIDENCE_PROMOTION_NOTE, "");
 }
 

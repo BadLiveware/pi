@@ -1,9 +1,9 @@
 /**
- * Parent-owned advisory adapter payloads for Stardock.
+ * Governor-owned advisory adapter payloads for Stardock.
  *
  * This slice intentionally does not execute providers. It formats ready-to-run
- * invocation data that a parent/orchestrator can inspect and pass to an
- * external runner such as pi-subagents.
+ * invocation data that the governor can inspect and pass to an external runner
+ * such as pi-subagents.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -49,16 +49,16 @@ export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input
 	if (!built.ok) return built;
 	const invocation = built.invocation;
 	const payload = [
-		`Parent-owned ${role} adapter payload for loop "${state.name}"`,
+		`Governor-owned ${role} adapter payload for loop "${state.name}"`,
 		"Target: pi-subagents subagent tool invocation",
-		"This is a ready-to-run parent/orchestrator payload only. Stardock does not execute it, persist provider-specific state, apply edits, or spawn hidden workers.",
+		"This is a ready-to-run governor payload only. Stardock does not execute it, persist provider-specific state, apply edits, or spawn hidden workers.",
 		"",
 		"Suggested subagent arguments:",
 		"```json",
 		JSON.stringify(invocation, null, 2),
 		"```",
 		"",
-		"After the worker returns, the parent should inspect the result and record compact findings through stardock_worker_report or stardock_handoff. Use stardock_policy({ action: \"parentReview\" }) before relying on risky worker output.",
+		"After the worker returns, the governor should inspect the result and record compact findings through stardock_worker_report or stardock_handoff. Use stardock_policy({ action: \"governorDecision\" }) for focused evidence before accepting, dismissing, or deferring risky worker output.",
 	].join("\n");
 	return { ok: true, payload, invocation, role };
 }
@@ -73,9 +73,9 @@ export function registerAdvisoryAdapterTool(pi: ExtensionAPI, deps: AdvisoryAdap
 	pi.registerTool({
 		name: "stardock_advisory_adapter",
 		label: "Build Stardock Advisory Adapter Payloads",
-		description: "Build ready-to-run parent-owned explorer/test-runner adapter payloads, optionally with subagent model and thinking-level overrides, without executing providers or mutating Stardock state.",
+		description: "Build ready-to-run governor-owned explorer/test-runner adapter payloads, optionally with subagent model and thinking-level overrides, without executing providers or mutating Stardock state.",
 		parameters: Type.Object({
-			action: Type.Union([Type.Literal("payload")], { description: "payload builds a ready-to-run parent-owned adapter invocation." }),
+			action: Type.Union([Type.Literal("payload")], { description: "payload builds a ready-to-run governor-owned adapter invocation." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
 			target: Type.Optional(adapterTargetSchema),
 			role: Type.Optional(adapterRoleSchema),

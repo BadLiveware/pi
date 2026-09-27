@@ -22,7 +22,7 @@ export function registerStageOwnershipTool(pi: ExtensionAPI, runtime: StardockRu
 		promptSnippet: "Inspect or acquire durable stage ownership before stage mutations.",
 		promptGuidelines: [
 			"Use stardock_stage list or read-only reconcile to inspect bounded owner, heartbeat, process, mutex, and state evidence.",
-			"Never infer stardock_stage takeover from heartbeat expiry. takeOwnership requires confirmed dead process evidence, rationale, approval, and worker/Treehouse classification.",
+			"Never infer stardock_stage takeover from heartbeat expiry. takeOwnership requires confirmed dead process evidence, rationale, a governor authorization reference, and worker/Treehouse classification.",
 		],
 		parameters: Type.Object({
 			action: StringEnum(["acquire", "list", "reconcile", "heartbeat"] as const),
@@ -32,7 +32,7 @@ export function registerStageOwnershipTool(pi: ExtensionAPI, runtime: StardockRu
 			expectedGraphRevision: Type.Optional(Type.Number()),
 			takeOwnership: Type.Optional(Type.Boolean()),
 			rationale: Type.Optional(Type.String()),
-			approvalRef: Type.Optional(Type.String()),
+			approvalRef: Type.Optional(Type.String({ description: "Governor authorization reference for a confirmed-dead-owner takeover." })),
 			classification: Type.Optional(Type.String()),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

@@ -193,12 +193,12 @@ test("stardock_brief builds advisory worker payloads and prompts include recorde
 		assert.match(payload.content[0].text, /Task: Map likely files and validation commands/);
 		assert.match(payload.content[0].text, /c-worker \[pending\]/);
 		assert.match(payload.content[0].text, /Do not let Stardock or the worker spawn hidden agents/);
-		assert.match(payload.content[0].text, /Parent may use stardock_worker_report record/);
+		assert.match(payload.content[0].text, /governor may use stardock_worker_report record/i);
 		assert.match(payload.content[0].text, /worker should not mutate Stardock state/);
 
 		await handoff.execute("tool-worker-payload-handoff", { action: "record", loopName: "Brief_Worker_Payload", id: "ah-explore", role: "explorer", status: "answered", objective: "Explore files.", summary: "Explorer handoff.", criterionIds: ["c-worker"], resultSummary: "Inspect briefs.ts and worker-reports.ts.", concerns: ["Prompt inclusion may be missing."], recommendations: ["Add a worker context section."] }, undefined, undefined, ctx);
 		await handoff.execute("tool-worker-payload-stale-handoff", { action: "record", loopName: "Brief_Worker_Payload", id: "ah-stale", role: "explorer", status: "answered", objective: "Old work.", summary: "Stale handoff.", resultSummary: "Do not include stale handoff." }, undefined, undefined, ctx);
-		await worker.execute("tool-worker-payload-report", { action: "record", loopName: "Brief_Worker_Payload", id: "wr-explore", role: "explorer", status: "needs_review", objective: "Explore files.", summary: "Worker mapped likely files.", evaluatedCriterionIds: ["c-worker"], risks: ["Parent should inspect prompt output."], openQuestions: ["Should result summaries be capped?"], suggestedNextMove: "Add prompt inclusion test.", reviewHints: ["Read runtime/prompts.ts."] }, undefined, undefined, ctx);
+		await worker.execute("tool-worker-payload-report", { action: "record", loopName: "Brief_Worker_Payload", id: "wr-explore", role: "explorer", status: "needs_review", objective: "Explore files.", summary: "Worker mapped likely files.", evaluatedCriterionIds: ["c-worker"], risks: ["Governor should inspect prompt output."], openQuestions: ["Should result summaries be capped?"], suggestedNextMove: "Add prompt inclusion test.", reviewHints: ["Read runtime/prompts.ts."] }, undefined, undefined, ctx);
 		const state = loadState(ctx, "Brief_Worker_Payload");
 		assert.ok(state);
 		const prompt = buildPrompt(state, "# Worker payload task\n", "iteration");
@@ -206,7 +206,7 @@ test("stardock_brief builds advisory worker payloads and prompts include recorde
 		assert.match(prompt, /Handoff ah-explore \[explorer\]/);
 		assert.match(prompt, /WorkerReport wr-explore \[needs_review\/explorer\]/);
 		assert.equal(prompt.includes("Do not include stale handoff"), false);
-		assert.match(prompt, /Use stardock_policy\(\{ action: "parentReview" \}\)/);
+		assert.match(prompt, /Use stardock_policy\(\{ action: "governorDecision" \}\)/);
 	} finally {
 		fs.rmSync(cwd, { recursive: true, force: true });
 	}

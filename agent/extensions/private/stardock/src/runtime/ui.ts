@@ -1,12 +1,14 @@
 /** Stardock active status/widget rendering. */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { summarizeExecutionPlan } from "../execution-plan/graph.ts";
+import { renderExecutionPlanWidget, type ExecutionNodeActivity } from "../execution-plan/widget.ts";
 import { latestGovernorDecision, pendingOutsideRequests } from "../outside-requests.ts";
 import { compactText, STATUS_ICONS } from "../state/core.ts";
 import { loadState } from "../state/store.ts";
 import { evaluateWorkflowStatus } from "../workflow-status.ts";
 
-export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | null): void {
+export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | null, executionActivity?: Map<string, ExecutionNodeActivity>): void {
 	if (!ctx.hasUI) return;
 
 	const state = currentLoop ? loadState(ctx, currentLoop) : null;
@@ -17,6 +19,12 @@ export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | nu
 	}
 
 	const { theme } = ctx.ui;
+	if (state.executionPlan) {
+		const plan = summarizeExecutionPlan(state.executionPlan);
+		ctx.ui.setStatus("stardock", theme.fg("accent", `🚀 ${state.name} · ${plan.status} · next ${plan.nextAction}`));
+		ctx.ui.setWidget("stardock", renderExecutionPlanWidget(state, executionActivity, theme));
+		return;
+	}
 	const maxStr = state.maxIterations > 0 ? `/${state.maxIterations}` : "";
 	const attempts = state.modeState.kind === "recursive" ? state.modeState.attempts : [];
 	const reportedAttempts = attempts.filter((attempt) => attempt.status === "reported").length;
@@ -57,6 +65,6 @@ export function updateStardockUI(ctx: ExtensionContext, currentLoop: string | nu
 		lines.push(theme.fg("dim", `Next reflection in: ${next} iterations`));
 	}
 	lines.push("");
-	lines.push(theme.fg("warning", "ESC pauses · /stardock view for details · /stardock-stop ends"));
+	lines.push(theme.fg("warning", "ESC pauses · /stardock view for details · /stardock-stop interrupts"));
 	ctx.ui.setWidget("stardock", lines);
 }

@@ -6,6 +6,7 @@
  * Shared Stardock state, migration, and file helpers.
  */
 
+import type { ExecutionPlan } from "../execution-plan/contracts.ts";
 import type { ExecutionGraph } from "../stages/contracts.ts";
 
 export const STARDOCK_DIR = ".stardock";
@@ -125,23 +126,23 @@ export interface EvolveCandidate {
 	createdAt: string;
 }
 
-export type EvolveImplementationGate =
+export type EvolveImplementationRequirement =
 	| "recursive_dogfood_evidence"
 	| "evaluator_contract"
 	| "safety_bounds"
 	| "candidate_isolation"
 	| "criteria_evidence"
 	| "artifact_handling"
-	| "auditor_or_user_approval";
+	| "governor_decision";
 
-export const EVOLVE_IMPLEMENTATION_GATES: EvolveImplementationGate[] = [
+export const EVOLVE_IMPLEMENTATION_REQUIREMENTS: EvolveImplementationRequirement[] = [
 	"recursive_dogfood_evidence",
 	"evaluator_contract",
 	"safety_bounds",
 	"candidate_isolation",
 	"criteria_evidence",
 	"artifact_handling",
-	"auditor_or_user_approval",
+	"governor_decision",
 ];
 
 export interface EvolveModeState {
@@ -151,7 +152,7 @@ export interface EvolveModeState {
 	bestCandidateId?: string;
 	archive: string[];
 	consecutiveNonImproving: number;
-	implementationGates: EvolveImplementationGate[];
+	implementationRequirements: EvolveImplementationRequirement[];
 }
 
 export type LoopModeState = ChecklistModeState | RecursiveModeState | EvolveModeState;
@@ -159,7 +160,7 @@ export type PromptReason = "iteration" | "reflection";
 export type StateView = "summary" | "overview" | "timeline";
 export type OutsideRequestKind = "ideas" | "research" | "mutation_suggestions" | "failure_analysis" | "governor_review" | "auditor_review";
 export type OutsideRequestStatus = "requested" | "in_progress" | "answered" | "dismissed";
-export type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane" | "periodic_audit" | "pre_completion" | "scope_change" | "automation_gate";
+export type OutsideRequestTrigger = "every_n_iterations" | "out_of_ideas" | "manual" | "stagnation" | "scaffolding_drift" | "low_value_lane" | "periodic_audit" | "pre_completion" | "scope_change" | "automation_risk";
 
 export interface GovernorDecision {
 	verdict: "continue" | "pivot" | "stop" | "measure" | "exploit_scaffold" | "ask_user";
@@ -429,6 +430,17 @@ export interface LoopModeHandler {
 	summarize(state: LoopState): string[];
 }
 
+export interface StardockRecoveryEvent {
+	id: string;
+	action: "relinquishSettled" | "takeover" | "finalizeCleanup";
+	at: string;
+	graphId: string;
+	stageId: string;
+	previousOwnerSessionId: string;
+	rationale: string;
+	approvalRef: string;
+}
+
 export interface LoopState {
 	schemaVersion: 3;
 	name: string;
@@ -458,7 +470,10 @@ export interface LoopState {
 	breakoutPackages: BreakoutPackage[];
 	workerReports: WorkerReport[];
 	workerRuns: WorkerRun[];
+	executionPlan?: ExecutionPlan;
 	executionGraph?: ExecutionGraph;
+	recoveryEvents?: StardockRecoveryEvent[];
+	recoveryEventsUnparsed?: unknown;
 }
 
 export const STATUS_ICONS: Record<LoopStatus, string> = { active: "▶", paused: "⏸", completed: "✓" };

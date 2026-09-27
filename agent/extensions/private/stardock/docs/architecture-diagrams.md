@@ -1,324 +1,141 @@
-# Stardock architecture diagrams
+# Stardock architecture
 
-These diagrams describe Stardock's target architecture and current private implementation direction. The private extension provides checklist and recursive loops, structured attempt reports, governor/outside request payloads, criterion ledgers, verification artifacts, iteration briefs, final reports, auditor reviews, advisory handoffs, breakout packages, worker reports, read-only policy recommendations, explicit brief-scoped advisory worker runs, serial implementer WorkerRuns, and local `.stardock/` state. Broad subagent fanout, workspace-isolated editing workers, automatic patch application, and evolve mode remain planned design gates.
+Stardock exposes a governor-controlled DAG while retaining worker isolation, leases, Git identity, evidence, cleanup, and recovery below that boundary.
+DAG nodes are arbitrary jobs, not PRs or mandatory code producers.
+Accepted evidence unlocks dependencies; integration is an explicit node or an optional compatibility operation.
 
-## High-level architecture
-
-```mermaid
-flowchart TB
-  User[User / Parent Agent]
-
-  subgraph Stardock[Private Stardock Extension]
-    Controller[Loop Controller]
-    State[(Durable Stardock State)]
-    PromptBuilder[Prompt / Brief Builder]
-    Governor[Governor]
-    Auditor[Auditor / Oversight Reviewer]
-  end
-
-  subgraph Work[Bounded Work]
-    Worker[Implementer / Main Agent]
-    Explorer[Explorer Subagent]
-    TestRunner[Test Runner Subagent]
-    Researcher[Researcher Subagent]
-  end
-
-  subgraph Evidence[Evidence System]
-    Criteria[Criterion Ledger]
-    Artifacts[(Verification Artifacts)]
-    Reports[Worker / Attempt Reports]
-    FinalReport[Final Verification Report]
-  end
-
-  User -->|start / resume / answer| Controller
-  Controller <--> State
-  State <--> Criteria
-  State <--> Reports
-  State <--> Artifacts
-
-  Controller --> PromptBuilder
-  PromptBuilder -->|compact IterationBrief| Worker
-
-  Governor -->|select next criteria + context| PromptBuilder
-  Reports --> Governor
-  Criteria --> Governor
-  Artifacts --> Governor
-
-  Auditor -. periodic / gated review .-> Governor
-  Criteria --> Auditor
-  Reports --> Auditor
-  Artifacts --> Auditor
-
-  Worker -->|attempt report| Reports
-  Worker -->|validation evidence| Artifacts
-  Worker -->|criterion status updates| Criteria
-
-  Controller -->|outside request payload| Researcher
-  Controller -->|explore payload| Explorer
-  Controller -->|validation payload| TestRunner
-
-  Explorer --> Reports
-  TestRunner --> Artifacts
-  Researcher --> Reports
-
-  Governor -->|continue / pivot / measure / stop / ask user| Controller
-  Auditor -->|blocker / warning / approval gate| Controller
-  Controller --> FinalReport
-```
-
-## Core loop flow
-
-```mermaid
-flowchart TD
-  A[Start Stardock Loop] --> B[Create / Load Durable State]
-  B --> C{Mode}
-
-  C -->|checklist| D[Use Task File Checklist]
-  C -->|recursive| E[Use Objective + Attempt State]
-  C -->|evolve future| F[Use Candidate Archive + Evaluator]
-
-  D --> G[Build Iteration Brief]
-  E --> H[Governor Selects Next Move]
-  F --> H
-
-  H --> I[Select Criteria + Required Context]
-  I --> G
-
-  G --> J[Queue Compact Prompt to Worker]
-  J --> K[Worker Performs One Bounded Attempt]
-  K --> L[Run / Describe Validation]
-  L --> M[Record Attempt Report]
-  M --> N[Update Criterion Ledger + Evidence Artifacts]
-
-  N --> O{Done?}
-  O -->|No| P{Drift / Blocked / Outside Help?}
-  P -->|No| H
-  P -->|Yes| Q[Create Outside / Governor / Auditor Request]
-  Q --> R[Parent or Subagent Handles Request]
-  R --> S[Record Answer / Decision / Findings]
-  S --> H
-
-  O -->|Yes| T[Final Verification Report]
-  T --> U{Auditor Gate Needed?}
-  U -->|No| V[Complete]
-  U -->|Yes| W[Auditor Reviews Completion Evidence]
-  W --> X{Approved?}
-  X -->|Yes| V
-  X -->|No| H
-```
-
-## Loop state machine
-
-```mermaid
-stateDiagram-v2
-  [*] --> Idle
-
-  Idle --> ActiveChecklist: stardock_start(mode=checklist)
-  Idle --> ActiveRecursive: stardock_start(mode=recursive)
-  Idle --> EvolveReserved: stardock_start(mode=evolve)
-
-  EvolveReserved --> Idle: reject unsupported/reserved mode
-
-  ActiveChecklist --> ActiveChecklist: stardock_done / next iteration
-  ActiveRecursive --> ActiveRecursive: stardock_done / next bounded attempt
-
-  ActiveChecklist --> Paused: /stardock stop
-  ActiveRecursive --> Paused: /stardock stop
-  Paused --> ActiveChecklist: /stardock resume checklist loop
-  Paused --> ActiveRecursive: /stardock resume recursive loop
-
-  ActiveRecursive --> PendingOutsideRequest: governor/research/stagnation trigger
-  PendingOutsideRequest --> ActiveRecursive: outside answer recorded
-
-  ActiveRecursive --> PendingAudit: periodic/pre-completion/automation gate
-  PendingAudit --> ActiveRecursive: auditor warning handled
-  PendingAudit --> Blocked: auditor blocker requires user/governor response
-  Blocked --> ActiveRecursive: override or required action recorded
-
-  ActiveChecklist --> FinalVerification: stardock_complete
-  ActiveRecursive --> FinalVerification: stardock_complete or stop criteria met
-
-  FinalVerification --> PendingAudit: unresolved/skipped criteria or high-risk completion
-  FinalVerification --> Completed: all required evidence accepted
-  PendingAudit --> Completed: auditor approves completion
-
-  Completed --> Archived: /stardock archive
-  Completed --> Idle: clean/cancel/nuke
-```
-
-## Data flow: plan to criteria to evidence to completion
+## Governor-facing flow
 
 ```mermaid
 flowchart LR
-  Plan[Canonical Plan / Task File]
-  Ledger[Criterion Ledger]
-  Brief[Iteration Brief]
-  Work[Bounded Worker Attempt]
-  Report[Worker Report]
-  Evidence[(Verification Artifacts)]
-  Governor[Governor Decision]
-  Auditor[Auditor Review]
-  Final[Final Verification Report]
-
-  Plan -->|distill requirements| Ledger
-  Ledger -->|selected criterion IDs| Brief
-  Plan -->|selected context only| Brief
-
-  Brief --> Work
-  Work --> Report
-  Work --> Evidence
-
-  Report -->|status / failures / risks| Ledger
-  Evidence -->|test, smoke, curl, browser, benchmark| Ledger
-
-  Ledger --> Governor
-  Report --> Governor
-  Evidence --> Governor
-
-  Governor -->|next move| Brief
-  Governor -->|completion candidate| Final
-
-  Final --> Auditor
-  Ledger --> Auditor
-  Report --> Auditor
-  Evidence --> Auditor
-
-  Auditor -->|approved| Final
-  Auditor -->|blocker / revisit criteria| Governor
+  Plan[stardock_plan] -->|replace| DAG[(Sealed DAG)]
+  Plan -->|draft| Draft[(Draft DAG)]
+  Draft -->|upsert| Draft
+  Draft -->|seal| DAG
+  DAG --> Run[stardock_run]
+  Run --> Workers[Isolated ready-node fan-out]
+  Workers --> Review[stardock_review]
+  Review -->|accept evidence| Unlock[Unlock dependent nodes]
+  Unlock -->|ready nodes| Run
+  Review -->|retry| Run
+  Review -->|abandon or supersede| Stop[Preserve evidence and stop this path]
+  Unlock -->|done or ending with warnings| Complete[stardock_complete]
+  Unlock -.->|optional accepted commits| Integrate[stardock_integrate compatibility path]
+  DAG --> Status[stardock_status]
 ```
 
-## Governor and auditor split
+The governor sees objectives, dependencies, settled reports, risks, warnings, attempt history, and available actions.
+Stardock does not own the semantic choice to accept, retry, abandon, supersede, integrate, or complete.
+It does own mechanical safety checks such as exact Git identity, clean lease return, append-only attempt records, and durable state transitions.
 
-```mermaid
-flowchart TB
-  Objective[Original Objective + Non-goals]
-  Criteria[Criterion Ledger]
-  Reports[Recent Worker Reports]
-  Artifacts[Evidence Artifacts]
-  Budget[Iteration / Failure Budget]
+## DAG activity projection
 
-  Governor[Governor]
-  Auditor[Auditor]
-
-  Decision[Governor Decision]
-  Brief[Next Iteration Brief]
-  Gate[Gate / Blocker / User Question]
-  User[User]
-
-  Objective --> Governor
-  Criteria --> Governor
-  Reports --> Governor
-  Artifacts --> Governor
-  Budget --> Governor
-
-  Governor --> Decision
-  Decision --> Brief
-
-  Objective --> Auditor
-  Criteria --> Auditor
-  Reports --> Auditor
-  Artifacts --> Auditor
-  Budget --> Auditor
-  Decision --> Auditor
-
-  Auditor -->|aligned| Brief
-  Auditor -->|minor concerns| Decision
-  Auditor -->|blocker| Gate
-  Gate -->|governor complies| Brief
-  Gate -->|governor rejects with rationale| Brief
-  Gate -->|needs value/scope call| User
-```
-
-## Subagent role flow
-
-```mermaid
-flowchart TD
-  Governor[Governor Chooses Need]
-
-  Governor -->|need codebase map| Explorer[Explorer Subagent]
-  Governor -->|need noisy validation| TestRunner[Test Runner Subagent]
-  Governor -->|need ideas / prior art| Researcher[Researcher Subagent]
-  Governor -->|need bounded change later| Implementer[Implementer Subagent]
-
-  Explorer --> ExplorerReport[File / Symbol Map<br/>Relevant Tests<br/>Validation Commands<br/>Risk Notes]
-  TestRunner --> TestReport[Compact Failure Summary<br/>Full Logs as Artifacts]
-  Researcher --> ResearchReport[Ideas<br/>Examples<br/>Failure Analysis]
-  Implementer --> WorkerReport[Changed Files<br/>Criteria Evaluated<br/>Evidence<br/>Risks]
-
-  ExplorerReport --> State[(Stardock State)]
-  TestReport --> State
-  ResearchReport --> State
-  WorkerReport --> State
-
-  State --> Governor
-
-  Auditor[Auditor] -. reviews gates .-> Governor
-  Auditor -. before editing subagents .-> Implementer
-```
-
-## Evidence and artifact model
-
-```mermaid
-flowchart LR
-  Criterion[Criterion]
-  Red[Red Evidence]
-  Green[Green Evidence]
-  Test[Test Command]
-  Smoke[Smoke / curl Check]
-  Browser[Browser / Screenshot]
-  Bench[Benchmark]
-  Walkthrough[Walkthrough / Explanation]
-  Journal[(Evidence Journal)]
-  Final[Final Verification Report]
-
-  Criterion --> Red
-  Criterion --> Green
-
-  Test --> Journal
-  Smoke --> Journal
-  Browser --> Journal
-  Bench --> Journal
-  Walkthrough --> Journal
-
-  Journal -->|artifact refs + summaries| Criterion
-  Journal -->|selected artifacts| Final
-
-  Red --> Final
-  Green --> Final
-```
-
-## Planned evolution phases
-
-```mermaid
-flowchart TD
-  A[Private Stardock Shell<br/>Done] --> B[Criterion Ledger]
-  B --> C[Verification Artifacts]
-  C --> D[Context Packet Routing]
-  D --> E[Auditor Oversight]
-  E --> F[Worker Reports + Selective Review]
-  F --> G[Breakout + Final Verification]
-  G --> H[Compound Learning + Cognitive Debt Gates]
-  H --> I[Advisory Subagents]
-  I --> J[Editing Subagents<br/>Gated]
-  J --> K[Evolve Mode<br/>Gated]
-```
-
-## Summary flow
+The persistent widget is a compact topological list, not a tree ownership model.
+Each row carries dependency context, status, worker/tool activity when available, and elapsed time.
+Durable plan state owns node and dependency status; worker bridge updates add transient activity only.
 
 ```text
-Plan
-  ↓
-Criterion Ledger
-  ↓
-Governor selects next criteria/context
-  ↓
-Worker gets compact brief
-  ↓
-Worker produces report + evidence
-  ↓
-Governor decides next move
-  ↓
-Auditor occasionally checks governor/gates
-  ↓
-Final verification or breakout
+stardock <name> (<node count>)
+┊ DAG · wave <n> · <running> agents running · <resolved>/<total> resolved · next <action>
+├ <status> <node> · <activity> · ← <dependencies>
+└ <status> <node> · pending · after <dependencies>
 ```
+
+## Arbitrary jobs and explicit combination
+
+```mermaid
+flowchart TD
+  Research[Report: research options] --> Security[Report: security assessment]
+  Research --> Experiment[Throw-away compatibility experiment]
+  Security --> Decide[Decision job]
+  Experiment --> Decide
+  Decide -->|only when selected| Implement[Implementation job]
+  Implement --> Promote[Explicit promotion and combined validation job]
+```
+
+A prerequisite is an executable job whose accepted output is needed by dependents.
+Once accepted, all dependency-free children become one ready antichain and run with bounded concurrency.
+A node may produce only a report or artifacts; writes and validation commands are optional.
+Promotion is visible in the graph when it matters rather than being inferred after every accepted wave.
+
+## Dependency communication
+
+```mermaid
+flowchart LR
+  Prior[Accepted predecessor attempt] --> Report[WorkerReport summary, risks, questions]
+  Prior --> Refs[Artifacts, branch, commits, changed paths]
+  Report --> Prompt[Dependent worker prompt]
+  Refs --> Prompt
+  Prompt --> Verify[Dependent verifies evidence it relies on]
+```
+
+Dependent workers receive bounded predecessor handoffs.
+They are told that prior filesystem changes are not automatically present in a new isolated lease, so an explicit combination job can use recorded branch and commit identities without hidden workspace coupling.
+
+## Internal worker lifecycle
+
+```mermaid
+flowchart TD
+  Ready[Ready antichain] --> Materialize[Materialize internal execution stage]
+  Materialize --> Lease[Acquire durable ownership and Treehouse leases]
+  Lease --> Dispatch[Dispatch bounded workers]
+  Dispatch --> Inspect[Inspect report, commits, paths, cleanliness, validation]
+  Inspect --> Review[Return settled evidence to governor]
+  Review -->|accept| Accepted[Record accepted evidence]
+  Review -->|retry| Retry[Create immutable retry attempt]
+  Review -->|abandon| Abandoned[Preserve terminal evidence]
+  Accepted --> Cleanup[Release settled clean isolation]
+  Retry --> Cleanup
+  Abandoned --> Cleanup
+```
+
+Each plan node maps internally to a generated brief, criterion, execution node, WorkerRun, WorkerReport, and immutable attempt.
+These records support reliability and recovery; they are not extra governor tasks.
+Failed checks, no-edit outcomes, and attempt exhaustion remain visible as advisory evidence.
+
+## Optional convenience integration
+
+```mermaid
+flowchart TD
+  Accepted[Accepted commit outputs] --> Preflight[Verify exact workspace and source refs]
+  Preflight --> Merge[Deterministic no-ff merges]
+  Merge --> Validate[Run configured combined validation]
+  Validate --> Prepare[Durably prepare integration]
+  Prepare --> FastForward[Advance original workspace exactly]
+  FastForward --> Record[Record promoted result]
+  Record --> Release[Release remaining resources]
+```
+
+This lifecycle is exposed through `stardock_integrate` for persisted plans that choose the compatibility path.
+It is not a universal transition and is never required for report-only, diagnostic, research, decision, or throw-away experiment nodes.
+Failures stop at a safe boundary and retain enough state for retry or recovery.
+
+## State ownership
+
+```mermaid
+flowchart TB
+  Plan[(Canonical execution plan)]
+  Projection[task.md human projection]
+  Graph[(Internal execution graph)]
+  Runs[(Worker runs and reports)]
+  Evidence[(Criteria and artifacts)]
+  Ownership[(Lease and ownership records)]
+
+  Plan --> Projection
+  Plan --> Graph
+  Graph --> Runs
+  Runs --> Evidence
+  Graph --> Ownership
+```
+
+The execution plan is the governor-facing source of truth.
+The task file is generated.
+Internal graph, worker, evidence, and ownership records remain append-only or guarded where recovery requires it.
+Supersession preserves prior evidence and attempts best-effort release of clean inactive leases.
+
+## Compatibility boundary
+
+Legacy Stardock tools and schema-v3 evidence collections remain registered for existing state and exceptional diagnostics.
+They are inactive by default for new plans.
+Resuming a planless legacy loop restores its required surface, while `/stardock-legacy on` exposes it manually for the current session.
+New DAG execution uses plan, run, review, status, and completion; integration is available only when the governor explicitly chooses it.

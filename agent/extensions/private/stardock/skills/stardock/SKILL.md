@@ -1,131 +1,142 @@
 ---
 name: stardock
-description: Use when starting, driving, or inspecting private Stardock implementation loops: checklist loops for finite work, recursive bounded attempts, governor/outside request workflows, and evidence-backed multi-iteration progress. Avoid for simple one-shot tasks or quick fixes.
+description: Use when a finite body of work has meaningful dependencies or independent jobs that should run as a governor-controlled DAG while the outside agent preserves request context and semantic authority. Avoid for simple one-shot or open-ended work.
 ---
 
 # Stardock
 
-Stardock is a private Pi implementation framework for governed agentic work. Current capabilities are checklist and recursive loops, criterion ledger and artifact refs, IterationBrief context packets, durable governor memory, final reports, manual auditor reviews plus automatic auditor-review requests, advisory handoffs, breakout packages, read-only policy recommendations, WorkerReports, and Stardock-owned WorkerRuns through `stardock_worker`. Future work will harden policy and add safe provider adapters.
+Stardock is a loose DAG orchestration framework for finite work.
+You are the governor: preserve the user's request context, define jobs, interpret reports, and own accept, retry, abandon, supersede, integration, and completion decisions.
+Stardock provides isolated scheduling, compact dependency handoffs, durable evidence, resource cleanup, and recovery; treat its checks and recommendations as advisory unless they protect a mechanical safety invariant.
 
-Use `stardock_start` to begin a loop. Choose `mode: "checklist"` for finite known work or `mode: "recursive"` for bounded try/test/reset attempts on open-ended objectives:
+A node is an arbitrary job, not a PR, branch, mandatory implementation task, or delivery boundary.
+A node may return a report, research findings, a decision recommendation, throw-away test results, artifacts, commits, or no filesystem changes.
+If combined code or delivery is needed, model integration, promotion, cherry-picking, combined validation, or release as explicit dependent nodes.
+Use `stardock_integrate` only as an optional compatibility/convenience operation for persisted accepted commit outputs.
+
+Use Stardock when finite work has useful dependency structure, even if one ready set has width one, or when independent jobs materially benefit from isolation and fan-out.
+Do not use it for a one-file fix with no useful graph structure or for open-ended experimentation.
+
+## Governor workflow
+
+1. Author the DAG with `stardock_plan`.
+For a compact graph, omit `action` and submit the complete sealed plan once.
+For a large graph, create a draft, upsert bounded node groups, then seal it.
+2. Express research, shared setup, interfaces, schemas, contracts, or other enabling work as `kind: "prerequisite"` nodes when later jobs depend on their outputs.
+Ordinary nodes use `kind: "work"` or omit it.
+3. Give every independent job its real prerequisites in `dependsOn`; do not serialize siblings merely because they share a prerequisite.
+4. Seal before execution.
+Sealing validates the complete graph; `stardock_run` refuses drafts and sealed authoring is immutable.
+5. Call `stardock_run` once for the complete ready antichain.
+A width-one ready set is naturally serial.
+6. Inspect the returned reports, artifacts, validation observations, risks, and focused diffs when present.
+Call `stardock_review` with accept, retry/reject, or abandon decisions for the settled `runId` values you are ready to decide.
+7. Continue with newly ready nodes, retry with a rationale, supersede the graph, call `stardock_complete` when you judge the work done, or optionally promote accepted commits.
+Unresolved graph, review, validation, auditor, or policy state becomes advisory completion warnings; do not insert `stardock_integrate` merely because a wave was accepted.
+
+Use `stardock_status` after compaction, on resume, or when graph state is unclear.
+It returns compact state, pending review IDs, warnings, and available actions; it does not own the semantic choice among safe actions.
+
+The normal calls need no internal graph or lease identifiers:
 
 ```js
-stardock_start({
-  name: "loop-name",
-  mode: "checklist",
-  taskContent: "# Task\n\n## Goals\n- Goal 1\n\n## Checklist\n- [ ] Item 1\n- [ ] Item 2",
-  maxIterations: 50,
-  itemsPerIteration: 3,
-  reflectEvery: 10
+stardock_run({})
+stardock_status({})
+stardock_complete({})
+```
+
+Pass `name` only when operating on a plan other than the active one.
+
+## When Stardock is stuck
+
+If a foreign owner, interrupted terminal cleanup, or preserved lease blocks ordinary tools, call `stardock_recover({ action: "inspect", name? })`. It is available on the primary surface even when normal mutations are blocked and returns exact graph/stage/revision, owner liveness, running workers, pending lease IDs, and viable recovery actions.
+
+Choose one scoped action from that inspection: `relinquishSettled` fences only a terminal stage (or a detached, fully decided plan) with no active worker or attempt; `takeover` requires confirmed owner death, no active worker/attempt evidence, and worker/Treehouse classification; `reconcileResources` inspects preserved attempts read-only before optional `apply: true` under recovered ownership; `finalizeCleanup` clears exact owner evidence left after a committed terminal release; `releaseLeases` retries only verified Treehouse/Git cleanup. Mutating calls require the inspected `graphId`, `stageId`, and `expectedGraphRevision`; ownership changes also require a concrete `rationale` and `approvalRef`. A lease that cannot be verified remains preserved. Recovery does not itself decide that the loop's work is complete; call `stardock_complete` separately when appropriate. Never edit `.stardock` state by hand or treat a stale heartbeat as proof of death.
+
+## Plan shape
+
+```js
+stardock_plan({
+  name: "auth-options",
+  objective: "Choose an authentication design without changing production code",
+  constraints: ["Preserve the public token contract"],
+  maxConcurrency: 3,
+  defaultMaxAttempts: 2,
+  integrationValidationCommands: ["npm test"],
+  nodes: [
+    {
+      id: "research",
+      kind: "prerequisite",
+      objective: "Map viable designs",
+      task: "Compare candidates and return a concise evidence report.",
+      acceptanceCriteria: ["Trade-offs, unknowns, and supporting references are explicit."],
+      reads: ["src/auth"],
+      validationCommands: []
+    },
+    {
+      id: "security",
+      objective: "Evaluate security properties",
+      task: "Use the research handoff to assess risks and mitigations.",
+      acceptanceCriteria: ["Security risks and mitigations are explicit."],
+      dependsOn: ["research"],
+      reads: ["src/auth"],
+      validationCommands: []
+    },
+    {
+      id: "compatibility",
+      objective: "Test compatibility assumptions",
+      task: "Run throw-away compatibility experiments and report evidence.",
+      acceptanceCriteria: ["Compatibility evidence and uncertainty are explicit."],
+      dependsOn: ["research"],
+      reads: ["src/auth"],
+      validationCommands: ["npm test -- auth-contracts"]
+    }
+  ]
 })
 ```
 
-Recursive mode requires an `objective` and may include `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, `outsideHelpEvery`, `governEvery`, and `outsideHelpOnStagnation`.
+Accepted predecessor summaries, artifact IDs, changed paths, branch names, commit identities, and open questions are supplied to dependent workers.
+A dependent worker must verify evidence it uses and must not assume predecessor filesystem changes are already present in its isolated lease.
 
-## Workflow
+Declare conflicting writes or exclusive resources as dependencies.
+A draft may be incomplete, but `seal` rejects missing dependencies, cycles, and conflicting independent ownership.
+Upsert replaces nodes with matching IDs and is available only while the plan remains a draft.
 
-1. Prepare clear task content with goals, checklist/criteria, and validation expectations.
-2. Start the loop with `stardock_start`; it creates `.stardock/runs/<name>/task.md` from `taskContent`.
-3. While a loop is active, use the Stardock widget for at-a-glance status; use `/stardock view [loop]` or `stardock_state({ loopName, view: "overview" })` when the user asks what is happening in more detail or when checklist/ledger drift matters; use `view: "timeline"` or `/stardock timeline [loop]` when they want the event sequence. Drift reports are read-only hints; update task checkboxes or criteria explicitly when needed.
-4. Work one bounded iteration. For non-trivial active-brief implementation, default to one coherent `stardock_worker({ action: "run", role: "implementer", briefId })` before parent `edit`/`write`. Keep the default file-only output. Use an explorer only when the brief still has a concrete repository-mapping gap; skip it when exact files, symbols, tests, and validation are already known. Use test_runner/reviewer/auditor workers only for bounded validation, concrete risk or uncertainty, policy gates, or required independent evidence—not automatically around every implementation. If repeated unrelated implementation cycles accumulate under one brief, split the brief instead of repeatedly cold-starting workers against a mutable mega-brief.
-5. Use `stardock_stage upsert` to create a validated execution graph without `expectedGraphRevision`; include the exact current revision for later compare-and-swap updates.
-   Use `stardock_stage list` to inspect bounded graph, stage, node, attempt, and ownership state.
-   Call `stardock_stage runReady` with exact graph, stage, node, and revision inputs only after implementation briefs and contracts are frozen.
-   `runReady` acquires durable stage ownership, precreates lane attempts and WorkerRuns, and runs concurrent implementers only in distinct Treehouse leases while the parent owns every state mutation.
-   Review every settled isolated lane with an explicit `runId`.
-   After explicit lane review, call `integrationPlan` and execute its argument-array commands as the parent; it never executes Git integration itself.
-   Commit and validate fan-in work, call `prepareIntegration`, execute every returned exact-parent/fast-forward command in order, then call idempotent `recordIntegrated` with the prepared `stateRevision`, raw token, and exact parent result.
-   Use read-only `reconcile` before approved takeover, retry only explicit retry-ready nodes, and release only integrated or explicitly abandoned clean leases; no normal action force-cleans work.
-   Sibling runtimes stay read-only.
-   Approved dead-owner reconciliation quarantines only matching file evidence and keeps prior graph ownership durable until the new owner atomically replaces that exact evidence.
-   A stop after quarantine leaves fail-closed orphaned ownership for another approved reconciliation; standalone dead-mutex recovery still requires normal stage readiness.
-6. Record progress and verification evidence in the task file.
-7. For recursive loops, use `stardock_attempt_report`; pass `reports: [...]` when importing or recording several attempt reports at once.
-8. Call `stardock_done` to proceed to the next iteration. If the active brief is finished and more work remains, prefer `stardock_done({ briefLifecycle: "complete" })`; add `includeState: true` only when the next decision genuinely needs the returned compact summary. If the brief should be deactivated but remain draft, pass `briefLifecycle: "clear"`; omit lifecycle only when the active brief should remain active.
-9. Call `stardock_complete` only when the scoped work is done and readiness gates are clear.
+## Decision shape
 
-Use `stardock_ledger` when criteria or evidence need to be durable: `distillTaskCriteria` derives starter criteria from the loop task file checklist (or goal/requirement bullets when no checklist exists) without rewriting the canonical task file, `upsertCriterion` records one stable acceptance criterion, `upsertCriteria` seeds or updates several criteria in one call, `recordArtifact`/`recordArtifacts` store compact refs to tests/smoke checks/screenshots/logs/benchmarks/URLs/PRs/diffs/docs, and `list` shows the ledger without reading `.stardock/` files. Artifact kinds include `test`, `smoke`, `curl`, `browser`, `screenshot`, `walkthrough`, `benchmark`, `log`, `url`, `pr`, `diff`, `command`, `document`, and `other`; `doc` normalizes to `document`, and `manual` normalizes to `other`. Treat distilled criteria as a starter pass and refine them with explicit upserts when pass conditions need domain-specific wording. Keep long logs and screenshots outside state; store paths and concise summaries. Use `includeState`, `includeOverview`, `includeDetails`, or a read-only `followupTool` only when the immediate next decision needs that extra response; do not attach state/list output to routine mutations.
-
-Use `stardock_brief` when the next iteration should follow a selected context packet: `upsert` creates or updates a brief, `activate` makes it appear in subsequent loop prompts, `clear` returns the loop to the normal prompt shape, and `complete` records that the brief is done. For the common create-and-use path, pass `activate: true`; add `includeState: true` or `includePromptPreview: true` only when the immediate next decision needs to verify the effective state or prompt shape in the same response. Use `briefs: [...]` for batch upsert and `ids: [...]` for batch complete; single-item fields are compatibility sugar for one-item batches. Briefs default to `source: "manual"`; use `source: "governor"` and optional `requestId` only when a governor review explicitly selected that bounded context. Briefs are data-only routing hints; they do not spawn subagents, distill plans automatically, activate silently, or replace validation. Use `stardock_done({ briefLifecycle: "complete" })` after a bounded iteration has satisfied the active brief, adding `includeState: true` only for a concrete follow-up decision; use `briefLifecycle: "clear"` when the brief should stop routing prompts but remain draft.
-
-Use `stardock_final_report` before claiming substantial work complete when criteria/evidence/gaps need a durable summary. `record` stores compact manual reports with status (`draft`, `passed`, `failed`, `partial`, `blocked`, or `skipped`), summary, covered `criterionIds`, referenced `artifactIds`, validation records, unresolved gaps, and compatibility/security/performance notes; pass `reports: [...]` for batch writes or single-report fields for one-item batches. Use `blocked` for scoped verification blocked by an external prerequisite and `skipped` for intentionally unrun verification. `list` inspects reports without reading `.stardock` files. Reports do not run validators, call models, or spawn auditors; `stardock_complete` uses them as durable readiness evidence when derived workflow gates apply.
-
-Use `stardock_governor_state` when the loop needs durable direction beyond active briefs and outside-request history. It supports `list`, `upsert`, `append`, and `clear` for objective, current strategy, completed milestones, active constraints, known risks, open questions, evidence gaps, rejected paths, and next-context hints. Prompts, state views, the active widget, and brief worker payloads include compact governor memory when recorded. The tool edits explicit state only; Stardock does not infer or summarize governor memory automatically.
-
-Use `stardock_auditor` when a bounded oversight review should inspect criteria, artifacts, final reports, attempts, governor memory, and outside-request context. `payload` builds a ready-to-copy manual auditor task; `record` stores compact results with status (`draft`, `passed`, `concerns`, or `blocked`), summary, focus, linked criteria/artifacts/final reports, concerns, recommendations, and required follow-ups; pass `reviews: [...]` for batch writes or single-review fields for one-item batches. `list` inspects reviews. Auditor execution is manual: Stardock does not call a model, spawn subagents, mutate implementation state, or apply edits. Checklist `stardock_done` and completion attempts can create pending `auditor_review` outside requests for selected gate/pre-completion findings; resolve them by building the payload, running/recording the review, answering/escalating the request, or explicitly resolving the gate.
-
-Use `stardock_handoff` when work should be packaged for a human, agent, model, CLI, or future provider adapter without binding Stardock to that provider. `payload` builds a provider-neutral task, `record` stores compact returned results with status (`draft`, `requested`, `answered`, `failed`, or `dismissed`), and `list` inspects handoffs; pass `handoffs: [...]` for batch writes or single-handoff fields for one-item batches. Treat `provider` metadata as optional and opaque; do not make provider session IDs or transcript formats the source of truth. This is a decoupling firewall, not execution: Stardock does not call `pi-subagents`, spawn agents, run models/processes, or apply returned edits.
-
-Use `stardock_breakout` when a loop is stuck, blocked, repeatedly failing criteria, or cannot honestly complete without a decision. `payload` builds a compact decision package; `record` stores packages with status (`draft`, `open`, `resolved`, or `dismissed`), `summary`, `requestedDecision`, optional `resumeCriteria`, and optional `recommendedNextActions`; input status `blocked` is accepted as an alias for canonical `open`. `list` inspects packages. Pass `packages: [...]` for batch writes or single-package fields for one-item batches. Link criteria, attempts, artifacts, final reports, auditor reviews, advisory handoffs, and outside requests when they explain why the loop is blocked. Do not pass `objective`; use `summary` for the stuck context and `requestedDecision` for the decision needed. Breakout packages are data-only evidence handoffs: they do not call models, spawn agents, run processes, trigger escalation, or apply edits, though open packages influence derived workflow gates.
-
-Use `stardock_policy({ action: "completion" })` before claiming substantial work complete or when deciding whether more evidence/review is warranted. It is read-only and returns recommendation findings with rationales, linked evidence, and suggested tools. A blocked/skipped criterion can be accepted as deferred only when a resolved/dismissed breakout package explains the decision and passed final-report or auditor evidence covers that criterion; completion then reports `ready: true` with status `ready_with_accepted_gaps`. Treat the result as guidance: it does not mutate state, enforce gates, call models, spawn agents, run processes, apply edits, or replace judgment. Follow its recommendations with explicit tool calls only when they fit the scope.
-
-Use `stardock_policy({ action: "auditor" })` when deciding if oversight should inspect a risky point. It recommends `stardock_auditor` for failed/blocked/skipped criteria, final-report gaps, WorkerReports with risks/questions/review hints/non-passing validation, implementer handoffs, or open breakout packages. It is recommendation-only: it does not create reviews, spawn reviewers, call models, run tools, or enforce gates. Loop lifecycle may separately create a pending `auditor_review` outside request for selected gate/pre-completion findings.
-
-Use `stardock_policy({ action: "breakout" })` when deciding if a stuck or ambiguous loop should package a decision before continuing. It recommends `stardock_breakout` for failed/blocked criteria, repeated failed or blocked attempts, no evidence movement, skipped evidence/final-report gaps, unresolved outside requests, blocking auditor follow-ups, or existing open breakout packets. It is recommendation-only: it does not create packages, stop loops, call models, run tools, or enforce gates.
-
-Use `followupTool` on mutating Stardock tools when you need immediate read-only context after the mutation. Prefer it over adding more `include*` flags. V1 supports local read-only followups such as `stardock_state`, `stardock_policy`, and read-only `list` actions on local evidence tools (`stardock_brief`, `stardock_ledger`, `stardock_final_report`, `stardock_auditor`, `stardock_breakout`, `stardock_handoff`, `stardock_worker`, `stardock_worker_report`). List and list-followup responses default to 20 items, accept `limit` (max 100) plus `offset`, render every returned page item, and return `page.nextOffset` when another page exists; ledger returns independent page metadata for criteria, requirement trace, artifacts, and baselines. Use `attachAs: "details"` for machine-readable context, `"content"` for visible appended text, or `"both"` when supported by the caller. Stardock rejects unknown or mutating followup actions instead of executing them. Existing `includeState`, `includeOverview`, and `includePromptPreview` remain compatibility sugar.
-
-Use `stardock_worker_report` when a worker result should be preserved without coupling Stardock to a provider. `payload` builds a provider-neutral report contract, `record` stores compact returned results with status (`draft`, `submitted`, `accepted`, `needs_review`, or `dismissed`), and `list` inspects reports; pass `reports: [...]` for batch writes or single-report fields for one-item batches. Include evaluated criteria, artifacts, changed files, validation, risks, open questions, suggested next move, and review hints so the parent/governor can choose targeted review instead of rereading everything. Worker reports are records, not providers: they do not execute providers, assume `pi-subagents` output, apply patches, or automate parent review in v1.
-
-Worker output is advisory until the parent records it as Stardock lifecycle state. A WorkerReport or saved `pi-subagents` transcript does not automatically mark criteria passed, create verification artifacts, write final reports, create breakout packages, update governor memory, or store auditor reviews. After a worker returns, inspect the WorkerReport/saved output and promote useful facts explicitly with the right Stardock tool: `stardock_ledger recordArtifact(s)` for validation/log/path evidence, `stardock_ledger upsertCriterion` for criterion status changes, `stardock_final_report record` for completion summaries, `stardock_auditor record` for auditor findings, `stardock_breakout record` for blocked decisions, and `stardock_governor_state append/upsert` for durable direction. Raw `subagent(...)` calls outside `stardock_worker` are invisible to Stardock unless the parent records their results manually.
-
-Use `stardock_worker({ action: "run", role, briefId?, requestId?, model?, thinking? })` when the parent/governor wants to run a Stardock-owned worker role through `pi-subagents` without a payload-copying round trip. Brief-scoped roles are `explorer`, `test_runner`, `implementer`, and `reviewer`; outside-request or loop-scoped roles are `governor`, `auditor`, `researcher`, and `reviewer`. For non-trivial active-brief implementation, the default branch is `role: "implementer"` before the parent edits or writes files. `explorer`, `test_runner`, `reviewer`, and `auditor` are mapping/validation/review roles; they do not satisfy implementation delegation and should be followed by an implementer worker before non-trivial code edits unless a direct-edit exception applies. This should be the preferred path for non-trivial active briefs and pending governance/outside requests because Stardock owns the role prompt, mutability, result classification, WorkerRun, and WorkerReport. Before passing a non-default `model` or `thinking`, call `list_pi_models` and choose an enabled/supported model whose capability, cost, and `thinkingLevels` fit the complexity; use Pi level names such as `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` (`off` is provider no/none thinking). Stardock applies `thinking` as a Pi model suffix for the subagent transport, using the current parent model when `thinking` is passed without `model` and a current model is available. Direct parent edits are exceptions: before the first parent `edit`/`write` for non-trivial brief work, record why parent edits are allowed (`trivial/surgical`, unavailable or unsafe worker bridge, or explicit gate/user decision). `trivial/surgical` means single-file, at most two localized hunks, no new files, no public contract/schema/config/runtime behavior changes, and obvious validation; multi-file or new-file slices are non-trivial. `unavailable or unsafe worker bridge` means a concrete current blocker such as bridge failure, an unreviewed implementer run, or a policy/user prohibition; latency, time pressure, or a parent-created dirty workspace do not count. `explicit gate/user decision` means a current loop instruction to use parent edits; generic “continue” does not count. Decide this before editing. If the workspace is dirty, restore a clean baseline, explicitly accept `allowDirtyWorkspace: true` risk for the implementer, or record the direct-edit exception. Read-only roles are advisory and forbid edits. Implementer is a serial mutable worker: start it only for scoped edits, keep the workspace clean unless `allowDirtyWorkspace: true` is an explicit accepted risk, and review it selectively with `stardock_worker({ action: "review", runId, reviewStatus: "accepted" | "dismissed" })` before another implementer or completion. Keep `outputMode: "file-only"` unless the result is deliberately short and no saved artifact is useful. Parent review should inspect the changed files and named risk boundaries; do not automatically launch a second reviewer after the parent has already obtained sufficient evidence. The tool records a WorkerRun and compact WorkerReport unless `recordResult: false` is passed; use `action: "list"` to inspect runs. `stardock_brief_worker` remains a compatibility wrapper for brief-scoped explorer/test_runner/implementer runs. Do not use either tool for hidden fanout, automatic patch application, bypassing parent/governor judgment, or concurrent editing workers.
-
-If outside-help/governor/auditor requests appear, inspect them with `stardock_outside_requests`, fetch ready-to-copy work with `stardock_outside_payload` when manual handling is better, or satisfy them through `stardock_worker({ action: "run", requestId })` when a Stardock-owned worker role is appropriate. Record manual answers with `stardock_outside_answer` or compact review results with `stardock_auditor`. Use `stardock_govern` for an immediate manual governor review request and payload without automatically spawning subagents. Stardock keeps governor requests to one per iteration, so a manual governor request/decision suppresses the automatic cadence request for that same iteration. Automatic auditor triggers create durable requests only; they do not call models or reviewers. For active briefs that need explorer/test-runner/serial-implementer help, prefer `stardock_worker({ action: "run" })` over `stardock_advisory_adapter` followed by a separate raw `subagent` call; when the next step is code mutation, run `role: "implementer"` rather than treating prior explorer output as permission for parent implementation. Use `model` or `thinking` overrides only after checking enabled/supported models and `thinkingLevels` with `list_pi_models`.
-
-## Commands
-
-- `/stardock start <name|path> [--mode checklist|recursive]` — start a loop.
-- `/stardock resume <name>` — resume a paused loop.
-- `/stardock stop` — pause the current loop when idle.
-- `/stardock-stop` — stop active loop when idle.
-- `/stardock status` — show loops.
-- `/stardock view [loop] [--archived]` — show run overview, progress, latest governor decision, and timeline.
-- `/stardock timeline [loop] [--archived]` — show only the run timeline.
-- `/stardock list --archived` — show archived loops.
-- `/stardock govern [loop]` — create a manual governor review request and payload.
-- `/stardock outside [loop]` — show outside-help/governor requests.
-- `/stardock outside payload <loop> <request-id>` — show a ready-to-copy governor/researcher task payload.
-- `/stardock outside answer <loop> <request-id> <answer>` — record a plain-text outside request answer.
-- `/stardock archive <name>` — move loop to archive.
-- `/stardock clean [--all]` — clean completed loops.
-- `/stardock cancel <name>` — delete loop.
-- `/stardock nuke [--yes]` — delete all `.stardock` data.
-
-Press ESC to interrupt streaming, send a normal message to resume, and run `/stardock-stop` when idle to end the loop.
-
-## Task file shape
-
-```md
-# Task Title
-
-Brief description.
-
-## Goals
-- Goal 1
-- Goal 2
-
-## Checklist
-- [ ] Item 1
-- [ ] Item 2
-- [x] Completed item
-
-## Verification
-- Evidence, commands run, or file paths
-
-## Notes
-(Update with progress, decisions, blockers)
+```js
+stardock_review({
+  decisions: [
+    {
+      runId: "run12",
+      decision: "accept",
+      rationale: "The report answers the node question despite an expected failing probe."
+    },
+    {
+      runId: "run13",
+      decision: "retry",
+      rationale: "The compatibility evidence did not cover legacy tokens."
+    }
+  ]
+})
 ```
 
-## Guidance
+Acceptance records eligible evidence and unlocks dependencies without requiring repository integration.
+Failed validation remains visible and is never promoted as passing evidence, but it does not remove your authority to accept a diagnostic or expected-failure result.
+No-edit reports are valid when they satisfy the job.
+Attempt limits are advisory signals; you may retry beyond them with a concrete rationale, abandon the node, or supersede the plan.
 
-- Keep each iteration and active brief bounded; split briefs that accumulate unrelated worker cycles.
-- Keep normal worker output file-only and state/detail expansion opt-in.
-- Follow paginated list `nextOffset` values instead of requesting or attaching full evidence history.
-- If compact state says governor routing requires full inspection, run the exact `governorRouting.actions`: durable-memory overflow uses `stardock_governor_state`, while latest-decision overflow uses `stardock_outside_requests` with the supplied `requestId`.
-- Use explorers and independent reviewers only when a concrete gap or risk justifies them.
-- Record evidence before claiming progress.
-- Prefer project-native validation commands.
-- Use governor/outside requests to break out of local-lane fixation.
-- Do not preserve `ralph_*`, `/ralph`, or `.ralph/` compatibility unless explicitly useful for local migration.
+`stardock_run` retains isolated workspaces while their outcomes await your `stardock_review` decision. After the last decision in a wave, Stardock attempts verified lease return automatically and reports the returned count or preservation reason. Accepted branch and commit identities remain available for explicit promotion even after safe return.
+
+If cleanup remains pending, call `stardock_recover({ action: "inspect", name })`; for multiple pending stages, inspect each `pendingLeaseStageIds` entry using `stageId`. Retry `releaseLeases` with the inspected graph identity and revision only after the worker is inactive and Treehouse/Git evidence is safe. Dirty or unverifiable work stays preserved; never discard it just to finish the loop. Cleanup warnings do not reverse your semantic decision, and `stardock_complete` does not claim the leases were returned.
+
+## Boundaries
+
+- Do not create briefs, criteria, graph digests, stage records, routine reviewer workers, or final reports on the normal path; Stardock derives or records them internally.
+- Do not call `stardock_run` for only one member of an independent ready set.
+- Do not launch a routine reviewer after every worker; your explicit decision over the settled evidence is the trust boundary.
+- Do not manually run stage acquire, integration-plan, prepare, finalize, or release actions on the common path.
+- Use `stardock_integrate` only when you explicitly choose the compatibility promotion path; if it returns recovery guidance, follow that instruction and preserve recorded branches and attempts.
+- `stardock_recover` is the first-class exception to the hidden legacy surface; use it for stuck custody or pending lease cleanup, not routine work orchestration.
+- Legacy diagnostic/recovery tools are hidden by default for new plans.
+Resuming a planless legacy loop restores its required tools; a human can otherwise enable them for the current session with `/stardock-legacy on` and disable them with `/stardock-legacy off`.

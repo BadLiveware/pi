@@ -56,38 +56,38 @@ test("workflow status blocks on the execution graph and exposes its exact next a
 	assert.equal(status.recommendedActions[0].tool, "stardock_state");
 });
 
-test("workflow status surfaces parent review for risky worker reports", () => {
+test("workflow status surfaces a governor decision for risky worker reports", () => {
 	const status = evaluateWorkflowStatus(baseState({
 		workerReports: [{ id: "wr1", status: "needs_review", role: "explorer", objective: "map files", summary: "found risk", advisoryHandoffIds: [], evaluatedCriterionIds: [], artifactIds: [], changedFiles: [], validation: [], risks: ["ambiguous file ownership"], openQuestions: [], reviewHints: ["Inspect parser.ts"], createdAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
 	}));
-	assert.equal(status.state, "needs_parent_review");
+	assert.equal(status.state, "needs_governor_decision");
 	assert.equal(status.recommendedActions[0].tool, "stardock_policy");
-	assert.equal(status.recommendedActions[0].args?.action, "parentReview");
+	assert.equal(status.recommendedActions[0].args?.action, "governorDecision");
 });
 
-test("workflow status blocks on unreviewed implementer worker runs", () => {
+test("workflow status advises on unreviewed implementer worker runs", () => {
 	const status = evaluateWorkflowStatus(baseState({
 		workerRuns: [{ id: "run1", role: "implementer", status: "needs_review", scope: "brief", briefId: "b1", requestId: "req1", agentName: "implementer", context: "fresh", outputMode: "file-only", outputRefs: [], changedFiles: [{ path: "src/example.ts", summary: "Edited by worker." }], allowDirtyWorkspace: false, startedAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
 	}));
-	assert.equal(status.state, "needs_parent_review");
-	assert.equal(status.severity, "blocked");
+	assert.equal(status.state, "needs_governor_decision");
+	assert.equal(status.severity, "warning");
 	assert.match(status.reasons[0], /WorkerRun\(s\) run1:needs_review/);
 });
 
-test("workflow status surfaces auditor blockers before other work", () => {
+test("workflow status routes auditor concerns to the governor", () => {
 	const status = evaluateWorkflowStatus(baseState({
-		auditorReviews: [{ id: "ar1", status: "blocked", summary: "blocked", focus: "gate", criterionIds: [], artifactIds: [], finalReportIds: [], concerns: ["unsafe"], recommendations: [], requiredFollowups: ["ask user"], createdAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
+		auditorReviews: [{ id: "ar1", status: "blocked", summary: "blocked", focus: "risk", criterionIds: [], artifactIds: [], finalReportIds: [], concerns: ["unsafe"], recommendations: [], requiredFollowups: ["inspect evidence"], createdAt: "2026-05-08T00:00:00.000Z", updatedAt: "2026-05-08T00:00:00.000Z" }],
 	}));
-	assert.equal(status.state, "needs_auditor_review");
-	assert.equal(status.severity, "blocked");
+	assert.equal(status.state, "needs_governor_decision");
+	assert.equal(status.severity, "warning");
 });
 
-test("workflow status surfaces pending auditor requests", () => {
+test("workflow status makes pending auditor requests optional governor evidence", () => {
 	const status = evaluateWorkflowStatus(baseState({
 		outsideRequests: [{ id: "auditor-1", kind: "auditor_review", status: "requested", requestedAt: "2026-05-08T00:00:00.000Z", requestedByIteration: 1, trigger: "pre_completion", prompt: "Audit before completion." }],
 	}));
-	assert.equal(status.state, "needs_auditor_review");
-	assert.equal(status.severity, "warning");
+	assert.equal(status.state, "needs_governor_decision");
+	assert.equal(status.severity, "action");
 	assert.equal(status.recommendedActions[0].tool, "stardock_outside_payload");
 	assert.equal(status.recommendedActions[0].args?.requestId, "auditor-1");
 });

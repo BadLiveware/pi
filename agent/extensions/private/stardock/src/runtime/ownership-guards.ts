@@ -4,6 +4,7 @@ import { bindOwnershipContext } from "../stages/ownership-records.ts";
 import type { StardockRuntime } from "./types.ts";
 
 const ALWAYS_READ_ONLY_TOOLS = new Set([
+	"stardock_status",
 	"stardock_state",
 	"stardock_policy",
 	"stardock_outside_payload",
@@ -29,6 +30,7 @@ function shouldGuard(name: string, params: Record<string, unknown>): boolean {
 
 function targetLoop(runtime: StardockRuntime, params: Record<string, unknown>): string | null {
 	if (typeof params.loopName === "string" && params.loopName.trim()) return params.loopName;
+	if (typeof params.name === "string" && params.name.trim()) return params.name;
 	return runtime.ref.currentLoop;
 }
 

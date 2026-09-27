@@ -2,6 +2,8 @@
 
 This directory contains small executable TLA+ models for critical Stardock state-machine behavior.
 
+> The recursive lifecycle model covers the retained planless legacy compatibility path. New finite bounded work uses the governor-controlled execution-plan surface; new open-ended work uses the runner-neutral attempt loop unless a human explicitly enables legacy recursive Stardock.
+
 ## Recursive lifecycle model
 
 `StardockRecursiveLifecycle.tla` models the recursive-loop lifecycle around:

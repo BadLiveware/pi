@@ -32,7 +32,7 @@ function placeholderReport(id: string, node: ExecutionNode, now: string): Worker
 		validation: [],
 		risks: [],
 		openQuestions: [],
-		reviewHints: ["Stage lane requires explicit WorkerRun id review."],
+		reviewHints: ["Stage lane awaits an explicit governor accept or dismiss decision by WorkerRun id."],
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -100,7 +100,7 @@ export function precreateLane(
 			reportId: workerReportId,
 			outputRefs: [],
 			changedFiles: [],
-			expectedMutation: true,
+			expectedMutation: false,
 			allowDirtyWorkspace: false,
 			startedAt: now,
 			updatedAt: now,

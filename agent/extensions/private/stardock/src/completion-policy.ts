@@ -106,7 +106,7 @@ export function evaluateCompletionPolicy(state: LoopState): CompletionPolicyResu
 			finding({
 				id: "execution-graph-nonterminal",
 				severity: "blocker",
-				recommendation: "parent_review",
+				recommendation: "governor_decision",
 				rationale: graphLifecycle.nextAction ?? "Resolve the nonterminal execution graph before completion.",
 				suggestedTool: "stardock_state",
 			}),

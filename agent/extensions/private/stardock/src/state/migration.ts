@@ -33,12 +33,14 @@ type WorkerReport,
 type WorkerReportStatus,
 type WorkerValidationRecord,
 } from "./core.ts";
+import { readPersistedExecutionPlan } from "../execution-plan/persistence.ts";
 import { readPersistedExecutionGraph } from "../stages/contracts.ts";
 import { defaultGovernorState, migrateGovernorState } from "./governor-memory-migration.ts";
 export { defaultGovernorState, migrateGovernorState } from "./governor-memory-migration.ts";
 import { migrateModeState, numberOrDefault } from "./modes.ts";
 import { defaultTaskFile } from "./paths.ts";
 import { migrateWorkerRuns } from "./worker-runs-migration.ts";
+import { migrateRecoveryEvents } from "./recovery-ownership.ts";
 
 export function normalizeMode(value: unknown): LoopMode {
 	return value === "recursive" || value === "evolve" || value === "checklist" ? value : "checklist";
@@ -411,7 +413,7 @@ export function migrateChangedFileReports(value: unknown): ChangedFileReport[] {
 			const file = item as Partial<ChangedFileReport> & Record<string, unknown>;
 			const filePath = typeof file.path === "string" ? file.path.trim() : "";
 			if (!filePath) return null;
-			const summary = typeof file.summary === "string" && file.summary.trim() ? file.summary.trim() : "Changed file requires parent review if relevant.";
+			const summary = typeof file.summary === "string" && file.summary.trim() ? file.summary.trim() : "Changed file is available for selective governor inspection if relevant.";
 			return {
 				path: compactText(filePath, 240) ?? filePath,
 				summary: compactText(summary, 240) ?? summary,
@@ -490,6 +492,9 @@ export function migrateState(raw: Partial<LoopState> & { name: string } & Record
 		breakoutPackages: migrateBreakoutPackages(raw.breakoutPackages),
 		workerReports: migrateWorkerReports(raw.workerReports),
 		workerRuns: migrateWorkerRuns(raw.workerRuns),
+		executionPlan: readPersistedExecutionPlan(raw.executionPlan),
 		executionGraph: readPersistedExecutionGraph(raw.executionGraph),
+		recoveryEvents: migrateRecoveryEvents(raw.recoveryEvents),
+		recoveryEventsUnparsed: Object.hasOwn(raw, "recoveryEventsUnparsed") ? raw.recoveryEventsUnparsed : raw.recoveryEvents !== undefined && !Array.isArray(raw.recoveryEvents) ? raw.recoveryEvents : undefined,
 	};
 }

@@ -121,7 +121,7 @@ export function buildWorkerReportPayload(state: LoopState, input: WorkerReportIn
 		formatCriterionCounts(state.criterionLedger),
 		"",
 		"Worker report contract:",
-		"Return compact results that the parent/governor can use for selective review. Do not apply edits, call tools, spawn agents, or assume a provider-specific output format unless separately instructed.",
+		"Return compact results that the governor can use for a selective accept, dismiss, defer, or follow-up decision. Do not apply edits, call tools, spawn agents, or assume a provider-specific output format unless separately instructed.",
 		WORKER_EVIDENCE_PROMOTION_NOTE,
 	];
 	appendSection(lines, "Criteria to evaluate", selectedCriteria.map((criterion) => `- ${criterion.id} [${criterion.status}] ${compactText(criterion.description, 140)} | Pass: ${compactText(criterion.passCondition, 140)}`));
@@ -189,14 +189,14 @@ const workerReportInputSchema = Type.Object({
 	risks: Type.Optional(Type.Array(Type.String(), { description: "Compact risks." })),
 	openQuestions: Type.Optional(Type.Array(Type.String(), { description: "Compact open questions." })),
 	suggestedNextMove: Type.Optional(Type.String({ description: "Suggested next move from the worker." })),
-	reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective parent review hints." })),
+	reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective governor inspection hints." })),
 });
 
 export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToolDeps): void {
 	pi.registerTool({
 		name: "stardock_worker_report",
 		label: "Manage Stardock Worker Reports",
-		description: "Build provider-neutral WorkerReport payloads and record compact worker results for selective parent review. Reports are advisory until the parent records lifecycle evidence with Stardock tools.",
+		description: "Build provider-neutral WorkerReport payloads and record compact worker results for governor decisions. Reports remain advisory until the governor records lifecycle evidence with Stardock tools.",
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("list"), Type.Literal("payload"), Type.Literal("record")], { description: "list returns worker reports; payload builds a provider-neutral report contract; record creates or updates one report." }),
 			loopName: Type.Optional(Type.String({ description: "Loop name. Defaults to the active loop." })),
@@ -213,7 +213,7 @@ export function registerWorkerReportTool(pi: ExtensionAPI, deps: WorkerReportToo
 			risks: Type.Optional(Type.Array(Type.String(), { description: "Compact risks." })),
 			openQuestions: Type.Optional(Type.Array(Type.String(), { description: "Compact open questions." })),
 			suggestedNextMove: Type.Optional(Type.String({ description: "Suggested next move from the worker." })),
-			reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective parent review hints." })),
+			reviewHints: Type.Optional(Type.Array(Type.String(), { description: "Selective governor inspection hints." })),
 			reports: Type.Optional(Type.Array(workerReportInputSchema, { description: "Batch worker reports for record. Single-report fields remain compatibility sugar." })),
 			limit: Type.Optional(Type.Number({ description: "Maximum list items to return. Default 20, max 100. Used only by action=list." })),
 			offset: Type.Optional(Type.Number({ description: "Pagination offset for action=list. Default 0." })),
