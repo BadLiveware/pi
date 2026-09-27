@@ -12,7 +12,7 @@ Infer execution shape from the source and user intent; do not wait for the user 
 
 - **Bounded plan**: finite scope and exit criteria; execute through all unblocked in-scope tasks until complete or blocked.
 - **Unbounded loop**: open-ended work that replenishes attempts from evidence; read `unbounded-work.md` before creating attempts or editing code, use a rolling 1-3 attempt window, and do not stop just because the current queue is empty.
-- **Split/long bounded plan**: master `README.md` plus numbered files, very large bounded scope, or many checkpoints; read `long-plan.md` before proceeding.
+- **Split/long bounded plan**: semantic `README.md` plus `work-breakdown.md` and optional supporting context, very large bounded scope, or many checkpoints; read `long-plan.md` before proceeding.
 
 Common unbounded signals include: loop/iteration language, optimize/tune/harden/improve continuously, measure/check→change→evaluate→accept/reject cycles, replenishing hypotheses from evidence, stop only when the user stops, or durable negative-result memory to avoid retracing paths.
 
@@ -52,34 +52,28 @@ Before converting a non-trivial plan or loop charter into tasks/attempts, scan f
 - placeholders like `TODO`, `TBD`, `handle edge cases`, `add tests`, `similar to previous`, or `fill in later`
 - missing acceptance criteria, affected files, validation commands, or expected signals
 - artifact hygiene risks
-- for split plans, an ordered execution spine separated from reference docs/design notes
-- for Stardock-backed plans, a thin runtime checklist or active brief shape rather than duplicated execution detail
+- for split plans, a semantic README separated from a complete implementation breakdown and supporting reference/design context
+- for Stardock-backed plans, an executable DAG shape with prerequisites, independent ownership, validation, and attempt bounds rather than duplicated checklist/brief detail
 
 For high-risk plans, use `../planning/plan-quality-review.md` before executing. Resolve blockers unless the user explicitly accepts gaps.
 
 ## Stardock-Backed Execution
 
-When a plan is intended for Stardock or an active Stardock loop exists, use Stardock records as the execution/evidence layer instead of only a chat task list.
+For finite bounded work with meaningful dependencies or independent leaves, use the graph-first Stardock surface instead of converting each execution item into a serial worker cycle.
 
-- For bounded checklist execution, use one active `stardock_brief` for the current execution-spine item. Include the slice objective, bounded task text, relevant acceptance criteria, required context, constraints, source refs, and validation requirements.
-- Use `stardock_ledger` for explicit criteria and compact verification artifact refs. Promote only the active slice's relevant checks; do not blindly distill a whole split plan or long nested checklist into one ledger.
-- Use a parallel execution stage only when the plan supplies a validated graph with at least two independently reviewable implementation nodes, one frozen contract/base, and disjoint writes/resources or explicit serialization. Keep single-node, contract-changing, uncertain-ownership, and overlapping work on the normal serial task/worker path.
-- Before mutating an eligible stage, validate/upsert its exact graph and acquire the stage at the current revision; only the owning runtime may continue mutation, run, review, integration, or release actions.
-- Call `stardock_stage runReady` only with exact graph, stage, node, and revision inputs after contracts are frozen. It precreates durable lane evidence, runs implementers concurrently only in distinct Treehouse leases, waits for started-worker cancellation acknowledgement, preserves ambiguous or unconfirmed leases, and never integrates branches or force-cleans leases.
-- Review every settled Treehouse WorkerRun by explicit `runId`; placeholder reports remain draft until their lane settles. Do not start fan-in until every integration lane has exactly one accepted run and clean committed evidence.
-- Call `stardock_stage integrationPlan`, inspect its expected parent, accepted source heads, conflicts/resources, order, and unique integration branch, then execute every returned argument-array no-ff command in order as the parent. Children never merge, integrate, finalize, or release.
-- Commit only fan-in-owned changes, run the fan-in validation commands, and call `prepareIntegration` with the exact integration head, ordered lane/source/merge mappings, fan-in commits, passing validation records, and current graph revision.
-- Execute every returned exact-parent/fast-forward command in order and stop on any failed precondition. Call `recordIntegrated` with the prepared `stateRevision`, raw prepare token, and exact parent result commit; identical retries are idempotent.
-- Call `release` only after integration or explicit clean abandonment. On interruption or ambiguity, use read-only `reconcile` first; take ownership only from confirmed dead matching evidence, retry only explicit `retry_ready` nodes, and require rationale plus approval reference for abandonment. Never force-clean or discard an unsafe lease.
-- From a sibling runtime, keep to state, policy, status, list, payload, or read-only `stardock_stage` reconciliation actions. Never infer takeover from heartbeat expiry; require confirmed death, matching durable evidence, explicit rationale and approval, and worker/Treehouse classification.
-- During approved reconciliation, quarantine only matching dead file evidence and keep prior graph ownership durable until the acquiring owner atomically replaces that exact evidence. If reconciliation stops after quarantine, leave the orphaned ownership fail-closed and retryable; standalone dead-mutex recovery must still pass normal stage readiness.
-- Treat detached ownership after owner pause or shutdown as recoverable state. Preserve the owner evidence and prior attempts until explicit reconciliation, abandonment, or release makes the next transition safe.
-- When a brief is complete, update criteria/evidence, complete the brief, then create the next brief or call `stardock_complete` only when all scoped work is done.
-- For unbounded recursive execution, each iteration is one evaluated attempt. Record hypothesis, action summary, validation, result, keep/reset decision, and evidence with `stardock_attempt_report` before `stardock_done` when available.
-- Near substantial completion, use `stardock_policy({ action: "completion" })` when criteria/artifacts/final reports exist or risk is high; record `stardock_final_report`, `stardock_auditor`, or `stardock_breakout` when the policy or evidence warrants it.
+- Author the DAG from `work-breakdown.md`. Use the default one-shot `stardock_plan` action for compact graphs; for large graphs, create a draft, upsert bounded node groups, inspect status, and seal. Treat README semantics and authoring batches as context, not node boundaries.
+- Treat nodes as arbitrary jobs, not PRs, branches, or mandatory code producers. A node may return a report, findings, decisions, throw-away test results, artifacts, commits, or no filesystem changes.
+- Treat interface, schema, migration, research, or shared-contract work as prerequisite nodes when later jobs depend on their output. Expose every independent dependent leaf; do not serialize siblings merely because they share a prerequisite.
+- Model integration, promotion, cherry-picking, combined validation, or release as an explicit dependent node when it is part of the work. Use `stardock_integrate` only as an optional compatibility/convenience path for accepted commit-producing lanes, not as a mandatory post-review phase.
+- Call `stardock_run` once per ready wave. It dispatches the complete maximal ready antichain through bounded isolated workers; a width-one ready set is naturally serial.
+- Inspect the settled reports, artifacts, validation observations, and focused diffs when present, then call `stardock_review` once with an accept/reject decision for every returned `runId`. Do not launch a routine reviewer worker between node execution and governor acceptance.
+- Treat failed checks, no-edit results, attempt exhaustion, and cleanup warnings as decision evidence rather than semantic gates. The governor may accept warning-bearing evidence, retry with rationale, supersede, abandon, or call `stardock_complete`; unresolved state is retained as warnings, and you must never claim the framework made the completion decision.
+- Use `stardock_status` after resume/compaction or when graph state is unclear. Keep governor context focused on the user's request, dependency handoffs, evidence, decisions, risks, and available actions.
+- Legacy Stardock tools are diagnostics/recovery only for new plans. They are restored automatically for planless legacy loops and can otherwise be enabled explicitly with `/stardock-legacy on`.
+- For unbounded experimentation, use the runner-neutral attempt loop in `unbounded-work.md` rather than forcing a finite DAG. Use legacy recursive Stardock only for an existing planless loop or an explicit human request.
 
 ## Task Creation Rules
-- Create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks; keep future backlog in the plan.
+- Create only the next UI-scannable rolling window of roughly 5-8 active leaf tasks; keep future backlog in `work-breakdown.md`.
 - Prefer one leaf task per independently completable, testable, reviewable unit that could be a semantic commit boundary.
 - Use parent/container tasks only for coordination.
 - Put execution-critical detail in each leaf task/attempt: goal or hypothesis, files/areas, acceptance criteria or decision rules, validation/evaluation, risks/notes.
@@ -94,10 +88,10 @@ Do not commit when the user opted out, the execution is inspect-only/draft/WIP, 
 1. Treat the plan or loop charter as execution source; do not re-plan unless evidence forces it.
 2. Verify the source still matches user request, current scope, and local constraints.
 3. Classify bounded vs unbounded and simple vs split/long. For unbounded work, read `unbounded-work.md` before creating attempts, starting background work, or editing code; do not substitute a one-off task list for the loop runner.
-4. For split plans, identify the current execution-spine file and read only the reference docs/design notes it names as required for the next slice.
+4. For split plans, read `README.md` for semantic meaning and `work-breakdown.md` for implementation topology. For ordinary serial execution, load the current node plus its referenced context. For incremental Stardock authoring, load and upsert bounded node groups until every contract is represented, then seal. Accept legacy `stardock-dag.md` or numbered execution files as older input shapes, but do not produce them for new plans.
 5. Preserve recommended order unless a safer dependency order is required.
 6. Run readiness review and resolve blockers or accepted gaps.
-7. For Stardock-backed bounded plans, create or activate the current slice's `stardock_brief` before coding.
+7. For Stardock-backed bounded plans, author and seal the execution topology with `stardock_plan`, then let `stardock_run` dispatch the complete ready set before governor edits; accepted evidence unlocks dependent nodes, while any integration or promotion is an explicit node or an optional compatibility operation.
 8. Create/reconcile the next concrete task/attempt window and mark the first executable leaf `in_progress`.
 9. Execute the task/attempt in the same run.
 10. If the current task is enabling work such as seams, instrumentation, or preparatory refactors, use the improved feedback loop to continue into the dependent behavior change in the same execution whenever it remains unblocked and in scope.
@@ -109,7 +103,7 @@ Do not commit when the user opted out, the execution is inspect-only/draft/WIP, 
 ## Scope Control
 - Treat the plan/loop charter and user request together as the source of in-scope work.
 - Do not stop because the initial task/attempt list is exhausted.
-- If the current referenced bounded plan document is incomplete, keep working that document before proposing the next one.
+- If the current bounded work node is incomplete, keep working it before proposing optional broader scope; do not treat a context-file boundary as a completion boundary.
 - Reconcile task lists immediately when switching plan, phase, or context; delete/supersede obsolete pending tasks and irrelevant old completed tasks when they no longer support current execution.
 - Surface optional or broader work explicitly instead of silently expanding scope.
 

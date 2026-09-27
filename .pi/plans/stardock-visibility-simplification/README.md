@@ -1,5 +1,7 @@
 # Stardock Worker Visibility and Simplification
 
+> **Superseded:** This plan documents the previous low-level stage/worker design and is retained as historical evidence only. New bounded Stardock work follows [`../simplified-stardock/README.md`](../simplified-stardock/README.md) and the graph-first `plan → run → review → status` workflow, with optional integration plus recovery and completion actions.
+
 ## Purpose
 
 Make Stardock's current work passively and continuously legible—especially live worker activity, review gates, failures, and next actions—while reserving user-invoked commands for deeper inspection and removing superseded APIs, speculative modes, duplicated state, and globally active tool metadata that no longer earn their complexity.

@@ -24,6 +24,7 @@ Use this skill to decide whether to delegate, what to delegate, and which suppor
 3. **Is it safe to delegate?**
    - no if context cannot be packaged cleanly, agents would conflict heavily, or the subagent would own final decisions
 4. **Choose the branch:**
+   - active bounded Stardock execution plan -> put independent report, research, test, decision, implementation, or promotion jobs in the DAG and let `stardock_run` dispatch the complete ready set; do not launch overlapping raw subagents or legacy workers
    - routine bounded search/inspection/summary/test ideas -> downshift to cheaper or less scarce supported enabled model when safe
    - hard narrow correctness/reasoning/review slice -> upshift that slice to a stronger supported enabled model
    - independent review/context isolation -> same-model or same-class delegation is valid
@@ -63,7 +64,8 @@ Prefer concrete repo-defined agents over generic builtins when guidance names a 
 | Impact-aware review | `impact-reviewer` |
 | Generic code/plan/diff audit | `auditor` |
 | Feynman research workflows | `feynman-researcher`, `feynman-verifier`, `feynman-reviewer`, `feynman-writer` |
-| Stardock active brief or governance work | `stardock_worker` (or `stardock_brief_worker` compatibility wrapper for brief-scoped runs), not raw `subagent`; for non-trivial code mutation use `role: "implementer"` before parent edits, because explorer/test_runner/reviewer/auditor roles do not satisfy implementation delegation |
+| Bounded Stardock job DAG | `stardock_plan` defines arbitrary report, research, test, decision, implementation, or promotion jobs; `stardock_run` dispatches the complete ready set; governor decisions use `stardock_review`; integration is an explicit node or optional compatibility operation, not a required post-wave step |
+| Planless legacy or recursive Stardock loop | Use its restored legacy surface, including `stardock_worker`, only for that compatibility workflow; do not mix it with a bounded execution DAG |
 
 Use a generic builtin only as an explicit degraded fallback when the intended custom agent/tool is unavailable; record the degraded path. For research-heavy or source-sensitive work, prefer configured researcher/verifier/reviewer/writer-style agents when available; otherwise use a configured general-purpose agent with a bounded prompt.
 
@@ -86,7 +88,7 @@ Validation: <how the parent will check the result>
 ```
 
 ## Common Failure Modes
-- “I can just do it myself.” For non-trivial bounded work, delegate/downshift one useful leaf unless an avoid condition applies. In a Stardock active brief, one scout/explorer does not satisfy implementation delegation; run `stardock_worker` with `role: "implementer"` before parent edits unless a direct-edit exception is explicit. Treat multi-file or new-file slices as non-trivial, not trivial/surgical.
+- “I can just do it myself.” For non-trivial bounded work, delegate/downshift one useful leaf unless an avoid condition applies. In a bounded Stardock plan, this means defining the appropriate job leaf and calling `stardock_run`; a scout, raw subagent, governor edit, or legacy `stardock_worker` does not replace the plan-owned lane. Treat multi-file or new-file work as non-trivial, not trivial/surgical.
 - “The strongest model is safest.” Do not spend scarce top-model quota on mechanical, easy-to-verify work.
 - “It is enabled/authenticated, so it is usable.” Require catalog `support: yes` and `enabled: yes`.
 - “Spark is cheap because it is fast.” Spark is premium latency.

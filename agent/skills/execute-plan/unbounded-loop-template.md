@@ -53,19 +53,18 @@ Continuous unbounded loop (project-owned canonical context file).
 - Optional raw log archive: <path or none>
 - Negative-result docs: <path or none>
 
-## Stardock Runtime
+## Runtime
 - Runtime loop: `<loop-name>`
-- Mode: `recursive`
-- Stardock task role: compact runtime prompt/checkpoint; durable charter lives here
-- Start shape: `stardock_start({ name: "<loop-name>", mode: "recursive", taskContent: "<compact charter or pointer to this file>", objective: "<objective>", baseline: "<current best>", validationCommand: "<primary check>", resetPolicy: "manual", stopWhen: ["target_reached", "idea_exhaustion", "max_iterations"], itemsPerIteration: 0, reflectEvery: 5, maxIterations: 200 })`
+- Runner: canonical-file + rolling task/attempt window
 - Iteration unit: one complete evaluated attempt
-- Evidence records: use `stardock_attempt_report` for each attempt; use `stardock_ledger` artifacts only when explicit criteria/evidence tracking adds value
-- Completion/readiness: use `stardock_policy({ action: "completion" })` and `stardock_final_report` when criteria/artifacts/final evidence exist or risk is high
+- Optional legacy compatibility: only when resuming an existing planless recursive Stardock loop or when the human explicitly enables `/stardock-legacy on`
+- Legacy task role: compact runtime prompt/checkpoint; durable charter remains here
+- Legacy evidence: use `stardock_attempt_report` and other legacy evidence tools only on that restored/explicit compatibility surface
 
 ## Inner Loop Cadence
 - Attempt completion includes measuring, selecting, implementing or explicitly splitting/deferring, post-measuring, deciding, committing accepted kept changes by default when safe, and recording outcome.
-- Micro-batch limit: up to 3 independently evaluated/logged micro-attempts only when each reaches a terminal outcome before the Stardock iteration advances.
-- Do not call `stardock_done` after partial investigation, async process start, waiting for benchmarks, or unevaluated edits unless a predeclared pause/blocker policy applies.
+- Micro-batch limit: up to 3 independently evaluated/logged micro-attempts only when each reaches a terminal outcome before the iteration advances.
+- In a legacy recursive loop, do not call `stardock_done` after partial investigation, async process start, waiting for benchmarks, or unevaluated edits unless a predeclared pause/blocker policy applies.
 
 ## Compaction
 - Trigger: every <N> attempts or when file exceeds <size target>
@@ -75,9 +74,9 @@ Continuous unbounded loop (project-owned canonical context file).
 
 ## Single Source of Truth
 - This project-owned file owns objective/protocol/thresholds/current state/active hypotheses/recent decisions and pointers.
-- Stardock owns runtime state, attempt reports, outside requests, criteria/artifact refs, and final reports.
-- Do not duplicate these sections in separate plan summaries, Stardock task files, or plan files; store only pointers elsewhere.
-- Bulky notes and verification evidence belong in per-attempt/domain artifacts, not here and not pasted into Stardock state.
+- The canonical loop file owns runtime truth; an active legacy Stardock loop owns only its compatibility runtime/evidence records.
+- Do not duplicate these sections in separate plan summaries, optional legacy task files, or plan files; store only pointers elsewhere.
+- Bulky notes and verification evidence belong in per-attempt/domain artifacts, not pasted into optional legacy state.
 
 ## Current Attempt
 - Attempt: <attempt-id>
@@ -94,4 +93,4 @@ Continuous unbounded loop (project-owned canonical context file).
 - [ ] Decide accepted/rejected/deferred/split/blocked
 - [ ] Commit accepted kept change by default when safe, or record why it remains uncommitted; revert/record non-accepted outcome
 - [ ] Update Recent Attempts row and current state snapshot when applicable
-- [ ] Record `stardock_attempt_report` with hypothesis, action, validation, result, keep/reset decision, and evidence pointer before `stardock_done`
+- [ ] Record the hypothesis, action, validation, result, keep/reset decision, and evidence pointer in canonical state; if running a legacy recursive loop, also record `stardock_attempt_report` before `stardock_done`

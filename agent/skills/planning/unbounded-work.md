@@ -4,7 +4,7 @@ Use this reference from `planning` when the work is open-ended and should contin
 
 ## Outcome
 - one compact project-owned canonical loop file with all live decision-critical context
-- a Stardock-compatible attempt cycle: check/measure current state -> select one candidate -> change or split/defer -> evaluate -> accept/reject/defer/split/block -> record -> repeat
+- a runner-neutral attempt cycle: check/measure current state -> select one candidate -> change or split/defer -> evaluate -> accept/reject/defer/split/block -> record -> repeat
 - artifact policy scaled to the loop: durable domain artifacts for long-term repo knowledge, or minimal anti-repeat notes for lightweight loops
 - a context-compaction policy so future agents can resume without reading large history
 
@@ -22,21 +22,21 @@ Default to a single project-owned canonical charter:
 .pi/loops/<loop-name>/loop.md
 ```
 
-Stardock owns runtime state under `.stardock/`. The canonical `.pi/loops/.../loop.md` file owns durable objective, evaluation protocol, acceptance rules, current state, and compact attempt history. If both exist, do not duplicate long prose across them: the Stardock task file should point to the canonical charter and hold only runtime status/checklist text.
+The canonical `.pi/loops/.../loop.md` file owns durable objective, evaluation protocol, acceptance rules, current state, and compact attempt history. An existing or explicitly enabled legacy recursive Stardock loop may retain compatibility runtime state under `.stardock/`; if both exist, its task file points to the canonical charter and holds only compact runtime status.
 
 Optional support files only when justified by the loop charter:
-- `.pi/loops/<loop-name>/attempts/<attempt-id>.md` for current-attempt notes and verification summaries that are too bulky for the canonical file or Stardock state
+- `.pi/loops/<loop-name>/attempts/<attempt-id>.md` for current-attempt notes and verification summaries that are too bulky for the canonical file or optional legacy runtime state
 - `.pi/loops/<loop-name>/attempt-archive.ndjson` for compact append-only historical summaries
 - domain-specific negative-result docs for durable rejected/deferred lessons
 
-For lightweight loops, the canonical file may be the only durable artifact; keep just enough anti-repeat memory to avoid retracing failed paths. For heavier loops, put bulky notes, logs, screenshots, and benchmark output in per-attempt or domain artifacts and keep only pointers in the canonical file and Stardock evidence records.
+For lightweight loops, the canonical file may be the only durable artifact; keep just enough anti-repeat memory to avoid retracing failed paths. For heavier loops, put bulky notes, logs, screenshots, and benchmark output in per-attempt or domain artifacts and keep only pointers in the canonical file and any optional legacy evidence records.
 
 ## Single-Source-of-Truth Rule
-Do not duplicate decision-critical content across project loop file, `.stardock` task/state, plan summaries, and plan files.
+Do not duplicate decision-critical content across the project loop file, optional legacy `.stardock` state, plan summaries, and plan files.
 
 Choose one owner per fact:
 - objective/protocol/thresholds/current state/active hypotheses/recent results -> canonical `.pi/loops/<loop-name>/loop.md`
-- runtime iteration, queued prompt, active brief, criteria, attempt reports, final reports, auditor/breakout/handoff records -> Stardock state and tools
+- runtime iteration and attempt status -> canonical loop file/task window; when a legacy recursive loop is already active, its compatibility records remain in Stardock state
 - current-attempt bulky notes/verification -> per-attempt artifact such as `.pi/loops/<loop-name>/attempts/<attempt-id>.md`
 - accepted implementation evidence -> commit and referenced artifacts when the loop uses commits
 - rejected/deferred/split lessons -> independent negative-result artifacts only when they have durable domain value; otherwise compact anti-repeat notes in the canonical file are enough
@@ -54,8 +54,8 @@ Other files should reference owner locations with short pointers, not copy conte
 7. **Active Context Window**: only the next 1-3 hypotheses and last 3-5 attempt summaries.
 8. **Attempt Notes Policy**: where bulky per-attempt notes and verification evidence live, and what pointer stays in the canonical file and Stardock records.
 9. **Artifact Policy**: which outcomes need durable domain artifacts, which only need compact anti-repeat notes, and where each belongs.
-10. **Runner Policy**: use Stardock recursive mode by default when available; state whether the loop is attempt-driven or item-queue paced. For optimization/experiment loops, set one Stardock iteration to one full evaluated attempt and use `itemsPerIteration: 0`; if not using Stardock, record why and what runner/checkpoint mechanism replaces it.
-11. **Stardock Setup**: loop name, `objective`, optional `baseline`, `validationCommand`, `resetPolicy`, `stopWhen`, `maxFailedAttempts`, outside-help/governor cadence, and whether to use `stardock_ledger`, `stardock_attempt_report`, `stardock_final_report`, `stardock_policy`, or breakout/auditor records.
+10. **Runner Policy**: use the canonical loop file plus a rolling task/attempt window by default. The governor-controlled Stardock DAG is for finite bounded jobs and must not be forced onto open-ended work.
+11. **Optional Legacy Setup**: only for an existing planless recursive Stardock loop or explicit human request, record the loop name, pacing, stop conditions, and which restored legacy evidence tools apply.
 12. **Compaction Policy**: when/how stale detail is archived while the canonical file stays small.
 13. **Commit Policy**: how accepted kept state is committed by default or explicitly recorded when commits are disabled or unsafe.
 14. **Runtime Decision Policy**: all approval boundaries, cost ceilings, ambiguity handling, and fallback behavior needed during the loop must be decided before starting; the loop cannot rely on asking the user mid-iteration.
@@ -67,8 +67,8 @@ Other files should reference owner locations with short pointers, not copy conte
 3. Define acceptance/rejection thresholds before proposing attempts.
 4. Resolve runtime decision boundaries before loop start: approvals, cost limits, destructive/external actions, fallback choices, when to skip/defer, and what counts as unrecoverable.
 5. Design the canonical loop file so a fresh agent can resume by reading one compact file.
-6. For Stardock recursive execution, define the iteration unit and pacing before start; optimization/experiment loops should use one full evaluated attempt per iteration, `itemsPerIteration: 0`, and `stardock_attempt_report` for structured results.
-7. Decide which Stardock evidence tools matter for the loop: criteria/artifacts for explicit acceptance, final reports for completion summaries, policy checks for readiness, auditor/breakout packages for high-risk or stuck states, and outside requests/governor cadence for oversight.
+6. Define the iteration unit and pacing before start; optimization/experiment loops should use one full evaluated attempt per iteration and record structured results in the canonical file.
+7. If an existing or explicitly requested legacy recursive Stardock loop is used, decide which restored evidence tools matter; otherwise do not enable the legacy surface.
 8. Seed only a short rolling idea queue (1-3 active, a few deferred), keeping scope unbounded.
 9. Define compaction rules so stale detail is archived and active context stays small.
 10. Ensure the plan is loop-shaped, not phase-shaped; do not claim completion after backlog exhaustion.
@@ -88,11 +88,10 @@ Example:
 Compaction command: ./scripts/loop-compact.sh .pi/loops/<loop-name>/loop.md .pi/loops/<loop-name>/attempt-archive.ndjson --keep 5
 ```
 
-## Task and Stardock Guidance
+## Task and Optional Legacy Guidance
 - Use tasks as a rolling execution window only; do not represent total loop scope as finite.
 - Keep 1-3 active attempts/tasks visible and replenish continuously from backlog/evidence.
-- For optimization, experiment, benchmark, hardening, or research loops, plan each Stardock iteration around one complete evaluated attempt: measure/select/do/measure/decide/commit accepted changes/update records.
-- Use `itemsPerIteration: 0` for attempt-driven loops so Stardock does not treat individual checklist boxes as iteration boundaries.
-- Use `itemsPerIteration: N` only for item-queue loops where each checklist item is itself a complete useful work unit.
-- Allow up to 3 micro-attempts in one iteration only when each can be independently evaluated, logged, decided, and represented in Stardock attempt records or the canonical file.
-- Before claiming loop completion, plan to use `stardock_policy({ action: "completion" })` when criteria/artifacts/final reports exist or risk is high, then record a `stardock_final_report` or explicit gap if appropriate.
+- For optimization, experiment, benchmark, hardening, or research loops, plan each iteration around one complete evaluated attempt: measure/select/do/measure/decide/commit accepted changes/update records.
+- Keep 1-3 attempts visible in the rolling window; do not let checklist exhaustion imply loop completion.
+- Allow up to 3 micro-attempts only when each can be independently evaluated, logged, decided, and represented in canonical state.
+- In an existing or explicitly requested legacy recursive Stardock loop, keep one complete evaluated attempt per iteration and use its restored evidence/completion tools; do not recommend those tools for a new runner-neutral loop.

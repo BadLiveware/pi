@@ -20,12 +20,13 @@ Your job is to decide whether a plan can guide execution without causing wrong i
 
 Check only issues that would materially affect execution or reviewability:
 
-- Requirements coverage: every required behavior maps to an execution task or explicit non-goal.
-- Execution order: tasks are ordered by implementation dependency and validation usefulness, not by note-writing convenience.
-- Plan topology: broad plans have an ordered execution spine separated from reusable docs/runbooks and deferred design notes.
-- Stardock readiness: the current execution item can become one scoped `stardock_brief`; criteria/evidence can be promoted for the active slice without distilling the whole plan.
-- Task granularity: each leaf task is coherent, independently testable/reviewable, and a plausible commit/PR boundary.
-- Acceptance criteria: tasks have concrete pass/fail conditions.
+- Semantic contract: for split plans, `README.md` explains the problem, domain concepts, current and desired behavior, invariants, scope, compatibility, examples, and whole-change acceptance without execution mechanics.
+- Requirements coverage: every required semantic behavior maps to a `work-breakdown.md` node or explicit non-goal, and every node references the semantics it implements.
+- Execution topology: dependencies and ownership in `work-breakdown.md` determine order; README sections and supporting-file boundaries do not.
+- Responsibility boundaries: mandatory tasks, node acceptance, and validation are owned by `work-breakdown.md`; reusable docs/runbooks, implementation context, and deferred design notes do not duplicate or hide them.
+- Stardock readiness: the plan can become a declarative DAG of report, research, test, decision, implementation, or promotion jobs with executable prerequisites, independent leaves, explicit dependencies, observable acceptance, advisory attempt bounds, and optional per-node validation. Large DAGs may be authored in draft/upsert batches, but those batches are not topology, and execution must wait for a successful seal. Integration, promotion, combined validation, or delivery should be explicit dependent nodes when they are part of the work; nodes are never implicit PR boundaries.
+- Task granularity: each leaf task is coherent, independently testable/reviewable, and a plausible execution unit.
+- Acceptance criteria: README has whole-change semantic outcomes, while nodes have concrete implementation pass/fail conditions without duplicating the semantic specification.
 - Validation: commands or inspections are exact where knowable, include expected signals, and name explicit gaps.
 - Behavior modeling: cost/bounds, resource lifecycle, state/protocol, concurrency, progress, data-shape, or idempotency risks are assigned a concrete test/model/review lane instead of vague caution.
 - File specificity: affected paths or subsystems are exact enough for the next worker.
@@ -34,7 +35,7 @@ Check only issues that would materially affect execution or reviewability:
 
 ## Non-Issues
 
-Do not block on style preferences, alternate naming you merely prefer, or optional refinements that do not affect execution. Do not require a split directory for small bounded plans that are clear as one file.
+Do not block on style preferences, alternate naming you merely prefer, or optional refinements that do not affect execution. Do not require a split directory for small bounded plans that keep semantic and implementation sections clearly distinguishable in one file. Accept legacy execution-heavy layouts when reviewing an existing plan unless the layout itself creates an execution defect.
 
 ## Output
 
@@ -50,7 +51,7 @@ Do not block on style preferences, alternate naming you merely prefer, or option
 - [specific improvement]
 
 **Stardock handoff notes:**
-- Current best brief boundary, criteria/evidence notes, or `none`.
+- Recommended prerequisite nodes, ready fan-out leaves, dependency handoffs, ownership/resource constraints, and any explicit promotion or combined-validation nodes, or `none`.
 ```
 
 Use `Approved` only when there are no blocking issues. Keep advisory improvements concise.

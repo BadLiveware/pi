@@ -26,34 +26,32 @@ If a prompt mixes continuous/open-ended intent with "quick" or "finite for now" 
 ## Plan Location
 For bounded plans, write under `.pi/plans/`:
 - simple plan: `.pi/plans/<short-hyphenated-name>.md`
-- split plan: `.pi/plans/<short-hyphenated-name>/README.md` plus an ordered execution spine and supporting reference folders
+- split plan: `.pi/plans/<short-hyphenated-name>/README.md` as the semantic contract, plus `work-breakdown.md` and optional supporting context folders
 
 For unbounded loop charters, write the canonical live context under `.pi/loops/<loop-name>/loop.md` and keep plan paths, if any, as pointers only.
 
 Names should describe the domain work, not generic labels like `simple_plan`, `phase2`, or `deep_plan`.
 
 ## Plan Topology
-For broad bounded work, separate execution from knowledge so future agents can read in implementation order without losing durable context.
+For broad bounded work, separate the durable semantic contract from implementation decomposition and transient runtime state.
 
 Preferred split layout:
-- `README.md`: purpose, desired end state, constraints, execution order, and final acceptance criteria.
-- `prs/`, `slices/`, or numbered files: the ordered execution spine. Each file is a reviewable implementation slice and a plausible Stardock brief/commit/PR boundary.
-- `docs/`: reusable runbooks, validation commands, workflow rules, compatibility maps, and reviewer expectations.
-- `design/`: deferred or cross-cutting decisions that should not be mixed into execution files.
-- `stardock-checklist.md`: optional thin runtime wrapper for Stardock checklist mode; it should link to execution files rather than duplicate their detailed tasks.
+- `README.md`: the semantic source of truth—problem, domain concepts, current and desired behavior, invariants, scope, compatibility expectations, examples, and whole-change acceptance conditions. Keep execution order, worker topology, ownership allocation, retries, and commands out of it.
+- `work-breakdown.md`: the complete implementation decomposition—work nodes, dependencies, semantic requirement references, ownership, per-node acceptance criteria, validation, bounds, and final combined-result checks.
+- `work/`: optional deeper implementation context such as affected-area maps, algorithm notes, migration detail, or node-specific pitfalls. These files do not define ordering or delivery boundaries.
+- `docs/`: reusable runbooks, validation workflows, compatibility maps, and reviewer expectations.
+- `design/`: deferred or cross-cutting decisions that should not be mixed into the semantic contract or implementation decomposition.
 
-Do not hide mandatory implementation work in `docs/` or `design/`. Do not bury long runbooks, research notes, or deferred design debates inside execution files. Treat each execution-spine file as maximum scope, not a quota; split before execution if the slice becomes too broad.
+Keep one owner for each fact. Whole-change semantics and observable outcomes belong in `README.md`; node topology and execution checks belong in `work-breakdown.md`; supporting files are referenced context. Do not duplicate mandatory tasks or acceptance criteria across files, and do not hide them in `docs/`, `design/`, or `work/`.
 
-## Parallel Stardock Stage Design
-Use a parallel Stardock stage only when at least two implementation leaves can start from one frozen contract/base, have independently reviewable outcomes, and either own disjoint writes/resources or declare an explicit serial dependency. Keep single-lane work, evolving contracts, uncertain ownership, and overlapping mutations on the normal serial task/worker path.
+## Stardock DAG Design
+For finite work with meaningful dependencies or independent jobs, use a Stardock DAG rather than a serial worker sequence. Model research, shared setup, interfaces, schemas, migrations, contracts, and decisions as executable prerequisites when later jobs consume their outputs; expose every independent child for fan-out after its dependencies are accepted.
 
-For an eligible stage, make the execution contract explicit:
-- one contract node and immutable contract/base commit
-- implementation nodes with brief ids, dependencies, reads, owned writes, resource claims, validation commands, and bounded concurrency
-- deterministic integration order plus a fan-in node with owned paths and exact validation
-- parent branch/head, unique integration branch, failure-preservation rules, and terminal lease/ownership disposition
+Stardock nodes are arbitrary jobs, not PR/branch/delivery boundaries or mandatory code producers. A node may return a report, findings, throw-away test results, artifacts, commits, or no filesystem changes. If combined code, promotion, delivery, or release is part of the requested work, model it as an explicit dependent node; do not assume every accepted wave must be merged into the original workspace.
 
-Plan the whole parent-owned lifecycle, not only worker fan-out: validate/upsert and acquire the graph, `runReady`, review every lane by explicit WorkerRun id, call `integrationPlan`, execute every returned no-ff command in order, commit and validate fan-in work, call `prepareIntegration`, execute every returned exact-parent/fast-forward command, call `recordIntegrated` with the prepared revision/token/result, then `release`. Include read-only reconcile, immutable retry, approved abandonment, and no-force preservation paths in recovery acceptance criteria.
+Each node should state its objective, bounded task, dependencies, and observable acceptance criteria. Add reads, owned writes, resource claims, validation commands, and attempt bounds only when they apply. Independent write-producing nodes must own disjoint writes/resources; add a dependency, split ownership, or create an explicit combining node when they conflict. A width-one ready set is naturally serial and needs no special workflow.
+
+Plan the governor-facing lifecycle as `stardock_plan → stardock_run → stardock_review`, repeated or redirected according to governor decisions. Include retry, abandon, supersession, explicit promotion nodes, or optional compatibility integration where the work requires them. Keep worker transport, leases, internal graph records, exact Git identities, cleanup, and recovery protocol out of the plan unless those mechanics are themselves in scope.
 
 ## Purpose Anchoring
 Do not invent product or architectural purpose from terse prompts like "make a long plan". Those control format/depth, not goal or scope.
@@ -66,7 +64,7 @@ A non-trivial plan should be executable by a future agent without guessing. Incl
 - observed facts vs user-stated requirements vs assumptions
 - affected files/areas when knowable
 - ordered leaf tasks with coherent outcomes, acceptance criteria, and validation
-- for split plans, a clear execution spine separated from reference docs and design notes
+- for split plans, a semantic `README.md` separated from a complete `work-breakdown.md` and optional supporting context
 - risks, rollback points, side effects, approval gates, and compatibility/data-safety concerns
 - for scale-sensitive work, a performance shape: work units, expected scale, caps/cancellation, repeated work to avoid, and measurement or smoke validation
 - exact validation commands or inspection checks with expected signals; if unknown, add discovery work
@@ -80,13 +78,13 @@ A leaf task is ready when it can be verified independently, touches one concern 
 TDD cycles happen inside implementation tasks. Do not split `write failing test`, `make it pass`, and `refactor` into separate plan tasks unless test infrastructure itself is the deliverable.
 
 ## Long Plan Splitting
-Use a deep plan directory when a plan would be very long, spans many reviewable areas, mixes implementation with reusable runbooks/design knowledge, or would overload execution context.
+Use a split plan directory when semantics, implementation decomposition, and reusable supporting knowledge would make one document difficult to understand or execute.
 
-`README.md` is the master overview: purpose, execution order, dependency graph, global constraints, cross-cutting risks/rollback, final acceptance criteria, and overall validation strategy.
+`README.md` is the durable semantic contract. It explains what the change means without embedding phase order, DAG mechanics, worker instructions, ownership allocation, retry policy, or command lists. A maintainer should still find it useful after implementation is complete.
 
-Use an execution spine under `prs/`, `slices/`, or numbered files for implementation order. Each execution file should be independently reviewable and implementation-sized, with local purpose/scope, prerequisites, affected areas, concrete implementation and validation tasks, compatibility/docs/cleanup work, exit criteria, and handoff notes. Store reusable runbooks in `docs/` and deferred/cross-cutting design in `design/`; execution files should reference them rather than copy them. Split by coherent reviewable implementation boundaries, not arbitrary line count.
+`work-breakdown.md` is the implementation contract. It maps bounded work nodes to sections of the semantic README, states dependencies and ownership, defines per-node acceptance and validation, and carries any Stardock-ready topology. Optional `work/` files add deeper context but do not own mandatory tasks or execution order. Store reusable runbooks in `docs/` and deferred/cross-cutting decisions in `design/`.
 
-When execution will use Stardock checklist mode, add a thin `stardock-checklist.md` wrapper with top-level milestones and links to the execution spine. Keep nested details in the execution files to avoid duplicate sources of truth. Recommend `execute-plan`; it reads `../execute-plan/long-plan.md` for split/long bounded execution.
+Use `prs/` only for an explicitly requested multi-PR delivery workflow. When execution will use Stardock, derive the complete DAG from `work-breakdown.md`, author large graphs incrementally as a draft, and seal before execution; do not make semantic README or context-file boundaries double as execution nodes or authoring batches. Recommend `execute-plan`; it reads `../execute-plan/long-plan.md` for split/long bounded execution.
 
 Detailed templates live in `output-templates.md`.
 
@@ -99,7 +97,7 @@ Detailed templates live in `output-templates.md`.
 6. For scale-sensitive paths, include a concise performance-shape note before task sequencing: what scales, what bounds it, and what representative validation will show.
 7. Order independently validatable steps, separating preparatory refactors, behavior changes, validation, docs, migration, cleanup, and delegation points.
 8. Do not let sequencing turn preparatory work into a parking lot for the real change. When a risky or invasive behavior change is in scope, plan the testability/instrumentation work that makes it safe, then include the completion step for the actual behavior in the same execution path.
-9. For broad plans, create an ordered execution spine and move reusable runbooks/maps/design notes into separate reference folders.
+9. For broad plans, write the semantic contract in `README.md`, put implementation decomposition in `work-breakdown.md`, and move reusable runbooks/maps/design notes into supporting folders.
 10. Choose domain-facing names; do not carry plan labels into code/docs/generated artifacts.
 11. Decide bounded/unbounded and simple/split shape. For unbounded work, read `unbounded-work.md` and write a loop charter instead of a finite plan.
 12. For bounded work, decide single-file vs split plan, then write concrete nested tasks rather than context-only prose.
@@ -115,8 +113,8 @@ Detailed templates live in `output-templates.md`.
 - Delegate only bounded, low-coupling leaf tasks. For model choice and downshifting, use `subagent-delegation` and `list_pi_models`.
 - Use `execute-plan` when the plan or loop charter is clear and execution should start.
 - For split/long bounded plans, `execute-plan` should read `long-plan.md` before execution.
-- For Stardock-backed bounded execution, design each current execution-spine item so it can become one active `stardock_brief` with scoped acceptance criteria, required context, and validation. Promote only the active slice's criteria/evidence into `stardock_ledger`; do not blindly distill the whole plan directory into one ledger.
-- For Stardock recursive execution, plan each iteration as one complete evaluated attempt and record attempt evidence with `stardock_attempt_report`.
+- For Stardock-backed bounded execution, derive declarative DAG nodes from `work-breakdown.md` and actual work dependencies—not from README sections, planning-file boundaries, or incremental authoring batches. Large graphs may be upserted in bounded groups, but the sealed DAG remains the execution contract. Let Stardock derive internal briefs and evidence records.
+- For an existing or explicitly requested legacy recursive Stardock loop, plan each iteration as one complete evaluated attempt and use its restored attempt evidence tools. Do not recommend legacy recursive Stardock by default for new unbounded work.
 - If the user asked for planning only, stop at the plan instead of silently implementing.
 
 ## Status and Completion

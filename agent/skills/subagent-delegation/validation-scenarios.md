@@ -33,6 +33,14 @@ Pressure-test at least these cases, unless the validation gap is recorded:
    - Scenario: example uses `<configured-agent-name>` and actual agents are unknown.
    - Expected: inspect available agents before launch; do not copy placeholders or guess names.
 
+8. **Bounded Stardock DAG** -> delegate through the plan, not around it.
+   - Scenario: one research prerequisite unlocks an independent test job, decision report, and implementation job.
+   - Expected: model all three jobs in `stardock_plan` and dispatch the ready set with `stardock_run`; do not launch raw subagents or legacy `stardock_worker` calls around the graph, and do not force report-only jobs through repository integration.
+
+9. **Planless legacy recursive Stardock loop** -> retain compatibility boundary.
+   - Scenario: an existing recursive loop resumes with its legacy surface restored.
+   - Expected: legacy `stardock_worker` may continue for that loop; do not mix it with a bounded execution DAG or make legacy recursive mode the default for new work.
+
 ## Example Decisions
 
 Do not delegate trivial local work:
