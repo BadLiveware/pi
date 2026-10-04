@@ -34,19 +34,19 @@
     "check:structure": "node scripts/check-extension-structure.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "typecheck:public": "tsc --noEmit -p tsconfig.public.json",
-    "test": "npm run check:structure && node --experimental-strip-types --test \"public/**/*.test.ts\" \"private/**/*.test.ts\"",
+    "test": "npm run check:structure && node --experimental-strip-types --test \"test/**/*.test.ts\" \"public/**/*.test.ts\" \"private/**/*.test.ts\"",
     "eval:code-intel": "node --experimental-strip-types --test private/code-intelligence/test/eval-read-next.test.ts",
     "test:footer": "node --experimental-strip-types --test public/footer-framework/*.test.ts",
     "pack:public": "npm run check:structure && ./scripts/pack-public.sh"
   },
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.74.0",
-    "@earendil-works/pi-agent-core": "^0.74.0",
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-tui": "^0.74.0",
-    "@types/node": "^22.0.0",
-    "typebox": "^1.1.33",
-    "typescript": "^5.9.0"
+    "@earendil-works/pi-ai": "1.0.2",
+    "@earendil-works/pi-agent-core": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-tui": "1.0.2",
+    "@types/node": "^25.9.9",
+    "typebox": "1.3.27",
+    "typescript": "^7.0.2"
   },
   "packageManager": "npm@10"
 }
