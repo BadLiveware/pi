@@ -11,6 +11,7 @@ import { assertSettledRecoveryEvidence, isFinalizationAuditEvent } from "../stat
 import { assertNoActiveStageWork, assertStageReviewDecided } from "../stages/active-work.ts";
 import { reconcileStageResources, releaseStage } from "../stages/reconcile.ts";
 import { finalizeSettledOwnerCleanup } from "./finalize-cleanup.ts";
+import { assertStageWorkRecoverable } from "../stages/prepared-work-recovery.ts";
 
 function result(text: string, details: Record<string, unknown>, isError = false) {
 	return { content: [{ type: "text" as const, text }], details, ...(isError ? { isError: true } : {}) };
@@ -58,12 +59,13 @@ export async function executeRecoveryTool(runtime: StardockRuntime, params: Reco
 			const actions = ["inspect"];
 			let settledRecoveryBlock;
 			let takeoverBlock;
+			let preparedUndispatchedAttemptIds: string[] = [];
 			let leaseReleaseBlock;
 			if (graph && stage && graph.ownership?.stageId === stage.id && !["completed", "abandoned"].includes(graph.status)
 				&& (ownership?.ownerProcess === "dead" || (!ownership?.owner && ownership?.stateOwnership && !isProcessAlive(ownership.stateOwnership.pid)))) {
 				try {
-					assertNoActiveStageWork(state, graph.id, stage.id);
-					actions.push("takeover (requires confirmed death and classification)");
+					preparedUndispatchedAttemptIds = assertStageWorkRecoverable(state, graph.id, stage.id).map((item) => item.attempt.id);
+					actions.push("takeover (requires confirmed death and classification; preserves leases)");
 				} catch (error) {
 					if (!(error instanceof OwnershipProtocolError)) throw error;
 					takeoverBlock = error.message;
@@ -103,6 +105,7 @@ export async function executeRecoveryTool(runtime: StardockRuntime, params: Reco
 				...(graph && stage ? [`Mutation identity: graphId=${graph.id}, stageId=${stage.id}, expectedGraphRevision=${graph.revision}`] : []),
 				`Owner: ${ownership?.owner ? `session ${ownership.owner.sessionId}, pid ${ownership.owner.pid} (${ownership.ownerProcess})` : ownership?.stateOwnership ? `orphaned session ${ownership.stateOwnership.sessionId}, pid ${ownership.stateOwnership.pid}` : "none"}`,
 				`Running worker runs: ${runningWorkerRunIds.join(", ") || "none"}`,
+				...(preparedUndispatchedAttemptIds.length ? [`Durable never-dispatched candidates: ${preparedUndispatchedAttemptIds.join(", ")}; takeover rechecks and settles them without returning leases.`] : []),
 				`Unreleased lease attempts: ${pendingLeaseAttemptIds.join(", ") || "none"}`,
 				...(cleanup?.stageIds.length ? [`Stages with pending leases: ${cleanup.stageIds.join(", ")}${stage ? "" : "; inspect one using stageId to get its release options"}`] : []),
 				...(evidenceError ? [`Ownership evidence error: ${evidenceError.code}: ${evidenceError.message}`] : []),
@@ -117,7 +120,7 @@ export async function executeRecoveryTool(runtime: StardockRuntime, params: Reco
 				ok: !evidenceError, loopName, loopStatus: state.status, planStatus: state.executionPlan?.status,
 				graphId: graph?.id, graphRevision: graph?.revision, stageId: stage?.id, stageStatus: stage?.status,
 				stages: graph?.stages.map((item) => ({ id: item.id, status: item.status, terminalOwnerCleanup: Boolean(item.terminalOwnershipCleanup) })) ?? [], pendingLeaseStageIds: cleanup?.stageIds ?? [],
-				ownership, evidenceError, settledRecoveryBlock, takeoverBlock, leaseReleaseBlock, runningWorkerRunIds, pendingLeaseAttemptIds,
+				ownership, evidenceError, settledRecoveryBlock, takeoverBlock, leaseReleaseBlock, runningWorkerRunIds, preparedUndispatchedAttemptIds, pendingLeaseAttemptIds,
 				recentRecoveryEvents: state.recoveryEvents?.slice(-5) ?? [], unparsedRecoveryEvidence: state.recoveryEventsUnparsed !== undefined, actions,
 			});
 		}

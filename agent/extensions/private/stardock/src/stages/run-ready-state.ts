@@ -76,6 +76,7 @@ export function precreateLane(
 			violations: [],
 			validation: [],
 			status: "prepared",
+			dispatchState: "prepared",
 			startedAt: now,
 		};
 		const run: WorkerRun = {

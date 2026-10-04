@@ -1,8 +1,31 @@
 # Stardock formal models
 
-This directory contains small executable TLA+ models for critical Stardock state-machine behavior.
+This directory contains small executable TLA+ and Lean models for critical Stardock state-machine behavior.
 
 > The recursive lifecycle model covers the retained planless legacy compatibility path. New finite bounded work uses the governor-controlled execution-plan surface; new open-ended work uses the runner-neutral attempt loop unless a human explicitly enables legacy recursive Stardock.
+
+## Retry and ownership recovery (Lean)
+
+`StardockRetryRecovery.lean` retains the pre-fix retry/acquisition/recovery counterexamples and checks the repaired guards:
+
+- selected ready work can reacquire custody beside decided siblings
+- interrupted retries reconstruct unresolved lanes without rewriting accepted, integrated, or abandoned decisions
+- confirmed-dead recovery with exact never-dispatched evidence clears active flags atomically while preserving leases
+- live owners, unknown or dispatch-committed active workers, and unverifiable identity remain blocked
+- the modeled invocation boundary implies dispatch commitment before launch
+
+Run from the repository root with Lean 4 (checked with 4.27.0):
+
+```bash
+lean agent/extensions/private/stardock/models/StardockRetryRecovery.lean
+node --experimental-strip-types --test agent/extensions/private/stardock/test/lean-lifecycle-model.test.ts
+```
+
+The Node test skips explicitly when Lean is unavailable. A successful Lean check prints the retained counterexamples and theorem axioms without errors or `sorry` declarations.
+
+This is not a refinement proof of the implementation. The abstraction assumes valid dependencies/contracts and summarizes exact custody, revision, mutex, latest-attempt, run/report, and lease-identity checks as Boolean evidence. Real filesystem and transport boundaries are covered by `execution-plan-retry-lifecycle.test.ts` and `prepared-work-recovery.test.ts`, using subprocess owners, temporary roots, and synthetic leases rather than live Treehouse workers.
+
+Legacy attempts without a dispatch marker remain unknown. Dispatch-committed attempts remain potentially launched even if the crash occurred immediately before transport; neither the model nor recovery claims inactivity from owner death alone.
 
 ## Recursive lifecycle model
 

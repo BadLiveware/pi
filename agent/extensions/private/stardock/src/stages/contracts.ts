@@ -28,6 +28,9 @@ export interface ExecutionAttempt {
 	workerRunId?: string;
 	workerReportId?: string;
 	bridgeRunId?: string;
+	/** Missing on legacy attempts: unknown, never proof of non-dispatch. */
+	dispatchState?: "prepared" | "committed";
+	dispatchCommittedAt?: string;
 	nodeContractDigest?: string;
 	stageContractDigest?: string;
 	writes?: string[];
@@ -300,6 +303,10 @@ function isExecutionAttempt(value: unknown): value is ExecutionAttempt {
 		&& value.leaseDisposition !== "released"
 		&& value.leaseDisposition !== "preserved"
 		&& value.leaseDisposition !== "abandoned") return false;
+	if (value.dispatchState !== undefined && value.dispatchState !== "prepared" && value.dispatchState !== "committed") return false;
+	if (value.dispatchState === "committed") {
+		if (typeof value.dispatchCommittedAt !== "string" || !value.dispatchCommittedAt) return false;
+	} else if (value.dispatchCommittedAt !== undefined) return false;
 	if (value.clean !== undefined && typeof value.clean !== "boolean") return false;
 	if (value.status === undefined) return true;
 	return value.status === "prepared" || value.status === "running" || value.status === "needs_review" || value.status === "failed" || value.status === "detached";

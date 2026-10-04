@@ -437,6 +437,7 @@ export interface StardockRecoveryEvent {
 	graphId: string;
 	stageId: string;
 	previousOwnerSessionId: string;
+	recoveredPreparedAttemptIds?: string[];
 	rationale: string;
 	approvalRef: string;
 }

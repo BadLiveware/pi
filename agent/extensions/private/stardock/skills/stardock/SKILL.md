@@ -51,7 +51,15 @@ Pass `name` only when operating on a plan other than the active one.
 
 If a foreign owner, interrupted terminal cleanup, or preserved lease blocks ordinary tools, call `stardock_recover({ action: "inspect", name? })`. It is available on the primary surface even when normal mutations are blocked and returns exact graph/stage/revision, owner liveness, running workers, pending lease IDs, and viable recovery actions.
 
-Choose one scoped action from that inspection: `relinquishSettled` fences only a terminal stage (or a detached, fully decided plan) with no active worker or attempt; `takeover` requires confirmed owner death, no active worker/attempt evidence, and worker/Treehouse classification; `reconcileResources` inspects preserved attempts read-only before optional `apply: true` under recovered ownership; `finalizeCleanup` clears exact owner evidence left after a committed terminal release; `releaseLeases` retries only verified Treehouse/Git cleanup. Mutating calls require the inspected `graphId`, `stageId`, and `expectedGraphRevision`; ownership changes also require a concrete `rationale` and `approvalRef`. A lease that cannot be verified remains preserved. Recovery does not itself decide that the loop's work is complete; call `stardock_complete` separately when appropriate. Never edit `.stardock` state by hand or treat a stale heartbeat as proof of death.
+Choose one scoped action from that inspection:
+
+- `relinquishSettled` fences only a terminal stage (or a detached, fully decided plan) with no active worker or attempt.
+- `takeover` requires confirmed owner death and worker/Treehouse classification. It accepts inactive work, or exact durable never-dispatched candidates advertised by inspection. The latter are atomically settled for review; their leases remain preserved. Dispatched or legacy-unknown active attempts still block takeover, regardless of classification text. Include `classification` summarizing the inspected worker/Treehouse evidence in the takeover call. After takeover, call `stardock_run({})` (or `{ name }` for another loop) to recover an interrupted wave's review IDs; do not pass internal graph/stage/revision parameters to `stardock_run` or assume work succeeded.
+- `reconcileResources` inspects preserved attempts read-only before optional `apply: true` under recovered ownership. Include the inspected `graphId`, `stageId`, and `expectedGraphRevision` even for read-only reconciliation.
+- `finalizeCleanup` clears exact owner evidence left after a committed terminal release.
+- `releaseLeases` retries only verified Treehouse/Git cleanup.
+
+Every action except `inspect` requires the inspected `graphId`, `stageId`, and `expectedGraphRevision`; ownership changes also require a concrete `rationale` and `approvalRef`. A lease that cannot be verified remains preserved. Recovery does not itself decide that the loop's work is complete; call `stardock_complete` separately when appropriate. Never edit `.stardock` state by hand or treat a stale heartbeat as proof of death.
 
 ## Plan shape
 

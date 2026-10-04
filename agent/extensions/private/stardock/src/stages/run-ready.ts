@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { finalOutput, outputRefs, type EventBus, type SubagentResponse } from "../brief-worker-run-bridge.ts";
 import { compactText, type ChangedFileReport, type LoopState } from "../state/core.ts";
+import { commitPreparedLaneDispatch } from "./worker-dispatch.ts";
 import { loadState, mutateState } from "../state/store.ts";
 import { buildStageBriefWorkerInvocation } from "../worker-role-registry.ts";
 import { executeWorkerInvocation, prepareWorkerInvocation } from "../worker-invocation.ts";
@@ -197,7 +198,8 @@ async function runLane(
 		try {
 			signal.throwIfAborted();
 			const invoke = deps.invokeWorker ?? ((input) => defaultInvoke(deps.events, input));
-			worker = await invoke({ requestId: lane.requestId, invocation: preparedInvocation.params, signal, onUpdate, node, attempt, lease: lane.lease });
+			const committedAttempt = commitPreparedLaneDispatch(ctx, request, lane);
+			worker = await invoke({ requestId: lane.requestId, invocation: preparedInvocation.params, signal, onUpdate, node, attempt: committedAttempt, lease: lane.lease });
 			if (worker.response.isError) workerError = worker.response.errorText ?? "Stage worker returned an error.";
 		} catch (error) {
 			workerError = errorMessage(error);

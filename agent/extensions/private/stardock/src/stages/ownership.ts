@@ -6,6 +6,7 @@ import { loadState, mutateState } from "../state/store.ts";
 import { stageOwnerPath } from "../state/paths.ts";
 import { assertStageAcquirable } from "./acquisition-readiness.ts";
 import { assertNoActiveStageWork } from "./active-work.ts";
+import { assertStageWorkRecoverable, settleNeverDispatchedStageWork } from "./prepared-work-recovery.ts";
 import type { ExecutionStageOwnership } from "./contracts.ts";
 import {
 	acquireMutationMutex,
@@ -181,7 +182,9 @@ export function acquireStageOwnership(ctx: ExtensionContext, request: AcquireSta
 			assertStageAcquirable(graph, request.stageId, ctx.cwd, priorOwnership !== undefined, request.nodeIds);
 			const stage = graph.stages.find((value) => value.id === request.stageId);
 			if (!stage) throw new OwnershipProtocolError("stage_missing", `Execution stage "${request.stageId}" disappeared during ownership acquisition.`);
-			assertNoActiveStageWork(candidate, graph.id, stage.id);
+			if (request.recoveryEvent?.action === "takeover" && priorOwnership) {
+				request.recoveryEvent.recoveredPreparedAttemptIds = settleNeverDispatchedStageWork(candidate, graph.id, stage.id, now);
+			} else assertNoActiveStageWork(candidate, graph.id, stage.id);
 			if (!priorOwnership) stage.status = "running";
 			if (request.recoveryEvent) (candidate.recoveryEvents ??= []).push(request.recoveryEvent);
 			graph.ownership = {
@@ -388,7 +391,10 @@ export function reconcileStageOwnership(ctx: ExtensionContext, request: Reconcil
 	requireTakeoverEvidence(request);
 	const priorState = loadState(ctx, request.loopName);
 	const priorStageId = inspection.owner?.stageId ?? inspection.stateOwnership?.stageId ?? request.stageId;
-	if (priorState?.executionGraph && priorStageId) assertNoActiveStageWork(priorState, priorState.executionGraph.id, priorStageId);
+	if (priorState?.executionGraph && priorStageId) {
+		const prepared = assertStageWorkRecoverable(priorState, priorState.executionGraph.id, priorStageId);
+		if (prepared.length && !inspection.stateOwnership) throw new OwnershipProtocolError("state_mismatch", "Prepared-worker recovery requires exact persisted dead-owner custody.");
+	}
 	const owner = inspection.owner;
 	if (owner) {
 		if (inspection.ownerProcess === "live") throw new OwnershipProtocolError("owner_live", `Takeover refused: owner pid ${owner.pid} is live. Heartbeat expiry alone never permits takeover.`);
