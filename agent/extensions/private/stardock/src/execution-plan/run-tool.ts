@@ -10,6 +10,7 @@ import { refreshExecutionPlan, summarizeExecutionPlan } from "./graph.ts";
 import { materializeExecutionPlanWave, type MaterializedExecutionWave } from "./materialize.ts";
 import { reconcileExecutionPlanWave } from "./wave-state.ts";
 import { pendingResourceCleanup } from "./resource-cleanup.ts";
+import { unresolvedWaveNodes } from "./unresolved-wave.ts";
 import { beginExecutionActivities, settleExecutionActivities, updateExecutionActivity } from "./widget.ts";
 
 interface ExecutionPlanRunParams {
@@ -122,15 +123,16 @@ function recoverSettledRunningWave(ctx: ExtensionContext, loopName: string): { s
 	if (!plan || !graph || !wave) return undefined;
 	const stage = graph.stages.find((candidate) => candidate.id === wave.stageId);
 	if (!stage || stage.status === "contracts_ready") return undefined;
-	const executionNodes = wave.nodeIds.map((planNodeId) => graph.nodes.find((node) => node.id === plan.nodes.find((item) => item.id === planNodeId)?.currentExecutionNodeId));
-	if (executionNodes.some((node) => !node)) throw new Error(`Execution wave "${wave.id}" has incomplete durable node evidence.`);
+	const executionNodes = unresolvedWaveNodes(plan, wave).map((planNode) => graph.nodes.find((node) => node.id === planNode.currentExecutionNodeId));
+	if (!executionNodes.length || executionNodes.some((node) => !node)) throw new Error(`Execution wave "${wave.id}" has incomplete durable node evidence.`);
+	if (executionNodes.every((node) => node!.status === "ready" || node!.status === "retry_ready")) return undefined;
 	const active = executionNodes.filter((node) => ["leased", "running", "reconciling"].includes(node!.status));
 	if (active.length) return undefined;
 	const lanes: RunReadyResult["lanes"] = executionNodes.map((node) => {
 		const attempt = node!.attempts.at(-1);
 		const status = node!.status === "needs_review" ? "needs_review" : node!.status === "detached" ? "detached" : node!.status === "failed" ? "failed" : node!.status === "ready" || node!.status === "retry_ready" ? "not_started" : undefined;
 		if (!status) throw new Error(`Execution node "${node!.id}" is ${node!.status}; its interrupted wave requires explicit reconciliation.`);
-		return { nodeId: node!.id, attemptId: attempt?.id, workerRunId: attempt?.workerRunId, status, violations: attempt?.violations ?? [], error: attempt?.violations?.join("; ") || undefined };
+		return { nodeId: node!.id, attemptId: attempt?.id, workerRunId: status === "not_started" ? undefined : attempt?.workerRunId, status, violations: attempt?.violations ?? [], error: attempt?.violations?.join("; ") || undefined };
 	});
 	const counts = { needs_review: 0, failed: 0, detached: 0, not_started: 0 };
 	for (const lane of lanes) counts[lane.status] += 1;
@@ -157,9 +159,11 @@ function existingPlannedWave(ctx: ExtensionContext, loopName: string): Materiali
 	if (!plan || !graph || !wave) return undefined;
 	const stage = graph.stages.find((candidate) => candidate.id === wave.stageId);
 	if (!stage) throw new Error(`Execution stage "${wave.stageId}" disappeared while resuming its wave.`);
-	const executionNodeIds = wave.nodeIds.map((planNodeId) => plan.nodes.find((node) => node.id === planNodeId)?.currentExecutionNodeId);
-	if (executionNodeIds.some((id) => !id)) throw new Error(`Execution wave "${wave.id}" has incomplete node identity mappings.`);
-	if (stage.status !== "contracts_ready") {
+	const unresolved = unresolvedWaveNodes(plan, wave);
+	const executionNodeIds = unresolved.map((node) => node.currentExecutionNodeId!);
+	if (!executionNodeIds.length) throw new Error(`Execution wave "${wave.id}" has no unresolved node identity mappings.`);
+	const allReady = executionNodeIds.every((id) => ["ready", "retry_ready"].includes(graph.nodes.find((node) => node.id === id)?.status ?? ""));
+	if (stage.status !== "contracts_ready" && !allReady) {
 		const active = executionNodeIds.filter((id) => ["leased", "running", "reconciling"].includes(graph.nodes.find((node) => node.id === id)?.status ?? ""));
 		if (active.length) throw new Error(`Execution wave "${wave.id}" still has active or interrupted lanes (${active.join(", ")}). Use stardock_status; if the owning session is gone, enable legacy recovery for explicit reconciliation.`);
 		throw new Error(`Execution wave "${wave.id}" is ${stage.status} but could not be reconstructed from durable attempt evidence.`);
@@ -169,8 +173,8 @@ function existingPlannedWave(ctx: ExtensionContext, loopName: string): Materiali
 		graphRevision: graph.revision,
 		waveId: wave.id,
 		stageId: wave.stageId,
-		nodeIds: executionNodeIds as string[],
-		planNodeIds: [...wave.nodeIds],
+		nodeIds: executionNodeIds,
+		planNodeIds: unresolved.map((node) => node.id),
 		baseCommit: stage.contractCommit,
 	};
 }

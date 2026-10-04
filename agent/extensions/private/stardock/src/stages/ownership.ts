@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto";
 import type { LoopState, StardockRecoveryEvent } from "../state/core.ts";
 import { loadState, mutateState } from "../state/store.ts";
 import { stageOwnerPath } from "../state/paths.ts";
-import { readyExecutionNodeIds, validateExecutionGraph } from "./graph.ts";
+import { assertStageAcquirable } from "./acquisition-readiness.ts";
 import { assertNoActiveStageWork } from "./active-work.ts";
-import type { ExecutionGraph, ExecutionStageOwnership } from "./contracts.ts";
+import type { ExecutionStageOwnership } from "./contracts.ts";
 import {
 	acquireMutationMutex,
 	atomicWriteJson,
@@ -37,6 +37,7 @@ export interface AcquireStageOwnershipRequest {
 	stageId: string;
 	expectedGraphRevision: number;
 	sessionId: string;
+	nodeIds?: string[];
 	priorOwnershipEvidence?: ExecutionStageOwnership;
 	recoveryEvent?: StardockRecoveryEvent;
 }
@@ -77,26 +78,6 @@ export interface ReconcileOwnershipRequest {
 
 function ownerRecordWithoutSecret(record: StageOwnerRecord): OwnershipAcquisition["owner"] {
 	return { ...record, tokenDigest: record.tokenDigest };
-}
-
-function assertStageAcquirable(graph: ExecutionGraph, stageId: string, repoRoot: string, reconciliation = false): void {
-	const validation = validateExecutionGraph(graph, repoRoot);
-	if (!validation.ok) throw new OwnershipProtocolError("graph_invalid", `Execution graph validation failed before ownership acquisition: ${validation.errors.join(" ")}`);
-	if (graph.status === "completed" || graph.status === "abandoned") {
-		throw new OwnershipProtocolError("graph_terminal", `Execution graph "${graph.id}" is terminal and cannot acquire stage ownership.`);
-	}
-	const stage = graph.stages.find((candidate) => candidate.id === stageId);
-	if (!stage) throw new OwnershipProtocolError("stage_missing", `Execution stage "${stageId}" was not found in graph "${graph.id}".`);
-	if (stage.status === "integrated" || stage.status === "abandoned") {
-		throw new OwnershipProtocolError("stage_terminal", `Execution stage "${stage.id}" is terminal and cannot acquire ownership.`);
-	}
-	if (reconciliation) return;
-	if (stage.status !== "draft" && stage.status !== "contracts_ready") {
-		throw new OwnershipProtocolError("stage_unready", `Execution stage "${stage.id}" has status "${stage.status}" and cannot begin ownership acquisition.`);
-	}
-	const ready = new Set(readyExecutionNodeIds(graph));
-	const missing = stage.implementationNodeIds.filter((nodeId) => !ready.has(nodeId));
-	if (missing.length > 0) throw new OwnershipProtocolError("stage_unready", `Execution stage "${stage.id}" is not fully ready; blocked implementation nodes: ${missing.sort().join(", ")}.`);
 }
 
 function startHeartbeat(ctx: ExtensionContext, loopName: string, sessionId: string): void {
@@ -157,7 +138,7 @@ export function acquireStageOwnership(ctx: ExtensionContext, request: AcquireSta
 			throw new OwnershipProtocolError("evidence_changed", "Prior graph ownership evidence changed before replacement acquisition.");
 		}
 	}
-	assertStageAcquirable(state.executionGraph, request.stageId, ctx.cwd, priorOwnership !== undefined);
+	assertStageAcquirable(state.executionGraph, request.stageId, ctx.cwd, priorOwnership !== undefined, request.nodeIds);
 	const token = generateOwnershipToken();
 	const tokenDigest = digestOwnershipToken(token);
 	const now = new Date().toISOString();
@@ -197,10 +178,10 @@ export function acquireStageOwnership(ctx: ExtensionContext, request: AcquireSta
 		const saved = mutateState(ctx, request.loopName, (candidate) => {
 			const graph = candidate.executionGraph;
 			if (!graph || graph.id !== request.graphId) throw new OwnershipProtocolError("graph_mismatch", "Execution graph changed during ownership acquisition.");
-			assertStageAcquirable(graph, request.stageId, ctx.cwd, priorOwnership !== undefined);
+			assertStageAcquirable(graph, request.stageId, ctx.cwd, priorOwnership !== undefined, request.nodeIds);
 			const stage = graph.stages.find((value) => value.id === request.stageId);
 			if (!stage) throw new OwnershipProtocolError("stage_missing", `Execution stage "${request.stageId}" disappeared during ownership acquisition.`);
-			if (request.recoveryEvent) assertNoActiveStageWork(candidate, graph.id, stage.id);
+			assertNoActiveStageWork(candidate, graph.id, stage.id);
 			if (!priorOwnership) stage.status = "running";
 			if (request.recoveryEvent) (candidate.recoveryEvents ??= []).push(request.recoveryEvent);
 			graph.ownership = {
