@@ -87,9 +87,11 @@ function addReturnedFile(files: ReturnedFileRecord[], seen: Set<string>, file: u
 	files.push({ file: value, rank: files.length + 1, source });
 }
 
-function segmentFromValue(value: unknown, rank: number, source: string): ReturnedSegmentRecord | undefined {
+function segmentFromValue(value: unknown, rank: number, source: string, responseTarget?: unknown): ReturnedSegmentRecord | undefined {
 	const row = recordValue(value);
-	const target = recordValue(row?.target);
+	if (!row) return undefined;
+	// The primary segment shares the response target; context segments own theirs.
+	const target = recordValue(row?.target) ?? recordValue(responseTarget);
 	const range = recordValue(row?.range) ?? recordValue(target?.range);
 	const file = stringValue(target?.path);
 	const startLine = numberValue(range?.startLine);
@@ -101,7 +103,7 @@ function segmentFromValue(value: unknown, rank: number, source: string): Returne
 export function returnedSegmentsForResult(toolName: string, details: Record<string, unknown>): ReturnedSegmentRecord[] {
 	if (toolName !== "code_intel_read_symbol") return [];
 	const segments: ReturnedSegmentRecord[] = [];
-	const targetSegment = segmentFromValue(details.targetSegment, 1, "read_symbol:target");
+	const targetSegment = segmentFromValue(details.targetSegment, 1, "read_symbol:target", details.target);
 	if (targetSegment) segments.push(targetSegment);
 	for (const row of rows(details.contextSegments)) {
 		const segment = segmentFromValue(row, segments.length + 1, "read_symbol:context");

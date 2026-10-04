@@ -68,7 +68,7 @@ test("source range helpers slice normalized line ranges", () => {
 	assert.equal(rangeLineCount(range), 2);
 });
 
-test("file outline emits pass-through symbol targets and read hints", async () => {
+test("file outline emits compact pass-through symbol targets", async () => {
 	const repo = fixtureRepo();
 	try {
 		const tools = loadTools();
@@ -80,9 +80,11 @@ test("file outline emits pass-through symbol targets and read hints", async () =
 		assert.equal(outline.sourceCompleteness, "locations-only");
 		assert.equal(fetchRow.symbolTarget.name, "fetchWithRetry");
 		assert.equal(fetchRow.symbolTarget.path, "src/api.ts");
-		assert.match(fetchRow.symbolTarget.uri, /^file:\/\//);
-		assert.equal(fetchRow.symbolTarget.source, "tree-sitter");
-		assert.equal(fetchRow.symbolTarget.positionEncoding, "utf-16");
+		assert.equal(outline.language, "typescript");
+		assert.match(outline.coverage.sourceHash, /^[a-f0-9]{16}$/);
+		for (const redundant of ["uri", "source", "positionEncoding", "detail", "containerName", "language", "sourceHash"]) {
+			assert.equal(redundant in fetchRow.symbolTarget, false);
+		}
 		assert.equal(typeof fetchRow.symbolTarget.targetRef, "string");
 		assert.equal(typeof fetchRow.symbolTarget.symbolRef, "string");
 		assert.equal(typeof fetchRow.symbolTarget.rangeId, "string");
@@ -90,13 +92,16 @@ test("file outline emits pass-through symbol targets and read hints", async () =
 		assert.equal(fetchRow.symbolTarget.relocation.version, 1);
 		assert.equal(Array.isArray(fetchRow.symbolTarget.relocation.before), true);
 		assert.equal(Array.isArray(fetchRow.symbolTarget.relocation.after), true);
-		assert.equal(fetchRow.symbolTarget.detail, fetchRow.symbolTarget.signature);
+		assert.match(fetchRow.symbolTarget.signature, /export function fetchWithRetry\(options: RetryOptions\)/);
 		assert.equal(fetchRow.symbolTarget.selectionRange.startLine, fetchRow.symbolTarget.range.startLine);
 		assert.equal(fetchRow.symbolTarget.selectionRange.startColumn >= fetchRow.symbolTarget.range.startColumn, true);
-		assert.equal(fetchRow.readHint.path, "src/api.ts");
-		assert.equal(fetchRow.readHint.offset, fetchRow.symbolTarget.range.startLine);
-		assert.equal(fetchRow.readHint.limit, fetchRow.symbolTarget.range.endLine - fetchRow.symbolTarget.range.startLine + 1);
-		assert.match(outlineResult.content[0].text, /fn fetchWithRetry:\d+-\d+ ref=[a-f0-9]{16} read=\d+\+\d+/);
+		assert.equal("readHint" in fetchRow, false);
+		assert.deepEqual(fetchRow.symbolTarget.range, { startLine: 6, startColumn: 8, endLine: 9, endColumn: 2 });
+		assert.match(outlineResult.content[0].text, /fn fetchWithRetry:6-9 ref=[a-f0-9]{16}/);
+		const roundTrip = parseToolResult(await tools.get("code_intel_read_symbol")!.execute("read-outline-target", { target: fetchRow.symbolTarget }, undefined, undefined, mockContext(repo)));
+		assert.equal(roundTrip.ok, true);
+		assert.equal(roundTrip.target.targetRef, fetchRow.symbolTarget.targetRef);
+		assert.match(roundTrip.targetSegment.source, /export function fetchWithRetry/);
 		assert.doesNotMatch(outlineResult.content[0].text, /relocation|before|after/);
 
 		const overview = parseToolResult(await tools.get("code_intel_repo_overview")!.execute("overview", { tier: "files", paths: ["src"], maxSymbolsPerFile: 20 }, undefined, undefined, mockContext(repo)));
@@ -122,9 +127,14 @@ test("read symbol returns a complete target segment and bounded referenced defin
 		assert.equal(result.nextReadRecommended, false);
 		assert.match(result.targetSegment.source, /export function fetchWithRetry/);
 		assert.match(result.targetSegment.source, /return DEFAULT_TIMEOUT/);
-		assert.match(toolResult.content[0].text, /--- target src\/api\.ts:\d+-\d+ ref=[a-f0-9]{16} hash=[a-f0-9]{16} ---/);
+		assert.equal("target" in JSON.parse(JSON.stringify(result.targetSegment)), false);
+		assert.equal(result.target.path, "src/api.ts");
+		assert.equal(result.target.name, "fetchWithRetry");
+		assert.match(toolResult.content[0].text, /--- fn fetchWithRetry 6-9 ref=[a-f0-9]{16} hash=[a-f0-9]{16} complete-segment ---/);
 		assert.match(toolResult.content[0].text, /export function fetchWithRetry/);
-		assert.match(toolResult.content[0].text, /--- context src\/api\.ts:\d+ ref=[a-f0-9]{16} hash=[a-f0-9]{16} ---/);
+		assert.match(toolResult.content[0].text, /--- const MAX_RETRIES 1 ref=[a-f0-9]{16} hash=[a-f0-9]{16} complete-segment ---/);
+		assert.match(toolResult.content[0].text, /--- var DEFAULT_TIMEOUT 2 ref=[a-f0-9]{16} hash=[a-f0-9]{16} complete-segment ---/);
+		assert.match(toolResult.content[0].text, /--- type RetryOptions 3 ref=[a-f0-9]{16} hash=[a-f0-9]{16} complete-segment ---/);
 		const contextNames = result.contextSegments.map((segment: any) => segment.target.name).sort();
 		assert.deepEqual(contextNames, ["DEFAULT_TIMEOUT", "MAX_RETRIES", "RetryOptions"]);
 		assert.equal(result.deferredReferences.some((row: any) => row.name === "shouldRetry" && row.reason === "function-reference-deferred"), true);
@@ -220,7 +230,12 @@ test("post-edit map returns locator follow-up and diagnostic targets", async () 
 		assert.equal(result.ok, true);
 		assert.equal(result.sourceIncluded, false);
 		assert.equal(result.sourceCompleteness, "locations-only");
-		assert.equal(result.changedSymbols.some((row: any) => row.target?.name === "fetchWithRetry" && row.readHint), true);
+		const changed = result.changedSymbols.find((row: any) => row.target?.name === "fetchWithRetry");
+		assert.ok(changed);
+		assert.equal(changed.target.path, "src/api.ts");
+		assert.equal(changed.target.range.startLine, 6);
+		assert.equal(changed.target.range.endLine, 9);
+		assert.equal("readHint" in changed, false);
 		assert.equal(result.touchedDiagnostics.some((row: any) => row.code === "TS2345" && row.provenance === "supplied"), true);
 		assert.equal(result.diagnosticTargets.some((row: any) => row.target?.name === "fetchWithRetry" && row.diagnostic?.code === "TS2345"), true);
 		assert.equal(Array.isArray(result.testCandidates), true);

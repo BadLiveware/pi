@@ -128,7 +128,7 @@ test("state reports clangd and impact map supports C++ changed-file routing as s
 	const repo = cppRepo();
 	const tools = loadTools();
 	const state = parseToolResult(await tools.get("code_intel_state")!.execute("test-state", {}, undefined, undefined, mockContext(repo)));
-	assert.equal(state.languageServers.clangd.server, "clangd");
+	assert.equal(state.semanticProviders.clangd.provider, "clangd");
 	const impact = parseToolResult(await tools.get("code_intel_impact_map")!.execute("test", { changedFiles: ["storage.cpp"], maxRootSymbols: 3, maxResults: 10, detail: "snippets" }, undefined, undefined, mockContext(repo)));
 	assert.equal(impact.ok, true);
 	assert.equal(impact.coverage.parsedByLanguage.cpp, 1);

@@ -105,7 +105,7 @@ function renderStateResult(details: Record<string, unknown>, expanded: boolean, 
 	const rg = asRecord(backends.rg);
 	const syn = `${renderColor(theme, "muted", "syn:")}${renderColor(theme, backendAvailable(treeSitter) ? "success" : "error", backendAvailable(treeSitter) ? "ok" : String(treeSitter.available ?? "?"))}`;
 	const literal = `${renderColor(theme, "muted", "rg:")}${renderColor(theme, backendAvailable(rg) ? "success" : "warning", backendAvailable(rg) ? "ok" : String(rg.available ?? "?"))}`;
-	const languageServers = asRecord(details.languageServers);
+	const languageServers = languageServerStatusesFromProviders(asRecord(details.semanticProviders) as Parameters<typeof languageServerStatusesFromProviders>[0]);
 	const availableLsps = (["gopls", "rust-analyzer", "typescript", "clangd"] as const).filter((server) => backendAvailable(asRecord(languageServers[server]))).length;
 	const lsp = `${renderColor(theme, "muted", "lsp:")}${renderColor(theme, availableLsps > 0 ? "success" : "warning", `${availableLsps}/4`)}`;
 	const lines = [`${renderStatus(theme, backendAvailable(treeSitter))} ${renderBold(theme, "code-intel state")} ${syn} · ${literal} · ${lsp}`];
@@ -158,7 +158,8 @@ export function registerStateTool(pi: ExtensionAPI): void {
 		renderResult: renderStateToolResult,
 		afterResult: (result, params: CodeIntelStateParams, ctx) => {
 			const repoRoot = String(result.details.repoRoot ?? ctx.cwd);
-			setCodeIntelStatusSummary(ctx, asRecord(result.details.backends) as any, asRecord(result.details.languageServers) as any, repoRoot);
+			const languageServers = languageServerStatusesFromProviders(asRecord(result.details.semanticProviders) as Parameters<typeof languageServerStatusesFromProviders>[0]);
+			setCodeIntelStatusSummary(ctx, asRecord(result.details.backends) as any, languageServers, repoRoot);
 			if (params.includeDiagnostics === true) result.details.runtimeDiagnostics = runtimeDiagnostics(repoRoot);
 		},
 	});
