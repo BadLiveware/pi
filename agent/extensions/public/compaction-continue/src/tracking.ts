@@ -7,19 +7,6 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 export type TrackingEventKind = "watchdog_candidate" | "watchdog_nudge" | "watchdog_skip" | "watchdog_answer";
 export type TrackingSource = "compaction" | "assistant-stall";
 
-export interface TrackingConfig {
-	enabled: boolean;
-	appendSessionEntries: boolean;
-	log: boolean;
-	maxRecentEvents: number;
-}
-
-export interface LoadedTrackingConfig {
-	config: TrackingConfig;
-	paths: string[];
-	diagnostics: string[];
-}
-
 interface TrackingEventBase {
 	version: 1;
 	kind: TrackingEventKind;
@@ -63,28 +50,8 @@ export type TrackingEventInput =
 	| Omit<WatchdogSkipEvent, "version" | "timestamp" | "sessionId" | "repoRoot">
 	| Omit<WatchdogAnswerEvent, "version" | "timestamp" | "sessionId" | "repoRoot">;
 
-const CONFIG_FILE_NAME = "compaction-continue.json";
-export const DEFAULT_TRACKING_CONFIG: TrackingConfig = {
-	enabled: false,
-	appendSessionEntries: true,
-	log: true,
-	maxRecentEvents: 20,
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
-
 function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
-}
-
-function booleanValue(value: unknown): boolean | undefined {
-	return typeof value === "boolean" ? value : undefined;
-}
-
-function numberValue(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function safeSessionPathSegment(sessionId: string): string {
@@ -97,49 +64,6 @@ function trackingLogDir(): string {
 
 export function trackingLogPath(sessionId = "unknown"): string {
 	return process.env.PI_COMPACTION_CONTINUE_LOG ?? path.join(trackingLogDir(), `${safeSessionPathSegment(sessionId)}.jsonl`);
-}
-
-function agentDir(): string {
-	return process.env.PI_CODING_AGENT_DIR ?? process.env.PI_AGENT_DIR ?? path.join(os.homedir(), ".pi", "agent");
-}
-
-function configPaths(ctx: ExtensionContext): string[] {
-	const paths: string[] = [];
-	if (process.env.PI_COMPACTION_CONTINUE_CONFIG) paths.push(process.env.PI_COMPACTION_CONTINUE_CONFIG);
-	paths.push(path.join(agentDir(), CONFIG_FILE_NAME));
-	paths.push(path.join(ctx.cwd, ".pi", CONFIG_FILE_NAME));
-	return [...new Set(paths)];
-}
-
-function normalizeConfigPatch(input: unknown, base: TrackingConfig, source: string, diagnostics: string[]): TrackingConfig {
-	if (!isRecord(input)) {
-		diagnostics.push(`${source}: expected a JSON object`);
-		return base;
-	}
-	const next: TrackingConfig = { ...base };
-	const tracking = isRecord(input.tracking) ? input.tracking : undefined;
-	next.enabled = booleanValue(input.enabled) ?? booleanValue(tracking?.enabled) ?? base.enabled;
-	next.appendSessionEntries = booleanValue(input.appendSessionEntries) ?? booleanValue(tracking?.appendSessionEntries) ?? base.appendSessionEntries;
-	next.log = booleanValue(input.log) ?? booleanValue(tracking?.log) ?? base.log;
-	next.maxRecentEvents = Math.max(1, Math.min(100, Math.floor(numberValue(input.maxRecentEvents) ?? numberValue(tracking?.maxRecentEvents) ?? base.maxRecentEvents)));
-	return next;
-}
-
-export function loadTrackingConfig(ctx: ExtensionContext): LoadedTrackingConfig {
-	let config = { ...DEFAULT_TRACKING_CONFIG };
-	const loaded: string[] = [];
-	const diagnostics: string[] = [];
-	for (const configPath of configPaths(ctx)) {
-		if (!fs.existsSync(configPath)) continue;
-		try {
-			const parsed = JSON.parse(fs.readFileSync(configPath, "utf-8")) as unknown;
-			config = normalizeConfigPatch(parsed, config, configPath, diagnostics);
-			loaded.push(configPath);
-		} catch (error) {
-			diagnostics.push(`${configPath}: ${error instanceof Error ? error.message : String(error)}`);
-		}
-	}
-	return { config, paths: loaded, diagnostics };
 }
 
 export function sessionIdFromContext(ctx: ExtensionContext): string {

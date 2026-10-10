@@ -25,39 +25,43 @@ It snapshots/analyzes the branch before compaction and suppresses nudges when a 
 
 The watchdog prompt is wrapped in a dedicated `<watchdog_nudge>` block, tells the agent not to acknowledge the nudge in prose, and scopes `done` to the whole active user-visible work set. The agent must call `watchdog_answer` first, then stop if the work set is complete or continue from the next concrete open item.
 
+## Configuration
+
+The watchdog is **on by default**. To disable nudges in new sessions, set:
+
+```json
+{ "enabled": false }
+```
+
+Save this in `~/.pi/agent/compaction-continue.json` for all projects, or `.pi/compaction-continue.json` for one project, then use `/reload`. Project settings override global settings. `/compaction-continue on` and `off` override the watchdog for the current session only; a new or reloaded session uses the config again.
+
+`compaction_continue_state` reports effective `enabled`, the configured value and session override under `configuration`, loaded paths, diagnostics, and tracking state. `/compaction-continue` shows the same watchdog/config status.
+
 ## Passive tracking
 
-Passive tracking is **off by default**. When enabled, the extension records structured events for:
+Passive tracking is independent of the watchdog and **off by default**. When enabled, the extension records structured events for:
 
 - watchdog recovery candidates it detected
 - watchdog nudges it actually sent
 - nudges it skipped and why
 - `watchdog_answer` tool calls
 
-Tracking can write session entries, a JSONL log, or both.
+Tracking can write session entries, a JSONL log, or both. Set `tracking.log: false` to stop JSONL logging while retaining session entries; set `tracking.enabled: false` to stop all passive tracking.
 
-User-global config path:
-
-```text
-~/.pi/agent/compaction-continue.json
-```
-
-Project overlay path:
-
-```text
-.pi/compaction-continue.json
-```
-
-Example:
+Enable tracking separately in the same config file:
 
 ```json
 {
-  "enabled": true,
-  "appendSessionEntries": true,
-  "log": true,
-  "maxRecentEvents": 20
+  "tracking": {
+    "enabled": true,
+    "appendSessionEntries": true,
+    "log": true,
+    "maxRecentEvents": 20
+  }
 }
 ```
+
+Top-level `enabled` now controls the watchdog, not tracking. If an older config used it to enable tracking, move that flag to `tracking.enabled`. Flat `appendSessionEntries`, `log`, and `maxRecentEvents` remain accepted; nested tracking values take precedence.
 
 Environment overrides:
 
@@ -65,13 +69,13 @@ Environment overrides:
 - `PI_COMPACTION_CONTINUE_LOG` — force one JSONL log path
 - `PI_COMPACTION_CONTINUE_DIR` — change the default log directory
 
-Use the read-only `compaction_continue_state` tool to inspect the effective tracking status, loaded config paths, log path, and recent in-memory events.
+Config files load in this order: the extra environment-config path, user-global config, then project config. Invalid files are ignored with diagnostics; previously loaded valid settings remain in effect.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `/compaction-continue` | Show status, active loop detection, current assistant-stall streak, and whether passive tracking is enabled. |
-| `/compaction-continue on` | Enable auto-continue. |
-| `/compaction-continue off` | Disable auto-continue. |
+| `/compaction-continue on` | Enable watchdog nudges for this session. |
+| `/compaction-continue off` | Disable nudges and cancel pending recovery timers for this session. |
 | `/ralph-compact-watchdog` | Compatibility alias for older local setups. |

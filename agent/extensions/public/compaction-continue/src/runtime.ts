@@ -18,7 +18,8 @@ import {
 	WATCHDOG_ANSWER_TOOL,
 } from "./model.ts";
 import type { WatchdogNudgeDetails, WatchdogNudgeRequest } from "./model.ts";
-import { appendTrackingLog, loadTrackingConfig, makeTrackingEvent, trackingLogPath, type TrackingEvent, type TrackingSource } from "./tracking.ts";
+import { appendTrackingLog, makeTrackingEvent, trackingLogPath, type TrackingEvent, type TrackingSource } from "./tracking.ts";
+import { loadCompactionContinueConfig } from "./config.ts";
 
 function registerWatchdogMessageRenderer(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer<WatchdogNudgeDetails>(MESSAGE_TYPE_WATCHDOG_NUDGE, (message, _options, theme) => {
@@ -36,6 +37,8 @@ function registerWatchdogMessageRenderer(pi: ExtensionAPI): void {
 
 export function registerCompactionContinue(pi: ExtensionAPI): void {
 	let enabled = true;
+	let configuredEnabled = true;
+	let sessionOverride: boolean | undefined;
 	let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 	let pendingAssistantIdleTimer: ReturnType<typeof setTimeout> | undefined;
 	let lastRecoveredCompactionId: string | undefined;
@@ -52,14 +55,18 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 
 	registerWatchdogMessageRenderer(pi);
 
-	function refreshTrackingConfig(ctx: ExtensionContext): void {
-		const loaded = loadTrackingConfig(ctx);
-		trackingEnabled = loaded.config.enabled;
-		trackingAppendSessionEntries = loaded.config.appendSessionEntries;
-		trackingLogEnabled = loaded.config.log;
+	function refreshConfig(ctx: ExtensionContext): void {
+		const loaded = loadCompactionContinueConfig(ctx);
+		configuredEnabled = loaded.config.enabled;
+		const nextEnabled = sessionOverride ?? configuredEnabled;
+		if (enabled && !nextEnabled) clearRecoveryTimers();
+		enabled = nextEnabled;
+		trackingEnabled = loaded.config.tracking.enabled;
+		trackingAppendSessionEntries = loaded.config.tracking.appendSessionEntries;
+		trackingLogEnabled = loaded.config.tracking.log;
 		trackingLoadedPaths = loaded.paths;
 		trackingDiagnostics = loaded.diagnostics;
-		trackingMaxRecentEvents = loaded.config.maxRecentEvents;
+		trackingMaxRecentEvents = loaded.config.tracking.maxRecentEvents;
 	}
 
 	function rememberEvent(event: TrackingEvent): void {
@@ -115,13 +122,20 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "compaction_continue_state",
 		label: "Compaction Continue State",
-		description: "Inspect compaction-continue watchdog status and recent passive tracking events.",
+		description: "Inspect effective watchdog settings, session override, config sources, and recent passive tracking events.",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			refreshTrackingConfig(ctx);
+			refreshConfig(ctx);
+			updateStatus(ctx);
 			const activeLoop = findMostRecentActiveLoop(ctx);
 			const payload = {
 				enabled,
+				configuration: {
+					enabled: configuredEnabled,
+					sessionOverride,
+					loadedPaths: trackingLoadedPaths,
+					diagnostics: trackingDiagnostics,
+				},
 				assistantIdleRecoveryStreak,
 				lastRecoveredCompactionId,
 				activeLoop,
@@ -150,7 +164,8 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 			note: Type.Optional(Type.String({ description: "Short optional note about why the work is or is not done." })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			refreshTrackingConfig(ctx);
+			refreshConfig(ctx);
+			updateStatus(ctx);
 			const activeLoop = findMostRecentActiveLoop(ctx);
 			const payload = makeTrackingEvent(ctx, {
 				kind: "watchdog_answer",
@@ -173,6 +188,12 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 	function clearAssistantIdleTimer(): void {
 		if (pendingAssistantIdleTimer) clearTimeout(pendingAssistantIdleTimer);
 		pendingAssistantIdleTimer = undefined;
+	}
+
+	function clearRecoveryTimers(): void {
+		if (pendingTimer) clearTimeout(pendingTimer);
+		pendingTimer = undefined;
+		clearAssistantIdleTimer();
 	}
 
 	function canSendNudge(ctx: ExtensionContext): boolean {
@@ -303,22 +324,22 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 
 	function reportStatus(args: string, ctx: ExtensionContext): void {
 		const value = args.trim().toLowerCase();
-		if (value === "on" || value === "enable") enabled = true;
-		else if (value === "off" || value === "disable") enabled = false;
+		if (value === "on" || value === "enable") sessionOverride = true;
+		else if (value === "off" || value === "disable") sessionOverride = false;
 
-		refreshTrackingConfig(ctx);
+		refreshConfig(ctx);
 		updateStatus(ctx);
 		const activeLoop = findMostRecentActiveLoop(ctx);
 		ctx.ui.notify(
 			`Compaction continue: ${enabled ? "enabled" : "disabled"}${
 				activeLoop ? `\nActive loop: ${activeLoop.name} (iteration ${activeLoop.iteration})` : "\nNo active loop detected"
-			}\nAssistant stall watch: ${enabled ? "armed" : "disabled"}${assistantIdleRecoveryStreak > 0 ? `\nCurrent stall streak: ${assistantIdleRecoveryStreak}` : ""}\nPassive tracking: ${trackingEnabled ? "enabled" : "disabled"}${trackingLoadedPaths.length > 0 ? `\nTracking config: ${trackingLoadedPaths.join(", ")}` : ""}`,
+			}\nAssistant stall watch: ${enabled ? "armed" : "disabled"}${assistantIdleRecoveryStreak > 0 ? `\nCurrent stall streak: ${assistantIdleRecoveryStreak}` : ""}\nWatchdog setting: ${sessionOverride === undefined ? "configuration" : "session override"}\nPassive tracking: ${trackingEnabled ? "enabled" : "disabled"}${trackingLoadedPaths.length > 0 ? `\nConfig: ${trackingLoadedPaths.join(", ")}` : ""}${trackingDiagnostics.length > 0 ? `\nConfig diagnostics: ${trackingDiagnostics.join("; ")}` : ""}`,
 			"info",
 		);
 	}
 
 	pi.registerCommand("compaction-continue", {
-		description: "Toggle/status for watchdog nudges after idle compactions and stalled continuation turns",
+		description: "Show watchdog/config status or override nudges on/off for the current session",
 		handler: async (args, ctx) => reportStatus(args, ctx),
 	});
 
@@ -372,7 +393,12 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", async (_event, ctx) => {
-		refreshTrackingConfig(ctx);
+		clearRecoveryTimers();
+		sessionOverride = undefined;
+		assistantIdleRecoveryStreak = 0;
+		lastRecoveredCompactionId = undefined;
+		lastPreCompactionAnalysis = undefined;
+		refreshConfig(ctx);
 		updateStatus(ctx);
 		recentEvents.length = 0;
 		hadToolResultSinceLastUser = false;
@@ -394,8 +420,6 @@ export function registerCompactionContinue(pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_shutdown", async () => {
-		if (pendingTimer) clearTimeout(pendingTimer);
-		pendingTimer = undefined;
-		clearAssistantIdleTimer();
+		clearRecoveryTimers();
 	});
 }

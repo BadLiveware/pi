@@ -135,7 +135,7 @@ describe("compaction-continue tracking", () => {
 	});
 
 	it("records candidate, nudge, and answer when tracking is enabled", async () => {
-		await withTrackingConfig({ enabled: true, appendSessionEntries: true, log: true, maxRecentEvents: 10 }, async (logPath) => {
+		await withTrackingConfig({ tracking: { enabled: true, appendSessionEntries: true, log: true, maxRecentEvents: 10 } }, async (logPath) => {
 			await withImmediateTimers(async () => {
 				const { handlers, tools, sentMessages, entries, statuses, ctx } = loadExtension();
 				await emit(handlers, "session_start", {}, ctx);

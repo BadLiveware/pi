@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Honor top-level `enabled` in user/project config when starting, reloading, or resuming a session; `false` disables both compaction and stalled-turn nudges.
+- Separate passive tracking under `tracking.enabled`; flat logging options remain accepted, with nested options taking precedence.
+- Keep slash-command toggles session-local, cancel pending recovery timers on disable, and expose config sources and overrides in state/status output.
+
 ## 0.1.7
 
 - Removed Stardock-specific loop detection and completion-marker guidance; Stardock owns its own progress and completion lifecycle.
