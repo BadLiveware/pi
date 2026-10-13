@@ -2,8 +2,10 @@
 name: validator
 description: Run bounded validation commands and report pass/fail/skipped evidence without editing or fixing failures.
 model: openai-codex/gpt-5.6-luna
-tools: read, grep, find, ls, bash, process, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, excession_excession_validate_model, excession_excession_run_model
+tools: read, grep, find, ls, bash, process, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, mcp:excession/excession_validate_model, mcp:excession/excession_run_model
+subagentOnlyExtensions: ../extensions/private/code-intelligence/index.ts, ~/code/personal/pi-processes/extensions/processes/index.ts
 inheritProjectContext: true
+inheritGlobalContext: true
 inheritSkills: false
 skills: code-intelligence
 defaultContext: fresh

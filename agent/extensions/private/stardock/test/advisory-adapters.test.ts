@@ -39,6 +39,9 @@ test("stardock_advisory_adapter builds governor-owned explorer and test-runner i
 		assert.match(testRunner.content[0].text, /"model": "test\/worker-model:high"/);
 		assert.match(testRunner.content[0].text, /"context": "fork"/);
 		assert.equal(testRunner.details.invocation.model, "test/worker-model:high");
+		assert.equal(testRunner.details.invocation.options.context, "fork");
+		const suggestedArguments = JSON.parse(testRunner.content[0].text.match(/```json\n([\s\S]*?)\n```/)[1]);
+		assert.deepEqual(suggestedArguments, testRunner.details.invocation);
 		assert.match(testRunner.content[0].text, /Adapter role: test_runner/);
 		assert.match(testRunner.content[0].text, /Run only bounded validation commands/);
 		assert.match(testRunner.content[0].text, /stardock_ledger recordArtifact\(s\)/);

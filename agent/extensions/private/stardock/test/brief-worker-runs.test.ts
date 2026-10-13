@@ -76,7 +76,6 @@ test("stardock_brief_worker runs a brief-scoped subagent and records a WorkerRep
 		assert.equal(capturedRequest.params.model, "test/worker-model:xhigh");
 		assert.equal(capturedRequest.params.context, "fresh");
 		assert.equal(capturedRequest.params.async, false);
-		assert.equal(capturedRequest.params.clarify, false);
 		assert.equal(capturedRequest.params.outputMode, "file-only");
 		assert.match(capturedRequest.params.output, /^\.stardock\/runs\/Brief_Worker\/workers\//);
 		assert.match(capturedRequest.params.task, /Adapter role: explorer/);

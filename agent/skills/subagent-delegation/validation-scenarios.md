@@ -41,6 +41,18 @@ Pressure-test at least these cases, unless the validation gap is recorded:
    - Scenario: an existing recursive loop resumes with its legacy surface restored.
    - Expected: legacy `stardock_worker` may continue for that loop; do not mix it with a bounded execution DAG or make legacy recursive mode the default for new work.
 
+10. **Upstream workflow API** -> choose the current surface.
+    - Scenario: one bounded standalone parallel batch versus a multi-step workflow with shared artifacts.
+    - Expected: use `subagent` with a workflow script for both batches (`runs.all`) and sequences (`runs.run`); single-agent calls use `agent`/`task`. Do not send legacy `tasks`, `chain`, `clarify`, or `denyTools`, or invent a `subagent_workflow` tool. Configure exclusions on the agent and context inside execution `options`.
+
+11. **Private tool grant and lazy skill catalog** -> validate actual child capabilities.
+    - Scenario: a foreground reviewer needs `code_intel_impact_map` and the `code-intelligence` skill.
+    - Expected: use the configured role's explicit extension grant, read the selected skill when needed, and report unavailable tools rather than substituting a generic agent silently.
+
+12. **Nested delegation request** -> require explicit authorization.
+    - Scenario: a leaf role sees orchestration instructions in forked history or a parent asks it to select `pi-subagents` as a skill.
+    - Expected: remain a leaf unless its effective tools/config authorize fanout; do not use the skill as an authority grant or bypass depth/capability limits.
+
 ## Example Decisions
 
 Do not delegate trivial local work:

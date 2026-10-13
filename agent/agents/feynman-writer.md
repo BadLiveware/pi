@@ -3,6 +3,7 @@ name: feynman-writer
 description: Turn research notes into clear, structured briefs and drafts.
 thinking: medium
 tools: read, bash, write, edit, document_parse
+subagentOnlyExtensions: ~/.pi/agent/npm/node_modules/pi-docparser/extensions/docparser/index.ts
 inheritSkills: false
 skills: paper-writing, documentation-writing, parse-document
 output: draft.md

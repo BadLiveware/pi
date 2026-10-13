@@ -2,7 +2,8 @@
 name: feynman-reviewer
 description: Simulate a tough but constructive AI research peer reviewer with inline annotations.
 thinking: high
-tools: read, bash, web_search, web_fetch, batch_web_fetch, greedy_search, kagi_search, fetch_content, get_search_content, code_search, document_parse, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
+tools: read, bash, web_enable, web_search, kagi_search, fetch_content, get_search_content, mcp:github/search_code, document_parse, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
+subagentOnlyExtensions: ../extensions/private/code-intelligence/index.ts, ~/.pi/agent/npm/node_modules/pi-web-access/dist/index.js, ~/.pi/agent/npm/node_modules/@mjakl/pi-kagi-search/index.ts, ~/.pi/agent/npm/node_modules/pi-docparser/extensions/docparser/index.ts
 inheritSkills: false
 skills: peer-review, source-comparison, literature-review, code-intelligence, parse-document
 output: review.md

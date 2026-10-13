@@ -47,7 +47,8 @@ export function buildAdvisoryAdapterPayload(state: LoopState, cwd: string, input
 	const role = adapterRole(input.role);
 	const built = buildBriefWorkerInvocation(state, cwd, { role, briefId: input.briefId, agentName: input.agentName, model: input.model, thinking: input.thinking, fallbackModel: input.fallbackModel, context: adapterContext(input.context) });
 	if (!built.ok) return built;
-	const invocation = built.invocation;
+	const { context, ...execution } = built.invocation;
+	const invocation = { ...execution, options: { context } };
 	const payload = [
 		`Governor-owned ${role} adapter payload for loop "${state.name}"`,
 		"Target: pi-subagents subagent tool invocation",

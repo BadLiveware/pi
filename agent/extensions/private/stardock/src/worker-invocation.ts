@@ -22,7 +22,6 @@ export function prepareWorkerInvocation(
 			output: options.output,
 			outputMode: options.outputMode,
 			async: false,
-			clarify: false,
 		},
 	};
 }

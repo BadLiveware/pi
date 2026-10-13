@@ -73,9 +73,37 @@ Use a generic builtin only as an explicit degraded fallback when the intended cu
 1. Define the subtask, deliverable, acceptance criteria, allowed files/sources, and parent validation.
 2. Discover agents/models when uncertain; do not copy placeholders or stale model names.
 3. Choose a supported enabled model from `list_pi_models` when using a model override.
-4. Use `TaskExecute` for task-tracked delegation when it fits; use `subagent` directly for custom agents, model overrides, output files, async runs, or parallel fan-out.
+4. Use `TaskExecute` for task-tracked delegation when it fits; use `subagent` directly for one custom agent, or its workflow scripts for fan-out and multi-step work.
 5. Keep prompts concrete and limited to context the subagent actually needs.
 6. Review the result, integrate deliberately, and re-validate.
+
+## Upstream Subagent Contract
+- Configure `excludeTools` in agent definitions using exact registered tool names. Do not send `denyTools` or `clarify`, or invent execution-level exclusion fields.
+- Use `subagent({ agent, task })` for one child. For parallel or sequential work, use the same `subagent` tool with `workflow`; do not send legacy `tasks`, `chain`, or template variables. There is no separate `subagent_workflow` tool.
+- Put context and other non-top-level execution fields inside `options`, for example `{ agent: "review-scout", task: "Inspect auth", async: false, options: { context: "fresh" } }`. Discover exact current fields with `{ action: "guide", options: { topic: "tool-reference" } }`.
+- Selected skills provide names, descriptions, and paths. Children read their skill files when needed; a catalog entry is not an already-loaded instruction body.
+- Grant non-builtin tools through explicit `extensions` or agent `subagentOnlyExtensions`. Use `mcp:<server>/<tool>` in agent tool lists for native MCP grants; do not assume the parent's ambient extensions are available in foreground children.
+- Repo code roles explicitly inherit project and global instructions. Other agents retain their upstream context defaults; request fresh/forked context deliberately.
+- Keep leaf roles non-delegating. Authorize child fanout only with `tools: subagent` or `allowNestedSubagents: true`, within the configured depth and capability limits; selecting `pi-subagents` as a child skill is not authorization.
+
+### Workflow Recipes
+Write a script file such as `.pi/workflows/review.js`, then call `subagent({ workflow: "./.pi/workflows/review.js", async: false, options: { context: "fresh" } })`. All children share the workflow's `cwd`; use explicit dedicated artifact paths when files are needed. Agent names below must exist in current discovery.
+
+Parallel script body:
+```js
+return await runs.all([
+  { key: "auth", agent: "review-scout", task: "Inspect auth without editing." },
+  { key: "tests", agent: "review-verifier", task: "Inspect tests without editing." }
+]);
+```
+
+Sequential handoff script body:
+```js
+const scan = await runs.run("scan", { agent: "review-scout", task: "Inspect auth without editing." });
+return await runs.run("review", { agent: "review-verifier", task: "Verify these candidates without editing:\n" + scan.output });
+```
+
+`runs.all` returns an ordered array, not a key map. Await child results before reading `.output`; pass results explicitly instead of legacy shared-directory templates. The parent still owns acceptance and validation.
 
 ## Delegation Template
 ```md

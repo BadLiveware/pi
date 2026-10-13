@@ -2,7 +2,8 @@
 name: feynman-researcher
 description: Gather primary evidence across papers, web sources, repos, docs, and local artifacts.
 thinking: high
-tools: read, write, edit, bash, process, web_search, web_fetch, batch_web_fetch, greedy_search, kagi_search, fetch_content, get_search_content, code_search, document_parse, context7_resolve-library-id, context7_query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
+tools: read, write, edit, bash, process, web_enable, web_search, kagi_search, fetch_content, get_search_content, mcp:github/search_code, document_parse, mcp:context7/resolve-library-id, mcp:context7/query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
+subagentOnlyExtensions: ../extensions/private/code-intelligence/index.ts, ~/code/personal/pi-processes/extensions/processes/index.ts, ~/.pi/agent/npm/node_modules/pi-web-access/dist/index.js, ~/.pi/agent/npm/node_modules/@mjakl/pi-kagi-search/index.ts, ~/.pi/agent/npm/node_modules/pi-docparser/extensions/docparser/index.ts
 inheritSkills: false
 skills: alpha-research, deep-research, literature-review, source-comparison, paper-code-audit, replication, code-intelligence, parse-document
 output: research.md
