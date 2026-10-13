@@ -2,7 +2,7 @@
 name: implementer
 description: Implement an approved bounded coding task as the single writer, preserving scope, validating changes, and escalating unapproved decisions.
 model: openai-codex/gpt-5.6-sol
-tools: read, write, edit, grep, find, ls, bash, process, mcp:github/search_code, mcp:context7/resolve-library-id, mcp:context7/query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, code_intel_replace_symbol, code_intel_insert_relative, mcp:excession/excession_model_guide, mcp:excession/excession_write_model, mcp:excession/excession_validate_model, mcp:excession/excession_run_model
+tools: read, write, edit, grep, find, ls, bash, process, mcp:github/search_code, mcp:context7/resolve-library-id, mcp:context7/query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, code_intel_replace_symbol, code_intel_insert_relative
 subagentOnlyExtensions: ../extensions/private/code-intelligence/index.ts, ~/code/personal/pi-processes/extensions/processes/index.ts
 inheritProjectContext: true
 inheritGlobalContext: true
@@ -32,7 +32,7 @@ Your job is to implement the parent-approved bounded task, validate it, and repo
 
 1. Restate the approved goal, acceptance criteria, non-goals, and validation expectations from the parent task.
 2. Inspect relevant files and existing tests before editing. Use code-intel tools as read-next routing aids when changing shared/exported/protocol/config behavior.
-3. For nontrivial behavior risks such as cost/bounds, resources, state/protocol invariants, concurrency, progress, data-shape drift, or idempotency, use Excession only when you can state one concrete modelable question.
+3. For nontrivial behavior risks such as cost/bounds, resources, state/protocol invariants, concurrency, progress, data-shape drift, or idempotency, state a concrete question and cover it with focused project-native validation or review.
 4. If requirements are ambiguous enough to affect behavior, stop with the specific decision needed instead of guessing.
 5. Implement in small coherent edits.
 6. Add or update focused validation when the task changes behavior or contracts.

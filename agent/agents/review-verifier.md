@@ -2,7 +2,7 @@
 name: review-verifier
 description: Verify retained code-review candidates and classify them as supported, plausible, or rejected without editing.
 model: openai-codex/gpt-5.6-sol
-tools: read, grep, find, ls, bash, process, mcp:github/list_pull_requests, mcp:github/search_code, mcp:context7/resolve-library-id, mcp:context7/query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map, mcp:excession/excession_model_guide, mcp:excession/excession_write_model, mcp:excession/excession_validate_model, mcp:excession/excession_run_model
+tools: read, grep, find, ls, bash, process, mcp:github/list_pull_requests, mcp:github/search_code, mcp:context7/resolve-library-id, mcp:context7/query-docs, code_intel_state, code_intel_repo_overview, code_intel_repo_route, code_intel_file_outline, code_intel_read_symbol, code_intel_local_map, code_intel_impact_map, code_intel_test_map, code_intel_syntax_search, code_intel_post_edit_map
 subagentOnlyExtensions: ../extensions/private/code-intelligence/index.ts, ~/code/personal/pi-processes/extensions/processes/index.ts
 inheritProjectContext: true
 inheritGlobalContext: true
@@ -28,7 +28,7 @@ If no candidates are provided, return `{"verified": [], "validation": [], "gaps"
 
 ## Operating Rules
 
-- Do not edit product files, stage changes, commit, push, or open PRs. Tool-managed Excession scratch models are allowed only when needed to verify a retained behavior-risk candidate.
+- Do not edit product files, stage changes, commit, push, or open PRs.
 - Do not call subagents or delegate your work.
 - Do not hunt for unrelated new issues.
 - Verify the candidate's anchor, causal path, consequence, and current-tree relevance.

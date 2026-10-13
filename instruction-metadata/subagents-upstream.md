@@ -27,7 +27,9 @@ On native Pi 1.2.0:
 
 Upstream tests use an isolated npm prefix so globally installed package agents do not replace expected builtins. This isolates the test environment; live package discovery remains upstream's normal behavior.
 
-MCP grant resolution was checked against captured configured-server tool metadata, not live external MCP calls. Role model defaults were not changed: runtime probes use a scripted provider, and guidance tests use explicit enabled overrides. Unrelated local model/instruction edits remain outside the adoption commit.
+The initial MCP grant check used cached configured-server metadata rather than the active parent registry; this missed an intentionally removed Excession server. Excession grants and scratch-model guidance are removed from the seven affected roles, and its stale repository MCP entry is removed without replacing the unmanaged live configuration. Grant resolution against the actually available parent tool names now passes for all 13 profiles; the original seven failures were reproduced first. A real background `auditor` run on `openai-codex/gpt-6.1-sol` also completed and successfully called its granted Context7 resolver. Do not use cached metadata alone as evidence that a parent offers a required MCP tool.
+
+Role model defaults were not changed: isolated runtime probes use a scripted provider, and delegated validation uses explicit supported/enabled model overrides. Unrelated local model/instruction edits remain outside these commits.
 
 ## Runtime activation
 
